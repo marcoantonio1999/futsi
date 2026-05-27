@@ -74,6 +74,11 @@ def postgres_config_from_url(database_url):
     parsed = urlparse(database_url)
     query = parse_qs(parsed.query)
     sslmode = query.get("sslmode", [os.getenv("POSTGRES_SSLMODE", "require")])[0]
+    if not parsed.hostname:
+        raise ValueError(
+            "SUPABASE_DATABASE_URL no tiene host valido. Revisa que el password este URL-encoded "
+            "si contiene caracteres como @, #, /, ?, &, %."
+        )
 
     return {
         "ENGINE": "django.db.backends.postgresql",
@@ -88,18 +93,17 @@ def postgres_config_from_url(database_url):
 
 if DATABASE_URL:
     DATABASES = {"default": postgres_config_from_url(DATABASE_URL)}
-elif DB_ENGINE == "postgres":
+elif DB_ENGINE == "postgres" or os.getenv("POSTGRES_HOST") or os.getenv("SUPABASE_DB_HOST"):
     postgres_options = {}
-    if os.getenv("POSTGRES_SSLMODE"):
-        postgres_options["sslmode"] = os.getenv("POSTGRES_SSLMODE")
+    postgres_options["sslmode"] = os.getenv("POSTGRES_SSLMODE", "require")
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.getenv("POSTGRES_DB", "futsi"),
-            "USER": os.getenv("POSTGRES_USER", "futsi"),
-            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "futsi"),
-            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+            "NAME": os.getenv("POSTGRES_DB", os.getenv("SUPABASE_DB_NAME", "postgres")),
+            "USER": os.getenv("POSTGRES_USER", os.getenv("SUPABASE_DB_USER", "postgres")),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("SUPABASE_DB_PASSWORD", "")),
+            "HOST": os.getenv("POSTGRES_HOST", os.getenv("SUPABASE_DB_HOST", "localhost")),
+            "PORT": os.getenv("POSTGRES_PORT", os.getenv("SUPABASE_DB_PORT", "5432")),
             **({"OPTIONS": postgres_options} if postgres_options else {}),
         }
     }

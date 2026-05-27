@@ -27,6 +27,20 @@ DJANGO_SECURE_HSTS_SECONDS=31536000
 
 La URL real se obtiene en Supabase: Project Settings > Database > Connection string. Para servicios con conexiones cortas conviene usar el pooler de Supabase. Nunca se debe subir la contrasena al repositorio.
 
+Si el password contiene caracteres como `@`, `#`, `/`, `?`, `&` o `%`, usar variables separadas en Render para evitar errores de parseo:
+
+```env
+DB_ENGINE=postgres
+POSTGRES_DB=postgres
+POSTGRES_USER=postgres.uqvjilgskrqehkdpkhvq
+POSTGRES_PASSWORD=PASSWORD_REAL_SIN_CODIFICAR
+POSTGRES_HOST=HOST_DEL_POOLER
+POSTGRES_PORT=6543
+POSTGRES_SSLMODE=require
+```
+
+En esta modalidad se debe eliminar `SUPABASE_DATABASE_URL` de Render.
+
 ## Comandos del backend
 
 Build:
