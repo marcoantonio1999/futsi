@@ -16,10 +16,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY back /app/back
 
 WORKDIR /app/back
-RUN chmod +x docker-entrypoint.sh
 RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["gunicorn", "futsi_api.wsgi:application", "--bind", "0.0.0.0:8000", "--log-file", "-"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && if [ \"$RUN_SEED_DEMO\" = \"true\" ]; then python manage.py seed_demo; fi && gunicorn futsi_api.wsgi:application --bind 0.0.0.0:8000 --log-file -"]
