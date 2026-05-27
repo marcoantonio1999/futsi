@@ -16,7 +16,7 @@ Configurar estas variables en el proveedor donde corra Django:
 ```env
 DJANGO_SECRET_KEY=valor-largo-y-secreto
 DJANGO_DEBUG=false
-DJANGO_ALLOWED_HOSTS=api.tudominio.com,tu-backend.onrender.com
+DJANGO_ALLOWED_HOSTS=api.tudominio.com,tu-backend.onrender.com,.onrender.com
 CORS_ALLOWED_ORIGINS=https://usuario.github.io,https://usuario.github.io/nombre-del-repo
 CSRF_TRUSTED_ORIGINS=https://usuario.github.io,https://usuario.github.io/nombre-del-repo
 SUPABASE_DATABASE_URL=postgresql://postgres.uqvjilgskrqehkdpkhvq:PASSWORD@HOST:6543/postgres?sslmode=require
@@ -63,7 +63,7 @@ Pasos:
 
 ```env
 DJANGO_SECRET_KEY=valor-largo-y-secreto
-DJANGO_ALLOWED_HOSTS=futsi-api.onrender.com,api.tudominio.com
+DJANGO_ALLOWED_HOSTS=futsi-api.onrender.com,api.tudominio.com,.onrender.com
 CORS_ALLOWED_ORIGINS=https://usuario.github.io,https://usuario.github.io/futsi
 CSRF_TRUSTED_ORIGINS=https://usuario.github.io,https://usuario.github.io/futsi
 SUPABASE_DATABASE_URL=postgresql://postgres.uqvjilgskrqehkdpkhvq:PASSWORD@HOST:6543/postgres?sslmode=require
