@@ -1,0 +1,204 @@
+erDiagram
+  core_user {
+    bigint id PK
+    varchar username
+    varchar email
+    enum role
+    sites_id primary_site_id FK
+    varchar phone
+    url avatar_url
+    varchar coach_group_name
+    decimal coach_hourly_rate
+  }
+  sites {
+    bigint id PK
+    varchar name
+    slug code
+    text address
+    decimal latitude
+    decimal longitude
+    bool is_active
+    int close_editing_after_hours
+  }
+  courts {
+    bigint id PK
+    sites_id site_id FK
+    varchar name
+    bool is_active
+  }
+  guardians {
+    bigint id PK
+    core_user_id user_id FK
+    varchar full_name
+    varchar phone
+    email email
+    varchar virtual_clabe
+    varchar tax_name
+    varchar tax_id
+  }
+  students {
+    bigint id PK
+    sites_id site_id FK
+    guardians_id guardian_id FK
+    varchar full_name
+    date birth_date
+    varchar category
+    varchar group_name
+    enum status
+    url photo_url
+    url waiver_url
+    text medical_notes
+    varchar uniform_status
+    date pause_start_pause_end
+  }
+  tournaments {
+    bigint id PK
+    sites_id site_id FK
+    varchar name
+    enum billing_type
+    date starts_on
+    int expected_weeks
+  }
+  teams {
+    bigint id PK
+    tournaments_id tournament_id FK
+    varchar name
+    varchar representative_name
+    varchar representative_phone
+  }
+  players {
+    bigint id PK
+    teams_id team_id FK
+    varchar full_name
+    file photo
+    file identity_document
+  }
+  rounds {
+    bigint id PK
+    tournaments_id tournament_id FK
+    int number
+    date starts_on_ends_on
+  }
+  attendance_sessions {
+    bigint id PK
+    sites_id site_id FK
+    courts_id court_id FK
+    tournaments_id tournament_id FK
+    rounds_id round_id FK
+    teams_id team_id FK
+    core_user_id captured_by_id FK
+    enum session_type
+    date/time date_starts_at
+    varchar group_name
+    datetime closed_at
+  }
+  attendance_records {
+    bigint id PK
+    attendance_sessions_id session_id FK
+    students_id student_id FK
+    teams_id team_id FK
+    core_user_id captured_by_id FK
+    enum status
+    bool had_debt_at_capture
+    text override_reason
+  }
+  charges {
+    bigint id PK
+    sites_id site_id FK
+    students_id student_id FK
+    teams_id team_id FK
+    core_user_id created_by_id FK
+    varchar concept
+    decimal amount
+    date due_date
+    enum status
+  }
+  payments {
+    bigint id PK
+    sites_id site_id FK
+    charges_id charge_id FK
+    students_id student_id FK
+    teams_id team_id FK
+    core_user_id received_by_id FK
+    enum method_channel
+    enum status
+    decimal amount
+    datetime paid_at_confirmed_at
+    varchar reference_tracking_key
+    url payment_url
+  }
+  discounts {
+    bigint id PK
+    sites_id site_id FK
+    charges_id charge_id FK
+    students_id student_id FK
+    teams_id team_id FK
+    core_user_id requested_by_id FK
+    core_user_id approved_by_id FK
+    varchar reason
+    decimal amount
+    enum status
+  }
+  expenses {
+    bigint id PK
+    sites_id site_id FK
+    core_user_id captured_by_id FK
+    core_user_id approved_by_id FK
+    varchar category
+    varchar description
+    decimal amount
+    date expense_date
+    enum status
+  }
+  coach_work_logs {
+    bigint id PK
+    core_user_id coach_id FK
+    sites_id site_id FK
+    core_user_id created_by_id FK
+    varchar group_name
+    date work_date
+    decimal hours
+    decimal hourly_rate_snapshot
+  }
+  daily_closures {
+    bigint id PK
+    sites_id site_id FK
+    core_user_id closed_by_id FK
+    date business_date
+    decimal cash_expected_cash_reported
+  }
+  audit_logs {
+    bigint id PK
+    core_user_id actor_id FK
+    varchar action
+    varchar table_name
+    varchar record_id
+    json previous_values_new_values
+  }
+  sites ||--o{ core_user : primary_site_id
+  core_user ||--o{ guardians : user_id
+  sites ||--o{ courts : site_id
+  sites ||--o{ students : site_id
+  guardians ||--o{ students : guardian_id
+  sites ||--o{ tournaments : site_id
+  tournaments ||--o{ teams : tournament_id
+  teams ||--o{ players : team_id
+  tournaments ||--o{ rounds : tournament_id
+  sites ||--o{ attendance_sessions : site_id
+  courts ||--o{ attendance_sessions : court_id
+  core_user ||--o{ attendance_sessions : captured_by_id
+  attendance_sessions ||--o{ attendance_records : session_id
+  students ||--o{ attendance_records : student_id
+  teams ||--o{ attendance_records : team_id
+  sites ||--o{ charges : site_id
+  students ||--o{ charges : student_id
+  teams ||--o{ charges : team_id
+  charges ||--o{ payments : charge_id
+  students ||--o{ payments : student_id
+  teams ||--o{ payments : team_id
+  charges ||--o{ discounts : charge_id
+  sites ||--o{ expenses : site_id
+  core_user ||--o{ coach_work_logs : coach_id
+  sites ||--o{ coach_work_logs : site_id
+  sites ||--o{ daily_closures : site_id
+  core_user ||--o{ audit_logs : actor_id

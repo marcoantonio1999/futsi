@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: futsi-api
+    runtime: python
+    rootDir: back
+    plan: starter
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    preDeployCommand: python manage.py migrate
+    startCommand: gunicorn futsi_api.wsgi:application --bind 0.0.0.0:$PORT --log-file -
+    healthCheckPath: /health/
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: SUPABASE_DATABASE_URL
+        sync: false
+      - key: POSTGRES_SSLMODE
+        value: require
+      - key: DJANGO_SECURE_SSL_REDIRECT
+        value: "true"
+      - key: DJANGO_SECURE_HSTS_SECONDS
+        value: "31536000"

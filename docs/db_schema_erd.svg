@@ -1,0 +1,356 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1320" viewBox="0 0 1800 1320">
+<rect width="1800" height="1320" fill="#f8fafc"/>
+<style>text{font-family:Arial,sans-serif}.t{font-weight:700;font-size:16px;fill:#0f172a}.f{font-size:12px;fill:#334155}.k{font-size:11px;fill:#047857;font-weight:700}.line{stroke:#94a3b8;stroke-width:1.4;fill:none}</style>
+<rect x="40" y="40" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="40" y="40" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="54" y="63">core_user</text>
+<text class="k" x="54" y="96">PK</text>
+<text class="f" x="88" y="96">id: bigint</text>
+<text class="k" x="54" y="112"></text>
+<text class="f" x="88" y="112">username: varchar</text>
+<text class="k" x="54" y="128"></text>
+<text class="f" x="88" y="128">email: varchar</text>
+<text class="k" x="54" y="144"></text>
+<text class="f" x="88" y="144">role: enum</text>
+<text class="k" x="54" y="160">FK</text>
+<text class="f" x="88" y="160">primary_site_id: sites.id</text>
+<text class="k" x="54" y="176"></text>
+<text class="f" x="88" y="176">phone: varchar</text>
+<text class="k" x="54" y="192"></text>
+<text class="f" x="88" y="192">avatar_url: url</text>
+<text class="k" x="54" y="208"></text>
+<text class="f" x="88" y="208">coach_group_name: varchar</text>
+<text class="k" x="54" y="224"></text>
+<text class="f" x="88" y="224">coach_hourly_rate: decimal</text>
+<rect x="470" y="40" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="470" y="40" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="484" y="63">sites</text>
+<text class="k" x="484" y="96">PK</text>
+<text class="f" x="518" y="96">id: bigint</text>
+<text class="k" x="484" y="112"></text>
+<text class="f" x="518" y="112">name: varchar</text>
+<text class="k" x="484" y="128"></text>
+<text class="f" x="518" y="128">code: slug</text>
+<text class="k" x="484" y="144"></text>
+<text class="f" x="518" y="144">address: text</text>
+<text class="k" x="484" y="160"></text>
+<text class="f" x="518" y="160">latitude: decimal</text>
+<text class="k" x="484" y="176"></text>
+<text class="f" x="518" y="176">longitude: decimal</text>
+<text class="k" x="484" y="192"></text>
+<text class="f" x="518" y="192">is_active: bool</text>
+<text class="k" x="484" y="208"></text>
+<text class="f" x="518" y="208">close_editing_after_hours: int</text>
+<rect x="900" y="40" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="900" y="40" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="914" y="63">courts</text>
+<text class="k" x="914" y="96">PK</text>
+<text class="f" x="948" y="96">id: bigint</text>
+<text class="k" x="914" y="112">FK</text>
+<text class="f" x="948" y="112">site_id: sites.id</text>
+<text class="k" x="914" y="128"></text>
+<text class="f" x="948" y="128">name: varchar</text>
+<text class="k" x="914" y="144"></text>
+<text class="f" x="948" y="144">is_active: bool</text>
+<rect x="1330" y="40" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="1330" y="40" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="1344" y="63">guardians</text>
+<text class="k" x="1344" y="96">PK</text>
+<text class="f" x="1378" y="96">id: bigint</text>
+<text class="k" x="1344" y="112">FK</text>
+<text class="f" x="1378" y="112">user_id: core_user.id</text>
+<text class="k" x="1344" y="128"></text>
+<text class="f" x="1378" y="128">full_name: varchar</text>
+<text class="k" x="1344" y="144"></text>
+<text class="f" x="1378" y="144">phone: varchar</text>
+<text class="k" x="1344" y="160"></text>
+<text class="f" x="1378" y="160">email: email</text>
+<text class="k" x="1344" y="176"></text>
+<text class="f" x="1378" y="176">virtual_clabe: varchar</text>
+<text class="k" x="1344" y="192"></text>
+<text class="f" x="1378" y="192">tax_name: varchar</text>
+<text class="k" x="1344" y="208"></text>
+<text class="f" x="1378" y="208">tax_id: varchar</text>
+<rect x="40" y="300" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="40" y="300" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="54" y="323">students</text>
+<text class="k" x="54" y="356">PK</text>
+<text class="f" x="88" y="356">id: bigint</text>
+<text class="k" x="54" y="372">FK</text>
+<text class="f" x="88" y="372">site_id: sites.id</text>
+<text class="k" x="54" y="388">FK</text>
+<text class="f" x="88" y="388">guardian_id: guardians.id</text>
+<text class="k" x="54" y="404"></text>
+<text class="f" x="88" y="404">full_name: varchar</text>
+<text class="k" x="54" y="420"></text>
+<text class="f" x="88" y="420">birth_date: date</text>
+<text class="k" x="54" y="436"></text>
+<text class="f" x="88" y="436">category: varchar</text>
+<text class="k" x="54" y="452"></text>
+<text class="f" x="88" y="452">group_name: varchar</text>
+<text class="k" x="54" y="468"></text>
+<text class="f" x="88" y="468">status: enum</text>
+<text class="k" x="54" y="484"></text>
+<text class="f" x="88" y="484">photo_url: url</text>
+<text class="k" x="54" y="500"></text>
+<text class="f" x="88" y="500">waiver_url: url</text>
+<text class="f" x="88" y="516">... 3 campos mas</text>
+<rect x="470" y="300" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="470" y="300" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="484" y="323">tournaments</text>
+<text class="k" x="484" y="356">PK</text>
+<text class="f" x="518" y="356">id: bigint</text>
+<text class="k" x="484" y="372">FK</text>
+<text class="f" x="518" y="372">site_id: sites.id</text>
+<text class="k" x="484" y="388"></text>
+<text class="f" x="518" y="388">name: varchar</text>
+<text class="k" x="484" y="404"></text>
+<text class="f" x="518" y="404">billing_type: enum</text>
+<text class="k" x="484" y="420"></text>
+<text class="f" x="518" y="420">starts_on: date</text>
+<text class="k" x="484" y="436"></text>
+<text class="f" x="518" y="436">expected_weeks: int</text>
+<rect x="900" y="300" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="900" y="300" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="914" y="323">teams</text>
+<text class="k" x="914" y="356">PK</text>
+<text class="f" x="948" y="356">id: bigint</text>
+<text class="k" x="914" y="372">FK</text>
+<text class="f" x="948" y="372">tournament_id: tournaments.id</text>
+<text class="k" x="914" y="388"></text>
+<text class="f" x="948" y="388">name: varchar</text>
+<text class="k" x="914" y="404"></text>
+<text class="f" x="948" y="404">representative_name: varchar</text>
+<text class="k" x="914" y="420"></text>
+<text class="f" x="948" y="420">representative_phone: varchar</text>
+<rect x="1330" y="300" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="1330" y="300" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="1344" y="323">players</text>
+<text class="k" x="1344" y="356">PK</text>
+<text class="f" x="1378" y="356">id: bigint</text>
+<text class="k" x="1344" y="372">FK</text>
+<text class="f" x="1378" y="372">team_id: teams.id</text>
+<text class="k" x="1344" y="388"></text>
+<text class="f" x="1378" y="388">full_name: varchar</text>
+<text class="k" x="1344" y="404"></text>
+<text class="f" x="1378" y="404">photo: file</text>
+<text class="k" x="1344" y="420"></text>
+<text class="f" x="1378" y="420">identity_document: file</text>
+<rect x="40" y="560" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="40" y="560" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="54" y="583">rounds</text>
+<text class="k" x="54" y="616">PK</text>
+<text class="f" x="88" y="616">id: bigint</text>
+<text class="k" x="54" y="632">FK</text>
+<text class="f" x="88" y="632">tournament_id: tournaments.id</text>
+<text class="k" x="54" y="648"></text>
+<text class="f" x="88" y="648">number: int</text>
+<text class="k" x="54" y="664"></text>
+<text class="f" x="88" y="664">starts_on / ends_on: date</text>
+<rect x="470" y="560" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="470" y="560" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="484" y="583">attendance_sessions</text>
+<text class="k" x="484" y="616">PK</text>
+<text class="f" x="518" y="616">id: bigint</text>
+<text class="k" x="484" y="632">FK</text>
+<text class="f" x="518" y="632">site_id: sites.id</text>
+<text class="k" x="484" y="648">FK</text>
+<text class="f" x="518" y="648">court_id: courts.id</text>
+<text class="k" x="484" y="664">FK</text>
+<text class="f" x="518" y="664">tournament_id: tournaments.id</text>
+<text class="k" x="484" y="680">FK</text>
+<text class="f" x="518" y="680">round_id: rounds.id</text>
+<text class="k" x="484" y="696">FK</text>
+<text class="f" x="518" y="696">team_id: teams.id</text>
+<text class="k" x="484" y="712">FK</text>
+<text class="f" x="518" y="712">captured_by_id: core_user.id</text>
+<text class="k" x="484" y="728"></text>
+<text class="f" x="518" y="728">session_type: enum</text>
+<text class="k" x="484" y="744"></text>
+<text class="f" x="518" y="744">date / starts_at: date/time</text>
+<text class="k" x="484" y="760"></text>
+<text class="f" x="518" y="760">group_name: varchar</text>
+<text class="f" x="518" y="776">... 1 campos mas</text>
+<rect x="900" y="560" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="900" y="560" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="914" y="583">attendance_records</text>
+<text class="k" x="914" y="616">PK</text>
+<text class="f" x="948" y="616">id: bigint</text>
+<text class="k" x="914" y="632">FK</text>
+<text class="f" x="948" y="632">session_id: attendance_sessions.id</text>
+<text class="k" x="914" y="648">FK</text>
+<text class="f" x="948" y="648">student_id: students.id</text>
+<text class="k" x="914" y="664">FK</text>
+<text class="f" x="948" y="664">team_id: teams.id</text>
+<text class="k" x="914" y="680">FK</text>
+<text class="f" x="948" y="680">captured_by_id: core_user.id</text>
+<text class="k" x="914" y="696"></text>
+<text class="f" x="948" y="696">status: enum</text>
+<text class="k" x="914" y="712"></text>
+<text class="f" x="948" y="712">had_debt_at_capture: bool</text>
+<text class="k" x="914" y="728"></text>
+<text class="f" x="948" y="728">override_reason: text</text>
+<rect x="1330" y="560" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="1330" y="560" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="1344" y="583">charges</text>
+<text class="k" x="1344" y="616">PK</text>
+<text class="f" x="1378" y="616">id: bigint</text>
+<text class="k" x="1344" y="632">FK</text>
+<text class="f" x="1378" y="632">site_id: sites.id</text>
+<text class="k" x="1344" y="648">FK</text>
+<text class="f" x="1378" y="648">student_id: students.id</text>
+<text class="k" x="1344" y="664">FK</text>
+<text class="f" x="1378" y="664">team_id: teams.id</text>
+<text class="k" x="1344" y="680">FK</text>
+<text class="f" x="1378" y="680">created_by_id: core_user.id</text>
+<text class="k" x="1344" y="696"></text>
+<text class="f" x="1378" y="696">concept: varchar</text>
+<text class="k" x="1344" y="712"></text>
+<text class="f" x="1378" y="712">amount: decimal</text>
+<text class="k" x="1344" y="728"></text>
+<text class="f" x="1378" y="728">due_date: date</text>
+<text class="k" x="1344" y="744"></text>
+<text class="f" x="1378" y="744">status: enum</text>
+<rect x="40" y="820" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="40" y="820" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="54" y="843">payments</text>
+<text class="k" x="54" y="876">PK</text>
+<text class="f" x="88" y="876">id: bigint</text>
+<text class="k" x="54" y="892">FK</text>
+<text class="f" x="88" y="892">site_id: sites.id</text>
+<text class="k" x="54" y="908">FK</text>
+<text class="f" x="88" y="908">charge_id: charges.id</text>
+<text class="k" x="54" y="924">FK</text>
+<text class="f" x="88" y="924">student_id: students.id</text>
+<text class="k" x="54" y="940">FK</text>
+<text class="f" x="88" y="940">team_id: teams.id</text>
+<text class="k" x="54" y="956">FK</text>
+<text class="f" x="88" y="956">received_by_id: core_user.id</text>
+<text class="k" x="54" y="972"></text>
+<text class="f" x="88" y="972">method / channel: enum</text>
+<text class="k" x="54" y="988"></text>
+<text class="f" x="88" y="988">status: enum</text>
+<text class="k" x="54" y="1004"></text>
+<text class="f" x="88" y="1004">amount: decimal</text>
+<text class="k" x="54" y="1020"></text>
+<text class="f" x="88" y="1020">paid_at / confirmed_at: datetime</text>
+<text class="f" x="88" y="1036">... 2 campos mas</text>
+<rect x="470" y="820" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="470" y="820" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="484" y="843">discounts</text>
+<text class="k" x="484" y="876">PK</text>
+<text class="f" x="518" y="876">id: bigint</text>
+<text class="k" x="484" y="892">FK</text>
+<text class="f" x="518" y="892">site_id: sites.id</text>
+<text class="k" x="484" y="908">FK</text>
+<text class="f" x="518" y="908">charge_id: charges.id</text>
+<text class="k" x="484" y="924">FK</text>
+<text class="f" x="518" y="924">student_id: students.id</text>
+<text class="k" x="484" y="940">FK</text>
+<text class="f" x="518" y="940">team_id: teams.id</text>
+<text class="k" x="484" y="956">FK</text>
+<text class="f" x="518" y="956">requested_by_id: core_user.id</text>
+<text class="k" x="484" y="972">FK</text>
+<text class="f" x="518" y="972">approved_by_id: core_user.id</text>
+<text class="k" x="484" y="988"></text>
+<text class="f" x="518" y="988">reason: varchar</text>
+<text class="k" x="484" y="1004"></text>
+<text class="f" x="518" y="1004">amount: decimal</text>
+<text class="k" x="484" y="1020"></text>
+<text class="f" x="518" y="1020">status: enum</text>
+<rect x="900" y="820" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="900" y="820" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="914" y="843">expenses</text>
+<text class="k" x="914" y="876">PK</text>
+<text class="f" x="948" y="876">id: bigint</text>
+<text class="k" x="914" y="892">FK</text>
+<text class="f" x="948" y="892">site_id: sites.id</text>
+<text class="k" x="914" y="908">FK</text>
+<text class="f" x="948" y="908">captured_by_id: core_user.id</text>
+<text class="k" x="914" y="924">FK</text>
+<text class="f" x="948" y="924">approved_by_id: core_user.id</text>
+<text class="k" x="914" y="940"></text>
+<text class="f" x="948" y="940">category: varchar</text>
+<text class="k" x="914" y="956"></text>
+<text class="f" x="948" y="956">description: varchar</text>
+<text class="k" x="914" y="972"></text>
+<text class="f" x="948" y="972">amount: decimal</text>
+<text class="k" x="914" y="988"></text>
+<text class="f" x="948" y="988">expense_date: date</text>
+<text class="k" x="914" y="1004"></text>
+<text class="f" x="948" y="1004">status: enum</text>
+<rect x="1330" y="820" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="1330" y="820" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="1344" y="843">coach_work_logs</text>
+<text class="k" x="1344" y="876">PK</text>
+<text class="f" x="1378" y="876">id: bigint</text>
+<text class="k" x="1344" y="892">FK</text>
+<text class="f" x="1378" y="892">coach_id: core_user.id</text>
+<text class="k" x="1344" y="908">FK</text>
+<text class="f" x="1378" y="908">site_id: sites.id</text>
+<text class="k" x="1344" y="924">FK</text>
+<text class="f" x="1378" y="924">created_by_id: core_user.id</text>
+<text class="k" x="1344" y="940"></text>
+<text class="f" x="1378" y="940">group_name: varchar</text>
+<text class="k" x="1344" y="956"></text>
+<text class="f" x="1378" y="956">work_date: date</text>
+<text class="k" x="1344" y="972"></text>
+<text class="f" x="1378" y="972">hours: decimal</text>
+<text class="k" x="1344" y="988"></text>
+<text class="f" x="1378" y="988">hourly_rate_snapshot: decimal</text>
+<rect x="40" y="1080" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="40" y="1080" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="54" y="1103">daily_closures</text>
+<text class="k" x="54" y="1136">PK</text>
+<text class="f" x="88" y="1136">id: bigint</text>
+<text class="k" x="54" y="1152">FK</text>
+<text class="f" x="88" y="1152">site_id: sites.id</text>
+<text class="k" x="54" y="1168">FK</text>
+<text class="f" x="88" y="1168">closed_by_id: core_user.id</text>
+<text class="k" x="54" y="1184"></text>
+<text class="f" x="88" y="1184">business_date: date</text>
+<text class="k" x="54" y="1200"></text>
+<text class="f" x="88" y="1200">cash_expected / cash_reported: decimal</text>
+<rect x="470" y="1080" width="390" height="222" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="470" y="1080" width="390" height="34" rx="8" fill="#dcfce7" stroke="#cbd5e1"/>
+<text class="t" x="484" y="1103">audit_logs</text>
+<text class="k" x="484" y="1136">PK</text>
+<text class="f" x="518" y="1136">id: bigint</text>
+<text class="k" x="484" y="1152">FK</text>
+<text class="f" x="518" y="1152">actor_id: core_user.id</text>
+<text class="k" x="484" y="1168"></text>
+<text class="f" x="518" y="1168">action: varchar</text>
+<text class="k" x="484" y="1184"></text>
+<text class="f" x="518" y="1184">table_name: varchar</text>
+<text class="k" x="484" y="1200"></text>
+<text class="f" x="518" y="1200">record_id: varchar</text>
+<text class="k" x="484" y="1216"></text>
+<text class="f" x="518" y="1216">previous_values / new_values: json</text>
+<path class="line" d="M 665.0 262 C 665.0 282, 235.0 20, 235.0 40"/>
+<path class="line" d="M 235.0 262 C 235.0 282, 1525.0 20, 1525.0 40"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 1095.0 20, 1095.0 40"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 235.0 280, 235.0 300"/>
+<path class="line" d="M 1525.0 262 C 1525.0 282, 235.0 280, 235.0 300"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 665.0 280, 665.0 300"/>
+<path class="line" d="M 665.0 522 C 665.0 542, 1095.0 280, 1095.0 300"/>
+<path class="line" d="M 1095.0 522 C 1095.0 542, 1525.0 280, 1525.0 300"/>
+<path class="line" d="M 665.0 522 C 665.0 542, 235.0 540, 235.0 560"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 665.0 540, 665.0 560"/>
+<path class="line" d="M 1095.0 262 C 1095.0 282, 665.0 540, 665.0 560"/>
+<path class="line" d="M 235.0 262 C 235.0 282, 665.0 540, 665.0 560"/>
+<path class="line" d="M 665.0 782 C 665.0 802, 1095.0 540, 1095.0 560"/>
+<path class="line" d="M 235.0 522 C 235.0 542, 1095.0 540, 1095.0 560"/>
+<path class="line" d="M 1095.0 522 C 1095.0 542, 1095.0 540, 1095.0 560"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 1525.0 540, 1525.0 560"/>
+<path class="line" d="M 235.0 522 C 235.0 542, 1525.0 540, 1525.0 560"/>
+<path class="line" d="M 1095.0 522 C 1095.0 542, 1525.0 540, 1525.0 560"/>
+<path class="line" d="M 1525.0 782 C 1525.0 802, 235.0 800, 235.0 820"/>
+<path class="line" d="M 235.0 522 C 235.0 542, 235.0 800, 235.0 820"/>
+<path class="line" d="M 1095.0 522 C 1095.0 542, 235.0 800, 235.0 820"/>
+<path class="line" d="M 1525.0 782 C 1525.0 802, 665.0 800, 665.0 820"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 1095.0 800, 1095.0 820"/>
+<path class="line" d="M 235.0 262 C 235.0 282, 1525.0 800, 1525.0 820"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 1525.0 800, 1525.0 820"/>
+<path class="line" d="M 665.0 262 C 665.0 282, 235.0 1060, 235.0 1080"/>
+<path class="line" d="M 235.0 262 C 235.0 282, 665.0 1060, 665.0 1080"/>
+</svg>

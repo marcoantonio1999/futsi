@@ -1,0 +1,19 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.sqlite3
+media/
+back/.env
+back/staticfiles/
+
+# Frontend
+front/node_modules/
+front/dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

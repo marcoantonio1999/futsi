@@ -1,0 +1,1 @@
+web: gunicorn futsi_api.wsgi:application --chdir back --log-file -
