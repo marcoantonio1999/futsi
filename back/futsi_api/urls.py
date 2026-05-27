@@ -23,7 +23,7 @@ from core.views import (
     TournamentViewSet,
     UserViewSet,
 )
-from futsi_api.health import health
+from futsi_api.health import health, index
 
 
 router = DefaultRouter()
@@ -47,6 +47,7 @@ router.register("daily-closures", DailyClosureViewSet)
 router.register("audit-logs", AuditLogViewSet)
 
 urlpatterns = [
+    path("", index),
     path("health/", health),
     path("admin/", admin.site.urls),
     path("api/auth/login/", LoginView.as_view()),
