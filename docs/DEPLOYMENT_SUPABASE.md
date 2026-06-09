@@ -30,8 +30,8 @@ El backend quedo preparado para Render y Supabase, pero el despliegue final se p
 DJANGO_SECRET_KEY=valor-largo-y-secreto
 DJANGO_DEBUG=false
 DJANGO_ALLOWED_HOSTS=futsi.onrender.com,.onrender.com
-CORS_ALLOWED_ORIGINS=https://marcoantonio1999.github.io,https://marcoantonio1999.github.io/futsi
-CSRF_TRUSTED_ORIGINS=https://marcoantonio1999.github.io,https://marcoantonio1999.github.io/futsi
+CORS_ALLOWED_ORIGINS=https://marcoantonio1999.github.io
+CSRF_TRUSTED_ORIGINS=https://marcoantonio1999.github.io
 DB_ENGINE=postgres
 POSTGRES_DB=postgres
 POSTGRES_USER=postgres.uqvjilgskrqehkdpkhvq

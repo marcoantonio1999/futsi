@@ -13,6 +13,20 @@ def env_list(name, default=""):
     return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
+def env_origin_list(name, default=""):
+    origins = []
+    for item in env_list(name, default):
+        if item.startswith("capacitor://"):
+            origins.append(item.rstrip("/"))
+            continue
+        parsed = urlparse(item)
+        if parsed.scheme and parsed.netloc:
+            origins.append(f"{parsed.scheme}://{parsed.netloc}")
+        else:
+            origins.append(item.rstrip("/"))
+    return list(dict.fromkeys(origins))
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.2.2,testserver")
@@ -165,11 +179,11 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
 
-CORS_ALLOWED_ORIGINS = env_list(
+CORS_ALLOWED_ORIGINS = env_origin_list(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173,http://localhost,https://localhost,capacitor://localhost",
 )
-CSRF_TRUSTED_ORIGINS = env_list(
+CSRF_TRUSTED_ORIGINS = env_origin_list(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173,http://localhost,https://localhost",
 )
