@@ -112,6 +112,17 @@ def postgres_config_from_url(database_url):
 if DATABASE_URL and not HAS_POSTGRES_PARTS:
     DATABASES = {"default": postgres_config_from_url(DATABASE_URL)}
 elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
+    missing_postgres_settings = [
+        name
+        for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_HOST", "POSTGRES_PORT")
+        if not os.getenv(name) and not os.getenv(name.replace("POSTGRES_", "SUPABASE_DB_"))
+    ]
+    if missing_postgres_settings:
+        raise RuntimeError(
+            "Faltan variables de conexion Postgres en Render: "
+            + ", ".join(missing_postgres_settings)
+            + ". Configura las variables POSTGRES_* con los datos del pooler de Supabase."
+        )
     postgres_options = {}
     postgres_options["sslmode"] = os.getenv("POSTGRES_SSLMODE", "require")
     DATABASES = {
