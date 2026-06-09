@@ -20,12 +20,15 @@ def generate_virtual_clabe():
 
 class UserRole(models.TextChoices):
     ADMIN = "admin", "Administrador"
+    DEV = "dev", "Dev App"
     ACCOUNTING = "accounting", "Contador"
     OWNER = "owner", "Direccion"
     SITE_COORDINATOR = "site_coordinator", "Coordinador de sede"
     CASHIER = "cashier", "Cajero"
     COACH = "coach", "Coach"
     GUARDIAN = "guardian", "Representante"
+    ADULT_REPRESENTATIVE = "adult_representative", "Representante adulto"
+    ADULT_PLAYER = "adult_player", "Jugador adulto"
 
 
 class User(AbstractUser):
@@ -175,6 +178,13 @@ class Tournament(TimestampedModel):
 class Team(TimestampedModel):
     tournament = models.ForeignKey(Tournament, on_delete=models.PROTECT, related_name="teams")
     name = models.CharField(max_length=140)
+    representative_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="represented_adult_teams",
+    )
     representative_name = models.CharField(max_length=160)
     representative_phone = models.CharField(max_length=30)
     representative_email = models.EmailField(blank=True)
@@ -191,10 +201,20 @@ class Team(TimestampedModel):
 
 
 class Player(TimestampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="adult_player_profile",
+    )
     team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="players")
     full_name = models.CharField(max_length=160)
     phone = models.CharField(max_length=30, blank=True)
+    email = models.EmailField(blank=True)
+    jersey_number = models.PositiveSmallIntegerField(null=True, blank=True)
     photo = models.ImageField(upload_to="players/photos/", blank=True)
+    photo_url = models.URLField(blank=True)
     identity_document = models.FileField(upload_to="players/ids/", blank=True)
     waiver_document = models.FileField(upload_to="players/waivers/", blank=True)
     is_active = models.BooleanField(default=True)
@@ -220,6 +240,70 @@ class Round(TimestampedModel):
         constraints = [
             models.UniqueConstraint(fields=["tournament", "number"], name="uq_round_tournament_number"),
         ]
+
+
+class MatchStatus(models.TextChoices):
+    SCHEDULED = "scheduled", "Programado"
+    LIVE = "live", "En vivo"
+    FINISHED = "finished", "Finalizado"
+    CANCELED = "canceled", "Cancelado"
+
+
+class Match(TimestampedModel):
+    tournament = models.ForeignKey(Tournament, on_delete=models.PROTECT, related_name="matches")
+    round = models.ForeignKey(Round, null=True, blank=True, on_delete=models.PROTECT, related_name="matches")
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="matches")
+    home_team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="home_matches")
+    away_team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="away_matches")
+    played_on = models.DateField(default=timezone.localdate)
+    starts_at = models.TimeField(null=True, blank=True)
+    home_goals = models.PositiveSmallIntegerField(default=0)
+    away_goals = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(max_length=20, choices=MatchStatus.choices, default=MatchStatus.SCHEDULED)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="updated_matches")
+
+    class Meta:
+        db_table = "matches"
+        indexes = [
+            models.Index(fields=["tournament", "status"], name="ix_match_tournament_status"),
+            models.Index(fields=["site", "played_on"], name="ix_match_site_played_on"),
+        ]
+
+
+class StudentAssessment(TimestampedModel):
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="assessments")
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="student_assessments")
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="student_assessments")
+    assessment_month = models.DateField()
+    pace = models.PositiveSmallIntegerField(default=50)
+    shooting = models.PositiveSmallIntegerField(default=50)
+    passing = models.PositiveSmallIntegerField(default=50)
+    dribbling = models.PositiveSmallIntegerField(default=50)
+    defense = models.PositiveSmallIntegerField(default=50)
+    physical = models.PositiveSmallIntegerField(default=50)
+    attitude = models.PositiveSmallIntegerField(default=50)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "student_assessments"
+        constraints = [
+            models.UniqueConstraint(fields=["student", "assessment_month"], name="uq_student_assessment_month"),
+            models.CheckConstraint(condition=Q(pace__gte=0, pace__lte=100), name="ck_assessment_pace_range"),
+            models.CheckConstraint(condition=Q(shooting__gte=0, shooting__lte=100), name="ck_assessment_shooting_range"),
+            models.CheckConstraint(condition=Q(passing__gte=0, passing__lte=100), name="ck_assessment_passing_range"),
+            models.CheckConstraint(condition=Q(dribbling__gte=0, dribbling__lte=100), name="ck_assessment_dribbling_range"),
+            models.CheckConstraint(condition=Q(defense__gte=0, defense__lte=100), name="ck_assessment_defense_range"),
+            models.CheckConstraint(condition=Q(physical__gte=0, physical__lte=100), name="ck_assessment_physical_range"),
+            models.CheckConstraint(condition=Q(attitude__gte=0, attitude__lte=100), name="ck_assessment_attitude_range"),
+        ]
+        indexes = [
+            models.Index(fields=["student", "assessment_month"], name="ix_assessment_student_month"),
+            models.Index(fields=["coach", "assessment_month"], name="ix_assessment_coach_month"),
+        ]
+
+    @property
+    def overall_rating(self):
+        return round((self.pace + self.shooting + self.passing + self.dribbling + self.defense + self.physical + self.attitude) / 7)
 
 
 class AttendanceSessionType(models.TextChoices):
@@ -278,6 +362,25 @@ class AttendanceRecord(TimestampedModel):
             models.Index(fields=["session", "status"], name="ix_att_record_session_status"),
             models.Index(fields=["student"], name="ix_att_record_student"),
             models.Index(fields=["team"], name="ix_att_record_team"),
+        ]
+
+
+class PlayerAttendanceRecord(TimestampedModel):
+    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE, related_name="player_records")
+    player = models.ForeignKey(Player, on_delete=models.PROTECT, related_name="attendance_records")
+    status = models.CharField(max_length=20, choices=AttendanceStatus.choices)
+    had_team_debt_at_capture = models.BooleanField(default=False)
+    override_reason = models.TextField(blank=True)
+    captured_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="captured_player_attendance")
+
+    class Meta:
+        db_table = "player_attendance_records"
+        constraints = [
+            models.UniqueConstraint(fields=["session", "player"], name="uq_player_att_session_player"),
+        ]
+        indexes = [
+            models.Index(fields=["session", "status"], name="ix_player_att_session_status"),
+            models.Index(fields=["player"], name="ix_player_att_player"),
         ]
 
 
@@ -445,6 +548,202 @@ class Expense(TimestampedModel):
         indexes = [
             models.Index(fields=["site", "expense_date"], name="ix_expense_site_date"),
             models.Index(fields=["site", "status"], name="ix_expense_site_status"),
+        ]
+
+
+class StaffPaymentKind(models.TextChoices):
+    ADMIN = "admin_payroll", "Nomina administrativa"
+    COACH = "coach_payroll", "Nomina coaches"
+    REFEREE = "referee_payroll", "Nomina arbitros"
+    OTHER = "other_staff_payment", "Otro pago a personal"
+
+
+class StaffPaymentStatus(models.TextChoices):
+    REQUESTED = "requested", "Solicitado"
+    ACCEPTED = "accepted", "Aceptado"
+    REJECTED = "rejected", "Rechazado"
+    CANCELED = "canceled", "Cancelado"
+
+
+class StaffPaymentRequest(TimestampedModel):
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="staff_payment_requests")
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="staff_payment_requests")
+    kind = models.CharField(max_length=32, choices=StaffPaymentKind.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    requested_payment_date = models.DateField(default=timezone.localdate)
+    description = models.CharField(max_length=220)
+    payment_method = models.CharField(max_length=20, default="cash")
+    status = models.CharField(max_length=20, choices=StaffPaymentStatus.choices, default=StaffPaymentStatus.REQUESTED)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_staff_payment_requests")
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    response_notes = models.TextField(blank=True)
+    expense = models.ForeignKey(Expense, null=True, blank=True, on_delete=models.SET_NULL, related_name="staff_payment_requests")
+
+    class Meta:
+        db_table = "staff_payment_requests"
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gte=0), name="ck_staff_payment_amount"),
+        ]
+        indexes = [
+            models.Index(fields=["site", "status"], name="ix_staff_payment_site_status"),
+            models.Index(fields=["recipient", "status"], name="ix_staff_pay_rec_status"),
+            models.Index(fields=["requested_payment_date"], name="ix_staff_payment_date"),
+        ]
+
+
+class CashMovementType(models.TextChoices):
+    CASH_IN = "cash_in", "Entrada de efectivo"
+    CASH_OUT = "cash_out", "Salida por gasto"
+    VAULT_TRANSFER = "vault_transfer", "Retiro a resguardo"
+    ADJUSTMENT = "adjustment", "Ajuste"
+
+
+class CashMovement(TimestampedModel):
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="cash_movements")
+    movement_type = models.CharField(max_length=24, choices=CashMovementType.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    movement_date = models.DateField(default=timezone.localdate)
+    reason = models.CharField(max_length=220)
+    responsible = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="responsible_cash_movements")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_cash_movements")
+    staff_payment_request = models.ForeignKey(StaffPaymentRequest, null=True, blank=True, on_delete=models.SET_NULL, related_name="cash_movements")
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "cash_movements"
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gte=0), name="ck_cash_movement_amount"),
+        ]
+        indexes = [
+            models.Index(fields=["site", "movement_date"], name="ix_cash_movement_site_date"),
+            models.Index(fields=["site", "movement_type"], name="ix_cash_movement_site_type"),
+        ]
+
+
+class InvoiceKind(models.TextChoices):
+    INCOME = "income", "Ingreso"
+    EXPENSE = "expense", "Egreso"
+
+
+class InvoiceStatus(models.TextChoices):
+    ISSUED = "issued", "Emitida"
+    CANCELED = "canceled", "Cancelada"
+
+
+class Invoice(TimestampedModel):
+    uuid = models.UUIDField(default=uuid4, unique=True, editable=False)
+    kind = models.CharField(max_length=20, choices=InvoiceKind.choices)
+    status = models.CharField(max_length=20, choices=InvoiceStatus.choices, default=InvoiceStatus.ISSUED)
+    site = models.ForeignKey(Site, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices")
+    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices")
+    guardian = models.ForeignKey(Guardian, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices")
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="coach_invoices")
+    charge = models.ForeignKey(Charge, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices")
+    payment = models.ForeignKey(Payment, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices")
+    expense = models.ForeignKey(Expense, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices")
+    recipient_name = models.CharField(max_length=180)
+    recipient_tax_id = models.CharField(max_length=20, blank=True)
+    recipient_email = models.EmailField(blank=True)
+    concept = models.CharField(max_length=180)
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+    issued_at = models.DateTimeField(default=timezone.now)
+    xml_content = models.TextField(blank=True)
+    pdf_file = models.FileField(upload_to="invoices/pdf/", blank=True)
+    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="issued_invoices")
+
+    class Meta:
+        db_table = "invoices"
+        indexes = [
+            models.Index(fields=["kind", "status"], name="ix_invoice_kind_status"),
+            models.Index(fields=["student", "issued_at"], name="ix_invoice_student_date"),
+            models.Index(fields=["guardian", "issued_at"], name="ix_invoice_guardian_date"),
+            models.Index(fields=["expense", "issued_at"], name="ix_invoice_expense_date"),
+        ]
+
+
+class HistoricalImportStatus(models.TextChoices):
+    DRAFT = "draft", "Preview"
+    COMMITTED = "committed", "Confirmado"
+    CANCELED = "canceled", "Cancelado"
+
+
+class HistoricalImport(TimestampedModel):
+    original_file = models.FileField(upload_to="historical/imports/")
+    original_filename = models.CharField(max_length=180)
+    status = models.CharField(max_length=20, choices=HistoricalImportStatus.choices, default=HistoricalImportStatus.DRAFT)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="historical_imports")
+    committed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="committed_historical_imports",
+    )
+    committed_at = models.DateTimeField(null=True, blank=True)
+    signature_name = models.CharField(max_length=180, blank=True)
+    signature_role = models.CharField(max_length=80, blank=True)
+    source_password_used = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+    summary = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "historical_imports"
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="ix_hist_import_status_date"),
+            models.Index(fields=["uploaded_by", "created_at"], name="ix_hist_import_uploaded_by"),
+        ]
+
+
+class HistoricalImportRowStatus(models.TextChoices):
+    PENDING = "pending", "Pendiente"
+    COMMITTED = "committed", "Confirmado"
+    SKIPPED = "skipped", "Omitido"
+    ERROR = "error", "Error"
+
+
+class HistoricalImportRow(TimestampedModel):
+    historical_import = models.ForeignKey(HistoricalImport, on_delete=models.CASCADE, related_name="rows")
+    row_type = models.CharField(max_length=20)
+    sheet_name = models.CharField(max_length=80)
+    source_row = models.PositiveIntegerField()
+    month_label = models.CharField(max_length=40, blank=True)
+    site = models.ForeignKey(Site, null=True, blank=True, on_delete=models.PROTECT, related_name="historical_rows")
+    site_name_raw = models.CharField(max_length=140, blank=True)
+    concept_code = models.CharField(max_length=40, blank=True)
+    concept = models.CharField(max_length=180)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    record_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=HistoricalImportRowStatus.choices, default=HistoricalImportRowStatus.PENDING)
+    target_table = models.CharField(max_length=80, blank=True)
+    target_id = models.CharField(max_length=80, blank=True)
+    raw_data = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "historical_import_rows"
+        indexes = [
+            models.Index(fields=["historical_import", "status"], name="ix_hist_row_import_status"),
+            models.Index(fields=["row_type", "record_date"], name="ix_hist_row_type_date"),
+            models.Index(fields=["site", "row_type"], name="ix_hist_row_site_type"),
+        ]
+
+
+class FaceRecognitionAttempt(TimestampedModel):
+    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE, related_name="face_attempts")
+    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.SET_NULL, related_name="face_attempts")
+    captured_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="face_attempts")
+    matched = models.BooleanField(default=False)
+    confidence = models.DecimalField(max_digits=6, decimal_places=4, default=0)
+    engine = models.CharField(max_length=40, default="mock")
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "face_recognition_attempts"
+        indexes = [
+            models.Index(fields=["session", "matched"], name="ix_face_attempt_session_match"),
+            models.Index(fields=["student", "created_at"], name="ix_face_attempt_student_date"),
         ]
 
 

@@ -1,9 +1,10 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
-ADMIN_ROLES = {"admin", "owner"}
-OPERATIONS_ROLES = {"admin", "owner", "accounting", "site_coordinator"}
+ADMIN_ROLES = {"admin", "owner", "dev"}
+OPERATIONS_ROLES = {"admin", "owner", "dev", "accounting", "site_coordinator"}
 GUARDIAN_ROLES = {"guardian"}
+ADULT_ROLES = {"adult_representative", "adult_player"}
 CASHIER_ROLES = {"cashier"}
 COACH_ROLES = {"coach"}
 
@@ -23,7 +24,7 @@ class IsOperationsOrGuardianRole(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.role in (OPERATIONS_ROLES | GUARDIAN_ROLES)
+            and request.user.role in (OPERATIONS_ROLES | GUARDIAN_ROLES | ADULT_ROLES)
         )
 
 
@@ -32,7 +33,7 @@ class IsOperationsCashierOrGuardianRole(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.role in (OPERATIONS_ROLES | CASHIER_ROLES | GUARDIAN_ROLES)
+            and request.user.role in (OPERATIONS_ROLES | CASHIER_ROLES | GUARDIAN_ROLES | ADULT_ROLES)
         )
 
 
@@ -41,7 +42,7 @@ class IsOperationsCoachOrGuardianRole(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.role in (OPERATIONS_ROLES | COACH_ROLES | GUARDIAN_ROLES)
+            and request.user.role in (OPERATIONS_ROLES | COACH_ROLES | GUARDIAN_ROLES | ADULT_ROLES)
         )
 
 
@@ -50,7 +51,7 @@ class IsOperationsCashierCoachOrGuardianRole(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.role in (OPERATIONS_ROLES | CASHIER_ROLES | COACH_ROLES | GUARDIAN_ROLES)
+            and request.user.role in (OPERATIONS_ROLES | CASHIER_ROLES | COACH_ROLES | GUARDIAN_ROLES | ADULT_ROLES)
         )
 
 
@@ -60,6 +61,24 @@ class IsOperationsOrCoachRole(BasePermission):
             request.user
             and request.user.is_authenticated
             and request.user.role in (OPERATIONS_ROLES | COACH_ROLES)
+        )
+
+
+class IsOperationsOrCashierRole(BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in (OPERATIONS_ROLES | CASHIER_ROLES)
+        )
+
+
+class IsOperationsCashierOrCoachRole(BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in (OPERATIONS_ROLES | CASHIER_ROLES | COACH_ROLES)
         )
 
 

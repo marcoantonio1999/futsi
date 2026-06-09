@@ -6,3 +6,9 @@ python-dotenv>=1.0,<2.0
 Pillow>=10.0,<12.0
 gunicorn>=22.0,<24.0
 whitenoise>=6.7,<7.0
+openpyxl>=3.1,<4.0
+msoffcrypto-tool>=6.0,<7.0
+reportlab>=4.2,<5.0
+
+# Demo local opcional para pase de lista facial:
+# pip install deepface tf-keras

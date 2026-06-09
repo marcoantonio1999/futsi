@@ -28,7 +28,7 @@ CREATE TABLE core_user (
     phone VARCHAR(30) NOT NULL DEFAULT '',
     primary_site_id BIGINT NULL REFERENCES sites(id) ON DELETE SET NULL,
     CONSTRAINT ck_core_user_role CHECK (
-        role IN ('admin', 'accounting', 'owner', 'site_coordinator', 'coach')
+        role IN ('admin', 'dev', 'accounting', 'owner', 'site_coordinator', 'cashier', 'coach', 'guardian')
     )
 );
 
@@ -272,6 +272,77 @@ CREATE TABLE expenses (
 
 CREATE INDEX ix_expense_site_date ON expenses(site_id, expense_date);
 CREATE INDEX ix_expense_site_status ON expenses(site_id, status);
+
+CREATE TABLE invoices (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    uuid UUID NOT NULL UNIQUE,
+    kind VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'issued',
+    site_id BIGINT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+    student_id BIGINT NULL REFERENCES students(id) ON DELETE RESTRICT,
+    guardian_id BIGINT NULL REFERENCES guardians(id) ON DELETE RESTRICT,
+    coach_id BIGINT NULL REFERENCES core_user(id) ON DELETE RESTRICT,
+    charge_id BIGINT NULL REFERENCES charges(id) ON DELETE RESTRICT,
+    payment_id BIGINT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+    expense_id BIGINT NULL REFERENCES expenses(id) ON DELETE RESTRICT,
+    recipient_name VARCHAR(180) NOT NULL,
+    recipient_tax_id VARCHAR(20) NOT NULL DEFAULT '',
+    recipient_email VARCHAR(254) NOT NULL DEFAULT '',
+    concept VARCHAR(180) NOT NULL,
+    subtotal NUMERIC(12,2) NOT NULL,
+    tax NUMERIC(12,2) NOT NULL DEFAULT 0,
+    total NUMERIC(12,2) NOT NULL,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    xml_content TEXT NOT NULL DEFAULT '',
+    pdf_file VARCHAR(100) NOT NULL DEFAULT '',
+    issued_by_id BIGINT NOT NULL REFERENCES core_user(id) ON DELETE RESTRICT,
+    CONSTRAINT ck_invoice_kind CHECK (kind IN ('income', 'expense')),
+    CONSTRAINT ck_invoice_status CHECK (status IN ('issued', 'canceled')),
+    CONSTRAINT ck_invoice_amounts CHECK (subtotal >= 0 AND tax >= 0 AND total >= 0)
+);
+
+CREATE INDEX ix_invoice_kind_status ON invoices(kind, status);
+CREATE INDEX ix_invoice_student_date ON invoices(student_id, issued_at);
+CREATE INDEX ix_invoice_guardian_date ON invoices(guardian_id, issued_at);
+CREATE INDEX ix_invoice_expense_date ON invoices(expense_id, issued_at);
+
+CREATE TABLE face_recognition_attempts (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    session_id BIGINT NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
+    student_id BIGINT NULL REFERENCES students(id) ON DELETE SET NULL,
+    captured_by_id BIGINT NOT NULL REFERENCES core_user(id) ON DELETE RESTRICT,
+    matched BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence NUMERIC(6,4) NOT NULL DEFAULT 0,
+    engine VARCHAR(40) NOT NULL DEFAULT 'mock',
+    notes TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX ix_face_attempt_session_match ON face_recognition_attempts(session_id, matched);
+CREATE INDEX ix_face_attempt_student_date ON face_recognition_attempts(student_id, created_at);
+
+CREATE TABLE coach_work_logs (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    coach_id BIGINT NOT NULL REFERENCES core_user(id) ON DELETE RESTRICT,
+    site_id BIGINT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+    group_name VARCHAR(80) NOT NULL DEFAULT '',
+    work_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    hours NUMERIC(5,2) NOT NULL,
+    activity VARCHAR(80) NOT NULL DEFAULT 'Entrenamiento',
+    notes TEXT NOT NULL DEFAULT '',
+    hourly_rate_snapshot NUMERIC(10,2) NOT NULL DEFAULT 0,
+    created_by_id BIGINT NOT NULL REFERENCES core_user(id) ON DELETE RESTRICT,
+    CONSTRAINT ck_coach_work_hours CHECK (hours >= 0),
+    CONSTRAINT ck_coach_hourly_rate CHECK (hourly_rate_snapshot >= 0)
+);
+
+CREATE INDEX ix_coach_log_coach_date ON coach_work_logs(coach_id, work_date);
+CREATE INDEX ix_coach_log_site_date ON coach_work_logs(site_id, work_date);
 
 CREATE TABLE daily_closures (
     id BIGSERIAL PRIMARY KEY,

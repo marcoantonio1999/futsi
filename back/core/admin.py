@@ -5,18 +5,27 @@ from .models import (
     AttendanceRecord,
     AttendanceSession,
     AuditLog,
+    CashMovement,
     Charge,
     CoachWorkLog,
     Court,
     DailyClosure,
     Discount,
     Expense,
+    FaceRecognitionAttempt,
     Guardian,
+    HistoricalImport,
+    HistoricalImportRow,
+    Invoice,
+    Match,
     Payment,
     Player,
+    PlayerAttendanceRecord,
     Round,
     Site,
+    StaffPaymentRequest,
     Student,
+    StudentAssessment,
     Team,
     Tournament,
     User,
@@ -39,7 +48,10 @@ admin.site.register(Student)
 admin.site.register(Tournament)
 admin.site.register(Team)
 admin.site.register(Player)
+admin.site.register(PlayerAttendanceRecord)
 admin.site.register(Round)
+admin.site.register(Match)
+admin.site.register(StudentAssessment)
 admin.site.register(AttendanceSession)
 admin.site.register(AttendanceRecord)
 admin.site.register(Charge)
@@ -47,5 +59,11 @@ admin.site.register(CoachWorkLog)
 admin.site.register(Payment)
 admin.site.register(Discount)
 admin.site.register(Expense)
+admin.site.register(StaffPaymentRequest)
+admin.site.register(CashMovement)
+admin.site.register(Invoice)
+admin.site.register(HistoricalImport)
+admin.site.register(HistoricalImportRow)
+admin.site.register(FaceRecognitionAttempt)
 admin.site.register(DailyClosure)
 admin.site.register(AuditLog)
