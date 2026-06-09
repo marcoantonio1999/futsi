@@ -11,7 +11,7 @@ class TeamSerializer(serializers.ModelSerializer):
     tournament_name = serializers.CharField(source="tournament.name", read_only=True)
     site = serializers.IntegerField(source="tournament.site_id", read_only=True)
     site_name = serializers.CharField(source="tournament.site.name", read_only=True)
-    player_count = serializers.IntegerField(source="players.count", read_only=True)
+    player_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Team

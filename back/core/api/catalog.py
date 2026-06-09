@@ -77,7 +77,7 @@ class TournamentViewSet(viewsets.ModelViewSet):
 
 
 class TeamViewSet(viewsets.ModelViewSet):
-    queryset = Team.objects.select_related("tournament", "tournament__site").all()
+    queryset = Team.objects.select_related("tournament", "tournament__site").annotate(player_count=Count("players")).all()
     serializer_class = TeamSerializer
 
     def get_queryset(self):

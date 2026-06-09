@@ -20,16 +20,27 @@ class ChargeSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["created_by"]
 
+    def _confirmed_payment_total(self, obj):
+        if hasattr(obj, "confirmed_payments"):
+            return sum((payment.amount for payment in obj.confirmed_payments), Decimal("0"))
+        return obj.payments.filter(status__in=["registered", "reconciled"]).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+
+    def _approved_discount_total(self, obj):
+        if hasattr(obj, "approved_discounts"):
+            return sum((discount.amount for discount in obj.approved_discounts), Decimal("0"))
+        return obj.discounts.filter(status="approved").aggregate(total=Sum("amount"))["total"] or Decimal("0")
+
+    def _balance(self, obj):
+        return max(obj.amount - self._confirmed_payment_total(obj) - self._approved_discount_total(obj), Decimal("0"))
+
     def get_paid_amount(self, obj):
-        total = obj.payments.filter(status__in=["registered", "reconciled"]).aggregate(total=Sum("amount"))["total"]
-        return str(total or 0)
+        return str(self._confirmed_payment_total(obj))
 
     def get_discount_amount(self, obj):
-        total = obj.discounts.filter(status="approved").aggregate(total=Sum("amount"))["total"]
-        return str(total or 0)
+        return str(self._approved_discount_total(obj))
 
     def get_balance(self, obj):
-        return str(charge_balance(obj))
+        return str(self._balance(obj))
 
     def get_due_in_days(self, obj):
         if not obj.due_date:
@@ -52,7 +63,7 @@ class ChargeSerializer(serializers.ModelSerializer):
         if obj.status in {"paid", "canceled"}:
             return ""
         days = self.get_due_in_days(obj)
-        balance = charge_balance(obj)
+        balance = self._balance(obj)
         if days is None:
             return f"Tienes un saldo pendiente de ${balance} por {obj.concept}."
         if days < 0:

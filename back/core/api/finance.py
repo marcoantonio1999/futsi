@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from django.db.models import Prefetch
+
 from .common import *
 
 
@@ -173,7 +175,14 @@ def generate_scheduled_charges_for_user(user, today=None):
     return created
 
 class ChargeViewSet(viewsets.ModelViewSet):
-    queryset = Charge.objects.select_related("site", "student", "student__guardian", "team", "created_by").all()
+    queryset = (
+        Charge.objects.select_related("site", "student", "student__guardian", "team", "created_by")
+        .prefetch_related(
+            Prefetch("payments", queryset=Payment.objects.filter(status__in=["registered", "reconciled"]), to_attr="confirmed_payments"),
+            Prefetch("discounts", queryset=Discount.objects.filter(status="approved"), to_attr="approved_discounts"),
+        )
+        .all()
+    )
     serializer_class = ChargeSerializer
     permission_classes = [IsOperationsCashierOrGuardianRole]
 
