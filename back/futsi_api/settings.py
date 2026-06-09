@@ -191,13 +191,29 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
 
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173,"
+    "http://127.0.0.1:5173,"
+    "http://localhost,"
+    "https://localhost,"
+    "capacitor://localhost,"
+    "https://marcoantonio1999.github.io"
+)
+DEFAULT_CSRF_ORIGINS = (
+    "http://localhost:5173,"
+    "http://127.0.0.1:5173,"
+    "http://localhost,"
+    "https://localhost,"
+    "https://marcoantonio1999.github.io"
+)
+
 CORS_ALLOWED_ORIGINS = env_origin_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost,https://localhost,capacitor://localhost",
+    DEFAULT_CORS_ORIGINS,
 )
 CSRF_TRUSTED_ORIGINS = env_origin_list(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost,https://localhost",
+    DEFAULT_CSRF_ORIGINS,
 )
 CORS_ALLOW_CREDENTIALS = True
 
