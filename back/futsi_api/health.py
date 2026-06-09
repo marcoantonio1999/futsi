@@ -14,7 +14,11 @@ def index(request):
 
 
 def health(request):
+    return JsonResponse({"status": "ok"})
+
+
+def db_health(request):
     with connection.cursor() as cursor:
         cursor.execute("select 1")
         cursor.fetchone()
-    return JsonResponse({"status": "ok"})
+    return JsonResponse({"status": "ok", "database": "ok"})

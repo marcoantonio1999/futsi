@@ -17,8 +17,8 @@ jobs:
       - name: Trigger Render deploy hook
         run: |
           if [ -z "${RENDER_DEPLOY_HOOK_URL}" ]; then
-            echo "Missing RENDER_DEPLOY_HOOK_URL secret"
-            exit 1
+            echo "RENDER_DEPLOY_HOOK_URL secret is not configured; skipping hook because Render can auto-deploy from main."
+            exit 0
           fi
           curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}"
         env:
