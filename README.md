@@ -109,6 +109,7 @@ python -m venv .venv
 Credenciales demo:
 
 - `admin` / `admin12345`
+- `dev` / `dev12345` (usuario tecnico para QA y diagnostico)
 - `contador` / `demo12345`
 - `coordinador.roma` / `demo12345`
 - `caja.roma` / `demo12345`
@@ -128,7 +129,7 @@ cd back
 .\.venv\Scripts\python.exe manage.py migrate
 ```
 
-Para usar Supabase Postgres en produccion, definir `SUPABASE_DATABASE_URL` con la cadena de conexion del proyecto Supabase. Si esa variable existe, Django la usa antes que `DB_ENGINE`.
+Para usar Supabase Postgres en produccion, la opcion recomendada es definir variables separadas `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT` y `POSTGRES_SSLMODE=require`. Esto evita errores cuando el password contiene caracteres especiales. El detalle actualizado de Render, GitHub Pages y Supabase esta en `docs/DEPLOYMENT_SUPABASE.md`.
 
 ## Frontend local
 
@@ -153,3 +154,49 @@ El guion de presentacion esta en `DEMO.md`.
 ## Produccion
 
 GitHub Pages puede publicar el frontend, pero Django necesita un host de backend separado. El detalle de variables, GitHub Actions, Supabase y pasos de despliegue esta en `docs/DEPLOYMENT_SUPABASE.md`.
+
+## Sprint 2
+
+La documentacion formal actualizada esta en `docs/`:
+
+- especificacion de requerimientos;
+- gobernanza, roadmap y despliegue;
+- documentacion tecnica del codigo;
+- documentacion de negocio;
+- actualizacion Sprint 2;
+- guia de despliegue Supabase/Render/Pages;
+- demo de pase de lista facial;
+- propuesta Android PWA gratis;
+- APK Android con React + Capacitor;
+- tema oscuro web/Android;
+- importacion historica de Excel con preview, password, firma y auditoria;
+- plan Sprint 3 de importacion historica ampliada para conservar informacion anterior de ingresos, egresos, gastos, utilidad y posibles fugas;
+- plan Sprint 3 de seguridad y QA automatizado con Sonar, Django/pytest, Playwright Python, OWASP ZAP y smoke Android.
+
+## Sprint 3 planeado
+
+El siguiente sprint debe priorizar hardening antes de piloto productivo:
+
+- pruebas de SQL injection y payloads maliciosos en login, filtros, reportes e importacion Excel;
+- pruebas de autorizacion por rol para evitar acceso horizontal/vertical;
+- validacion de archivos historicos en staging antes de afectar tablas finales;
+- SonarQube/SonarCloud en GitHub Actions;
+- pruebas backend con Django/pytest;
+- pruebas e2e con Playwright Python usando elementos reales de la web;
+- pruebas agresivas de UI para intentar romper formularios, tablas, menus, pagos, facturas y carga de Excel;
+- OWASP ZAP baseline contra staging;
+- smoke test de APK Android en emulador/dispositivo.
+
+La guia esta en `docs/SPRINT3_SEGURIDAD_QA.md`.
+
+## Android APK
+
+La app Android conserva React/Vite y se empaqueta con Capacitor. El proyecto nativo esta en `front/android`.
+
+```powershell
+cd front
+npm.cmd run cap:sync
+npm.cmd run cap:open
+```
+
+Para compilar APK falta instalar Android Studio o configurar Java/Android SDK. La guia completa esta en `docs/APK_ANDROID_CAPACITOR.md`.

@@ -15,7 +15,7 @@ def env_list(name, default=""):
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver")
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.2.2,testserver")
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
@@ -68,6 +68,15 @@ WSGI_APPLICATION = "futsi_api.wsgi.application"
 
 DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").lower()
 DATABASE_URL = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
+HAS_POSTGRES_PARTS = any(
+    os.getenv(name)
+    for name in (
+        "POSTGRES_HOST",
+        "POSTGRES_PASSWORD",
+        "SUPABASE_DB_HOST",
+        "SUPABASE_DB_PASSWORD",
+    )
+)
 
 
 def postgres_config_from_url(database_url):
@@ -79,6 +88,15 @@ def postgres_config_from_url(database_url):
             "SUPABASE_DATABASE_URL no tiene host valido. Revisa que el password este URL-encoded "
             "si contiene caracteres como @, #, /, ?, &, %."
         )
+    try:
+        port = str(parsed.port or 5432)
+    except ValueError as exc:
+        raise ValueError(
+            "SUPABASE_DATABASE_URL tiene un puerto invalido. Normalmente pasa cuando la contrasena "
+            "contiene caracteres especiales y no esta URL-encoded. En Render es mas seguro eliminar "
+            "SUPABASE_DATABASE_URL y usar POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, "
+            "POSTGRES_DB y POSTGRES_PORT por separado."
+        ) from exc
 
     return {
         "ENGINE": "django.db.backends.postgresql",
@@ -86,14 +104,14 @@ def postgres_config_from_url(database_url):
         "USER": parsed.username or "",
         "PASSWORD": parsed.password or "",
         "HOST": parsed.hostname or "",
-        "PORT": str(parsed.port or 5432),
+        "PORT": port,
         "OPTIONS": {"sslmode": sslmode},
     }
 
 
-if DATABASE_URL:
+if DATABASE_URL and not HAS_POSTGRES_PARTS:
     DATABASES = {"default": postgres_config_from_url(DATABASE_URL)}
-elif DB_ENGINE == "postgres" or os.getenv("POSTGRES_HOST") or os.getenv("SUPABASE_DB_HOST"):
+elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
     postgres_options = {}
     postgres_options["sslmode"] = os.getenv("POSTGRES_SSLMODE", "require")
     DATABASES = {
@@ -111,7 +129,7 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "NAME": os.getenv("SQLITE_DATABASE_PATH", BASE_DIR / "db.sqlite3"),
         }
     }
 
@@ -138,11 +156,11 @@ AUTH_USER_MODEL = "core.User"
 
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost,https://localhost,capacitor://localhost",
 )
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost,https://localhost",
 )
 CORS_ALLOW_CREDENTIALS = True
 

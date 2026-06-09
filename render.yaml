@@ -19,7 +19,17 @@ services:
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
-      - key: SUPABASE_DATABASE_URL
+      - key: DB_ENGINE
+        value: postgres
+      - key: POSTGRES_DB
+        value: postgres
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
         sync: false
       - key: POSTGRES_SSLMODE
         value: require

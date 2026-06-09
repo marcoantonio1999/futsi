@@ -20,4 +20,4 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py migrate --noinput && if [ \"$RUN_SEED_DEMO\" = \"true\" ]; then python manage.py seed_demo; fi && gunicorn futsi_api.wsgi:application --bind 0.0.0.0:8000 --log-file -"]
+CMD ["sh", "-c", "echo Starting Futsi API on port ${PORT:-8000} && python manage.py migrate --noinput && if [ \"$RUN_SEED_DEMO\" = \"true\" ]; then python manage.py seed_demo || echo 'seed_demo failed; continuing startup'; fi && gunicorn futsi_api.wsgi:application --bind 0.0.0.0:${PORT:-8000} --log-file -"]

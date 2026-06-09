@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 venv/
 *.sqlite3
+.coverage
+reports/
+qa/artifacts/
 media/
 back/.env
 back/staticfiles/
