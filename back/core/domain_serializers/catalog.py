@@ -86,14 +86,27 @@ class StudentSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_open_charge_count(self, obj):
+        if hasattr(obj, "open_charges"):
+            return len(obj.open_charges)
         return obj.charges.filter(status__in=["pending", "partial"]).count()
 
     def get_balance_due(self, obj):
+        if hasattr(obj, "open_charges"):
+            total = Decimal("0")
+            for charge in obj.open_charges:
+                paid = sum((payment.amount for payment in getattr(charge, "confirmed_payments", [])), Decimal("0"))
+                discounted = sum((discount.amount for discount in getattr(charge, "approved_discounts", [])), Decimal("0"))
+                total += max(charge.amount - paid - discounted, Decimal("0"))
+            return str(total)
         total = sum(charge_balance(charge) for charge in obj.charges.filter(status__in=["pending", "partial"]))
         return str(total)
 
     def get_active_discounts(self, obj):
-        discounts = obj.discounts.filter(status="approved").order_by("-approved_at", "-created_at")[:5]
+        discounts = getattr(obj, "approved_student_discounts", None)
+        if discounts is None:
+            discounts = obj.discounts.filter(status="approved").order_by("-approved_at", "-created_at")[:5]
+        else:
+            discounts = discounts[:5]
         return [
             {
                 "id": discount.id,

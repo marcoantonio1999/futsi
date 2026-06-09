@@ -1,4 +1,5 @@
 from .common import *
+from django.db.models import Prefetch
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.select_related("primary_site").all()
@@ -33,7 +34,21 @@ class GuardianViewSet(viewsets.ModelViewSet):
 
 
 class StudentViewSet(viewsets.ModelViewSet):
-    queryset = Student.objects.select_related("site", "guardian").all()
+    queryset = (
+        Student.objects.select_related("site", "guardian")
+        .prefetch_related(
+            Prefetch(
+                "charges",
+                queryset=Charge.objects.filter(status__in=["pending", "partial"]).prefetch_related(
+                    Prefetch("payments", queryset=Payment.objects.filter(status__in=["registered", "reconciled"]), to_attr="confirmed_payments"),
+                    Prefetch("discounts", queryset=Discount.objects.filter(status="approved"), to_attr="approved_discounts"),
+                ),
+                to_attr="open_charges",
+            ),
+            Prefetch("discounts", queryset=Discount.objects.filter(status="approved").order_by("-approved_at", "-created_at"), to_attr="approved_student_discounts"),
+        )
+        .all()
+    )
     serializer_class = StudentSerializer
     permission_classes = [IsOperationsCashierCoachOrGuardianRole]
 
