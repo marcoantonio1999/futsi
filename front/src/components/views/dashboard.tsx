@@ -1,0 +1,348 @@
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import L from "leaflet";
+import {
+  AlertTriangle,
+  BarChart3,
+  Building2,
+  Camera,
+  Check,
+  ClipboardCheck,
+  CreditCard,
+  Download,
+  FileText,
+  Lock,
+  LogOut,
+  Menu,
+  Moon,
+  Plus,
+  RefreshCw,
+  Upload,
+  Shield,
+  Sun,
+  UserRound,
+  UsersRound,
+  X,
+} from "lucide-react";
+import { Metric } from "../cards/Metric";
+import { CollectionFunnel } from "../charts/CollectionFunnel";
+import { FinancialAxisChart } from "../charts/FinancialAxisChart";
+import { FinancialComboChart } from "../charts/FinancialComboChart";
+import { PaymentMethodDonut } from "../charts/PaymentMethodDonut";
+import { PendingBySiteChart } from "../charts/PendingBySiteChart";
+import { StudentStatusDonut } from "../charts/StudentStatusDonut";
+import { API_URL } from "../../api";
+import { roleLabels, statusLabels } from "../../appState";
+import { money } from "../../utils/format";
+import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../types";
+
+import {
+  Avatar,
+  AttendanceButton,
+  FaceAttendanceCard,
+  InfoChip,
+  InvoiceGenerator,
+  InvoiceRows,
+  SelectInput,
+  SimpleList,
+  StaffPaymentInbox,
+  StatusPill,
+  TableHeader,
+  TextInput,
+  average,
+  calculateCashBySite,
+  calculateMonthlyTicketAverage,
+  chargeLabel,
+  chargeStatusLabel,
+  collectionProgress,
+  dateDay,
+  dateMonthKey,
+  expenseStatusLabel,
+  exportAccountingWorkbook,
+  cashMovementLabel,
+  methodLabel,
+  monthLabelFromKey,
+  normalizeText,
+  paymentMethodLabel,
+  paymentMonthKey,
+  paymentPayerKey,
+  paymentStatusLabel,
+  staffPaymentKindLabel,
+  staffPaymentStatusLabel,
+  sumAccountingRows,
+} from "./shared";
+import { MonthlySiteFlowPanel } from "./monthlySiteFlow";
+
+export function DashboardPanel({ data }: { data: AppData }) {
+  const confirmedPayments = data.payments.filter((payment) => payment.status === "registered" || payment.status === "reconciled");
+  const pendingPayments = data.payments.filter((payment) => payment.status === "processing" || payment.status === "awaiting_confirmation");
+  const totalIncome = confirmedPayments
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const approvedExpenses = data.expenses
+    .filter((expense) => expense.status === "approved")
+    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const pendingExpenses = data.expenses
+    .filter((expense) => expense.status === "pending")
+    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const openBalance = data.charges.reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
+  const studentsWithDebt = data.students.filter((student) => student.open_charge_count > 0);
+  const attendanceWithDebt = data.attendanceRecords.filter(
+    (record) => record.status === "present" && record.had_debt_at_capture,
+  );
+  const requestedDiscounts = data.discounts.filter((discount) => discount.status === "requested");
+  const ticketAverage = calculateMonthlyTicketAverage(data.payments);
+
+  const siteRows = data.sites.map((site) => {
+    const payments = confirmedPayments
+      .filter((payment) => data.charges.find((charge) => charge.id === payment.charge)?.site === site.id)
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const expenses = data.expenses
+      .filter((expense) => expense.site === site.id && expense.status === "approved")
+      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+    const balance = data.charges
+      .filter((charge) => charge.site === site.id)
+      .reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
+    const students = data.students.filter((student) => student.site === site.id).length;
+    const attendance = data.attendanceRecords.filter((record) => {
+      const student = data.students.find((item) => item.id === record.student);
+      return student?.site === site.id && record.status === "present";
+    }).length;
+    return {
+      id: site.id,
+      name: site.name,
+      students,
+      payments,
+      expenses,
+      balance,
+      attendance,
+      utility: payments - expenses,
+    };
+  });
+
+  const methodRows: Array<{ label: string; value: number }> = [
+    { label: "Efectivo", value: confirmedPayments.filter((payment) => payment.method === "cash").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
+    { label: "Transferencia", value: confirmedPayments.filter((payment) => payment.method === "transfer").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
+    { label: "Tarjeta", value: confirmedPayments.filter((payment) => payment.method === "card").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
+    { label: "Cortesia", value: confirmedPayments.filter((payment) => payment.method === "courtesy").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
+  ];
+  const financialRows = siteRows.map((site) => ({
+    label: site.name,
+    ingresos: site.payments,
+    egresos: site.expenses,
+    utilidad: site.utility,
+  }));
+  const pendingPaymentTotal = pendingPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const studentStatusRows = Object.entries(statusLabels).map(([status, label]) => ({
+    label,
+    value: data.students.filter((student) => student.status === status).length,
+  }));
+  const paymentStatusRows = [
+    { label: "Confirmados", value: totalIncome },
+    { label: "En proceso", value: pendingPaymentTotal },
+    { label: "Cobros pendientes", value: openBalance },
+  ];
+
+  return (
+    <>
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label="Sedes activas" value={data.sites.filter((site) => site.is_active).length} />
+        <Metric label="Alumnos" value={data.students.length} />
+        <Metric label="Gastos pendientes" value={`$${money(pendingExpenses)}`} />
+        <Metric label="Cobros pendientes" value={`$${money(openBalance)}`} />
+        <Metric
+          label="Ticket promedio mensual"
+          value={`$${money(ticketAverage.amount)}`}
+          helper={`${ticketAverage.monthLabel} - ${ticketAverage.payerCount} pagadores`}
+        />
+      </div>
+
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label="Ingresos registrados" value={`$${money(totalIncome)}`} />
+        <Metric label="Gastos aprobados" value={`$${money(approvedExpenses)}`} />
+        <Metric label="Utilidad estimada" value={`$${money(totalIncome - approvedExpenses)}`} />
+        <Metric label="Pagos en proceso" value={`$${money(pendingPaymentTotal)}`} />
+        <Metric label="Descuentos por aprobar" value={requestedDiscounts.length} />
+      </div>
+
+      <div className="grid min-w-0 gap-5">
+        <section className="grid gap-3 sm:grid-cols-3">
+          <Metric label="Cobros pendientes" value={`$${money(openBalance)}`} />
+          <Metric label="Alumnos con cobro pendiente" value={studentsWithDebt.length} />
+          <Metric label="Asistieron con pago pendiente" value={attendanceWithDebt.length} />
+        </section>
+
+        <section className="grid min-w-0 gap-5">
+          <FinancialComboChart title="Ingresos, egresos y utilidad por sede" rows={financialRows} />
+        </section>
+
+        <MonthlySiteFlowPanel data={data} />
+
+        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <PaymentMethodDonut title="Ingresos confirmados por metodo" rows={methodRows} />
+          <CollectionFunnel title="Embudo de cobranza" rows={paymentStatusRows} />
+        </section>
+
+        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <PendingBySiteChart title="Cobros pendientes por sede" rows={siteRows.map((site) => ({ label: site.name, value: site.balance }))} />
+          <StudentStatusDonut title="Estado de alumnos" rows={studentStatusRows} />
+        </section>
+
+        <SitesMap sites={data.sites} siteRows={siteRows} />
+
+        <div className="min-w-0 rounded-md border border-zinc-200 bg-white shadow-sm">
+          <TableHeader title="Operacion por sede" count={siteRows.length} />
+          <div className="max-w-full overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="px-4 py-3">Sede</th>
+                  <th className="px-4 py-3">Alumnos</th>
+                  <th className="px-4 py-3">Asistencias</th>
+                  <th className="px-4 py-3">Ingresos</th>
+                  <th className="px-4 py-3">Gastos</th>
+                  <th className="px-4 py-3">Utilidad</th>
+                  <th className="px-4 py-3">Saldo pendiente</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siteRows.map((site) => (
+                  <tr key={site.id} className="border-b border-zinc-100">
+                    <td className="px-4 py-3 font-medium">{site.name}</td>
+                    <td className="px-4 py-3">{site.students}</td>
+                    <td className="px-4 py-3">{site.attendance}</td>
+                    <td className="px-4 py-3">${money(site.payments)}</td>
+                    <td className="px-4 py-3">${money(site.expenses)}</td>
+                    <td className="px-4 py-3 font-semibold">${money(site.utility)}</td>
+                    <td className="px-4 py-3">${money(site.balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <SimpleList
+            title="Ingresos por metodo"
+            count={methodRows.length}
+            rows={methodRows.map((row, index) => ({
+              id: index,
+              title: row.label,
+              subtitle: `$${money(row.value)}`,
+            }))}
+          />
+          <SimpleList
+            title="Alertas operativas"
+            count={studentsWithDebt.length + requestedDiscounts.length + attendanceWithDebt.length}
+            rows={[
+              ...studentsWithDebt.slice(0, 5).map((student) => ({
+                id: student.id,
+                title: `${student.full_name} tiene cobro pendiente`,
+                subtitle: `${student.site_name} - saldo $${money(student.balance_due)}`,
+              })),
+              ...requestedDiscounts.slice(0, 5).map((discount) => ({
+                id: 10000 + discount.id,
+                title: `Descuento pendiente: ${discount.student_name}`,
+                subtitle: `${discount.reason} - $${money(discount.amount)}`,
+              })),
+              ...attendanceWithDebt.slice(0, 5).map((record) => ({
+                id: 20000 + record.id,
+                title: `${record.student_name} asistio con pago pendiente`,
+                subtitle: record.override_reason || "Autorizacion registrada en cancha",
+              })),
+            ]}
+          />
+        </section>
+      </div>
+    </>
+  );
+}
+
+export function SitesMap({
+  sites,
+  siteRows,
+}: {
+  sites: Site[];
+  siteRows: Array<{ id: number; name: string; students: number; balance: number; utility: number }>;
+}) {
+  const mapNode = useRef<HTMLDivElement | null>(null);
+  const points = sites
+    .filter((site) => site.latitude && site.longitude)
+    .map((site) => ({
+      site,
+      row: siteRows.find((item) => item.id === site.id),
+      lat: Number(site.latitude),
+      lng: Number(site.longitude),
+    }));
+
+  useEffect(() => {
+    if (!mapNode.current || points.length === 0) return;
+
+    const map = L.map(mapNode.current, {
+      zoomControl: true,
+      scrollWheelZoom: false,
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    const bounds = L.latLngBounds([]);
+    points.forEach((point) => {
+      const hasRisk = (point.row?.balance ?? 0) > 0;
+      const marker = L.marker([point.lat, point.lng], {
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="grid size-9 place-items-center rounded-full border-2 ${hasRisk ? "border-red-200 bg-red-600" : "border-emerald-200 bg-emerald-700"} text-xs font-semibold text-white shadow-sm">${point.site.name.slice(0, 2).toUpperCase()}</div>`,
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        }),
+      }).addTo(map);
+      marker.bindPopup(`
+        <strong>${point.site.name}</strong><br/>
+        ${point.site.address || "Sin direccion"}<br/>
+        ${point.row?.students ?? 0} alumnos<br/>
+        Saldo: $${money(point.row?.balance ?? 0)}
+      `);
+      bounds.extend([point.lat, point.lng]);
+    });
+
+    map.fitBounds(bounds.pad(0.25));
+    setTimeout(() => map.invalidateSize(), 0);
+
+    return () => {
+      map.remove();
+    };
+  }, [sites, siteRows]);
+
+  return (
+    <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+        <div>
+          <h2 className="font-semibold">Mapa de sedes</h2>
+          <p className="mt-1 text-sm text-zinc-500">Mapa real con OpenStreetMap para direccion y control operativo.</p>
+        </div>
+        <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">{points.length}</span>
+      </div>
+      <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-h-[320px] min-w-0 overflow-hidden rounded-md border border-zinc-200 sm:min-h-[360px]">
+          {points.length > 0 ? (
+            <div ref={mapNode} className="h-[320px] w-full sm:h-[360px]" />
+          ) : (
+            <div className="grid h-[320px] place-items-center text-sm text-zinc-500 sm:h-[360px]">No hay sedes con coordenadas.</div>
+          )}
+        </div>
+        <div className="grid min-w-0 gap-2">
+          {points.map((point) => (
+            <div key={point.site.id} className="min-w-0 rounded-md border border-zinc-200 px-3 py-2 text-sm">
+              <p className="font-medium">{point.site.name}</p>
+              <p className="mt-1 break-words text-zinc-500">{point.site.address}</p>
+              <p className="mt-1 break-words font-mono text-xs text-zinc-500">{point.lat.toFixed(6)}, {point.lng.toFixed(6)}</p>
+            </div>
+          ))}
+          {points.length === 0 && <p className="rounded-md border border-zinc-200 px-3 py-6 text-sm text-zinc-500">No hay sedes con coordenadas.</p>}
+        </div>
+      </div>
+    </section>
+  );
+}

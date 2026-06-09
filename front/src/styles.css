@@ -1,7 +1,188 @@
 @import "tailwindcss";
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.mirror-camera {
+  transform: scaleX(-1);
+}
+
+html,
+body,
+#root {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.leaflet-container {
+  max-width: 100%;
+}
+
+.rounded-md,
+section,
+article,
+form {
+  min-width: 0;
+}
+
+table {
+  max-width: 100%;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background: #09090b;
+}
+
+.dark .bg-stone-50 {
+  background-color: #09090b !important;
+}
+
+.dark .bg-white {
+  background-color: #111113 !important;
+}
+
+.dark .bg-zinc-50 {
+  background-color: #18181b !important;
+}
+
+.dark .bg-zinc-950 {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+.dark .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.35) !important;
+}
+
+.dark .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.28) !important;
+}
+
+.dark .text-zinc-950,
+.dark .text-zinc-900,
+.dark .text-zinc-800,
+.dark .text-zinc-700 {
+  color: #f4f4f5 !important;
+}
+
+.dark .text-zinc-600,
+.dark .text-zinc-500 {
+  color: #a1a1aa !important;
+}
+
+.dark .text-zinc-200 {
+  color: #d4d4d8 !important;
+}
+
+.dark .text-emerald-700,
+.dark .text-emerald-800 {
+  color: #34d399 !important;
+}
+
+.dark .text-red-700 {
+  color: #fca5a5 !important;
+}
+
+.dark .border-zinc-100,
+.dark .border-zinc-200,
+.dark .border-zinc-300,
+.dark .border-zinc-950 {
+  border-color: #27272a !important;
+}
+
+.dark .border-emerald-700 {
+  border-color: #10b981 !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #18181b !important;
+  border-color: #3f3f46 !important;
+  color: #f4f4f5 !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #71717a !important;
+}
+
+.dark input[type="date"],
+.dark input[type="time"] {
+  color-scheme: dark;
+}
+
+.dark .shadow-sm,
+.dark .shadow-lg,
+.dark .shadow-xl {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35) !important;
+}
+
+.dark .hover\:bg-zinc-50:hover {
+  background-color: #1f2937 !important;
+}
+
+.dark .theme-toggle {
+  background-color: #18181b !important;
+  border-color: #3f3f46 !important;
+  color: #f4f4f5 !important;
+}
+
+.dark table tbody tr:hover {
+  background-color: rgba(39, 39, 42, 0.55);
+}
+
+.dark .leaflet-container {
+  background: #18181b;
+}
+
+.dark .leaflet-tile {
+  filter: brightness(0.78) contrast(1.08) saturate(0.75);
+}
+
+.dark .leaflet-control,
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-tip {
+  background: #18181b;
+  color: #f4f4f5;
+}
+
+.dark ::selection {
+  background: rgba(16, 185, 129, 0.35);
+}
+
+@media (max-width: 640px) {
+  header > div {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  header button,
+  nav button {
+    min-height: 44px;
+  }
+
+  table {
+    min-width: 620px;
+  }
+
+  input,
+  select,
+  button {
+    font-size: 16px;
+  }
 }

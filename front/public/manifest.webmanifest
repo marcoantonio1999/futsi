@@ -1,0 +1,17 @@
+{
+  "name": "Futsi Mini ERP",
+  "short_name": "Futsi",
+  "description": "Control operativo, cobranza, asistencia y reportes para sedes de futbol.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fafaf9",
+  "theme_color": "#047857",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

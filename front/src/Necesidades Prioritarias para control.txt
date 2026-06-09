@@ -1,0 +1,116 @@
+Necesidades Prioritarias para control
+
+-Dashoborad para el contador con reportes automaticos, resultados y metricas
+sitema para pasar lista de los clientes
+
+-Sistema para registrar pagos de los clientes
+
+-Sitema debe tener una version movil para que los coordinadores puedas usarlo facilmente desde la cancha
+
+-Sistema para mostrar un deslglose de gastos operativos, pago de arbitraje, cancha, daños a la cancha, estacionamineto, mantenimiento, etc, etc
+(esto mismo debe mostrarse al final para el reporte de los gastos)
+
+-los que operan el sistema deben tener un login para saber quien edito los archivos o sistema de control, tambien pasando la fecha del partido ya no se puede modificar, deben ser claros los precios
+dependiedo la sede (sugiero que los operadores tienen hasta un dia maximo para editar costos)
+(si quieren editar, deben mandar un ticket a administracion para edicion comentando que paso)
+
+-los operadores deben ver quien esta incrito a su clase
+    -deben de poder ver quien debe pago si no no juega
+   
+-el sistema debe poder dar acceso playground o periodo de prueba
+para que los usuarios puedan probar entrar
+    -detecta si ya pago mensualidad
+    -si ya compro uniforme
+    -si puede participar en toneos escolares
+
+-derivado al punto anterior, el sistema debe dejar inscribirte
+a torneos con anterioridad, darse de baja de torneos
+
+-Sistema debe saber quien tiene descuentos o cuanto es el tiempo
+de una pausa autorizada 
+(detalle que hay que ver es que el sitema debe avisar al operador
+cuando ya no tiene jugadores suficientes para el partiedo)
+
+El sitema tambien pueden incribirse adultos, estos deberian tener
+identificador para saber si no tienen hijo incrito mas bien
+
+-el sistema debe tener un login para los representantes
+estos pueden entonces realizar pagos a nombre de los clientes
+
+-los adultos pueden tambien hacer pagos para ellos
+
+el sistema debe entonces poder registrar ligas
+
+-El sistema debe poder registrar 2 tipos de torneos quien
+pago por medio de el pago completo dentro de las 3 primeras jornadas
+    si es pago semanal entonces es otro tipo de torneo
+
+-El sistem debe tener perfil por cada usuario, con datos
+fotors, id, cartas responsivas, roles de juego, posiciones, los partidos en los que estuvo (como
+mejora poner un grafico de la cancha de futball como fifa)
+
+el sistema debe poder registrar todos los ingresos por su tipo
+
+-mensualidades de academia;
+-pagos de torneos;
+-venta de uniformes;
+-sanciones;
+-torneos escolares;
+-rentas de cancha;
+-fiestas;
+-otros cobros menores.
+
+El sistema debe poder registrar correctamente el tipo de pago, si pñor transferencia debe estar todos los detalles de la tranferenicia, solo con el codigo de rastreo se pueden saber todo
+-ahi mismo la tarjeta debe poder hacer el registro y con efectivo debe adjuntarse una firma o algun tipo de formato para legalidad, el sitema provee el formato y el usuario debe poder estar de acuerdo desde su lado
+
+como dato extra entonces, tambien los representantes tienen este sistema de poder aceptar el pago en efectivo de su lado desde la app
+
+Existe un Auxiliar contable probablemente no sea necesario con solucion de CLABES
+
+Agregar relacion hermanos para el descuento
+
+-En el sistema donde le aparece la confirmacion de pago en efectivo a quien hace el pago
+debe aparecer el descuento del pago en efectivo
+
+-dentro de las formas de pago deben aparecer tambien otro descuentos
+
+-El sistema debe tambien registrar ausencia por lesion
+-el sistema debe poder mostrar tambien los descuentos por sede y 
+el detalle del descuento
+
+-Como los coordinadores pueden aplicar deescuentos es necesario poder registrar en el sitema
+el tipo de descuento y justo con la lista saber si realmetne fue o no fue a entrenar
+
+-el sistema debe poder registrar incripcion, y cobranza
+
+-El sistema tambien toma en cuenta el pago a operadores como coaches, tambien el registro de horas tomadas
+el sistema registra gastos por sede
+
+-registro de viaticos
+
+Observaciones
+-el sitema no tiene que tener un ancho de banda por la mañana entre semana ya que no se utiliza pero puede tomarse en cuenta para optimizar recursos
+
+-Se menciona un sistema de pago pero no se define si hay algun timpo de incripcion, si se paga mensualidad y tamnbien si no se paga existe algun tipo de recargo por mora
+
+-como los niños no pueden pagar, el niño quien esta incrito,
+debe estar asociado a un padre o viceversa, cualquiera de los dos puede ver sus detalles
+
+-Preguntar a que se refiere con jornada
+
+-Preguntar como es que el ingreso viene de la mensualidad de la academia
+
+-se menciona algo de ventanilla, no esta claro si el pago se hace en ventanilla, si el pago en efectivo se hace el operador
+
+El pago por transferencia cuando se envia el comprobante por whatsapp se hace muy tedioso, se puede generar una cuenta para poder registrar el pago automatico, es decir una clabe distinta por usuario que se muestra directramente en su app asi se sabe perfectamente quien ya pago y quien tiene pagos atrasados
+(si el pago es forzoso por whatsapp, se genera un bot que pueda
+recibir estos pagos por whatsapp solo acepta imagenes y con IA para poder analizar el comprobante de pago)
+PREGUNTAR SI ES FORZOSO
+
+-preguntar a que se refiere con viajes largos, si son por que la
+cancha queda lejos de la ubicacion de los jugadores?
+de ser el caso se debe configurar las coordenadas de la escuela a la cancha
+o de la casa a la cancha?????
+
+-preguntar a que se refiere con autorizaciones especiales?
+
