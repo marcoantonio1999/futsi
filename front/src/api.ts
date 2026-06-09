@@ -30,7 +30,11 @@ export async function apiRequest<T>(path: string, token: string, options: Reques
 
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
-    throw new ApiError(`${detail?.detail ?? "No se pudo completar la accion."} (${path})`, response.status, path);
+    const fallback =
+      response.status === 404
+        ? "Esta ruta no existe en el backend desplegado. Render probablemente necesita redeploy con el backend mas reciente."
+        : "No se pudo completar la accion.";
+    throw new ApiError(`${detail?.detail ?? fallback} (${path})`, response.status, path);
   }
 
   if (response.status === 204) {

@@ -83,6 +83,13 @@ export default function App() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
 
+  function optionalApi<T>(path: string, authToken: string, fallback: T): Promise<T> {
+    return apiRequest<T>(path, authToken).catch((err) => {
+      if (err instanceof ApiError && err.status === 404) return fallback;
+      throw err;
+    });
+  }
+
   async function loadData(authToken = token) {
     if (!authToken) return;
     setLoading(true);
@@ -132,8 +139,8 @@ export default function App() {
           apiRequest<Match[]>("/matches/", authToken),
           apiRequest<StandingRow[]>("/matches/standings/", authToken),
           apiRequest<PlayerAttendanceRecord[]>("/player-attendance-records/", authToken),
-          apiRequest<StaffPaymentRequest[]>("/staff-payment-requests/?mine=1", authToken),
-          apiRequest<CashMovement[]>("/cash-movements/", authToken),
+          optionalApi<StaffPaymentRequest[]>("/staff-payment-requests/?mine=1", authToken, []),
+          optionalApi<CashMovement[]>("/cash-movements/", authToken, []),
         ]);
         setCurrentUser(me);
         setData({
@@ -195,7 +202,7 @@ export default function App() {
           apiRequest<Match[]>("/matches/", authToken),
           apiRequest<StandingRow[]>("/matches/standings/", authToken),
           apiRequest<StudentAssessment[]>("/student-assessments/", authToken),
-          apiRequest<StaffPaymentRequest[]>("/staff-payment-requests/?mine=1", authToken),
+          optionalApi<StaffPaymentRequest[]>("/staff-payment-requests/?mine=1", authToken, []),
         ]);
         setCurrentUser(me);
         setData({
@@ -225,8 +232,8 @@ export default function App() {
         apiRequest<Payment[]>("/payments/", authToken),
         apiRequest<Discount[]>("/discounts/", authToken),
         apiRequest<Expense[]>("/expenses/", authToken),
-        apiRequest<StaffPaymentRequest[]>("/staff-payment-requests/", authToken),
-        apiRequest<CashMovement[]>("/cash-movements/", authToken),
+        optionalApi<StaffPaymentRequest[]>("/staff-payment-requests/", authToken, []),
+        optionalApi<CashMovement[]>("/cash-movements/", authToken, []),
         apiRequest<CoachWorkLog[]>("/coach-work-logs/", authToken).catch(() => []),
         me.role === "admin" || me.role === "owner" || me.role === "dev" ? apiRequest<User[]>("/users/", authToken) : Promise.resolve([]),
         apiRequest<Invoice[]>("/invoices/", authToken),
