@@ -102,6 +102,11 @@ def postgres_config_from_url(database_url):
             "SUPABASE_DATABASE_URL no tiene host valido. Revisa que el password este URL-encoded "
             "si contiene caracteres como @, #, /, ?, &, %."
         )
+    if os.getenv("RENDER") and parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(
+            "SUPABASE_DATABASE_URL apunta a localhost dentro de Render. Usa el host del pooler "
+            "de Supabase, por ejemplo aws-1-us-west-2.pooler.supabase.com."
+        )
     try:
         port = str(parsed.port or 5432)
     except ValueError as exc:
@@ -137,6 +142,12 @@ elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
             + ", ".join(missing_postgres_settings)
             + ". Configura las variables POSTGRES_* con los datos del pooler de Supabase."
         )
+    postgres_host = os.getenv("POSTGRES_HOST", os.getenv("SUPABASE_DB_HOST", "localhost"))
+    if os.getenv("RENDER") and postgres_host in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(
+            "POSTGRES_HOST no puede ser localhost en Render. Cambialo por el host del pooler "
+            "de Supabase, por ejemplo aws-1-us-west-2.pooler.supabase.com."
+        )
     postgres_options = {}
     postgres_options["sslmode"] = os.getenv("POSTGRES_SSLMODE", "require")
     DATABASES = {
@@ -145,7 +156,7 @@ elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
             "NAME": os.getenv("POSTGRES_DB", os.getenv("SUPABASE_DB_NAME", "postgres")),
             "USER": os.getenv("POSTGRES_USER", os.getenv("SUPABASE_DB_USER", "postgres")),
             "PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("SUPABASE_DB_PASSWORD", "")),
-            "HOST": os.getenv("POSTGRES_HOST", os.getenv("SUPABASE_DB_HOST", "localhost")),
+            "HOST": postgres_host,
             "PORT": os.getenv("POSTGRES_PORT", os.getenv("SUPABASE_DB_PORT", "5432")),
             **({"OPTIONS": postgres_options} if postgres_options else {}),
         }
