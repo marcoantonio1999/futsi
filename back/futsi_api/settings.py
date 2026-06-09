@@ -31,6 +31,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.2.2,testserver")
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+IS_RENDER = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID") or RENDER_EXTERNAL_HOSTNAME)
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 if not DEBUG and ".onrender.com" not in ALLOWED_HOSTS:
@@ -102,7 +103,7 @@ def postgres_config_from_url(database_url):
             "SUPABASE_DATABASE_URL no tiene host valido. Revisa que el password este URL-encoded "
             "si contiene caracteres como @, #, /, ?, &, %."
         )
-    if os.getenv("RENDER") and parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+    if IS_RENDER and parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
         raise RuntimeError(
             "SUPABASE_DATABASE_URL apunta a localhost dentro de Render. Usa el host del pooler "
             "de Supabase, por ejemplo aws-1-us-west-2.pooler.supabase.com."
@@ -143,7 +144,7 @@ elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
             + ". Configura las variables POSTGRES_* con los datos del pooler de Supabase."
         )
     postgres_host = os.getenv("POSTGRES_HOST", os.getenv("SUPABASE_DB_HOST", "localhost"))
-    if os.getenv("RENDER") and postgres_host in {"localhost", "127.0.0.1", "::1"}:
+    if IS_RENDER and postgres_host in {"localhost", "127.0.0.1", "::1"}:
         raise RuntimeError(
             "POSTGRES_HOST no puede ser localhost en Render. Cambialo por el host del pooler "
             "de Supabase, por ejemplo aws-1-us-west-2.pooler.supabase.com."
