@@ -123,7 +123,7 @@ export function HistoricalImportsPanel({
           <div className="mt-4 grid gap-3">
             <input className="rounded-md border border-zinc-300 px-3 py-2 text-sm" type="file" accept=".xlsx,.xls" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
             <TextInput label="Password del Excel" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-            <button className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white">Analizar archivo</button>
+            <button className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white" data-testid="historical-preview-submit">Analizar archivo</button>
           </div>
         </form>
 

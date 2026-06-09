@@ -12,8 +12,8 @@ def test_accounting_portal_has_export_and_invoice_controls(driver, live_frontend
     page = BasePage(driver)
 
     page.testid("accounting-export")
-    page.testid("invoice-generate-submit")
-    page.wait_text("Factura")
+    page.wait_text("Reporte contable operativo")
+    page.wait_text("Facturas simuladas")
 
 
 def test_cashier_portal_has_payment_controls_without_admin_tabs(driver, live_frontend):

@@ -25,15 +25,15 @@ def test_admin_navigation_theme_and_mobile_menu(driver, live_frontend):
     page.click_testid("theme-toggle")
     page.wait.until(lambda browser: browser.execute_script("return document.documentElement.classList.contains('dark')") != before)
 
-    page.click_testid("tab-students")
+    page.click_testid("menu-tab-students")
     page.wait_text("Alumnos")
-    page.click_testid("tab-historical")
+    page.click_testid("menu-tab-historical")
     page.testid("historical-preview-submit")
 
     driver.set_window_size(390, 844)
-    page.click_testid("mobile-menu-open")
-    page.testid("mobile-menu-drawer")
-    assert page.source_has('data-testid="mobile-tab-dashboard"')
+    page.click_testid("section-menu-open")
+    page.testid("section-menu-dropdown")
+    assert page.source_has('data-testid="menu-tab-dashboard"')
 
     assert not driver.find_elements(By.CSS_SELECTOR, "[data-testid='login-page']")
 
@@ -43,5 +43,5 @@ def test_dev_user_enters_admin_portal_for_diagnostics(driver, live_frontend):
     page = BasePage(driver)
 
     assert page.has_text("Dev App")
-    page.click_testid("tab-users")
+    page.click_testid("menu-tab-users")
     page.wait_text("Usuarios")

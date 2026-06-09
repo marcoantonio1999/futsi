@@ -72,7 +72,10 @@ import {
 } from "./shared";
 import { DashboardPanel } from "./dashboard";
 import { DailyOperationPanel } from "./dailyOperation";
+import { HistoricalImportsPanel } from "./historicalImports";
 import { IncomeStatementPanel } from "./incomeStatement";
+import { SalesEstimationPanel } from "./sales";
+import { SportsPanel } from "./sportsPanel";
 
 export function AccountingPortal({
   user,
