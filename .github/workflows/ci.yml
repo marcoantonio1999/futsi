@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 jobs:
-  backend:
+  backend-pytest:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -18,12 +18,22 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: back/requirements.txt
+          cache-dependency-path: |
+            back/requirements.txt
+            back/requirements-test.txt
       - run: python -m pip install --upgrade pip
-      - run: pip install -r requirements.txt
-      - run: python manage.py test
+      - run: pip install -r requirements.txt -r requirements-test.txt
+      - run: mkdir -p ../reports
+      - run: python -m pytest core/tests --cov=core --cov-report=xml:../reports/backend-coverage.xml --junitxml=../reports/backend-pytest.xml --cov-fail-under=60
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-reports
+          path: |
+            reports/backend-pytest.xml
+            reports/backend-coverage.xml
 
-  frontend:
+  frontend-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,3 +50,69 @@ jobs:
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL || 'http://127.0.0.1:8000/api' }}
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
+
+  selenium-e2e:
+    runs-on: ubuntu-latest
+    needs: [backend-pytest, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            back/requirements.txt
+            back/requirements-test.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: front/package-lock.json
+      - uses: browser-actions/setup-chrome@v1
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r back/requirements.txt -r back/requirements-test.txt
+      - run: npm ci
+        working-directory: front
+      - run: mkdir -p qa/artifacts
+      - run: python -m pytest qa/selenium -m e2e --junitxml=qa/artifacts/selenium.xml
+        env:
+          FUTSI_E2E_API_PORT: "8100"
+          FUTSI_E2E_WEB_PORT: "5176"
+          FUTSI_E2E_HEADLESS: "1"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selenium-artifacts
+          path: qa/artifacts/**
+
+  sonarqube:
+    runs-on: ubuntu-latest
+    needs: [backend-pytest, frontend-build]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            back/requirements.txt
+            back/requirements-test.txt
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r back/requirements.txt -r back/requirements-test.txt
+      - run: mkdir -p reports
+      - run: python -m pytest back/core/tests --cov=core --cov-report=xml:reports/backend-coverage.xml --junitxml=reports/backend-pytest.xml --cov-fail-under=60
+      - name: SonarQube scan
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+      - name: Skip SonarQube scan when secret is missing
+        if: ${{ env.SONAR_TOKEN == '' }}
+        run: echo "SONAR_TOKEN is not configured; skipping SonarQube scan."
