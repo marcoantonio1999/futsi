@@ -26,6 +26,7 @@ class UserSerializer(serializers.ModelSerializer):
             "avatar_url",
             "coach_group_name",
             "coach_hourly_rate",
+            "section_permissions",
             "is_active",
             "password",
         ]

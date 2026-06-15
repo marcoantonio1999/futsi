@@ -3,4 +3,4 @@ from core.domain_serializers.catalog import CourtSerializer, GuardianSerializer,
 from core.domain_serializers.documents import AuditLogSerializer, DailyClosureSerializer, FaceRecognitionAttemptSerializer, HistoricalImportRowSerializer, HistoricalImportSerializer, InvoiceSerializer
 from core.domain_serializers.finance import CashMovementSerializer, ChargeSerializer, DiscountSerializer, ExpenseSerializer, PaymentSerializer, StaffPaymentRequestSerializer
 from core.domain_serializers.money import charge_balance, sync_charge_status
-from core.domain_serializers.sports import MatchSerializer, PlayerAttendanceRecordSerializer, PlayerSerializer, RoundSerializer, StudentAssessmentSerializer, TeamSerializer, TournamentSerializer
+from core.domain_serializers.sports import MatchSerializer, PlayerAttendanceRecordSerializer, PlayerSerializer, RoundSerializer, StudentAssessmentSerializer, StudentTournamentRegistrationSerializer, TeamSerializer, TournamentSerializer

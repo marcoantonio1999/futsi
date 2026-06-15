@@ -26,6 +26,7 @@ from core.models import (
     StaffPaymentRequest,
     Student,
     StudentAssessment,
+    StudentTournamentRegistration,
     Team,
     Tournament,
     User,
@@ -62,6 +63,7 @@ class Command(BaseCommand):
             Charge.objects.all().delete()
             Expense.objects.all().delete()
             DailyClosure.objects.all().delete()
+            StudentTournamentRegistration.objects.all().delete()
             Student.objects.all().delete()
             Player.objects.all().delete()
             Team.objects.all().delete()
@@ -226,8 +228,16 @@ class Command(BaseCommand):
         guardian_users = [
             ("padre.laura", guardian_map["5511111111"]),
             ("padre.roberto", guardian_map["5522222222"]),
+            ("padre.sofia", guardian_map["5533333333"]),
             ("padre.daniela", guardian_map["5544444444"]),
+            ("padre.mariana", guardian_map["5555555555"]),
             ("padre.jorge", guardian_map["5566666666"]),
+            ("padre.patricia", guardian_map["5577777777"]),
+            ("padre.andres", guardian_map["5588888888"]),
+            ("padre.claudia", guardian_map["5599999999"]),
+            ("padre.miguel", guardian_map["5512121212"]),
+            ("padre.fernanda", guardian_map["5534343434"]),
+            ("padre.oscar", guardian_map["5556565656"]),
         ]
         for username, guardian in guardian_users:
             first_name = guardian.full_name.split()[0]
@@ -797,6 +807,38 @@ class Command(BaseCommand):
                 defaults={"representative_name": rep, "representative_phone": phone, "representative_email": f"{name.lower().replace(' ', '.')}@demo.local"},
             )
             teams[name] = team
+
+        academy_roster = [
+            ("Adrian Perez", "Futsi Roma Sub-12", 1),
+            ("Gael Hernandez", "Futsi Roma Sub-12", 7),
+            ("Santiago Vega", "Futsi Roma Sub-12", 4),
+            ("Rodrigo Flores", "Futsi Roma Sub-12", 8),
+            ("Rafael Campos", "Futsi Roma Sub-12", 11),
+            ("Emiliano Cruz", "Futsi Roma Sub-12", 5),
+            ("Leonardo Salas", "Futsi Roma Sub-12", 2),
+            ("Maximiliano Ortega", "Futsi Roma Sub-12", 10),
+            ("Sebastian Rojas", "Futsi Roma Sub-12", 6),
+            ("Hugo Pineda", "Futsi Roma Sub-12", 9),
+            ("Andres Molina", "Futsi Roma Sub-12", 3),
+            ("Pablo Ibarra", "Futsi Roma Sub-12", 14),
+        ]
+        for student_name, team_name, jersey_number in academy_roster:
+            if student_name in student_map:
+                StudentTournamentRegistration.objects.update_or_create(
+                    tournament=tournament,
+                    student=student_map[student_name],
+                    defaults={
+                        "team": teams[team_name],
+                        "jersey_number": jersey_number,
+                        "billing_type": "weekly_match",
+                        "weekly_amount": 650,
+                        "full_amount": 7800,
+                        "billing_starts_on": tournament.starts_on,
+                        "status": "registered",
+                        "notes": "Registro demo de academia a torneo escolar.",
+                        "registered_by": admin,
+                    },
+                )
 
         match_specs = [
             (1, "Futsi Roma Sub-12", "Halcones Mixcoac", 3, 1, "finished"),

@@ -91,6 +91,34 @@ class TeamViewSet(viewsets.ModelViewSet):
         return queryset.distinct()
 
 
+class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
+    queryset = StudentTournamentRegistration.objects.select_related("tournament", "tournament__site", "student", "team", "registered_by").all()
+    serializer_class = StudentTournamentRegistrationSerializer
+    permission_classes = [IsOperationsCashierCoachOrGuardianRole]
+
+    def get_permissions(self):
+        if self.request.user.is_authenticated and self.request.user.role in {"guardian", "coach", "cashier"} and self.request.method not in ("GET", "HEAD", "OPTIONS"):
+            return [IsOperationsRole()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        tournament = self.request.query_params.get("tournament")
+        student = self.request.query_params.get("student")
+        site = self.request.query_params.get("site")
+        if tournament:
+            queryset = queryset.filter(tournament_id=tournament)
+        if student:
+            queryset = queryset.filter(student_id=student)
+        if site:
+            queryset = queryset.filter(tournament__site_id=site)
+        if self.request.user.role == "guardian":
+            queryset = queryset.filter(student__guardian__user=self.request.user)
+        if self.request.user.role in {"coach", "cashier"} and self.request.user.primary_site_id:
+            queryset = queryset.filter(tournament__site=self.request.user.primary_site)
+        return queryset.distinct()
+
+
 class PlayerViewSet(viewsets.ModelViewSet):
     queryset = Player.objects.select_related("team", "team__tournament", "team__tournament__site", "user").all()
     serializer_class = PlayerSerializer

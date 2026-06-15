@@ -24,6 +24,31 @@ export type Team = {
   is_active: boolean;
 };
 
+export type StudentTournamentRegistration = {
+  id: number;
+  tournament: number;
+  tournament_name?: string;
+  site?: number;
+  site_name?: string;
+  student: number;
+  student_name?: string;
+  student_category?: string;
+  student_group_name?: string;
+  team: number | null;
+  team_name?: string;
+  jersey_number: number | null;
+  billing_type: "weekly_match" | "full_tournament";
+  weekly_amount: string;
+  full_amount: string;
+  billing_starts_on: string | null;
+  status: string;
+  notes: string;
+  registered_by?: number | null;
+  registered_by_username?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Player = {
   id: number;
   user: number | null;

@@ -1,4 +1,5 @@
 from .common import *
+from .attendance import attendance_window_label, can_mark_session, match_team_ids
 from .money import charge_balance
 
 class TournamentSerializer(serializers.ModelSerializer):
@@ -16,6 +17,41 @@ class TeamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Team
         fields = "__all__"
+
+
+class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):
+    tournament_name = serializers.CharField(source="tournament.name", read_only=True)
+    site = serializers.IntegerField(source="tournament.site_id", read_only=True)
+    site_name = serializers.CharField(source="tournament.site.name", read_only=True)
+    student_name = serializers.CharField(source="student.full_name", read_only=True)
+    student_category = serializers.CharField(source="student.category", read_only=True)
+    student_group_name = serializers.CharField(source="student.group_name", read_only=True)
+    team_name = serializers.CharField(source="team.name", read_only=True)
+    registered_by_username = serializers.CharField(source="registered_by.username", read_only=True)
+
+    class Meta:
+        model = StudentTournamentRegistration
+        fields = "__all__"
+        read_only_fields = ["registered_by"]
+
+    def validate(self, attrs):
+        tournament = attrs.get("tournament") or getattr(self.instance, "tournament", None)
+        billing_type = attrs.get("billing_type")
+        if tournament and not billing_type:
+            attrs["billing_type"] = tournament.billing_type
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data["registered_by"] = request.user
+        if not validated_data.get("billing_starts_on") and validated_data.get("tournament"):
+            validated_data["billing_starts_on"] = validated_data["tournament"].starts_on
+        if not validated_data.get("billing_type") and validated_data.get("tournament"):
+            validated_data["billing_type"] = validated_data["tournament"].billing_type
+        if not validated_data.get("full_amount") and validated_data.get("weekly_amount") and validated_data.get("tournament"):
+            validated_data["full_amount"] = validated_data["weekly_amount"] * (validated_data["tournament"].expected_weeks or 12)
+        return super().create(validated_data)
 
 
 class PlayerSerializer(serializers.ModelSerializer):
@@ -45,6 +81,15 @@ class PlayerAttendanceRecordSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         player = validated_data["player"]
         session = validated_data["session"]
+        if not can_mark_session(session):
+            raise serializers.ValidationError(
+                {"session": f"El pase de lista solo esta disponible en la ventana operativa: {attendance_window_label(session)}"}
+            )
+        allowed_team_ids = {session.team_id} if session.team_id else set()
+        if not session.team_id and session.match_id:
+            allowed_team_ids.update(match_team_ids(session.match))
+        if session.session_type != "tournament_match" or player.team_id not in allowed_team_ids:
+            raise serializers.ValidationError({"player": "El jugador no pertenece al roster de esta sesion."})
         team_balance = sum(charge_balance(charge) for charge in player.team.charges.exclude(status="canceled"))
         validated_data["had_team_debt_at_capture"] = team_balance > 0
         if request and request.user.is_authenticated:

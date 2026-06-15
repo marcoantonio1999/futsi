@@ -44,6 +44,7 @@ class User(AbstractUser):
     avatar_url = models.URLField(blank=True)
     coach_group_name = models.CharField(max_length=80, blank=True)
     coach_hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    section_permissions = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "core_user"
@@ -200,6 +201,34 @@ class Team(TimestampedModel):
         return self.name
 
 
+class StudentTournamentRegistration(TimestampedModel):
+    tournament = models.ForeignKey(Tournament, on_delete=models.PROTECT, related_name="student_registrations")
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="tournament_registrations")
+    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.SET_NULL, related_name="student_registrations")
+    jersey_number = models.PositiveSmallIntegerField(null=True, blank=True)
+    billing_type = models.CharField(max_length=30, choices=TournamentBillingType.choices, default=TournamentBillingType.WEEKLY_MATCH)
+    weekly_amount = models.DecimalField(max_digits=12, decimal_places=2, default=650)
+    full_amount = models.DecimalField(max_digits=12, decimal_places=2, default=7800)
+    billing_starts_on = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=24, default="registered")
+    notes = models.TextField(blank=True)
+    registered_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="student_tournament_registrations")
+
+    class Meta:
+        db_table = "student_tournament_registrations"
+        constraints = [
+            models.UniqueConstraint(fields=["tournament", "student"], name="uq_student_tournament_registration"),
+        ]
+        indexes = [
+            models.Index(fields=["tournament", "status"], name="ix_stu_tourn_reg_tourn_status"),
+            models.Index(fields=["billing_type", "status"], name="ix_stu_reg_bill_status"),
+            models.Index(fields=["student"], name="ix_stu_tourn_reg_student"),
+        ]
+
+    def __str__(self):
+        return f"{self.student} - {self.tournament}"
+
+
 class Player(TimestampedModel):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -321,6 +350,7 @@ class AttendanceSession(TimestampedModel):
     tournament = models.ForeignKey(Tournament, null=True, blank=True, on_delete=models.PROTECT)
     round = models.ForeignKey(Round, null=True, blank=True, on_delete=models.PROTECT)
     team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT)
+    match = models.ForeignKey(Match, null=True, blank=True, on_delete=models.PROTECT, related_name="attendance_sessions")
     captured_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="captured_sessions")
     closed_at = models.DateTimeField(null=True, blank=True)
 
@@ -395,6 +425,8 @@ class Charge(TimestampedModel):
     site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="charges")
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
     team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
+    tournament_registration = models.ForeignKey(StudentTournamentRegistration, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
+    jornada_number = models.PositiveSmallIntegerField(null=True, blank=True)
     concept = models.CharField(max_length=80)
     description = models.CharField(max_length=180, blank=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -418,6 +450,7 @@ class Charge(TimestampedModel):
             models.Index(fields=["site", "status"], name="ix_charge_site_status"),
             models.Index(fields=["student", "status"], name="ix_charge_student_status"),
             models.Index(fields=["team", "status"], name="ix_charge_team_status"),
+            models.Index(fields=["tournament_registration", "status"], name="ix_charge_tourn_reg_status"),
         ]
 
 

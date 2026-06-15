@@ -46,12 +46,18 @@ export type AttendanceSession = {
   starts_at: string | null;
   group_name: string;
   tournament: number | null;
+  tournament_name?: string;
   round: number | null;
   team: number | null;
+  team_name?: string;
+  match: number | null;
+  match_name?: string;
   captured_by: number;
   captured_by_username?: string;
   closed_at: string | null;
   record_count?: number;
+  can_mark_attendance?: boolean;
+  attendance_window?: string;
 };
 
 export type AttendanceRecord = {

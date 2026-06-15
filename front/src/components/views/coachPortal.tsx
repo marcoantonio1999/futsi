@@ -33,6 +33,7 @@ import { StudentStatusDonut } from "../charts/StudentStatusDonut";
 import { API_URL } from "../../api";
 import { roleLabels, statusLabels } from "../../appState";
 import { money } from "../../utils/format";
+import { canMarkSession, findCurrentMatch, findCurrentSession, sessionWindowText, studentsForAttendanceSession, todayKey } from "../../utils/attendance";
 import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../types";
 
 import {
@@ -111,12 +112,21 @@ export function CoachPortal({
   const site = data.sites.find((item) => item.id === user.primary_site) ?? data.sites[0];
   const [date, setDate] = useState(today);
   const [startsAt, setStartsAt] = useState("17:00");
+  const [matchId, setMatchId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<number | null>(data.attendanceSessions[0]?.id ?? null);
   const [savingStudentId, setSavingStudentId] = useState<number | null>(null);
   const [workForm, setWorkForm] = useState({ work_date: today, hours: "2", activity: "Entrenamiento", notes: "" });
   const listRef = useRef<HTMLDivElement | null>(null);
 
+  const currentSession = useMemo(() => findCurrentSession(data.attendanceSessions, site?.id), [data.attendanceSessions, site?.id]);
+  const currentMatch = useMemo(() => findCurrentMatch(data.matches, site?.id), [data.matches, site?.id]);
+  const todayMatches = useMemo(
+    () => data.matches.filter((match) => match.played_on === todayKey() && (!site?.id || match.site === site.id) && match.status !== "finished" && match.status !== "canceled"),
+    [data.matches, site?.id],
+  );
   const activeSession = data.attendanceSessions.find((session) => session.id === activeSessionId) ?? null;
+  const activeSessionCanMark = activeSession ? canMarkSession(activeSession) : false;
+  const attendanceRoster = useMemo(() => studentsForAttendanceSession(data, activeSession, site?.id ? String(site.id) : "", groupName), [activeSession, data, groupName, site?.id]);
   const recordsByStudent = useMemo(() => {
     const map = new Map<number, AttendanceRecord>();
     data.attendanceRecords
@@ -136,26 +146,41 @@ export function CoachPortal({
       setActiveSessionId(null);
       return;
     }
+    if (currentSession && activeSessionId !== currentSession.id) {
+      setActiveSessionId(currentSession.id);
+      return;
+    }
     if (!activeSessionId || !data.attendanceSessions.some((session) => session.id === activeSessionId)) {
       setActiveSessionId(data.attendanceSessions[0].id);
     }
-  }, [data.attendanceSessions, activeSessionId]);
+  }, [data.attendanceSessions, activeSessionId, currentSession]);
+
+  useEffect(() => {
+    if (currentMatch && !matchId) {
+      setMatchId(String(currentMatch.id));
+      setDate(currentMatch.played_on);
+      if (currentMatch.starts_at) setStartsAt(currentMatch.starts_at.slice(0, 5));
+    }
+  }, [currentMatch, matchId]);
 
   async function startSession(event: FormEvent) {
     event.preventDefault();
     if (!site) return;
-    const session = await onCreateSession({
-      site: site.id,
-      session_type: "academy_class",
-      date,
-      starts_at: startsAt || null,
-      group_name: groupName,
-    });
+    const payload = matchId
+      ? { match: Number(matchId) }
+      : {
+          site: site.id,
+          session_type: "academy_class",
+          date,
+          starts_at: startsAt || null,
+          group_name: groupName,
+        };
+    const session = await onCreateSession(payload);
     setActiveSessionId(session.id);
   }
 
   async function mark(student: Student, status: AttendanceRecord["status"]) {
-    if (!activeSession || activeSession.closed_at) return;
+    if (!activeSession || !activeSessionCanMark) return;
     setSavingStudentId(student.id);
     try {
       await onMark({
@@ -213,7 +238,7 @@ export function CoachPortal({
         </section>
 
         <section className="mt-6 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-          <FormationBoard students={data.students} groupName={groupName} />
+          <FormationBoard students={attendanceRoster.length ? attendanceRoster : data.students} groupName={groupName} />
           <div className="grid gap-5">
             <form onSubmit={startSession} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
               <h2 className="flex items-center gap-2 text-base font-semibold">
@@ -221,6 +246,25 @@ export function CoachPortal({
               </h2>
               <p className="mt-1 text-sm text-zinc-500">Primero crea o selecciona una sesion; despues marca asistencia manual o por camara.</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <SelectInput
+                  label="Partido o entrenamiento"
+                  value={matchId}
+                  onChange={(event) => {
+                    setMatchId(event.target.value);
+                    const match = data.matches.find((item) => item.id === Number(event.target.value));
+                    if (match) {
+                      setDate(match.played_on);
+                      if (match.starts_at) setStartsAt(match.starts_at.slice(0, 5));
+                    }
+                  }}
+                >
+                  <option value="">Entrenamiento del grupo</option>
+                  {todayMatches.map((match) => (
+                    <option key={match.id} value={match.id}>
+                      {match.home_team_name} vs {match.away_team_name} - {match.starts_at?.slice(0, 5) || "sin hora"}
+                    </option>
+                  ))}
+                </SelectInput>
                 <TextInput label="Fecha" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
                 <TextInput label="Hora" type="time" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
               </div>
@@ -236,7 +280,10 @@ export function CoachPortal({
                 <ClipboardCheck size={16} /> Pasar lista manual
               </button>
               <div className="mt-4 grid gap-2">
-                {data.attendanceSessions.slice(0, 4).map((session) => (
+                {data.attendanceSessions
+                  .filter((session) => session.date === todayKey() && (!site?.id || session.site === site.id))
+                  .slice(0, 4)
+                  .map((session) => (
                   <button
                     type="button"
                     key={session.id}
@@ -245,7 +292,7 @@ export function CoachPortal({
                   >
                     <span className="font-medium">{session.date}</span>
                     <span className={activeSessionId === session.id ? "ml-2 text-zinc-200" : "ml-2 text-zinc-500"}>
-                      {session.starts_at?.slice(0, 5) || "sin hora"} {session.closed_at ? "- Cerrada" : ""}
+                      {session.starts_at?.slice(0, 5) || "sin hora"} {session.match_name || session.group_name || ""} {canMarkSession(session) ? "- En ventana" : `- ${sessionWindowText(session)}`}
                     </span>
                   </button>
                 ))}
@@ -254,8 +301,8 @@ export function CoachPortal({
 
             <FaceAttendanceCard
               activeSession={activeSession}
-              roster={data.students}
-              disabled={!activeSession || Boolean(activeSession.closed_at)}
+              roster={attendanceRoster}
+              disabled={!activeSession || !activeSessionCanMark}
               onRecognize={onFaceAttendance}
             />
 
@@ -300,7 +347,8 @@ export function CoachPortal({
               <div>
                 <p className="text-xs font-medium uppercase text-emerald-700">Pasar lista manual</p>
                 <h2 className="font-semibold">{activeSession ? "Asistencia del equipo" : "Crea una sesion para pasar lista"}</h2>
-                <p className="mt-1 text-sm text-zinc-500">{presentCount} asisten - {absentCount} faltan - usa Asiste, Falta o Justif. por alumno</p>
+                <p className="mt-1 text-sm text-zinc-500">{presentCount} asisten - {absentCount} faltan - ventana {activeSession ? sessionWindowText(activeSession) : "sin sesion"}</p>
+                {activeSession && !activeSessionCanMark && <p className="mt-1 text-sm font-medium text-amber-700">Fuera de ventana: no se puede modificar asistencia.</p>}
               </div>
               {activeSession && (
                 <button
@@ -313,9 +361,9 @@ export function CoachPortal({
               )}
             </div>
             <div className="divide-y divide-zinc-100">
-              {data.students.map((student) => {
+              {attendanceRoster.map((student) => {
                 const record = recordsByStudent.get(student.id);
-                const locked = !activeSession || Boolean(activeSession.closed_at);
+                const locked = !activeSession || !activeSessionCanMark;
                 return (
                   <div key={student.id} className="grid gap-3 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
                     <div className="flex gap-3">

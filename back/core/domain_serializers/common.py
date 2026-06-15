@@ -31,6 +31,7 @@ from core.models import (
     StaffPaymentRequest,
     Student,
     StudentAssessment,
+    StudentTournamentRegistration,
     Team,
     Tournament,
     User,

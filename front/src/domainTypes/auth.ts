@@ -18,6 +18,7 @@ export type User = {
   avatar_url: string;
   coach_group_name: string;
   coach_hourly_rate: string;
+  section_permissions: string[];
   is_active: boolean;
 };
 

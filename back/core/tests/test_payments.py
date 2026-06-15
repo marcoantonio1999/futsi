@@ -1,6 +1,10 @@
-import pytest
+from datetime import datetime
+from unittest.mock import patch
 
-from core.models import Charge, Expense, User
+import pytest
+from django.utils import timezone
+
+from core.models import Charge, Discount, Expense, User
 
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
@@ -23,11 +27,13 @@ def test_demo_flow_crosses_attendance_billing_discounts_and_expenses(admin_clien
     )
     assert session_response.status_code == 201
 
-    attendance_response = admin_client.post(
-        "/api/attendance-records/",
-        {"session": session_response.json()["id"], "student": luis["id"], "status": "present"},
-        format="json",
-    )
+    inside_window = timezone.make_aware(datetime(2026, 5, 26, 16, 30))
+    with patch("core.domain_serializers.attendance.timezone.now", return_value=inside_window):
+        attendance_response = admin_client.post(
+            "/api/attendance-records/",
+            {"session": session_response.json()["id"], "student": luis["id"], "status": "present"},
+            format="json",
+        )
     assert attendance_response.status_code == 201
     assert attendance_response.json()["had_debt_at_capture"] is True
 
@@ -96,6 +102,23 @@ def test_cashier_can_process_own_site_payments_but_not_cross_site(login_client):
         format="json",
     )
     assert cross_site_response.status_code == 400
+
+
+def test_cashier_can_request_discount_from_billing_flow(login_client):
+    client, _user = login_client("caja.roma", "demo12345")
+    roma_charge = Charge.objects.get(student__full_name="Carlos Ruiz")
+
+    response = client.post(
+        "/api/discounts/",
+        {"charge": roma_charge.id, "reason": "Hermanos", "amount": "75.00"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    discount = Discount.objects.get(id=response.json()["id"])
+    assert discount.status == "requested"
+    assert discount.requested_by.username == "caja.roma"
+    assert discount.site == roma_charge.site
 
 
 def test_payment_automation_simulation_flows(login_client):

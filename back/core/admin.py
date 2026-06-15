@@ -26,6 +26,7 @@ from .models import (
     StaffPaymentRequest,
     Student,
     StudentAssessment,
+    StudentTournamentRegistration,
     Team,
     Tournament,
     User,
@@ -35,7 +36,7 @@ from .models import (
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
-        ("Operacion", {"fields": ("role", "primary_site", "phone", "avatar_url", "coach_group_name", "coach_hourly_rate")}),
+        ("Operacion", {"fields": ("role", "primary_site", "phone", "avatar_url", "coach_group_name", "coach_hourly_rate", "section_permissions")}),
     )
     list_display = ("username", "email", "role", "primary_site", "is_active")
     list_filter = ("role", "is_active", "primary_site")
@@ -47,6 +48,7 @@ admin.site.register(Guardian)
 admin.site.register(Student)
 admin.site.register(Tournament)
 admin.site.register(Team)
+admin.site.register(StudentTournamentRegistration)
 admin.site.register(Player)
 admin.site.register(PlayerAttendanceRecord)
 admin.site.register(Round)

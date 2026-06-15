@@ -37,6 +37,7 @@ export const emptyData: AppData = {
   coachWorkLogs: [],
   tournaments: [],
   teams: [],
+  studentTournamentRegistrations: [],
   players: [],
   matches: [],
   standings: [],

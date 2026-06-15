@@ -5,6 +5,7 @@ class ChargeSerializer(serializers.ModelSerializer):
     site_name = serializers.CharField(source="site.name", read_only=True)
     student_name = serializers.CharField(source="student.full_name", read_only=True)
     team_name = serializers.CharField(source="team.name", read_only=True)
+    tournament_registration_name = serializers.CharField(source="tournament_registration.tournament.name", read_only=True)
     paid_amount = serializers.SerializerMethodField()
     discount_amount = serializers.SerializerMethodField()
     balance = serializers.SerializerMethodField()

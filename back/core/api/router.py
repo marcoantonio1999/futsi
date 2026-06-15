@@ -11,6 +11,7 @@ from core.api.catalog import (
     RoundViewSet,
     SiteViewSet,
     StudentViewSet,
+    StudentTournamentRegistrationViewSet,
     TeamViewSet,
     TournamentViewSet,
     UserViewSet,
@@ -37,6 +38,7 @@ router.register("guardians", GuardianViewSet)
 router.register("students", StudentViewSet)
 router.register("tournaments", TournamentViewSet)
 router.register("teams", TeamViewSet)
+router.register("student-tournament-registrations", StudentTournamentRegistrationViewSet)
 router.register("players", PlayerViewSet)
 router.register("player-attendance-records", PlayerAttendanceRecordViewSet)
 router.register("rounds", RoundViewSet)
@@ -55,4 +57,3 @@ router.register("invoices", InvoiceViewSet)
 router.register("historical-imports", HistoricalImportViewSet)
 router.register("daily-closures", DailyClosureViewSet)
 router.register("audit-logs", AuditLogViewSet)
-

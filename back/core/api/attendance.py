@@ -7,6 +7,9 @@ class AttendanceSessionViewSet(viewsets.ModelViewSet):
         "tournament",
         "round",
         "team",
+        "match",
+        "match__home_team",
+        "match__away_team",
         "captured_by",
     ).annotate(record_count=Count("records")).all()
     serializer_class = AttendanceSessionSerializer
@@ -30,7 +33,7 @@ class AttendanceSessionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(team__representative_user=self.request.user)
         if self.request.user.role == "adult_player":
             queryset = queryset.filter(team__players__user=self.request.user)
-        return queryset
+        return queryset.order_by("-date", "starts_at", "-created_at")
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
@@ -50,7 +53,7 @@ class AttendanceSessionViewSet(viewsets.ModelViewSet):
 class AttendanceRecordViewSet(viewsets.ModelViewSet):
     queryset = AttendanceRecord.objects.select_related("session", "student", "team", "captured_by").all()
     serializer_class = AttendanceRecordSerializer
-    permission_classes = [IsOperationsCoachOrGuardianRole]
+    permission_classes = [IsOperationsCashierCoachOrGuardianRole]
 
     def get_permissions(self):
         if self.request.user.is_authenticated and self.request.user.role == "guardian" and self.request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -65,6 +68,8 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(student__site=self.request.user.primary_site)
             if self.request.user.coach_group_name:
                 queryset = queryset.filter(student__group_name=self.request.user.coach_group_name)
+        if self.request.user.role == "cashier":
+            queryset = queryset.filter(session__site=self.request.user.primary_site)
         session = self.request.query_params.get("session")
         if session:
             queryset = queryset.filter(session_id=session)

@@ -33,6 +33,7 @@ import { StudentStatusDonut } from "../charts/StudentStatusDonut";
 import { API_URL } from "../../api";
 import { roleLabels, statusLabels } from "../../appState";
 import { money } from "../../utils/format";
+import { canMarkSession, findCurrentMatch, findCurrentSession, sessionWindowText, studentsForAttendanceSession, todayKey } from "../../utils/attendance";
 import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../types";
 import { SelectInput, TextInput } from "./sharedParts/metrics";
 
@@ -88,8 +89,10 @@ export function AttendancePanel({
   const [groupName, setGroupName] = useState("");
   const [date, setDate] = useState(today);
   const [startsAt, setStartsAt] = useState("17:00");
+  const [matchId, setMatchId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<number | null>(data.attendanceSessions[0]?.id ?? null);
   const [savingStudentId, setSavingStudentId] = useState<number | null>(null);
+  const numericSiteId = siteId ? Number(siteId) : null;
 
   const groups = useMemo(() => {
     const names = data.students
@@ -99,16 +102,18 @@ export function AttendancePanel({
     return Array.from(new Set(names)).sort();
   }, [data.students, siteId]);
 
+  const currentSession = useMemo(() => findCurrentSession(data.attendanceSessions, numericSiteId), [data.attendanceSessions, numericSiteId]);
+  const currentMatch = useMemo(() => findCurrentMatch(data.matches, numericSiteId), [data.matches, numericSiteId]);
+  const todayMatches = useMemo(
+    () => data.matches.filter((match) => match.played_on === todayKey() && (!numericSiteId || match.site === numericSiteId) && match.status !== "finished" && match.status !== "canceled"),
+    [data.matches, numericSiteId],
+  );
   const activeSession = data.attendanceSessions.find((session) => session.id === activeSessionId) ?? null;
+  const activeSessionCanMark = activeSession ? canMarkSession(activeSession) : false;
 
   const roster = useMemo(() => {
-    return data.students.filter((student) => {
-      const siteMatches = activeSession ? student.site === activeSession.site : !siteId || student.site === Number(siteId);
-      const groupFilter = activeSession?.group_name || groupName;
-      const groupMatches = !groupFilter || student.group_name === groupFilter;
-      return siteMatches && groupMatches && student.status !== "dropped";
-    });
-  }, [activeSession, data.students, groupName, siteId]);
+    return studentsForAttendanceSession(data, activeSession, siteId, groupName);
+  }, [activeSession, data, groupName, siteId]);
 
   const recordsByStudent = useMemo(() => {
     const map = new Map<number, AttendanceRecord>();
@@ -131,20 +136,37 @@ export function AttendancePanel({
     if (!siteId && data.sites[0]) setSiteId(String(data.sites[0].id));
   }, [data.sites, siteId]);
 
+  useEffect(() => {
+    if (currentSession && activeSessionId !== currentSession.id) {
+      setActiveSessionId(currentSession.id);
+    }
+  }, [currentSession, activeSessionId]);
+
+  useEffect(() => {
+    if (currentMatch && !matchId) {
+      setMatchId(String(currentMatch.id));
+      if (currentMatch.starts_at) setStartsAt(currentMatch.starts_at.slice(0, 5));
+      setDate(currentMatch.played_on);
+    }
+  }, [currentMatch, matchId]);
+
   async function startSession(event: FormEvent) {
     event.preventDefault();
-    const session = await onCreateSession({
-      site: Number(siteId),
-      session_type: "academy_class",
-      date,
-      starts_at: startsAt || null,
-      group_name: groupName,
-    });
+    const payload = matchId
+      ? { match: Number(matchId) }
+      : {
+          site: Number(siteId),
+          session_type: "academy_class",
+          date,
+          starts_at: startsAt || null,
+          group_name: groupName,
+        };
+    const session = await onCreateSession(payload);
     setActiveSessionId(session.id);
   }
 
   async function mark(student: Student, status: AttendanceRecord["status"]) {
-    if (!activeSession || activeSession.closed_at) return;
+    if (!activeSession || !activeSessionCanMark) return;
     setSavingStudentId(student.id);
     try {
       await onMark({
@@ -181,6 +203,25 @@ export function AttendancePanel({
               </option>
             ))}
           </SelectInput>
+          <SelectInput
+            label="Partido o entrenamiento"
+            value={matchId}
+            onChange={(event) => {
+              setMatchId(event.target.value);
+              const match = data.matches.find((item) => item.id === Number(event.target.value));
+              if (match) {
+                setDate(match.played_on);
+                if (match.starts_at) setStartsAt(match.starts_at.slice(0, 5));
+              }
+            }}
+          >
+            <option value="">Entrenamiento por grupo</option>
+            {todayMatches.map((match) => (
+              <option key={match.id} value={match.id}>
+                {match.home_team_name} vs {match.away_team_name} - {match.starts_at?.slice(0, 5) || "sin hora"}
+              </option>
+            ))}
+          </SelectInput>
           <TextInput label="Fecha" type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
           <TextInput label="Hora" type="time" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
           <button className="flex items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white">
@@ -191,7 +232,10 @@ export function AttendancePanel({
         <div className="mt-5 border-t border-zinc-200 pt-4">
           <p className="text-sm font-medium text-zinc-700">Sesiones recientes</p>
           <div className="mt-2 grid gap-2">
-            {data.attendanceSessions.slice(0, 6).map((session) => (
+            {data.attendanceSessions
+              .filter((session) => session.date === todayKey() && (!numericSiteId || session.site === numericSiteId))
+              .slice(0, 6)
+              .map((session) => (
               <button
                 type="button"
                 key={session.id}
@@ -202,7 +246,7 @@ export function AttendancePanel({
               >
                 <span className="block font-medium">{session.site_name}</span>
                 <span className={activeSessionId === session.id ? "text-zinc-200" : "text-zinc-500"}>
-                  {session.date} {session.group_name || "Todos"} {session.closed_at ? "- Cerrada" : ""}
+                  {session.starts_at?.slice(0, 5) || "sin hora"} {session.match_name || session.group_name || "Todos"} - {canMarkSession(session) ? "En ventana" : `Fuera de ventana (${sessionWindowText(session)})`}
                 </span>
               </button>
             ))}
@@ -214,7 +258,7 @@ export function AttendancePanel({
       <FaceAttendanceCard
         activeSession={activeSession}
         roster={roster}
-        disabled={!activeSession || Boolean(activeSession.closed_at)}
+        disabled={!activeSession || !activeSessionCanMark}
         onRecognize={onFaceAttendance}
       />
       </div>
@@ -224,9 +268,12 @@ export function AttendancePanel({
           <div>
             <h2 className="font-semibold">{activeSession ? "Lista de asistencia" : "Selecciona o crea una sesion"}</h2>
             {activeSession && (
-              <p className="mt-1 text-sm text-zinc-500">
-                {activeSession.site_name} - {activeSession.date} - {activeSession.group_name || "Todos los grupos"}
-              </p>
+              <>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {activeSession.site_name} - {activeSession.date} - {activeSession.match_name || activeSession.group_name || "Todos los grupos"} - ventana {sessionWindowText(activeSession)}
+                </p>
+                {!activeSessionCanMark && <p className="mt-1 text-sm font-medium text-amber-700">Solo se puede pasar lista durante la ventana operativa de esta sesion.</p>}
+              </>
             )}
           </div>
           {activeSession && (
@@ -262,7 +309,7 @@ export function AttendancePanel({
           {activeSession &&
             roster.map((student) => {
               const record = recordsByStudent.get(student.id);
-              const locked = Boolean(activeSession.closed_at);
+              const locked = !activeSessionCanMark;
               return (
                 <div key={student.id} className="grid gap-3 px-4 py-4 md:grid-cols-[1fr_auto] md:items-center">
                   <div className="flex gap-3">

@@ -33,6 +33,7 @@ import { StudentStatusDonut } from "../charts/StudentStatusDonut";
 import { API_URL } from "../../api";
 import { roleLabels, statusLabels } from "../../appState";
 import { money } from "../../utils/format";
+import { canMarkSession, findCurrentMatch, findCurrentSession, sessionWindowText, todayKey } from "../../utils/attendance";
 import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../types";
 
 import {
@@ -110,7 +111,10 @@ export function AdultLeagueDashboardPanel({
   const selectedPlayers = selectedTeam ? adultPlayers.filter((player) => player.team === selectedTeam.id).sort((a, b) => Number(a.jersey_number || 99) - Number(b.jersey_number || 99)) : [];
   const selectedCharges = selectedTeam ? adultCharges.filter((charge) => charge.team === selectedTeam.id && (charge.status === "pending" || charge.status === "partial")) : [];
   const teamSessions = selectedTeam ? data.attendanceSessions.filter((session) => session.session_type === "tournament_match" && session.team === selectedTeam.id) : [];
-  const activeSession = teamSessions.find((session) => session.id === activeSessionId) ?? teamSessions[0] ?? null;
+  const currentMatch = useMemo(() => findCurrentMatch(data.matches, selectedTeam?.site, selectedTeam?.id), [data.matches, selectedTeam?.id, selectedTeam?.site]);
+  const currentSession = useMemo(() => findCurrentSession(teamSessions, selectedTeam?.site, selectedTeam?.id), [selectedTeam?.id, selectedTeam?.site, teamSessions]);
+  const activeSession = teamSessions.find((session) => session.id === activeSessionId) ?? currentSession ?? teamSessions[0] ?? null;
+  const activeSessionCanMark = activeSession ? canMarkSession(activeSession) : false;
   const recordsByPlayer = useMemo(() => {
     const map = new Map<number, PlayerAttendanceRecord>();
     data.playerAttendanceRecords
@@ -124,22 +128,29 @@ export function AdultLeagueDashboardPanel({
     if (!selectedTeamId && adultTeams[0]) setSelectedTeamId(adultTeams[0].id);
   }, [adultTeams, selectedTeamId]);
 
+  useEffect(() => {
+    if (currentSession && activeSessionId !== currentSession.id) {
+      setActiveSessionId(currentSession.id);
+    }
+  }, [activeSessionId, currentSession]);
+
   async function createTeamSession() {
     if (!selectedTeam || !activeTournament) return;
     const session = await onCreateSession({
       site: selectedTeam.site,
       session_type: "tournament_match",
-      date: today,
-      starts_at: "20:00",
-      group_name: selectedTeam.name,
+      date: currentMatch?.played_on || today,
+      starts_at: currentMatch?.starts_at || "20:00",
+      group_name: currentMatch ? `${currentMatch.home_team_name} vs ${currentMatch.away_team_name}` : selectedTeam.name,
       tournament: selectedTeam.tournament,
+      match: currentMatch?.id || null,
       team: selectedTeam.id,
     });
     setActiveSessionId(session.id);
   }
 
   async function markPlayer(player: Player, status: PlayerAttendanceRecord["status"]) {
-    if (!activeSession) return;
+    if (!activeSession || !activeSessionCanMark) return;
     await onMarkPlayer({
       session: activeSession.id,
       player: player.id,
@@ -292,14 +303,18 @@ export function AdultLeagueDashboardPanel({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="font-semibold text-blue-950">Pase de lista adultos</h3>
-                  <p className="mt-1 text-sm text-zinc-500">{selectedTeam?.name || "Selecciona equipo"} - {presentCount}/{selectedPlayers.length} presentes</p>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {selectedTeam?.name || "Selecciona equipo"} - {presentCount}/{selectedPlayers.length} presentes
+                    {activeSession ? ` - ventana ${sessionWindowText(activeSession)}` : ""}
+                  </p>
+                  {activeSession && !activeSessionCanMark && <p className="mt-1 text-sm font-medium text-amber-700">Fuera de ventana: asistencia bloqueada.</p>}
                 </div>
-                {!readOnly && <button className="rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white" onClick={createTeamSession}>Crear partido</button>}
+                {!readOnly && <button className="rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white" onClick={createTeamSession}>{currentMatch ? "Crear sesion actual" : "Crear partido"}</button>}
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {teamSessions.slice(0, 4).map((session) => (
+                {teamSessions.filter((session) => session.date === todayKey()).slice(0, 4).map((session) => (
                   <button key={session.id} className={`rounded-md border px-2 py-1 text-xs ${activeSession?.id === session.id ? "border-blue-700 bg-blue-700 text-white" : "border-blue-200 bg-white text-blue-800"}`} onClick={() => setActiveSessionId(session.id)}>
-                    {session.date} {session.starts_at?.slice(0, 5) || ""}
+                    {session.starts_at?.slice(0, 5) || ""} {canMarkSession(session) ? "En ventana" : sessionWindowText(session)}
                   </button>
                 ))}
               </div>
@@ -318,9 +333,9 @@ export function AdultLeagueDashboardPanel({
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      <AttendanceButton active={record?.status === "present"} disabled={readOnly || !activeSession} label="Asiste" icon={<Check size={16} />} onClick={() => markPlayer(player, "present")} />
-                      <AttendanceButton active={record?.status === "absent"} disabled={readOnly || !activeSession} label="Falta" icon={<X size={16} />} onClick={() => markPlayer(player, "absent")} />
-                      <AttendanceButton active={record?.status === "justified"} disabled={readOnly || !activeSession} label="Justif." icon={<ClipboardCheck size={16} />} onClick={() => markPlayer(player, "justified")} />
+                      <AttendanceButton active={record?.status === "present"} disabled={readOnly || !activeSessionCanMark} label="Asiste" icon={<Check size={16} />} onClick={() => markPlayer(player, "present")} />
+                      <AttendanceButton active={record?.status === "absent"} disabled={readOnly || !activeSessionCanMark} label="Falta" icon={<X size={16} />} onClick={() => markPlayer(player, "absent")} />
+                      <AttendanceButton active={record?.status === "justified"} disabled={readOnly || !activeSessionCanMark} label="Justif." icon={<ClipboardCheck size={16} />} onClick={() => markPlayer(player, "justified")} />
                     </div>
                   </div>
                 );
