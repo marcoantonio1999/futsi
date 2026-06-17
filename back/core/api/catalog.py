@@ -32,6 +32,12 @@ class GuardianViewSet(viewsets.ModelViewSet):
     serializer_class = GuardianSerializer
     permission_classes = [IsOperationsRole]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.role == "cashier" and self.request.user.primary_site_id:
+            queryset = queryset.filter(students__site_id=self.request.user.primary_site_id)
+        return queryset.distinct()
+
 
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -74,11 +80,22 @@ class StudentViewSet(viewsets.ModelViewSet):
 class TournamentViewSet(viewsets.ModelViewSet):
     queryset = Tournament.objects.select_related("site").all()
     serializer_class = TournamentSerializer
+    permission_classes = [IsAdminForWrites]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        site = self.request.query_params.get("site")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
+            queryset = queryset.filter(site_id=self.request.user.primary_site_id)
+        return queryset.distinct()
 
 
 class TeamViewSet(viewsets.ModelViewSet):
     queryset = Team.objects.select_related("tournament", "tournament__site").annotate(player_count=Count("players")).all()
     serializer_class = TeamSerializer
+    permission_classes = [IsAdminForWrites]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -86,7 +103,7 @@ class TeamViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(representative_user=self.request.user)
         if self.request.user.role == "adult_player":
             queryset = queryset.filter(players__user=self.request.user)
-        if self.request.user.role == "cashier" and self.request.user.primary_site_id:
+        if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
             queryset = queryset.filter(tournament__site=self.request.user.primary_site)
         return queryset.distinct()
 
@@ -97,8 +114,8 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOperationsCashierCoachOrGuardianRole]
 
     def get_permissions(self):
-        if self.request.user.is_authenticated and self.request.user.role in {"guardian", "coach", "cashier"} and self.request.method not in ("GET", "HEAD", "OPTIONS"):
-            return [IsOperationsRole()]
+        if self.request.method not in ("GET", "HEAD", "OPTIONS"):
+            return [IsAdminForWrites()]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -135,7 +152,7 @@ class PlayerViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(user=self.request.user)
         if self.request.user.role == "adult_representative":
             queryset = queryset.filter(team__representative_user=self.request.user)
-        if self.request.user.role == "cashier" and self.request.user.primary_site_id:
+        if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
             queryset = queryset.filter(team__tournament__site_id=self.request.user.primary_site_id)
         return queryset
 
@@ -157,7 +174,7 @@ class PlayerAttendanceRecordViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(player__user=self.request.user)
         if self.request.user.role == "adult_representative":
             queryset = queryset.filter(player__team__representative_user=self.request.user)
-        if self.request.user.role == "cashier" and self.request.user.primary_site_id:
+        if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
             queryset = queryset.filter(player__team__tournament__site_id=self.request.user.primary_site_id)
         return queryset
 
@@ -170,4 +187,13 @@ class PlayerAttendanceRecordViewSet(viewsets.ModelViewSet):
 class RoundViewSet(viewsets.ModelViewSet):
     queryset = Round.objects.select_related("tournament").all()
     serializer_class = RoundSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        tournament = self.request.query_params.get("tournament")
+        if tournament:
+            queryset = queryset.filter(tournament_id=tournament)
+        if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
+            queryset = queryset.filter(tournament__site_id=self.request.user.primary_site_id)
+        return queryset.distinct()
 

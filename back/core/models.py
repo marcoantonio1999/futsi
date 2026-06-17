@@ -335,6 +335,40 @@ class StudentAssessment(TimestampedModel):
         return round((self.pace + self.shooting + self.passing + self.dribbling + self.defense + self.physical + self.attitude) / 7)
 
 
+class StudentValueAssessment(TimestampedModel):
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="value_assessments")
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="student_value_assessments")
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="student_value_assessments")
+    assessment_month = models.DateField()
+    respect = models.PositiveSmallIntegerField(default=50)
+    discipline = models.PositiveSmallIntegerField(default=50)
+    teamwork = models.PositiveSmallIntegerField(default=50)
+    responsibility = models.PositiveSmallIntegerField(default=50)
+    sportsmanship = models.PositiveSmallIntegerField(default=50)
+    minutes_recommendation = models.CharField(max_length=80, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "student_value_assessments"
+        constraints = [
+            models.UniqueConstraint(fields=["student", "assessment_month"], name="uq_student_value_month"),
+            models.CheckConstraint(condition=Q(respect__gte=0, respect__lte=100), name="ck_value_respect_range"),
+            models.CheckConstraint(condition=Q(discipline__gte=0, discipline__lte=100), name="ck_value_discipline_range"),
+            models.CheckConstraint(condition=Q(teamwork__gte=0, teamwork__lte=100), name="ck_value_teamwork_range"),
+            models.CheckConstraint(condition=Q(responsibility__gte=0, responsibility__lte=100), name="ck_value_responsibility_range"),
+            models.CheckConstraint(condition=Q(sportsmanship__gte=0, sportsmanship__lte=100), name="ck_value_sportsmanship_range"),
+        ]
+        indexes = [
+            models.Index(fields=["student", "assessment_month"], name="ix_value_student_month"),
+            models.Index(fields=["coach", "assessment_month"], name="ix_value_coach_month"),
+            models.Index(fields=["site", "assessment_month"], name="ix_value_site_month"),
+        ]
+
+    @property
+    def overall_values_rating(self):
+        return round((self.respect + self.discipline + self.teamwork + self.responsibility + self.sportsmanship) / 5)
+
+
 class AttendanceSessionType(models.TextChoices):
     ACADEMY_CLASS = "academy_class", "Clase academia"
     TOURNAMENT_MATCH = "tournament_match", "Partido torneo"

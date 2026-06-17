@@ -139,3 +139,26 @@ export type StudentAssessment = {
   notes: string;
   updated_at: string;
 };
+
+export type StudentValueAssessment = {
+  id: number;
+  student: number;
+  student_name?: string;
+  student_photo_url?: string;
+  category?: string;
+  group_name?: string;
+  coach: number;
+  coach_name?: string;
+  site: number;
+  site_name?: string;
+  assessment_month: string;
+  respect: number;
+  discipline: number;
+  teamwork: number;
+  responsibility: number;
+  sportsmanship: number;
+  overall_values_rating: number;
+  minutes_recommendation: string;
+  notes: string;
+  updated_at: string;
+};

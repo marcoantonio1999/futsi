@@ -23,7 +23,7 @@ class MatchViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsCashierCoachOrGuardianRole()]
-        return [IsOperationsCashierOrCoachRole()]
+        return [IsAdminForWrites()]
 
     @action(detail=False, methods=["get"], url_path="standings")
     def standings(self, request):
@@ -31,6 +31,8 @@ class MatchViewSet(viewsets.ModelViewSet):
         tournament_id = request.query_params.get("tournament")
         if tournament_id:
             teams = Team.objects.filter(tournament_id=tournament_id)
+            if request.user.role in {"cashier", "coach"} and request.user.primary_site_id:
+                teams = teams.filter(tournament__site_id=request.user.primary_site_id)
         else:
             teams = Team.objects.filter(tournament__matches__in=queryset).distinct()
 
@@ -108,6 +110,33 @@ class StudentAssessmentViewSet(viewsets.ModelViewSet):
         if self.request.user.role == "guardian":
             queryset = queryset.filter(student__guardian__user=self.request.user)
         return queryset.order_by("-assessment_month", "student__full_name")
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsOperationsCoachOrGuardianRole()]
+        return [IsOperationsOrCoachRole()]
+
+
+class StudentValueAssessmentViewSet(viewsets.ModelViewSet):
+    queryset = StudentValueAssessment.objects.select_related("student", "coach", "site").all()
+    serializer_class = StudentValueAssessmentSerializer
+    permission_classes = [IsOperationsCoachOrGuardianRole]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        student = self.request.query_params.get("student")
+        site = self.request.query_params.get("site")
+        if student:
+            queryset = queryset.filter(student_id=student)
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if self.request.user.role == "coach":
+            queryset = queryset.filter(site=self.request.user.primary_site)
+            if self.request.user.coach_group_name:
+                queryset = queryset.filter(student__group_name=self.request.user.coach_group_name)
+        if self.request.user.role == "guardian":
+            queryset = queryset.filter(student__guardian__user=self.request.user)
+        return queryset.order_by("-assessment_month", "-updated_at", "student__full_name")
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):

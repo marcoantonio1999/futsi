@@ -75,6 +75,7 @@ import {
 export function AdultLeagueDashboardPanel({
   data,
   readOnly = false,
+  collectionOnly = false,
   onCreateSession,
   onMarkPlayer,
   onCreatePayment,
@@ -82,6 +83,7 @@ export function AdultLeagueDashboardPanel({
 }: {
   data: AppData;
   readOnly?: boolean;
+  collectionOnly?: boolean;
   onCreateSession: (payload: unknown) => Promise<AttendanceSession>;
   onMarkPlayer: (payload: unknown) => Promise<void>;
   onCreatePayment: (payload: unknown) => void;
@@ -98,6 +100,9 @@ export function AdultLeagueDashboardPanel({
     .filter((payment) => payment.status === "registered" || payment.status === "reconciled")
     .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const adultBalance = adultCharges.reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
+  const openAdultCharges = adultCharges
+    .filter((charge) => charge.status === "pending" || charge.status === "partial")
+    .sort((a, b) => (a.due_date || "9999-12-31").localeCompare(b.due_date || "9999-12-31"));
   const refereeExpenses = data.expenses
     .filter((expense) => expense.category.toLowerCase().includes("arbit"))
     .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
@@ -106,10 +111,22 @@ export function AdultLeagueDashboardPanel({
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(adultTeams[0]?.id ?? null);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [paymentForm, setPaymentForm] = useState({ charge: "", amount: "", method: "cash", channel: "cash_confirmation" });
+  const [adultChargeFilters, setAdultChargeFilters] = useState({
+    query: "",
+    status: "all",
+    minAmount: "",
+    maxAmount: "",
+    fromDate: "",
+    toDate: "",
+  });
+  const [adultChargePage, setAdultChargePage] = useState(1);
+  const adultChargePageSize = 8;
 
   const selectedTeam = adultTeams.find((team) => team.id === selectedTeamId) ?? adultTeams[0] ?? null;
   const selectedPlayers = selectedTeam ? adultPlayers.filter((player) => player.team === selectedTeam.id).sort((a, b) => Number(a.jersey_number || 99) - Number(b.jersey_number || 99)) : [];
   const selectedCharges = selectedTeam ? adultCharges.filter((charge) => charge.team === selectedTeam.id && (charge.status === "pending" || charge.status === "partial")) : [];
+  const selectedTeamBalance = selectedCharges.reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
+  const suggestedPlayerShare = selectedPlayers.length ? selectedTeamBalance / selectedPlayers.length : 0;
   const teamSessions = selectedTeam ? data.attendanceSessions.filter((session) => session.session_type === "tournament_match" && session.team === selectedTeam.id) : [];
   const currentMatch = useMemo(() => findCurrentMatch(data.matches, selectedTeam?.site, selectedTeam?.id), [data.matches, selectedTeam?.id, selectedTeam?.site]);
   const currentSession = useMemo(() => findCurrentSession(teamSessions, selectedTeam?.site, selectedTeam?.id), [selectedTeam?.id, selectedTeam?.site, teamSessions]);
@@ -123,6 +140,45 @@ export function AdultLeagueDashboardPanel({
     return map;
   }, [activeSession?.id, data.playerAttendanceRecords]);
   const presentCount = Array.from(recordsByPlayer.values()).filter((record) => record.status === "present").length;
+  const filteredAdultCharges = useMemo(() => {
+    const query = normalizeText(adultChargeFilters.query);
+    const minAmount = adultChargeFilters.minAmount === "" ? null : Number(adultChargeFilters.minAmount);
+    const maxAmount = adultChargeFilters.maxAmount === "" ? null : Number(adultChargeFilters.maxAmount);
+
+    return openAdultCharges.filter((charge) => {
+      const team = adultTeams.find((item) => item.id === charge.team);
+      const balance = Number(charge.balance || 0);
+      const searchable = normalizeText([
+        charge.team_name,
+        team?.name,
+        team?.representative_name,
+        team?.representative_phone,
+        charge.payer_name,
+        charge.payer_phone,
+        charge.concept,
+        charge.description,
+        charge.site_name,
+      ].filter(Boolean).join(" "));
+
+      if (query && !searchable.includes(query)) return false;
+      if (adultChargeFilters.status !== "all" && charge.status !== adultChargeFilters.status) return false;
+      if (minAmount !== null && balance < minAmount) return false;
+      if (maxAmount !== null && balance > maxAmount) return false;
+      if (adultChargeFilters.fromDate && (!charge.due_date || charge.due_date < adultChargeFilters.fromDate)) return false;
+      if (adultChargeFilters.toDate && (!charge.due_date || charge.due_date > adultChargeFilters.toDate)) return false;
+      return true;
+    });
+  }, [adultChargeFilters, adultTeams, openAdultCharges]);
+  const adultChargeTotalPages = Math.max(1, Math.ceil(filteredAdultCharges.length / adultChargePageSize));
+  const paginatedAdultCharges = filteredAdultCharges.slice((adultChargePage - 1) * adultChargePageSize, adultChargePage * adultChargePageSize);
+
+  useEffect(() => {
+    setAdultChargePage(1);
+  }, [adultChargeFilters]);
+
+  useEffect(() => {
+    setAdultChargePage((page) => Math.min(page, adultChargeTotalPages));
+  }, [adultChargeTotalPages]);
 
   useEffect(() => {
     if (!selectedTeamId && adultTeams[0]) setSelectedTeamId(adultTeams[0].id);
@@ -164,6 +220,13 @@ export function AdultLeagueDashboardPanel({
     setPaymentForm({ ...paymentForm, charge: chargeId, amount: charge?.balance || "" });
   }
 
+  function selectPendingCharge(chargeId: number) {
+    const charge = openAdultCharges.find((item) => item.id === chargeId);
+    if (!charge) return;
+    setSelectedTeamId(charge.team);
+    setPaymentForm({ ...paymentForm, charge: String(charge.id), amount: charge.balance || charge.amount || "" });
+  }
+
   function changePaymentMethod(method: string) {
     setPaymentForm({
       ...paymentForm,
@@ -185,14 +248,15 @@ export function AdultLeagueDashboardPanel({
   }
 
   return (
-    <section className="grid gap-5 rounded-md border border-blue-200 bg-blue-50/40 p-4">
+    <section className="grid gap-5 rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase text-blue-700">Operacion adultos</p>
-          <h2 className="text-xl font-semibold text-blue-950">Liga adultos</h2>
-          <p className="mt-1 text-sm text-blue-800">Equipos de 16 jugadores, representante por equipo, pagos separados y pase de lista por jugador.</p>
+          <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Operacion adultos</p>
+          <h2 className="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Liga adultos</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+            El torneo adulto se cobra como adeudo total del equipo. El representante o los jugadores pueden hacer pagos parciales hasta cubrir ese total.
+          </p>
         </div>
-        <span className="rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white">Modo azul</span>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -203,13 +267,162 @@ export function AdultLeagueDashboardPanel({
         <Metric label="Arbitraje" value={`$${money(refereeExpenses)}`} />
       </div>
 
+      {collectionOnly && (
+        <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
+          <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+            <TableHeader title="Cobros pendientes adultos" count={filteredAdultCharges.length} />
+            <div className="grid gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:grid-cols-2 lg:grid-cols-6">
+              <TextInput
+                label="Buscar"
+                placeholder="Equipo, representante, concepto"
+                value={adultChargeFilters.query}
+                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, query: event.target.value })}
+              />
+              <SelectInput
+                label="Estado"
+                value={adultChargeFilters.status}
+                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, status: event.target.value })}
+              >
+                <option value="all">Todos</option>
+                <option value="pending">Pendiente</option>
+                <option value="partial">Parcial</option>
+              </SelectInput>
+              <TextInput
+                label="Monto min."
+                type="number"
+                min="0"
+                step="0.01"
+                value={adultChargeFilters.minAmount}
+                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, minAmount: event.target.value })}
+              />
+              <TextInput
+                label="Monto max."
+                type="number"
+                min="0"
+                step="0.01"
+                value={adultChargeFilters.maxAmount}
+                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, maxAmount: event.target.value })}
+              />
+              <TextInput
+                label="Desde"
+                type="date"
+                value={adultChargeFilters.fromDate}
+                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, fromDate: event.target.value })}
+              />
+              <TextInput
+                label="Hasta"
+                type="date"
+                value={adultChargeFilters.toDate}
+                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, toDate: event.target.value })}
+              />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+                  <tr>
+                    <th className="px-4 py-3">Equipo</th>
+                    <th className="px-4 py-3">Representante</th>
+                    <th className="px-4 py-3">Cobro</th>
+                    <th className="px-4 py-3">Vence</th>
+                    <th className="px-4 py-3">Saldo</th>
+                    <th className="px-4 py-3">Accion</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+                  {paginatedAdultCharges.map((charge) => {
+                    const team = adultTeams.find((item) => item.id === charge.team);
+                    return (
+                      <tr key={charge.id} className="border-b border-zinc-100 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+                        <td className="px-4 py-3 font-semibold">{charge.team_name || team?.name || "Equipo"}</td>
+                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-200">
+                          {team?.representative_name || charge.payer_name || "Sin representante"}
+                          <br />
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">{team?.representative_phone || charge.payer_phone || "Sin telefono"}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium">{charge.concept}</p>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">{charge.description || "Sin detalle"}</p>
+                          <span className={`mt-2 inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${charge.status === "partial" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"}`}>
+                            {chargeStatusLabel(charge.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-200">{charge.due_date || "Sin fecha"}</td>
+                        <td className="px-4 py-3 text-base font-bold">${money(charge.balance)}</td>
+                        <td className="px-4 py-3">
+                          <button className="rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white" onClick={() => selectPendingCharge(charge.id)} type="button">
+                            Cobrar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredAdultCharges.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-sm text-zinc-500" colSpan={6}>Sin cobros pendientes de liga adultos.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {filteredAdultCharges.length > adultChargePageSize && (
+              <div className="flex flex-col gap-3 border-t border-zinc-200 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Mostrando {(adultChargePage - 1) * adultChargePageSize + 1}-{Math.min(adultChargePage * adultChargePageSize, filteredAdultCharges.length)} de {filteredAdultCharges.length}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    className="rounded-md border border-zinc-200 px-3 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800"
+                    disabled={adultChargePage <= 1}
+                    onClick={() => setAdultChargePage((page) => Math.max(1, page - 1))}
+                    type="button"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    className="rounded-md border border-zinc-200 px-3 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800"
+                    disabled={adultChargePage >= adultChargeTotalPages}
+                    onClick={() => setAdultChargePage((page) => Math.min(adultChargeTotalPages, page + 1))}
+                    type="button"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Hacer cobro</h3>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-300">
+              {selectedTeam?.name || "Selecciona un cobro pendiente"} - {selectedTeam?.representative_name || "representante"}
+            </p>
+            <form onSubmit={submitPayment} className="mt-4 grid gap-3">
+              <SelectInput label="Cobro pendiente" value={paymentForm.charge} onChange={(event) => selectPendingCharge(Number(event.target.value))} required>
+                <option value="">{filteredAdultCharges.length ? "Seleccionar cobro filtrado" : "Sin cobros pendientes"}</option>
+                {filteredAdultCharges.slice(0, 30).map((charge) => (
+                  <option key={charge.id} value={charge.id}>{charge.team_name} - {chargeLabel(charge)} - ${money(charge.balance)}</option>
+                ))}
+              </SelectInput>
+              <SelectInput label="Metodo" value={paymentForm.method} onChange={(event) => changePaymentMethod(event.target.value)}>
+                <option value="cash">Efectivo</option>
+                <option value="card">Tarjeta</option>
+              </SelectInput>
+              <TextInput label="Monto" type="number" min="0" step="0.01" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} required />
+              <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white" type="submit">Crear solicitud de cobro</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {collectionOnly ? null : (
+
       <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
         <div className="grid gap-5">
-          <div className="rounded-md border border-blue-200 bg-white shadow-sm">
+          <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
             <TableHeader title="Equipos y representantes" count={adultTeams.length} />
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className="border-b border-blue-100 bg-blue-50 text-xs uppercase text-blue-800">
+                <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
                   <tr>
                     <th className="px-4 py-3">Equipo</th>
                     <th className="px-4 py-3">Sede</th>
@@ -219,19 +432,19 @@ export function AdultLeagueDashboardPanel({
                     <th className="px-4 py-3">Accion</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
                   {adultTeams.slice(0, 18).map((team) => {
                     const playerCount = adultPlayers.filter((player) => player.team === team.id).length;
                     const balance = adultCharges.filter((charge) => charge.team === team.id).reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
                     return (
-                      <tr key={team.id} className="border-b border-blue-50">
+                      <tr key={team.id} className="border-b border-zinc-100 bg-white dark:border-zinc-800 dark:bg-zinc-950">
                         <td className="px-4 py-3 font-medium">{team.name}</td>
-                        <td className="px-4 py-3">{team.site_name}</td>
-                        <td className="px-4 py-3">{team.representative_name}<br /><span className="text-xs text-zinc-500">{team.representative_phone}</span></td>
+                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-200">{team.site_name}</td>
+                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-200">{team.representative_name}<br /><span className="text-xs text-zinc-500 dark:text-zinc-400">{team.representative_phone}</span></td>
                         <td className="px-4 py-3">
-                          <span className={`rounded-md px-2 py-1 text-xs font-semibold ${playerCount === 16 ? "bg-blue-100 text-blue-800" : "bg-amber-50 text-amber-800"}`}>{playerCount}/16</span>
+                          <span className={`rounded-md px-2 py-1 text-xs font-semibold ${playerCount === 16 ? "bg-blue-700 text-white" : "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200"}`}>{playerCount}/16</span>
                         </td>
-                        <td className="px-4 py-3">${money(balance)}</td>
+                        <td className="px-4 py-3 font-semibold text-zinc-950 dark:text-zinc-50">${money(balance)}</td>
                         <td className="px-4 py-3">
                 <button className="rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white" onClick={() => setSelectedTeamId(team.id)}>{readOnly ? "Ver" : "Operar"}</button>
                         </td>
@@ -243,14 +456,14 @@ export function AdultLeagueDashboardPanel({
             </div>
           </div>
 
-          <div className="rounded-md border border-blue-200 bg-white shadow-sm">
-            <div className="border-b border-blue-100 px-4 py-3">
-              <p className="text-xs font-semibold uppercase text-blue-700">Tabla de posiciones adultos</p>
-              <h3 className="font-semibold">{activeTournament?.name || "Torneo activo"}</h3>
+          <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+            <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Tabla de posiciones adultos</p>
+              <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">{activeTournament?.name || "Torneo activo"}</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="border-b border-blue-100 bg-blue-50 text-xs uppercase text-blue-800">
+                <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
                   <tr>
                     <th className="px-4 py-3">Pos</th>
                     <th className="px-4 py-3">Equipo</th>
@@ -259,11 +472,11 @@ export function AdultLeagueDashboardPanel({
                     <th className="px-4 py-3">Pts</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
                   {standings.map((row) => (
-                    <tr key={row.team} className={`border-b border-blue-50 transition-all duration-500 ${row.is_leader ? "bg-blue-50" : ""}`}>
-                      <td className="px-4 py-3"><span className={`inline-grid size-8 place-items-center rounded-full font-semibold ${row.is_leader ? "bg-blue-700 text-white" : "bg-zinc-100"}`}>{row.position}</span></td>
-                      <td className="px-4 py-3 font-medium">{row.team_name}{row.is_leader && <span className="ml-2 rounded-md bg-blue-700 px-2 py-1 text-xs text-white">Lider</span>}</td>
+                    <tr key={row.team} className={`border-b border-zinc-100 transition-all duration-500 dark:border-zinc-800 ${row.is_leader ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-zinc-950"}`}>
+                      <td className="px-4 py-3"><span className={`inline-grid size-8 place-items-center rounded-full font-semibold ${row.is_leader ? "bg-blue-700 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>{row.position}</span></td>
+                      <td className="px-4 py-3 font-medium text-zinc-950 dark:text-zinc-50">{row.team_name}{row.is_leader && <span className="ml-2 rounded-md bg-blue-700 px-2 py-1 text-xs text-white">Lider</span>}</td>
                       <td className="px-4 py-3">{row.played}</td>
                       <td className="px-4 py-3">{row.goal_difference > 0 ? "+" : ""}{row.goal_difference}</td>
                       <td className="px-4 py-3 text-lg font-bold">{row.points}</td>
@@ -277,9 +490,28 @@ export function AdultLeagueDashboardPanel({
 
         <div className="grid gap-5">
           {!readOnly && (
-          <div className="rounded-md border border-blue-200 bg-white p-4 shadow-sm">
-            <h3 className="font-semibold text-blue-950">Cobro por equipo</h3>
-            <p className="mt-1 text-sm text-zinc-500">{selectedTeam?.name || "Selecciona equipo"} - representante {selectedTeam?.representative_name}</p>
+          <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Cobro por equipo</h3>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-300">
+              {selectedTeam?.name || "Selecciona equipo"} - representante {selectedTeam?.representative_name}
+            </p>
+            <div className="mt-3 grid gap-2 rounded-md bg-zinc-50 p-3 text-sm dark:bg-zinc-900 sm:grid-cols-3">
+              <div>
+                <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Saldo del equipo</p>
+                <p className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">${money(selectedTeamBalance)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Jugadores activos</p>
+                <p className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">{selectedPlayers.length}/16</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Aportacion sugerida</p>
+                <p className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">${money(suggestedPlayerShare)}</p>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              La aportacion sugerida es informativa: todos los pagos se aplican al mismo adeudo del equipo, no a cargos duplicados por jugador.
+            </p>
             <form onSubmit={submitPayment} className="mt-4 grid gap-3">
               <SelectInput label="Cobro programado" value={paymentForm.charge} onChange={(event) => selectCharge(event.target.value)} required>
                 <option value="">{selectedCharges.length ? "Seleccionar jornada o torneo" : "Sin cobros pendientes"}</option>
@@ -298,12 +530,12 @@ export function AdultLeagueDashboardPanel({
           </div>
           )}
 
-          <div className="rounded-md border border-blue-200 bg-white shadow-sm">
-            <div className="border-b border-blue-100 px-4 py-3">
+          <div className="rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-semibold text-blue-950">Pase de lista adultos</h3>
-                  <p className="mt-1 text-sm text-zinc-500">
+                  <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Pase de lista adultos</h3>
+                  <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-300">
                     {selectedTeam?.name || "Selecciona equipo"} - {presentCount}/{selectedPlayers.length} presentes
                     {activeSession ? ` - ventana ${sessionWindowText(activeSession)}` : ""}
                   </p>
@@ -313,13 +545,13 @@ export function AdultLeagueDashboardPanel({
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {teamSessions.filter((session) => session.date === todayKey()).slice(0, 4).map((session) => (
-                  <button key={session.id} className={`rounded-md border px-2 py-1 text-xs ${activeSession?.id === session.id ? "border-blue-700 bg-blue-700 text-white" : "border-blue-200 bg-white text-blue-800"}`} onClick={() => setActiveSessionId(session.id)}>
+                  <button key={session.id} className={`rounded-md border px-2 py-1 text-xs ${activeSession?.id === session.id ? "border-blue-700 bg-blue-700 text-white" : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"}`} onClick={() => setActiveSessionId(session.id)}>
                     {session.starts_at?.slice(0, 5) || ""} {canMarkSession(session) ? "En ventana" : sessionWindowText(session)}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="max-h-[560px] divide-y divide-blue-50 overflow-auto">
+            <div className="max-h-[560px] divide-y divide-zinc-100 overflow-auto dark:divide-zinc-800">
               {selectedPlayers.map((player) => {
                 const record = recordsByPlayer.get(player.id);
                 return (
@@ -344,6 +576,7 @@ export function AdultLeagueDashboardPanel({
           </div>
         </div>
       </div>
+      )}
     </section>
   );
 }

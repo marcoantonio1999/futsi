@@ -215,6 +215,38 @@ function UniformMoneyChart({ rows }: { rows: UniformSiteRow[] }) {
   );
 }
 
+export function UniformKitPreview({ site, index, compact = false }: { site: Site; index: number; compact?: boolean }) {
+  const palette = designPalettes[index % designPalettes.length];
+  return (
+    <div className={`grid gap-3 ${compact ? "grid-cols-[88px_1fr]" : "grid-cols-[110px_1fr]"}`}>
+      <div className={`relative mx-auto ${compact ? "h-28 w-20" : "h-32 w-24"}`}>
+        <div className="absolute left-1/2 top-0 h-5 w-10 -translate-x-1/2 rounded-b-full" style={{ backgroundColor: palette.secondary }} />
+        <div className="absolute left-3 top-4 h-24 w-18 rounded-t-[28px] rounded-b-md shadow-inner" style={{ backgroundColor: palette.primary }}>
+          <div className="absolute inset-y-0 left-1/2 w-4 -translate-x-1/2" style={{ backgroundColor: palette.accent, opacity: 0.9 }} />
+          <div className="absolute left-1/2 top-8 grid size-8 -translate-x-1/2 place-items-center rounded-full text-xs font-bold" style={{ backgroundColor: palette.secondary, color: palette.accent }}>
+            F
+          </div>
+        </div>
+        <div className="absolute left-0 top-8 h-14 w-5 rounded-l-full" style={{ backgroundColor: palette.secondary }} />
+        <div className="absolute right-0 top-8 h-14 w-5 rounded-r-full" style={{ backgroundColor: palette.secondary }} />
+        <div className="absolute bottom-0 left-6 h-8 w-12 rounded-md" style={{ backgroundColor: palette.secondary }} />
+      </div>
+      <div className="grid content-center gap-2 text-sm">
+        <div>
+          <p className="text-xs font-medium uppercase text-zinc-500">Camiseta asignada</p>
+          <p className="font-semibold text-zinc-950 dark:text-zinc-50">{site.name}</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-300">{palette.pattern}</p>
+        </div>
+        <div className="flex gap-2">
+          {[palette.primary, palette.secondary, palette.accent].map((color) => (
+            <span key={color} className="size-5 rounded-full border border-zinc-200" style={{ backgroundColor: color }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UniformDesignCard({ site, index, row }: { site: Site; index: number; row: UniformSiteRow }) {
   const palette = designPalettes[index % designPalettes.length];
   return (
@@ -228,18 +260,7 @@ function UniformDesignCard({ site, index, row }: { site: Site; index: number; ro
         <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">{row.totalStudents} alumnos</span>
       </div>
       <div className="mt-4 grid grid-cols-[110px_1fr] gap-4">
-        <div className="relative mx-auto h-32 w-24">
-          <div className="absolute left-1/2 top-0 h-5 w-10 -translate-x-1/2 rounded-b-full" style={{ backgroundColor: palette.secondary }} />
-          <div className="absolute left-3 top-4 h-24 w-18 rounded-t-[28px] rounded-b-md shadow-inner" style={{ backgroundColor: palette.primary }}>
-            <div className="absolute inset-y-0 left-1/2 w-4 -translate-x-1/2" style={{ backgroundColor: palette.accent, opacity: 0.9 }} />
-            <div className="absolute left-1/2 top-8 grid size-8 -translate-x-1/2 place-items-center rounded-full text-xs font-bold" style={{ backgroundColor: palette.secondary, color: palette.accent }}>
-              F
-            </div>
-          </div>
-          <div className="absolute left-0 top-8 h-14 w-5 rounded-l-full" style={{ backgroundColor: palette.secondary }} />
-          <div className="absolute right-0 top-8 h-14 w-5 rounded-r-full" style={{ backgroundColor: palette.secondary }} />
-          <div className="absolute bottom-0 left-6 h-8 w-12 rounded-md" style={{ backgroundColor: palette.secondary }} />
-        </div>
+        <UniformKitPreview site={site} index={index} compact />
         <div className="grid content-center gap-2 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-zinc-500">Entregados</span>

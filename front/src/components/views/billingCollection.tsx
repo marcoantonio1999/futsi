@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Metric } from "../cards/Metric";
 import type { AppData, Charge } from "../../types";
 import { money } from "../../utils/format";
-import { SelectInput, TextInput, StatusPill, TableHeader, chargeStatusLabel, normalizeText } from "./shared";
+import { SelectInput, TextInput, StatusPill, TableHeader, chargeStatusLabel, normalizeText, paymentMethodLabel, paymentStatusLabel } from "./shared";
 
 function getChargeDueBucket(charge: Charge) {
   if (charge.status === "paid" || charge.status === "canceled") return charge.status;
@@ -43,11 +43,13 @@ export function BillingCollectionPanel({
   compact = false,
   onCreatePayment,
   onCreateDiscount,
+  discountActionLabel = "Aplicar descuento",
 }: {
   data: AppData;
   compact?: boolean;
   onCreatePayment?: (payload: unknown) => void;
   onCreateDiscount?: (payload: unknown) => void;
+  discountActionLabel?: string;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [filters, setFilters] = useState({
@@ -56,6 +58,10 @@ export function BillingCollectionPanel({
     site: "all",
     concept: "all",
     due: "attention",
+    amountMin: "",
+    amountMax: "",
+    dateFrom: "",
+    dateTo: "",
   });
   const [page, setPage] = useState(1);
   const [selectedChargeId, setSelectedChargeId] = useState<number | null>(null);
@@ -89,6 +95,11 @@ export function BillingCollectionPanel({
         if (filters.concept !== "all" && charge.concept !== filters.concept) return false;
         if (filters.due === "attention" && !["overdue", "due_soon"].includes(dueBucket)) return false;
         if (filters.due !== "all" && filters.due !== "attention" && dueBucket !== filters.due) return false;
+        const balance = Number(charge.balance || 0);
+        if (filters.amountMin && balance < Number(filters.amountMin)) return false;
+        if (filters.amountMax && balance > Number(filters.amountMax)) return false;
+        if (filters.dateFrom && (!charge.due_date || charge.due_date < filters.dateFrom)) return false;
+        if (filters.dateTo && (!charge.due_date || charge.due_date > filters.dateTo)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -106,6 +117,26 @@ export function BillingCollectionPanel({
   const pageCount = Math.max(1, Math.ceil(filteredCharges.length / pageSize));
   const visibleCharges = filteredCharges.slice((page - 1) * pageSize, page * pageSize);
   const selectedCharge = data.charges.find((charge) => charge.id === selectedChargeId) ?? null;
+  const selectedPayments = useMemo(() => {
+    if (!selectedChargeId) return [];
+    return data.payments
+      .filter((payment) => payment.charge === selectedChargeId)
+      .sort((a, b) => {
+        const dateA = a.confirmed_at || a.paid_at || a.expires_at || "";
+        const dateB = b.confirmed_at || b.paid_at || b.expires_at || "";
+        return dateB.localeCompare(dateA);
+      });
+  }, [data.payments, selectedChargeId]);
+  const selectedDiscounts = useMemo(() => {
+    if (!selectedChargeId) return [];
+    return data.discounts
+      .filter((discount) => discount.charge === selectedChargeId)
+      .sort((a, b) => {
+        const dateA = a.approved_at || a.created_at || "";
+        const dateB = b.approved_at || b.created_at || "";
+        return dateB.localeCompare(dateA);
+      });
+  }, [data.discounts, selectedChargeId]);
   const billingSummary = useMemo(() => {
     const open = data.charges.filter((charge) => charge.status === "pending" || charge.status === "partial");
     const overdue = open.filter((charge) => (charge.due_bucket || getChargeDueBucket(charge)) === "overdue");
@@ -123,8 +154,8 @@ export function BillingCollectionPanel({
 
   const metricGridClass = compact ? "mt-4 grid gap-3 sm:grid-cols-2" : "mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4";
   const filterGridClass = compact
-    ? "mt-4 grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2 lg:grid-cols-3"
-    : "mt-4 grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 md:grid-cols-2 xl:grid-cols-5";
+    ? "mt-4 grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2 xl:grid-cols-4"
+    : "mt-4 grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 md:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-9";
   const headerGridClass = "hidden grid-cols-[1.3fr_1fr_0.8fr_0.7fr_0.7fr_0.7fr_0.8fr] gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-semibold uppercase text-zinc-500 xl:grid";
   const rowGridClass = "grid min-w-0 gap-3 px-4 py-4 xl:grid-cols-[1.3fr_1fr_0.8fr_0.7fr_0.7fr_0.7fr_0.8fr] xl:items-center";
 
@@ -159,6 +190,18 @@ export function BillingCollectionPanel({
 
   function renderSelectedChargeActions() {
     if (!selectedCharge || (!onCreatePayment && !onCreateDiscount)) return null;
+    const confirmedTotal = selectedPayments
+      .filter((payment) => payment.status === "registered" || payment.status === "reconciled")
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const pendingTotal = selectedPayments
+      .filter((payment) => payment.status === "processing" || payment.status === "awaiting_confirmation")
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const approvedDiscountTotal = selectedDiscounts
+      .filter((discount) => discount.status === "approved")
+      .reduce((sum, discount) => sum + Number(discount.amount || 0), 0);
+    const requestedDiscountTotal = selectedDiscounts
+      .filter((discount) => discount.status === "requested")
+      .reduce((sum, discount) => sum + Number(discount.amount || 0), 0);
     return (
       <div onClick={(event) => event.stopPropagation()} className="rounded-md border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
         <div className="min-w-0">
@@ -202,12 +245,89 @@ export function BillingCollectionPanel({
                 </SelectInput>
                 <TextInput label="Monto" type="number" min="0" step="0.01" required value={discountForm.amount} onChange={(event) => setDiscountForm({ ...discountForm, amount: event.target.value })} />
                 <button className="col-span-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-semibold text-white lg:col-span-1 lg:self-end" type="submit">
-                  Guardar descuento
+                  {discountActionLabel}
                 </button>
               </div>
-              <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">Queda registrado con usuario, motivo y monto para mantener trazabilidad.</p>
+              <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
+                Admin/contador lo aplican directo. Caja lo deja como solicitud pendiente de aprobacion.
+              </p>
             </form>
           )}
+        </div>
+
+        <div className="mt-3 rounded-md border border-zinc-200 bg-white/80 p-3 dark:border-zinc-800 dark:bg-zinc-950/70">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Historial de pagos parciales</p>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                Registrado ${money(confirmedTotal)} · En proceso ${money(pendingTotal)}
+              </p>
+            </div>
+            <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">
+              {selectedPayments.length} movimiento(s)
+            </span>
+          </div>
+          <div className="mt-3 divide-y divide-zinc-100 dark:divide-zinc-800">
+            {selectedPayments.map((payment) => {
+              const paidAt = payment.confirmed_at || payment.paid_at || payment.expires_at || "";
+              return (
+                <div key={payment.id} className="grid gap-2 py-2 text-sm sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <p className="font-medium">{paymentMethodLabel(payment.method)} - {payment.reference || payment.tracking_key || "folio automatico"}</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {paidAt ? paidAt.slice(0, 16).replace("T", " ") : "Sin fecha"} · {payment.received_by_username || "sistema"}
+                    </p>
+                  </div>
+                  <StatusPill label={paymentStatusLabel(payment.status)} />
+                  <p className="font-semibold sm:text-right">${money(payment.amount)}</p>
+                </div>
+              );
+            })}
+            {selectedPayments.length === 0 && (
+              <p className="py-3 text-sm text-zinc-500">Todavia no hay pagos parciales registrados para este cobro.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-md border border-amber-200 bg-white/80 p-3 dark:border-amber-900 dark:bg-zinc-950/70">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Historial de descuentos</p>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                Aplicado ${money(approvedDiscountTotal)} · Pendiente ${money(requestedDiscountTotal)}
+              </p>
+            </div>
+            <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              {selectedDiscounts.length} descuento(s)
+            </span>
+          </div>
+          <div className="mt-3 divide-y divide-zinc-100 dark:divide-zinc-800">
+            {selectedDiscounts.map((discount) => {
+              const discountDate = discount.approved_at || discount.created_at || "";
+              const label = {
+                requested: "Pendiente",
+                approved: "Aplicado",
+                rejected: "Rechazado",
+                canceled: "Cancelado",
+              }[discount.status];
+              return (
+                <div key={discount.id} className="grid gap-2 py-2 text-sm sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <p className="font-medium">{discount.reason}</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {discountDate ? discountDate.slice(0, 16).replace("T", " ") : "Sin fecha"} · {discount.requested_by_username || "sistema"}
+                      {discount.approved_by_username ? ` · aprobo ${discount.approved_by_username}` : ""}
+                    </p>
+                  </div>
+                  <StatusPill label={label} />
+                  <p className="font-semibold sm:text-right">-${money(discount.amount)}</p>
+                </div>
+              );
+            })}
+            {selectedDiscounts.length === 0 && (
+              <p className="py-3 text-sm text-zinc-500">Todavia no hay descuentos registrados para este cobro.</p>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -266,72 +386,12 @@ export function BillingCollectionPanel({
             <option value="scheduled">Programados</option>
             <option value="without_due_date">Sin fecha</option>
           </SelectInput>
+          <TextInput label="Monto min." type="number" min="0" step="0.01" value={filters.amountMin} onChange={(event) => setFilters({ ...filters, amountMin: event.target.value })} />
+          <TextInput label="Monto max." type="number" min="0" step="0.01" value={filters.amountMax} onChange={(event) => setFilters({ ...filters, amountMax: event.target.value })} />
+          <TextInput label="Desde" type="date" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} />
+          <TextInput label="Hasta" type="date" value={filters.dateTo} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} />
         </div>
 
-        {compact ? (
-          <>
-            {selectedCharge && <div className="mt-4">{renderSelectedChargeActions()}</div>}
-            <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {visibleCharges.map((charge) => (
-                <div
-                  key={charge.id}
-                  className={`min-w-0 rounded-md border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-zinc-950 ${
-                    selectedChargeId === charge.id ? "border-emerald-500 ring-2 ring-emerald-100 dark:ring-emerald-950" : "border-zinc-200 dark:border-zinc-800"
-                  }`}
-                  onClick={() => selectChargeForPayment(charge)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") selectChargeForPayment(charge);
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="flex min-w-0 items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="break-words text-base font-semibold leading-snug">{chargeSubject(charge)}</p>
-                      <p className="mt-1 break-words text-sm text-zinc-500">{charge.payer_name || "Sin pagador"}</p>
-                      {charge.payer_phone && <p className="mt-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{charge.payer_phone}</p>}
-                    </div>
-                    <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${dueTone(charge)}`}>{dueLabel(charge)}</span>
-                  </div>
-
-                <div className="mt-4 rounded-md bg-zinc-50 p-3 dark:bg-zinc-900">
-                  <p className="text-sm font-semibold">{charge.concept}</p>
-                  <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{charge.description || "Sin detalle"}</p>
-                  <p className="mt-2 text-xs text-zinc-400">{charge.site_name}</p>
-                </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase text-zinc-400">Monto</p>
-                    <p className="mt-1 font-medium">${money(charge.amount)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase text-zinc-400">Pagado</p>
-                    <p className="mt-1 font-medium">${money(charge.paid_amount || 0)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase text-zinc-400">Saldo</p>
-                    <p className="mt-1 font-bold">${money(charge.balance)}</p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <StatusPill label={chargeStatusLabel(charge.status)} />
-                  {charge.status === "partial" && (
-                    <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">Pago parcial</span>
-                  )}
-                  {charge.schedule_type && charge.schedule_type !== "one_time" && (
-                    <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800">
-                      {charge.schedule_type === "monthly" ? "Mensual" : charge.schedule_type === "weekly" ? "Semanal" : "Torneo"}
-                    </span>
-                  )}
-                </div>
-                </div>
-              ))}
-              {visibleCharges.length === 0 && <p className="rounded-md border border-zinc-200 px-4 py-8 text-sm text-zinc-500">No hay cobros con estos filtros.</p>}
-            </div>
-          </>
-        ) : (
           <div className="mt-4 min-w-0 overflow-hidden rounded-md border border-zinc-200">
             <div className={headerGridClass}>
               <span>Cliente</span>
@@ -387,7 +447,6 @@ export function BillingCollectionPanel({
               {visibleCharges.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay cobros con estos filtros.</p>}
             </div>
           </div>
-        )}
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-zinc-500">Pagina {page} de {pageCount}</p>

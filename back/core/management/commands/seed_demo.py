@@ -26,6 +26,7 @@ from core.models import (
     StaffPaymentRequest,
     Student,
     StudentAssessment,
+    StudentValueAssessment,
     StudentTournamentRegistration,
     Team,
     Tournament,
@@ -53,6 +54,7 @@ class Command(BaseCommand):
             HistoricalImport.objects.all().delete()
             CoachWorkLog.objects.all().delete()
             StudentAssessment.objects.all().delete()
+            StudentValueAssessment.objects.all().delete()
             PlayerAttendanceRecord.objects.all().delete()
             Match.objects.all().delete()
             Round.objects.all().delete()
@@ -886,6 +888,46 @@ class Command(BaseCommand):
                     "defense": defense,
                     "physical": physical,
                     "attitude": attitude,
+                    "notes": notes,
+                },
+            )
+
+        value_assessment_specs = [
+            ("Adrian Perez", 94, 91, 88, 92, 90, "Lidera desde porteria y cuida el lenguaje con companeros."),
+            ("Gael Hernandez", 72, 68, 76, 70, 74, "Mucho talento, necesita controlar frustracion cuando pierde el balon."),
+            ("Santiago Vega", 86, 90, 82, 88, 84, "Constante, disciplinado y confiable para partidos cerrados."),
+            ("Rodrigo Flores", 89, 85, 93, 87, 91, "Excelente colaboracion; suele ordenar al grupo con respeto."),
+            ("Rafael Campos", 66, 61, 70, 64, 67, "Debe mejorar puntualidad y conducta tras indicaciones del coach."),
+            ("Valeria Soto", 92, 88, 95, 90, 94, "Muy buena integracion y apoyo a jugadores nuevos."),
+            ("Mateo Lopez", 78, 74, 80, 76, 79, "Buen progreso; falta sostener disciplina todo el entrenamiento."),
+            ("Isabella Ramirez", 96, 93, 91, 95, 97, "Referencia positiva del grupo; recomendable para capitania."),
+        ]
+        for name, respect, discipline, teamwork, responsibility, sportsmanship, notes in value_assessment_specs:
+            if name not in student_map:
+                continue
+            rating = round((respect + discipline + teamwork + responsibility + sportsmanship) / 5)
+            if rating >= 90:
+                recommendation = "Prioridad alta de minutos"
+            elif rating >= 80:
+                recommendation = "Minutos constantes"
+            elif rating >= 70:
+                recommendation = "Rotacion controlada"
+            elif rating >= 60:
+                recommendation = "Minutos condicionados"
+            else:
+                recommendation = "Plan formativo antes de competir"
+            StudentValueAssessment.objects.update_or_create(
+                student=student_map[name],
+                assessment_month="2026-05-01",
+                defaults={
+                    "coach": coach,
+                    "site": student_map[name].site,
+                    "respect": respect,
+                    "discipline": discipline,
+                    "teamwork": teamwork,
+                    "responsibility": responsibility,
+                    "sportsmanship": sportsmanship,
+                    "minutes_recommendation": recommendation,
                     "notes": notes,
                 },
             )

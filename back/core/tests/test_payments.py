@@ -1,10 +1,12 @@
 from datetime import datetime
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
 
 from core.models import Charge, Discount, Expense, User
+from core.serializers import charge_balance
 
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
@@ -104,6 +106,65 @@ def test_cashier_can_process_own_site_payments_but_not_cross_site(login_client):
     assert cross_site_response.status_code == 400
 
 
+def test_multiple_partial_card_payments_recalculate_balance(login_client):
+    client, _user = login_client("caja.roma", "demo12345")
+    charge = Charge.objects.get(student__full_name="Carlos Ruiz")
+    original_amount = charge.amount
+
+    first_payment = client.post(
+        "/api/payments/",
+        {"charge": charge.id, "method": "card", "amount": "100.00"},
+        format="json",
+    )
+    assert first_payment.status_code == 201
+    charge.refresh_from_db()
+    assert charge.status == "partial"
+    assert charge_balance(charge) == original_amount - Decimal("100.00")
+
+    second_payment = client.post(
+        "/api/payments/",
+        {"charge": charge.id, "method": "card", "amount": "125.00"},
+        format="json",
+    )
+    assert second_payment.status_code == 201
+    charge.refresh_from_db()
+    assert charge.status == "partial"
+    assert charge_balance(charge) == original_amount - Decimal("225.00")
+
+    overpay_response = client.post(
+        "/api/payments/",
+        {"charge": charge.id, "method": "card", "amount": str(charge_balance(charge) + Decimal("1.00"))},
+        format="json",
+    )
+    assert overpay_response.status_code == 400
+
+    history_response = client.get(f"/api/payments/?charge={charge.id}")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history) == 2
+    assert [payment["amount"] for payment in history] == ["100.00", "125.00"]
+
+
+def test_cashier_only_sees_primary_site_billing_data(login_client):
+    client, _user = login_client("caja.roma", "demo12345")
+
+    charges_response = client.get("/api/charges/")
+    assert charges_response.status_code == 200
+    charge_names = {charge["student_name"] for charge in charges_response.json() if charge.get("student_name")}
+    assert "Carlos Ruiz" in charge_names
+    assert "Luis Gomez" not in charge_names
+
+    students_response = client.get("/api/students/")
+    assert students_response.status_code == 200
+    student_names = {student["full_name"] for student in students_response.json()}
+    assert "Carlos Ruiz" in student_names
+    assert "Luis Gomez" not in student_names
+
+    discounts_response = client.get("/api/discounts/")
+    assert discounts_response.status_code == 200
+    assert all(discount["site_name"] == "Roma" for discount in discounts_response.json())
+
+
 def test_cashier_can_request_discount_from_billing_flow(login_client):
     client, _user = login_client("caja.roma", "demo12345")
     roma_charge = Charge.objects.get(student__full_name="Carlos Ruiz")
@@ -119,6 +180,14 @@ def test_cashier_can_request_discount_from_billing_flow(login_client):
     assert discount.status == "requested"
     assert discount.requested_by.username == "caja.roma"
     assert discount.site == roma_charge.site
+
+    coyoacan_charge = Charge.objects.get(student__full_name="Luis Gomez")
+    cross_site_response = client.post(
+        "/api/discounts/",
+        {"charge": coyoacan_charge.id, "reason": "Hermanos", "amount": "75.00"},
+        format="json",
+    )
+    assert cross_site_response.status_code == 400
 
 
 def test_payment_automation_simulation_flows(login_client):

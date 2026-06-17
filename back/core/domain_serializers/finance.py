@@ -132,8 +132,14 @@ class PaymentSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         charge = attrs.get("charge")
         amount = attrs.get("amount")
-        if amount is not None and amount < 0:
-            raise serializers.ValidationError({"amount": "El monto no puede ser negativo."})
+        if amount is not None and amount <= 0:
+            raise serializers.ValidationError({"amount": "El monto debe ser mayor a cero."})
+        if charge:
+            if charge.status in {"paid", "canceled"}:
+                raise serializers.ValidationError("Este cargo ya no acepta pagos.")
+            balance = charge_balance(charge)
+            if amount is not None and amount > balance:
+                raise serializers.ValidationError({"amount": f"El monto no puede exceder el saldo pendiente de ${balance}."})
         if request and request.user.is_authenticated and request.user.role == "cashier":
             if not charge:
                 raise serializers.ValidationError("El cajero debe registrar pagos contra un cargo existente.")
@@ -212,7 +218,26 @@ class DiscountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Discount
         fields = "__all__"
-        read_only_fields = ["requested_by", "approved_by", "approved_at", "site", "student", "team"]
+        read_only_fields = ["requested_by", "approved_by", "approved_at", "site", "student", "team", "status"]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        charge = attrs.get("charge")
+        amount = attrs.get("amount")
+        if amount is not None and amount <= 0:
+            raise serializers.ValidationError({"amount": "El descuento debe ser mayor a cero."})
+        if charge:
+            if charge.status in {"paid", "canceled"}:
+                raise serializers.ValidationError("Este cargo ya no acepta descuentos.")
+            balance = charge_balance(charge)
+            if amount is not None and amount > balance:
+                raise serializers.ValidationError({"amount": f"El descuento no puede exceder el saldo pendiente de ${balance}."})
+        if request and request.user.is_authenticated and request.user.role == "cashier":
+            if not charge:
+                raise serializers.ValidationError("El cajero debe solicitar descuentos contra un cargo existente.")
+            if request.user.primary_site_id != charge.site_id:
+                raise serializers.ValidationError("El cajero solo puede solicitar descuentos de su sede.")
+        return attrs
 
     def create(self, validated_data):
         request = self.context.get("request")
@@ -223,7 +248,14 @@ class DiscountSerializer(serializers.ModelSerializer):
             validated_data["team"] = charge.team
         if request and request.user.is_authenticated:
             validated_data["requested_by"] = request.user
-        return super().create(validated_data)
+            if request.user.role in {"admin", "owner", "dev", "accounting"}:
+                validated_data["status"] = "approved"
+                validated_data["approved_by"] = request.user
+                validated_data["approved_at"] = timezone.now()
+        discount = super().create(validated_data)
+        if discount.charge and discount.status == "approved":
+            sync_charge_status(discount.charge)
+        return discount
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
@@ -258,6 +290,14 @@ class StaffPaymentRequestSerializer(serializers.ModelSerializer):
     def get_recipient_name(self, obj):
         return obj.recipient.get_full_name() or obj.recipient.username
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        site = attrs.get("site")
+        if request and request.user.is_authenticated and request.user.role == "cashier":
+            if not site or request.user.primary_site_id != site.id:
+                raise serializers.ValidationError("El cajero solo puede registrar solicitudes de su sede.")
+        return attrs
+
     def create(self, validated_data):
         request = self.context.get("request")
         if request and request.user.is_authenticated:
@@ -278,6 +318,14 @@ class CashMovementSerializer(serializers.ModelSerializer):
 
     def get_responsible_name(self, obj):
         return obj.responsible.get_full_name() or obj.responsible.username
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        site = attrs.get("site")
+        if request and request.user.is_authenticated and request.user.role == "cashier":
+            if not site or request.user.primary_site_id != site.id:
+                raise serializers.ValidationError("El cajero solo puede registrar movimientos de caja de su sede.")
+        return attrs
 
     def create(self, validated_data):
         request = self.context.get("request")

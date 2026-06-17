@@ -185,3 +185,82 @@ class StudentAssessmentSerializer(serializers.ModelSerializer):
         validated_data["site"] = validated_data.get("student", instance.student).site
         return super().update(instance, validated_data)
 
+
+class StudentValueAssessmentSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source="student.full_name", read_only=True)
+    student_photo_url = serializers.CharField(source="student.photo_url", read_only=True)
+    category = serializers.CharField(source="student.category", read_only=True)
+    group_name = serializers.CharField(source="student.group_name", read_only=True)
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    coach_name = serializers.SerializerMethodField()
+    overall_values_rating = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = StudentValueAssessment
+        fields = "__all__"
+        read_only_fields = ["coach", "site"]
+
+    def get_coach_name(self, obj):
+        return obj.coach.get_full_name() or obj.coach.username
+
+    def validate(self, attrs):
+        for field in ["respect", "discipline", "teamwork", "responsibility", "sportsmanship"]:
+            value = attrs.get(field)
+            if value is not None and (value < 0 or value > 100):
+                raise serializers.ValidationError({field: "Debe estar entre 0 y 100."})
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        student = validated_data["student"]
+        if request and request.user.is_authenticated:
+            validated_data["coach"] = request.user
+        validated_data["site"] = student.site
+        rating = round(
+            (
+                validated_data.get("respect", 50)
+                + validated_data.get("discipline", 50)
+                + validated_data.get("teamwork", 50)
+                + validated_data.get("responsibility", 50)
+                + validated_data.get("sportsmanship", 50)
+            )
+            / 5
+        )
+        validated_data["minutes_recommendation"] = value_minutes_recommendation(rating)
+        assessment, _ = StudentValueAssessment.objects.update_or_create(
+            student=student,
+            assessment_month=validated_data["assessment_month"],
+            defaults=validated_data,
+        )
+        return assessment
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data["coach"] = request.user
+        validated_data["site"] = validated_data.get("student", instance.student).site
+        rating = round(
+            (
+                validated_data.get("respect", instance.respect)
+                + validated_data.get("discipline", instance.discipline)
+                + validated_data.get("teamwork", instance.teamwork)
+                + validated_data.get("responsibility", instance.responsibility)
+                + validated_data.get("sportsmanship", instance.sportsmanship)
+            )
+            / 5
+        )
+        validated_data["minutes_recommendation"] = value_minutes_recommendation(rating)
+        return super().update(instance, validated_data)
+
+
+def value_minutes_recommendation(rating):
+    if rating >= 90:
+        return "Prioridad alta de minutos"
+    if rating >= 80:
+        return "Minutos constantes"
+    if rating >= 70:
+        return "Rotacion controlada"
+    if rating >= 60:
+        return "Minutos condicionados"
+    return "Plan formativo antes de competir"
+

@@ -162,3 +162,77 @@ def test_coach_sees_only_assigned_group_and_can_register_attendance_and_hours(lo
         format="json",
     )
     assert forbidden_expense_response.status_code == 403
+
+
+def test_coach_cannot_administer_tournaments_or_registrations(login_client):
+    client, user = login_client("coach.roma", "demo12345")
+    assert user["role"] == "coach"
+
+    tournaments_response = client.get("/api/tournaments/")
+    assert tournaments_response.status_code == 200
+    tournament = tournaments_response.json()[0]
+
+    students_response = client.get("/api/students/")
+    assert students_response.status_code == 200
+    student = students_response.json()[0]
+
+    teams_response = client.get("/api/teams/")
+    assert teams_response.status_code == 200
+    teams = teams_response.json()
+
+    create_tournament_response = client.post(
+        "/api/tournaments/",
+        {
+            "site": student["site"],
+            "name": "Torneo no permitido coach",
+            "billing_type": "weekly_match",
+            "starts_on": "2026-06-01",
+            "expected_weeks": 12,
+            "is_active": True,
+        },
+        format="json",
+    )
+    assert create_tournament_response.status_code == 403
+
+    create_team_response = client.post(
+        "/api/teams/",
+        {
+            "tournament": tournament["id"],
+            "name": "Equipo no permitido coach",
+            "representative_name": "Representante",
+            "representative_phone": "5500000000",
+            "is_active": True,
+        },
+        format="json",
+    )
+    assert create_team_response.status_code == 403
+
+    registration_response = client.post(
+        "/api/student-tournament-registrations/",
+        {
+            "tournament": tournament["id"],
+            "student": student["id"],
+            "billing_type": "weekly_match",
+            "weekly_amount": "650.00",
+            "full_amount": "7800.00",
+            "status": "registered",
+        },
+        format="json",
+    )
+    assert registration_response.status_code == 403
+
+    if len(teams) >= 2:
+        match_response = client.post(
+            "/api/matches/",
+            {
+                "tournament": tournament["id"],
+                "site": student["site"],
+                "home_team": teams[0]["id"],
+                "away_team": teams[1]["id"],
+                "played_on": "2026-06-01",
+                "starts_at": "18:00",
+                "status": "scheduled",
+            },
+            format="json",
+        )
+        assert match_response.status_code == 403

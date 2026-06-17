@@ -73,7 +73,9 @@ import {
 import { SportsPanel } from "./sports";
 
 
-export function FormationBoard({ students, groupName }: { students: Student[]; groupName: string }) {
+type FormationMember = Pick<Student, "id" | "full_name"> | Pick<Player, "id" | "full_name">;
+
+export function FormationBoard({ students, groupName }: { students: FormationMember[]; groupName: string }) {
   const starters = students.slice(0, 11);
   const bench = students.slice(11);
   const slots = [

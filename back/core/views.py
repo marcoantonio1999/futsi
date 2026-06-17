@@ -24,4 +24,4 @@ from core.api.finance import (
 )
 from core.api.historical import HistoricalImportViewSet
 from core.api.invoices import InvoiceViewSet
-from core.api.sports import MatchViewSet, StudentAssessmentViewSet
+from core.api.sports import MatchViewSet, StudentAssessmentViewSet, StudentValueAssessmentViewSet

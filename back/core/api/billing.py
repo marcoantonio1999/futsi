@@ -97,6 +97,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Este pago no espera aceptacion de efectivo."}, status=status.HTTP_400_BAD_REQUEST)
         if request.user.role == "guardian" and payment.student.guardian.user_id != request.user.id:
             return Response({"detail": "No puedes aceptar pagos de otro representante."}, status=status.HTTP_403_FORBIDDEN)
+        if payment.charge and payment.amount > charge_balance(payment.charge):
+            return Response(
+                {"detail": "El pago ya excede el saldo pendiente del cargo. Revisa pagos parciales previos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         payment.status = "registered"
         payment.confirmed_at = timezone.now()
         payment.notes = "Efectivo aceptado por el representante."
@@ -114,6 +119,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Solo puedes simular el pago de un link enviado a tu portal."}, status=status.HTTP_403_FORBIDDEN)
         if request.user.role == "guardian" and payment.student.guardian.user_id != request.user.id:
             return Response({"detail": "No puedes pagar links de otro representante."}, status=status.HTTP_403_FORBIDDEN)
+        if payment.charge and payment.amount > charge_balance(payment.charge):
+            return Response(
+                {"detail": "El pago ya excede el saldo pendiente del cargo. Revisa pagos parciales previos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         payment.status = "registered"
         payment.confirmed_at = timezone.now()
         if payment.method == "transfer":
@@ -156,10 +166,16 @@ class DiscountViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         if self.request.user.role == "guardian":
             queryset = queryset.filter(student__guardian__user=self.request.user)
+        if self.request.user.role == "cashier":
+            queryset = queryset.filter(site=self.request.user.primary_site)
+        if self.request.user.role == "adult_representative":
+            queryset = queryset.filter(team__representative_user=self.request.user)
+        if self.request.user.role == "adult_player":
+            queryset = queryset.filter(team__players__user=self.request.user)
         status_value = self.request.query_params.get("status")
         if status_value:
             queryset = queryset.filter(status=status_value)
-        return queryset
+        return queryset.distinct()
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):

@@ -26,6 +26,7 @@ from .models import (
     StaffPaymentRequest,
     Student,
     StudentAssessment,
+    StudentValueAssessment,
     StudentTournamentRegistration,
     Team,
     Tournament,
@@ -54,6 +55,7 @@ admin.site.register(PlayerAttendanceRecord)
 admin.site.register(Round)
 admin.site.register(Match)
 admin.site.register(StudentAssessment)
+admin.site.register(StudentValueAssessment)
 admin.site.register(AttendanceSession)
 admin.site.register(AttendanceRecord)
 admin.site.register(Charge)

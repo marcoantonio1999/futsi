@@ -66,14 +66,13 @@ export function LoginScreen({ onLogin }: { onLogin: (token: string, user: User) 
     <main className="grid min-h-screen place-items-center bg-stone-50 px-5 text-zinc-950" data-testid="login-page">
       <form onSubmit={submit} className="w-full max-w-sm rounded-md border border-zinc-200 bg-white p-6 shadow-sm" data-testid="login-form">
         <div className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-md bg-emerald-700 text-white">
-            <Shield size={20} />
-          </div>
+          <img className="h-12 w-12 rounded-md object-cover" src="./favicon.png" alt="Futsi" />
           <div>
             <p className="text-sm font-medium text-emerald-700">Futsi Mini ERP</p>
             <h1 className="text-xl font-semibold">Acceso operativo</h1>
           </div>
         </div>
+        <img className="mt-5 h-auto w-full object-contain" src="./logo-futsi.png" alt="Futsi Football Team Management System" />
 
         <label className="mt-6 block text-sm font-medium" htmlFor="username">
           Usuario

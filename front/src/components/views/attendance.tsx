@@ -73,24 +73,28 @@ import {
 
 export function AttendancePanel({
   data,
+  user,
   onCreateSession,
   onMark,
   onClose,
   onFaceAttendance,
 }: {
   data: AppData;
+  user?: User;
   onCreateSession: (payload: unknown) => Promise<AttendanceSession>;
   onMark: (payload: unknown) => Promise<AttendanceRecord>;
   onClose: (sessionId: number) => Promise<void>;
   onFaceAttendance: (payload: unknown) => Promise<FaceRecognitionResponse>;
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [siteId, setSiteId] = useState(data.sites[0]?.id ? String(data.sites[0].id) : "");
-  const [groupName, setGroupName] = useState("");
+  const isCoach = user?.role === "coach";
+  const initialSiteId = isCoach && user?.primary_site ? String(user.primary_site) : data.sites[0]?.id ? String(data.sites[0].id) : "";
+  const [siteId, setSiteId] = useState(initialSiteId);
+  const [groupName, setGroupName] = useState(isCoach ? user?.coach_group_name || data.students[0]?.group_name || "" : "");
   const [date, setDate] = useState(today);
   const [startsAt, setStartsAt] = useState("17:00");
   const [matchId, setMatchId] = useState("");
-  const [activeSessionId, setActiveSessionId] = useState<number | null>(data.attendanceSessions[0]?.id ?? null);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(isCoach ? null : data.attendanceSessions[0]?.id ?? null);
   const [savingStudentId, setSavingStudentId] = useState<number | null>(null);
   const numericSiteId = siteId ? Number(siteId) : null;
 
@@ -102,18 +106,37 @@ export function AttendancePanel({
     return Array.from(new Set(names)).sort();
   }, [data.students, siteId]);
 
-  const currentSession = useMemo(() => findCurrentSession(data.attendanceSessions, numericSiteId), [data.attendanceSessions, numericSiteId]);
+  const coachTodaySessions = useMemo(() => {
+    if (!isCoach) return [];
+    return data.attendanceSessions
+      .filter((session) => {
+        if (session.date !== todayKey()) return false;
+        if (numericSiteId && session.site !== numericSiteId) return false;
+        if (user?.coach_group_name && session.session_type !== "tournament_match" && session.group_name && session.group_name !== user.coach_group_name) return false;
+        return true;
+      })
+      .sort((a, b) => (a.starts_at || "99:99").localeCompare(b.starts_at || "99:99"));
+  }, [data.attendanceSessions, isCoach, numericSiteId, user?.coach_group_name]);
+  const visibleTodaySessions = useMemo(() => {
+    const sessions = isCoach
+      ? coachTodaySessions
+      : data.attendanceSessions.filter((session) => session.date === todayKey() && (!numericSiteId || session.site === numericSiteId));
+    return sessions.slice(0, isCoach ? 12 : 6);
+  }, [coachTodaySessions, data.attendanceSessions, isCoach, numericSiteId]);
+  const currentSession = useMemo(() => findCurrentSession(isCoach ? coachTodaySessions : data.attendanceSessions, numericSiteId), [coachTodaySessions, data.attendanceSessions, isCoach, numericSiteId]);
   const currentMatch = useMemo(() => findCurrentMatch(data.matches, numericSiteId), [data.matches, numericSiteId]);
   const todayMatches = useMemo(
     () => data.matches.filter((match) => match.played_on === todayKey() && (!numericSiteId || match.site === numericSiteId) && match.status !== "finished" && match.status !== "canceled"),
     [data.matches, numericSiteId],
   );
-  const activeSession = data.attendanceSessions.find((session) => session.id === activeSessionId) ?? null;
+  const selectableSessions = isCoach ? coachTodaySessions : data.attendanceSessions;
+  const activeSession = selectableSessions.find((session) => session.id === activeSessionId) ?? null;
   const activeSessionCanMark = activeSession ? canMarkSession(activeSession) : false;
 
   const roster = useMemo(() => {
+    if (isCoach && !activeSession) return [];
     return studentsForAttendanceSession(data, activeSession, siteId, groupName);
-  }, [activeSession, data, groupName, siteId]);
+  }, [activeSession, data, groupName, isCoach, siteId]);
 
   const recordsByStudent = useMemo(() => {
     const map = new Map<number, AttendanceRecord>();
@@ -133,14 +156,29 @@ export function AttendancePanel({
   }, [recordsByStudent]);
 
   useEffect(() => {
+    if (isCoach && user?.primary_site && siteId !== String(user.primary_site)) {
+      setSiteId(String(user.primary_site));
+      return;
+    }
     if (!siteId && data.sites[0]) setSiteId(String(data.sites[0].id));
-  }, [data.sites, siteId]);
+  }, [data.sites, isCoach, siteId, user?.primary_site]);
 
   useEffect(() => {
+    if (isCoach) {
+      const preferredSession = currentSession ?? coachTodaySessions[0] ?? null;
+      if (preferredSession && activeSessionId !== preferredSession.id) {
+        setActiveSessionId(preferredSession.id);
+        return;
+      }
+      if (!preferredSession && activeSessionId !== null) {
+        setActiveSessionId(null);
+      }
+      return;
+    }
     if (currentSession && activeSessionId !== currentSession.id) {
       setActiveSessionId(currentSession.id);
     }
-  }, [currentSession, activeSessionId]);
+  }, [activeSessionId, coachTodaySessions, currentSession, isCoach]);
 
   useEffect(() => {
     if (currentMatch && !matchId) {
@@ -183,64 +221,86 @@ export function AttendancePanel({
   return (
     <>
       <div className="grid gap-5">
-      <form onSubmit={startSession} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+      <form onSubmit={startSession} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="flex items-center gap-2 text-base font-semibold">
-          <ClipboardCheck size={16} /> Pase de lista
+          <ClipboardCheck size={16} /> {isCoach ? "Sesiones de hoy" : "Pase de lista"}
         </h2>
-        <div className="mt-4 grid gap-3">
-          <SelectInput label="Sede" required value={siteId} onChange={(event) => setSiteId(event.target.value)}>
-            {data.sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name}
-              </option>
-            ))}
-          </SelectInput>
-          <SelectInput label="Grupo" value={groupName} onChange={(event) => setGroupName(event.target.value)}>
-            <option value="">Todos los grupos</option>
-            {groups.map((group) => (
-              <option key={group} value={group}>
-                {group}
-              </option>
-            ))}
-          </SelectInput>
-          <SelectInput
-            label="Partido o entrenamiento"
-            value={matchId}
-            onChange={(event) => {
-              setMatchId(event.target.value);
-              const match = data.matches.find((item) => item.id === Number(event.target.value));
-              if (match) {
-                setDate(match.played_on);
-                if (match.starts_at) setStartsAt(match.starts_at.slice(0, 5));
-              }
-            }}
-          >
-            <option value="">Entrenamiento por grupo</option>
-            {todayMatches.map((match) => (
-              <option key={match.id} value={match.id}>
-                {match.home_team_name} vs {match.away_team_name} - {match.starts_at?.slice(0, 5) || "sin hora"}
-              </option>
-            ))}
-          </SelectInput>
-          <TextInput label="Fecha" type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
-          <TextInput label="Hora" type="time" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
-          <button className="flex items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white">
-            <Plus size={16} /> Crear sesion
-          </button>
-        </div>
+        {isCoach ? (
+          <div className="mt-4 grid gap-3">
+            <p className="text-sm text-zinc-500 dark:text-zinc-300">
+              Selecciona el entrenamiento o partido programado para hoy. No se muestran sesiones historicas en el perfil del coach.
+            </p>
+            {coachTodaySessions.length > 0 ? (
+              <SelectInput
+                label="Entrenamiento o partido de hoy"
+                value={activeSessionId ? String(activeSessionId) : ""}
+                onChange={(event) => setActiveSessionId(event.target.value ? Number(event.target.value) : null)}
+              >
+                {coachTodaySessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.starts_at?.slice(0, 5) || "Sin hora"} - {session.match_name || session.group_name || "Sesion de hoy"} - {canMarkSession(session) ? "en ventana" : sessionWindowText(session)}
+                  </option>
+                ))}
+              </SelectInput>
+            ) : (
+              <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-4 py-6 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                No hay entrenamientos o partidos programados para hoy.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3">
+            <SelectInput label="Sede" required value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+              {data.sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </SelectInput>
+            <SelectInput label="Grupo" value={groupName} onChange={(event) => setGroupName(event.target.value)}>
+              <option value="">Todos los grupos</option>
+              {groups.map((group) => (
+                <option key={group} value={group}>
+                  {group}
+                </option>
+              ))}
+            </SelectInput>
+            <SelectInput
+              label="Partido o entrenamiento"
+              value={matchId}
+              onChange={(event) => {
+                setMatchId(event.target.value);
+                const match = data.matches.find((item) => item.id === Number(event.target.value));
+                if (match) {
+                  setDate(match.played_on);
+                  if (match.starts_at) setStartsAt(match.starts_at.slice(0, 5));
+                }
+              }}
+            >
+              <option value="">Entrenamiento por grupo</option>
+              {todayMatches.map((match) => (
+                <option key={match.id} value={match.id}>
+                  {match.home_team_name} vs {match.away_team_name} - {match.starts_at?.slice(0, 5) || "sin hora"}
+                </option>
+              ))}
+            </SelectInput>
+            <TextInput label="Fecha" type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
+            <TextInput label="Hora" type="time" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
+            <button className="flex items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white" data-testid="coach-create-session">
+              <Plus size={16} /> Crear sesion
+            </button>
+          </div>
+        )}
 
         <div className="mt-5 border-t border-zinc-200 pt-4">
-          <p className="text-sm font-medium text-zinc-700">Sesiones recientes</p>
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{isCoach ? "Agenda del dia" : "Sesiones recientes"}</p>
           <div className="mt-2 grid gap-2">
-            {data.attendanceSessions
-              .filter((session) => session.date === todayKey() && (!numericSiteId || session.site === numericSiteId))
-              .slice(0, 6)
-              .map((session) => (
+            {visibleTodaySessions.map((session) => (
               <button
                 type="button"
                 key={session.id}
                 className={`rounded-md border px-3 py-2 text-left text-sm ${
-                  activeSessionId === session.id ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-white"
+                  activeSessionId === session.id ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
                 }`}
                 onClick={() => setActiveSessionId(session.id)}
               >
@@ -250,23 +310,25 @@ export function AttendancePanel({
                 </span>
               </button>
             ))}
-            {data.attendanceSessions.length === 0 && <p className="text-sm text-zinc-500">Todavia no hay sesiones.</p>}
+            {visibleTodaySessions.length === 0 && <p className="text-sm text-zinc-500">{isCoach ? "Sin sesiones para hoy." : "Todavia no hay sesiones."}</p>}
           </div>
         </div>
       </form>
 
-      <FaceAttendanceCard
-        activeSession={activeSession}
-        roster={roster}
-        disabled={!activeSession || !activeSessionCanMark}
-        onRecognize={onFaceAttendance}
-      />
+      {(!isCoach || activeSession) && (
+        <FaceAttendanceCard
+          activeSession={activeSession}
+          roster={roster}
+          disabled={!activeSession || !activeSessionCanMark}
+          onRecognize={onFaceAttendance}
+        />
+      )}
       </div>
 
       <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="font-semibold">{activeSession ? "Lista de asistencia" : "Selecciona o crea una sesion"}</h2>
+            <h2 className="font-semibold">{activeSession ? "Lista de asistencia" : isCoach ? "Sin sesion para hoy" : "Selecciona o crea una sesion"}</h2>
             {activeSession && (
               <>
                 <p className="mt-1 text-sm text-zinc-500">
@@ -305,7 +367,7 @@ export function AttendancePanel({
         )}
 
         <div className="divide-y divide-zinc-100">
-          {!activeSession && <p className="px-4 py-8 text-sm text-zinc-500">Crea una sesion para empezar el pase de lista.</p>}
+          {!activeSession && <p className="px-4 py-8 text-sm text-zinc-500">{isCoach ? "Cuando exista un entrenamiento o partido programado para hoy, aparecera aqui para pasar lista." : "Crea una sesion para empezar el pase de lista."}</p>}
           {activeSession &&
             roster.map((student) => {
               const record = recordsByStudent.get(student.id);

@@ -22,6 +22,7 @@ import type {
   StaffPaymentRequest,
   Student,
   StudentAssessment,
+  StudentValueAssessment,
   StudentTournamentRegistration,
   Team,
   Tournament,
@@ -40,7 +41,7 @@ export async function loadAppDataForUser(authToken: string): Promise<{ user: Use
   await apiRequest("/charges/generate-scheduled/", authToken, { method: "POST" }).catch(() => undefined);
 
   if (me.role === "guardian") {
-    const [students, attendanceRecords, charges, payments, discounts, invoices, tournaments, matches, standings, studentAssessments, studentTournamentRegistrations] = await Promise.all([
+    const [students, attendanceRecords, charges, payments, discounts, invoices, tournaments, matches, standings, studentAssessments, studentValueAssessments, studentTournamentRegistrations] = await Promise.all([
       apiRequest<Student[]>("/students/", authToken),
       apiRequest<AttendanceRecord[]>("/attendance-records/", authToken),
       apiRequest<Charge[]>("/charges/", authToken),
@@ -51,6 +52,7 @@ export async function loadAppDataForUser(authToken: string): Promise<{ user: Use
       apiRequest<Match[]>("/matches/", authToken),
       apiRequest<StandingRow[]>("/matches/standings/", authToken),
       apiRequest<StudentAssessment[]>("/student-assessments/", authToken),
+      apiRequest<StudentValueAssessment[]>("/student-value-assessments/", authToken),
       apiRequest<StudentTournamentRegistration[]>("/student-tournament-registrations/", authToken),
     ]);
     return {
@@ -67,6 +69,7 @@ export async function loadAppDataForUser(authToken: string): Promise<{ user: Use
         matches,
         standings,
         studentAssessments,
+        studentValueAssessments,
         studentTournamentRegistrations,
       },
     };
@@ -131,7 +134,7 @@ export async function loadAppDataForUser(authToken: string): Promise<{ user: Use
   }
 
   if (me.role === "coach") {
-    const [sites, students, attendanceSessions, attendanceRecords, coachWorkLogs, invoices, tournaments, matches, standings, studentAssessments, studentTournamentRegistrations, staffPaymentRequests] = await Promise.all([
+    const [sites, students, attendanceSessions, attendanceRecords, coachWorkLogs, invoices, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, studentAssessments, studentValueAssessments, staffPaymentRequests] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<Student[]>("/students/", authToken),
       apiRequest<AttendanceSession[]>("/attendance-sessions/", authToken),
@@ -139,16 +142,20 @@ export async function loadAppDataForUser(authToken: string): Promise<{ user: Use
       apiRequest<CoachWorkLog[]>("/coach-work-logs/", authToken),
       apiRequest<Invoice[]>("/invoices/", authToken),
       apiRequest<Tournament[]>("/tournaments/", authToken),
+      apiRequest<Team[]>("/teams/", authToken),
+      apiRequest<StudentTournamentRegistration[]>("/student-tournament-registrations/", authToken),
+      apiRequest<Player[]>("/players/", authToken),
       apiRequest<Match[]>("/matches/", authToken),
       apiRequest<StandingRow[]>("/matches/standings/", authToken),
+      apiRequest<PlayerAttendanceRecord[]>("/player-attendance-records/", authToken),
       apiRequest<StudentAssessment[]>("/student-assessments/", authToken),
-      apiRequest<StudentTournamentRegistration[]>("/student-tournament-registrations/", authToken),
+      apiRequest<StudentValueAssessment[]>("/student-value-assessments/", authToken),
       optionalApi<StaffPaymentRequest[]>("/staff-payment-requests/?mine=1", authToken, []),
     ]);
-    return { user: me, data: { ...emptyData, sites, students, attendanceSessions, attendanceRecords, coachWorkLogs, invoices, tournaments, matches, standings, studentAssessments, studentTournamentRegistrations, staffPaymentRequests } };
+    return { user: me, data: { ...emptyData, sites, students, attendanceSessions, attendanceRecords, coachWorkLogs, invoices, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, studentAssessments, studentValueAssessments, staffPaymentRequests } };
   }
 
-  const [sites, guardians, students, attendanceSessions, attendanceRecords, charges, payments, discounts, expenses, staffPaymentRequests, cashMovements, coachWorkLogs, users, invoices, historicalImports, historicalDiscrepancies, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, studentAssessments] = await Promise.all([
+  const [sites, guardians, students, attendanceSessions, attendanceRecords, charges, payments, discounts, expenses, staffPaymentRequests, cashMovements, coachWorkLogs, users, invoices, historicalImports, historicalDiscrepancies, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, studentAssessments, studentValueAssessments] = await Promise.all([
     apiRequest<Site[]>("/sites/", authToken),
     apiRequest<Guardian[]>("/guardians/", authToken),
     apiRequest<Student[]>("/students/", authToken),
@@ -173,6 +180,7 @@ export async function loadAppDataForUser(authToken: string): Promise<{ user: Use
     apiRequest<StandingRow[]>("/matches/standings/", authToken),
     apiRequest<PlayerAttendanceRecord[]>("/player-attendance-records/", authToken),
     apiRequest<StudentAssessment[]>("/student-assessments/", authToken),
+    apiRequest<StudentValueAssessment[]>("/student-value-assessments/", authToken),
   ]);
-  return { user: me, data: { sites, guardians, students, attendanceSessions, attendanceRecords, charges, payments, discounts, expenses, staffPaymentRequests, cashMovements, users, coachWorkLogs, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, studentAssessments, invoices, historicalImports, historicalDiscrepancies } };
+  return { user: me, data: { sites, guardians, students, attendanceSessions, attendanceRecords, charges, payments, discounts, expenses, staffPaymentRequests, cashMovements, users, coachWorkLogs, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, studentAssessments, studentValueAssessments, invoices, historicalImports, historicalDiscrepancies } };
 }

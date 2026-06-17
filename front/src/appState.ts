@@ -43,6 +43,7 @@ export const emptyData: AppData = {
   standings: [],
   playerAttendanceRecords: [],
   studentAssessments: [],
+  studentValueAssessments: [],
   invoices: [],
   historicalImports: [],
   historicalDiscrepancies: null,

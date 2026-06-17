@@ -27,7 +27,7 @@ from core.api.finance import (
 )
 from core.api.historical import HistoricalImportViewSet
 from core.api.invoices import InvoiceViewSet
-from core.api.sports import MatchViewSet, StudentAssessmentViewSet
+from core.api.sports import MatchViewSet, StudentAssessmentViewSet, StudentValueAssessmentViewSet
 
 
 router = DefaultRouter()
@@ -44,6 +44,7 @@ router.register("player-attendance-records", PlayerAttendanceRecordViewSet)
 router.register("rounds", RoundViewSet)
 router.register("matches", MatchViewSet)
 router.register("student-assessments", StudentAssessmentViewSet)
+router.register("student-value-assessments", StudentValueAssessmentViewSet)
 router.register("attendance-sessions", AttendanceSessionViewSet)
 router.register("attendance-records", AttendanceRecordViewSet)
 router.register("charges", ChargeViewSet)

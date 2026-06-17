@@ -52,6 +52,8 @@ class StaffPaymentRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role not in {"admin", "dev", "owner", "accounting", "site_coordinator", "cashier"}:
             queryset = queryset.filter(recipient=user)
+        if user.role == "cashier" and user.primary_site_id:
+            queryset = queryset.filter(site_id=user.primary_site_id)
         site = self.request.query_params.get("site")
         status_value = self.request.query_params.get("status")
         mine = self.request.query_params.get("mine")

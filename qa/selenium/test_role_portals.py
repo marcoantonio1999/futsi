@@ -29,10 +29,11 @@ def test_coach_portal_has_attendance_camera_and_hours_controls(driver, live_fron
     LoginPage(driver).open(live_frontend).login("coach.roma", "demo12345", "coach-portal")
     page = BasePage(driver)
 
-    page.testid("coach-create-session")
     page.testid("coach-register-hours")
-    page.wait_text("Pasar lista")
     page.wait_text("Horas y nomina estimada")
+    page.click_testid("menu-tab-attendance")
+    page.wait_text("Sesiones de hoy")
+    page.wait_text("Agenda del dia")
 
 
 def test_guardian_portal_shows_debts_profile_and_invoices(driver, live_frontend):

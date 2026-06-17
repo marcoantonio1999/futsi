@@ -23,6 +23,7 @@ import {
   AttendancePanel,
   BillingPanel,
   BillingCollectionPanel,
+  CoachDashboardPanel,
   CoachesConsolidatedPanel,
   DailyOperationPanel,
   DashboardPanel,
@@ -42,6 +43,7 @@ import {
   TournamentsPanel,
   UniformsPanel,
   UsersPanel,
+  ValuesPanel,
 } from "../FutsiViews";
 
 type AdminShellProps = {
@@ -64,6 +66,7 @@ type AdminShellProps = {
   onDownloadFile: (path: string, filename: string) => Promise<void>;
   onUpdateMatchScore: (matchId: number, payload: unknown) => Promise<void>;
   onSaveStudentAssessment: (payload: unknown) => Promise<void>;
+  onSaveStudentValueAssessment: (payload: unknown) => Promise<void>;
   onMarkAdultPlayer: (payload: unknown) => Promise<void>;
 };
 
@@ -87,6 +90,7 @@ export function AdminShell({
   onDownloadFile,
   onUpdateMatchScore,
   onSaveStudentAssessment,
+  onSaveStudentValueAssessment,
   onMarkAdultPlayer,
 }: AdminShellProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
@@ -146,7 +150,7 @@ export function AdminShell({
           >
             <div className="flex shrink-0 items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="grid size-9 place-items-center rounded-full bg-emerald-700 text-sm font-bold text-white">F</span>
+                <img className="h-10 w-10 rounded-full object-cover" src="./favicon.png" alt="Futsi" />
                 <div>
                   <p className="font-semibold">Futsi</p>
                   <p className="text-xs text-zinc-500">Mini ERP</p>
@@ -185,12 +189,9 @@ export function AdminShell({
 
       <div className="mx-auto flex min-h-screen max-w-[1540px] gap-5 p-4">
         <aside className="fixed top-4 z-[910] hidden h-[calc(100vh-2rem)] min-h-0 w-64 shrink-0 flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white p-4 shadow-sm lg:left-[max(1rem,calc((100vw-1540px)/2+1rem))] lg:flex">
-          <div className="flex shrink-0 items-center gap-3 px-2 py-2">
-            <span className="grid size-10 place-items-center rounded-full bg-emerald-700 text-sm font-bold text-white">F</span>
-            <div>
-              <p className="font-semibold">Futsi</p>
-              <p className="text-xs text-zinc-500">Mini ERP operativo</p>
-            </div>
+          <div className="shrink-0 px-2 py-2">
+            <img className="h-auto w-44 object-contain" src="./logo-futsi.png" alt="Futsi Mini ERP" />
+            <p className="mt-2 text-xs font-medium text-zinc-500">Mini ERP operativo</p>
           </div>
           <nav className="mt-6 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto pr-1">
             <p className="px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">Principal</p>
@@ -249,8 +250,10 @@ export function AdminShell({
                   <Menu size={18} />
                 </button>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase text-emerald-700">Sprint 1 / Dia 6</p>
-                  <h1 className="truncate text-xl font-semibold">{effectiveActiveTabMeta?.label || "Operacion base"}</h1>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <img className="hidden h-7 w-auto object-contain sm:block" src="./logo-futsi.png" alt="Futsi" />
+                    <h1 className="truncate text-xl font-semibold">{effectiveActiveTabMeta?.label || "Operacion base"}</h1>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -259,7 +262,7 @@ export function AdminShell({
                     className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
                       effectiveActiveTab === "adult-dashboard"
                         ? "border-blue-700 bg-blue-700 text-white"
-                        : "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+                        : "border-blue-700 bg-white text-blue-800 hover:bg-blue-50 dark:bg-zinc-950 dark:text-white dark:hover:bg-zinc-900"
                     }`}
                     onClick={() => setActiveTab(effectiveActiveTab === "adult-dashboard" ? "dashboard" : "adult-dashboard")}
                     type="button"
@@ -290,10 +293,25 @@ export function AdminShell({
             {loading && <p className="mt-4 text-sm text-zinc-500">Cargando informacion...</p>}
 
             <section className={`${effectiveActiveTab !== "dashboard" && effectiveActiveTab !== "adult-dashboard" ? "mt-6" : "mt-0"} grid min-w-0 gap-5 pb-20 sm:pb-0 ${fullWidthTabs.has(effectiveActiveTab) ? "grid-cols-1" : "lg:grid-cols-[360px_1fr]"}`}>
-              {effectiveActiveTab === "dashboard" && <DashboardPanel data={data} />}
+              {effectiveActiveTab === "dashboard" && (
+                user.role === "coach" ? (
+                  <CoachDashboardPanel
+                    user={user}
+                    data={data}
+                    onCreateWorkLog={(payload) => onCreateRecord("/coach-work-logs/", payload, "Horas registradas.")}
+                    onOpenAdults={() => setActiveTab("adult-dashboard")}
+                    onAcceptStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/accept/`, "Pago aceptado.")}
+                    onRejectStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/reject/`, "Pago rechazado.")}
+                    onDownloadFile={onDownloadFile}
+                  />
+                ) : (
+                  <DashboardPanel data={data} />
+                )
+              )}
               {effectiveActiveTab === "adult-dashboard" && (
                 <AdultLeagueDashboardPanel
                   data={data}
+                  collectionOnly={user.role === "cashier"}
                   onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
                   onMarkPlayer={onMarkAdultPlayer}
                   onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago adulto registrado.")}
@@ -303,9 +321,12 @@ export function AdminShell({
               {effectiveActiveTab === "sports" && (
                 <SportsPanel data={data} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />
               )}
+              {effectiveActiveTab === "values" && <ValuesPanel data={data} onSaveAssessment={onSaveStudentValueAssessment} />}
               {effectiveActiveTab === "tournaments" && (
                 <TournamentsPanel
                   data={data}
+                  user={user}
+                  readOnly={user.role === "coach"}
                   onCreateTournament={(payload) => onCreateRecord("/tournaments/", payload, "Torneo creado.")}
                   onCreateTeam={(payload) => onCreateRecord("/teams/", payload, "Equipo creado.")}
                   onRegisterStudent={(payload) => onCreateRecord("/student-tournament-registrations/", payload, "Alumno inscrito al torneo.")}
@@ -323,6 +344,7 @@ export function AdminShell({
               {effectiveActiveTab === "attendance" && (
                 <AttendancePanel
                   data={data}
+                  user={user}
                   onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
                   onMark={(payload) => onCreateAndReturn<AttendanceRecord>("/attendance-records/", payload)}
                   onClose={onCloseAttendanceSession}
@@ -336,6 +358,7 @@ export function AdminShell({
                     compact
                     onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Solicitud de pago creada.")}
                     onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento registrado.")}
+                    discountActionLabel="Solicitar descuento"
                   />
                 ) : (
                   <BillingPanel

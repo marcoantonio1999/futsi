@@ -3,7 +3,6 @@ import { roleLabels } from "./appState";
 import {
   AccountingPortal,
   AdultLeagueDashboardPanel,
-  CoachPortal,
   GuardianPortal,
   LoginScreen,
   ThemeToggle,
@@ -35,6 +34,7 @@ export default function App() {
     updateProfile,
     updateMatchScore,
     saveStudentAssessment,
+    saveStudentValueAssessment,
     markAdultPlayer,
     downloadFile,
   } = useFutsiData();
@@ -105,30 +105,6 @@ export default function App() {
     );
   }
 
-  if (currentUser.role === "coach" && !hasCustomSectionPermissions) {
-    return (
-      <>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
-        <CoachPortal
-          user={currentUser}
-          data={data}
-          onRefresh={() => loadData()}
-          onLogout={logout}
-          onCreateSession={(payload) => createAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
-          onMark={(payload) => createAndReturn<AttendanceRecord>("/attendance-records/", payload)}
-          onClose={closeAttendanceSession}
-          onCreateWorkLog={(payload) => createRecord("/coach-work-logs/", payload, "Horas registradas.")}
-          onFaceAttendance={(payload) => createAndReturn<FaceRecognitionResponse>("/face-attendance/recognize/", payload)}
-          onDownloadFile={downloadFile}
-          onUpdateMatch={updateMatchScore}
-          onSaveAssessment={saveStudentAssessment}
-          onAcceptStaffPayment={(requestId) => postAction(`/staff-payment-requests/${requestId}/accept/`, "Pago aceptado.")}
-          onRejectStaffPayment={(requestId) => postAction(`/staff-payment-requests/${requestId}/reject/`, "Pago rechazado.")}
-        />
-      </>
-    );
-  }
-
   if (currentUser.role === "accounting" && !hasCustomSectionPermissions) {
     return (
       <>
@@ -170,6 +146,7 @@ export default function App() {
       onDownloadFile={downloadFile}
       onUpdateMatchScore={updateMatchScore}
       onSaveStudentAssessment={saveStudentAssessment}
+      onSaveStudentValueAssessment={saveStudentValueAssessment}
       onMarkAdultPlayer={markAdultPlayer}
     />
   );

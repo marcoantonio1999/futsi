@@ -195,6 +195,10 @@ export function useFutsiData() {
     await createRecord("/student-assessments/", payload, "Evaluacion deportiva guardada.");
   }
 
+  async function saveStudentValueAssessment(payload: unknown) {
+    await createRecord("/student-value-assessments/", payload, "Evaluacion de valores guardada.");
+  }
+
   async function markAdultPlayer(payload: unknown) {
     await createAndReturn<PlayerAttendanceRecord>("/player-attendance-records/", payload);
   }
@@ -230,6 +234,7 @@ export function useFutsiData() {
     updateProfile,
     updateMatchScore,
     saveStudentAssessment,
+    saveStudentValueAssessment,
     markAdultPlayer,
     downloadFile,
   };

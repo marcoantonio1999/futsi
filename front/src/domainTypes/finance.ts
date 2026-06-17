@@ -64,6 +64,8 @@ export type Discount = {
   status: DiscountStatus;
   requested_by_username?: string;
   approved_by_username?: string;
+  created_at?: string;
+  approved_at?: string | null;
 };
 
 export type ExpenseStatus = "pending" | "approved" | "rejected" | "canceled";
