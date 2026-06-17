@@ -1,0 +1,5 @@
+-r requirements.txt
+
+insightface>=0.7,<1.0
+onnxruntime-gpu[cuda,cudnn]>=1.26,<2.0
+opencv-python>=4.9,<5.0

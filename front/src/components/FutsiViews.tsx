@@ -1,5 +1,6 @@
 export * from "./views/accounting";
 export * from "./views/adults";
+export * from "./views/automaticAttendance";
 export * from "./views/attendance";
 export * from "./views/billing";
 export * from "./views/billingCollection";

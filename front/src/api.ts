@@ -57,6 +57,40 @@ export async function apiFormRequest<T>(path: string, token: string, formData: F
   return response.json();
 }
 
+export function apiFormRequestWithProgress<T>(
+  path: string,
+  token: string,
+  formData: FormData,
+  onProgress: (progress: { loaded: number; total: number; percent: number }) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${API_URL}${path}`);
+    request.setRequestHeader("Authorization", `Token ${token}`);
+
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress({
+        loaded: event.loaded,
+        total: event.total,
+        percent: Math.max(0, Math.min(100, (event.loaded / event.total) * 100)),
+      });
+    };
+
+    request.onload = () => {
+      const parsed = request.responseText ? JSON.parse(request.responseText) : null;
+      if (request.status < 200 || request.status >= 300) {
+        reject(new ApiError(`${parsed?.detail ?? "No se pudo procesar el archivo."} (${path})`, request.status, path));
+        return;
+      }
+      resolve(parsed as T);
+    };
+
+    request.onerror = () => reject(new ApiError(`No se pudo conectar con el servidor. (${path})`, 0, path));
+    request.send(formData);
+  });
+}
+
 export async function downloadApiFile(path: string, token: string, fallbackName: string) {
   const response = await fetch(`${API_URL}${path}`, {
     headers: { Authorization: `Token ${token}` },

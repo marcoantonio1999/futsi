@@ -20,6 +20,7 @@ import type {
 import { defaultSectionsByRole, fullWidthTabs, tabItems } from "./adminNavigation";
 import {
   AdultLeagueDashboardPanel,
+  AutomaticAttendancePanel,
   AttendancePanel,
   BillingPanel,
   BillingCollectionPanel,
@@ -44,9 +45,59 @@ import {
   UniformsPanel,
   UsersPanel,
   ValuesPanel,
+  VideoOccupancyPanel,
 } from "../FutsiViews";
 
+type AttendanceSubsection = "manual" | "automatic" | "report" | "occupancy";
+type BusinessScope = "academy" | "adult";
+
+const adultHiddenTabs = new Set<TabKey>(["adult-dashboard", "attendance", "coaches", "guardians", "students", "uniforms", "values"]);
+
+function adultLeagueData(data: AppData): AppData {
+  const adultTeamIds = new Set(data.teams.map((team) => team.id));
+  const adultTournamentIds = new Set(data.teams.map((team) => team.tournament));
+  const adultChargeIds = new Set(data.charges.filter((charge) => charge.team && adultTeamIds.has(charge.team)).map((charge) => charge.id));
+  const adultPaymentIds = new Set(data.payments.filter((payment) => payment.charge && adultChargeIds.has(payment.charge)).map((payment) => payment.id));
+  const adultSessionIds = new Set(data.attendanceSessions.filter((session) => session.team && adultTeamIds.has(session.team)).map((session) => session.id));
+  const adultStaffPaymentIds = new Set(data.staffPaymentRequests.filter((request) => request.kind === "referee_payroll").map((request) => request.id));
+
+  return {
+    ...data,
+    users: data.users.filter((item) => item.role === "adult_player" || item.role === "adult_representative"),
+    guardians: [],
+    students: [],
+    attendanceSessions: data.attendanceSessions.filter((session) => adultSessionIds.has(session.id)),
+    attendanceRecords: [],
+    charges: data.charges.filter((charge) => adultChargeIds.has(charge.id)),
+    payments: data.payments.filter((payment) => adultPaymentIds.has(payment.id)),
+    discounts: data.discounts.filter((discount) => Boolean(discount.charge && adultChargeIds.has(discount.charge))),
+    expenses: data.expenses.filter((expense) => {
+      const category = expense.category.toLowerCase();
+      const description = expense.description.toLowerCase();
+      return category.includes("arbit") || description.includes("arbit") || category.includes("referee") || description.includes("referee");
+    }),
+    staffPaymentRequests: data.staffPaymentRequests.filter((request) => adultStaffPaymentIds.has(request.id)),
+    cashMovements: data.cashMovements.filter((movement) => Boolean(movement.staff_payment_request && adultStaffPaymentIds.has(movement.staff_payment_request))),
+    coachWorkLogs: [],
+    tournaments: data.tournaments.filter((tournament) => adultTournamentIds.has(tournament.id)),
+    teams: data.teams.filter((team) => adultTeamIds.has(team.id)),
+    studentTournamentRegistrations: [],
+    players: data.players.filter((player) => adultTeamIds.has(player.team)),
+    matches: data.matches.filter((match) => adultTournamentIds.has(match.tournament)),
+    standings: data.standings.filter((row) => adultTournamentIds.has(row.tournament)),
+    playerAttendanceRecords: data.playerAttendanceRecords.filter((record) => adultSessionIds.has(record.session)),
+    studentAssessments: [],
+    studentValueAssessments: [],
+    invoices: data.invoices.filter((invoice) => {
+      if (invoice.charge && adultChargeIds.has(invoice.charge)) return true;
+      if (invoice.payment && adultPaymentIds.has(invoice.payment)) return true;
+      return false;
+    }),
+  };
+}
+
 type AdminShellProps = {
+  token: string;
   user: User;
   data: AppData;
   theme: ThemeMode;
@@ -71,6 +122,7 @@ type AdminShellProps = {
 };
 
 export function AdminShell({
+  token,
   user,
   data,
   theme,
@@ -94,6 +146,8 @@ export function AdminShell({
   onMarkAdultPlayer,
 }: AdminShellProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
+  const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("manual");
+  const [businessScope, setBusinessScope] = useState<BusinessScope>("academy");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileSwipeStartX = useRef<number | null>(null);
   const isAdmin = user.role === "admin" || user.role === "owner" || user.role === "dev";
@@ -103,15 +157,29 @@ export function AdminShell({
     ...((user.section_permissions || []) as TabKey[]),
   ]);
   const visibleTabs = tabs.filter((tab) => isAdmin || allowedSections.has(tab.key));
-  const sidebarTabs = visibleTabs.filter((tab) => tab.key !== "adult-dashboard");
+  const sidebarTabs = visibleTabs.filter((tab) => tab.key !== "adult-dashboard" && (businessScope === "academy" || !adultHiddenTabs.has(tab.key)));
   const activeTabMeta = visibleTabs.find((tab) => tab.key === activeTab);
   const effectiveActiveTab = activeTabMeta ? activeTab : visibleTabs[0]?.key ?? "dashboard";
   const effectiveActiveTabMeta = visibleTabs.find((tab) => tab.key === effectiveActiveTab);
+  const scopedData = businessScope === "adult" ? adultLeagueData(data) : data;
   const canSeeAdultDashboard = visibleTabs.some((tab) => tab.key === "adult-dashboard");
+  const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
 
   useEffect(() => {
+    if (user.role === "adult_representative" || user.role === "adult_player") {
+      setActiveTab("adult-dashboard");
+      setBusinessScope("adult");
+      return;
+    }
     setActiveTab(user.role === "cashier" ? "billing" : "dashboard");
+    setBusinessScope(user.role === "cashier" && canSeeAdultDashboard ? "adult" : "academy");
   }, [user.id, user.role]);
+
+  function selectTab(tab: TabKey) {
+    if (tab === "adult-dashboard") setBusinessScope("adult");
+    if (tab === "dashboard") setBusinessScope("academy");
+    setActiveTab(tab);
+  }
 
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
     mobileSwipeStartX.current = event.touches[0]?.clientX ?? null;
@@ -161,7 +229,7 @@ export function AdminShell({
               </button>
             </div>
             <nav className="mt-5 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto pr-1">
-              {visibleTabs.map((tab) => (
+              {sidebarTabs.map((tab) => (
                 <button
                   key={tab.key}
                   data-testid={`menu-tab-${tab.key}`}
@@ -169,7 +237,7 @@ export function AdminShell({
                     effectiveActiveTab === tab.key ? "bg-emerald-50 text-emerald-800" : "text-zinc-600 hover:bg-zinc-50"
                   }`}
                   onClick={() => {
-                    setActiveTab(tab.key);
+                    selectTab(tab.key);
                     setMobileMenuOpen(false);
                   }}
                   type="button"
@@ -202,7 +270,7 @@ export function AdminShell({
                 className={`relative flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
                   effectiveActiveTab === tab.key ? "bg-emerald-50 text-emerald-800" : "text-zinc-600 hover:bg-zinc-50"
                 }`}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => selectTab(tab.key)}
                 type="button"
               >
                 {effectiveActiveTab === tab.key && <span className="absolute -left-4 h-7 w-1 rounded-r-full bg-emerald-700" />}
@@ -218,7 +286,7 @@ export function AdminShell({
                 className={`relative flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
                   effectiveActiveTab === tab.key ? "bg-emerald-50 text-emerald-800" : "text-zinc-600 hover:bg-zinc-50"
                 }`}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => selectTab(tab.key)}
                 type="button"
               >
                 {effectiveActiveTab === tab.key && <span className="absolute -left-4 h-7 w-1 rounded-r-full bg-emerald-700" />}
@@ -257,17 +325,25 @@ export function AdminShell({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {canSeeAdultDashboard && (
+                {canToggleAdultDashboard && (
                   <button
                     className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
-                      effectiveActiveTab === "adult-dashboard"
+                      businessScope === "adult"
                         ? "border-blue-700 bg-blue-700 text-white"
                         : "border-blue-700 bg-white text-blue-800 hover:bg-blue-50 dark:bg-zinc-950 dark:text-white dark:hover:bg-zinc-900"
                     }`}
-                    onClick={() => setActiveTab(effectiveActiveTab === "adult-dashboard" ? "dashboard" : "adult-dashboard")}
+                    onClick={() => {
+                      if (businessScope === "adult") {
+                        setBusinessScope("academy");
+                        setActiveTab("dashboard");
+                        return;
+                      }
+                      setBusinessScope("adult");
+                      setActiveTab("adult-dashboard");
+                    }}
                     type="button"
                   >
-                    {effectiveActiveTab === "adult-dashboard" ? "Academia" : "Liga adultos"}
+                    {businessScope === "adult" ? "Academia" : "Liga adultos"}
                   </button>
                 )}
                 <button className="grid size-10 place-items-center rounded-md border border-zinc-200 bg-white hover:bg-zinc-50" onClick={onRefresh} title="Actualizar" type="button">
@@ -299,7 +375,6 @@ export function AdminShell({
                     user={user}
                     data={data}
                     onCreateWorkLog={(payload) => onCreateRecord("/coach-work-logs/", payload, "Horas registradas.")}
-                    onOpenAdults={() => setActiveTab("adult-dashboard")}
                     onAcceptStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/accept/`, "Pago aceptado.")}
                     onRejectStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/reject/`, "Pago rechazado.")}
                     onDownloadFile={onDownloadFile}
@@ -310,7 +385,7 @@ export function AdminShell({
               )}
               {effectiveActiveTab === "adult-dashboard" && (
                 <AdultLeagueDashboardPanel
-                  data={data}
+                  data={scopedData}
                   collectionOnly={user.role === "cashier"}
                   onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
                   onMarkPlayer={onMarkAdultPlayer}
@@ -319,12 +394,12 @@ export function AdminShell({
                 />
               )}
               {effectiveActiveTab === "sports" && (
-                <SportsPanel data={data} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />
+                <SportsPanel data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />
               )}
-              {effectiveActiveTab === "values" && <ValuesPanel data={data} onSaveAssessment={onSaveStudentValueAssessment} />}
+              {effectiveActiveTab === "values" && <ValuesPanel data={scopedData} onSaveAssessment={onSaveStudentValueAssessment} />}
               {effectiveActiveTab === "tournaments" && (
                 <TournamentsPanel
-                  data={data}
+                  data={scopedData}
                   user={user}
                   readOnly={user.role === "coach"}
                   onCreateTournament={(payload) => onCreateRecord("/tournaments/", payload, "Torneo creado.")}
@@ -334,27 +409,63 @@ export function AdminShell({
                   onUpdateMatch={onUpdateMatchScore}
                 />
               )}
-              {effectiveActiveTab === "coaches" && <CoachesConsolidatedPanel data={data} />}
-              {effectiveActiveTab === "referees" && <RefereesConsolidatedPanel data={data} />}
-              {effectiveActiveTab === "uniforms" && <UniformsPanel data={data} />}
-              {effectiveActiveTab === "sales-estimate" && <SalesEstimationPanel data={data} />}
-              {effectiveActiveTab === "income-statement" && <IncomeStatementPanel data={data} />}
-              {effectiveActiveTab === "daily-operation" && <DailyOperationPanel data={data} />}
-              {effectiveActiveTab === "debts" && <DebtsPanel data={data} />}
+              {effectiveActiveTab === "coaches" && <CoachesConsolidatedPanel data={scopedData} />}
+              {effectiveActiveTab === "referees" && <RefereesConsolidatedPanel data={scopedData} />}
+              {effectiveActiveTab === "uniforms" && <UniformsPanel data={scopedData} />}
+              {effectiveActiveTab === "sales-estimate" && <SalesEstimationPanel data={scopedData} />}
+              {effectiveActiveTab === "income-statement" && <IncomeStatementPanel data={scopedData} />}
+              {effectiveActiveTab === "daily-operation" && <DailyOperationPanel data={scopedData} />}
+              {effectiveActiveTab === "debts" && <DebtsPanel data={scopedData} />}
               {effectiveActiveTab === "attendance" && (
-                <AttendancePanel
-                  data={data}
-                  user={user}
-                  onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
-                  onMark={(payload) => onCreateAndReturn<AttendanceRecord>("/attendance-records/", payload)}
-                  onClose={onCloseAttendanceSession}
-                  onFaceAttendance={(payload) => onCreateAndReturn<FaceRecognitionResponse>("/face-attendance/recognize/", payload)}
-                />
+                <div className="grid gap-5">
+                  <div className="rounded-md border border-zinc-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        { key: "manual", label: "Pase manual" },
+                        { key: "automatic", label: "Pase automatico" },
+                        { key: "report", label: "Reporte automatico" },
+                        { key: "occupancy", label: "Aforo en video" },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          className={`rounded-md px-3 py-2 text-sm font-semibold transition ${attendanceSubsection === item.key ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950" : "bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"}`}
+                          onClick={() => setAttendanceSubsection(item.key as AttendanceSubsection)}
+                          type="button"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {attendanceSubsection === "manual" && (
+                    <AttendancePanel
+                      data={scopedData}
+                      user={user}
+                      onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
+                      onMark={(payload) => onCreateAndReturn<AttendanceRecord>("/attendance-records/", payload)}
+                      onClose={onCloseAttendanceSession}
+                      onFaceAttendance={(payload) => onCreateAndReturn<FaceRecognitionResponse>("/face-attendance/recognize/", payload)}
+                    />
+                  )}
+                  {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefresh} mode="process" />}
+                  {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefresh} mode="report" />}
+                  {attendanceSubsection === "occupancy" && <VideoOccupancyPanel token={token} data={scopedData} />}
+                </div>
               )}
               {effectiveActiveTab === "billing" && (
-                user.role === "cashier" ? (
+                businessScope === "adult" ? (
+                  <AdultLeagueDashboardPanel
+                    data={scopedData}
+                    collectionOnly
+                    onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
+                    onMarkPlayer={onMarkAdultPlayer}
+                    onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago adulto registrado.")}
+                    onPaymentAction={(paymentId, action) => onPostAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
+                  />
+                ) : user.role === "cashier" ? (
                   <BillingCollectionPanel
-                    data={data}
+                    data={scopedData}
                     compact
                     onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Solicitud de pago creada.")}
                     onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento registrado.")}
@@ -362,7 +473,7 @@ export function AdminShell({
                   />
                 ) : (
                   <BillingPanel
-                    data={data}
+                    data={scopedData}
                     onCreateCharge={(payload) => onCreateRecord("/charges/", payload, "Cargo creado.")}
                     onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago registrado.")}
                     onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento solicitado.")}
@@ -373,7 +484,7 @@ export function AdminShell({
               )}
               {effectiveActiveTab === "expenses" && (
                 <ExpensesPanel
-                  data={data}
+                  data={scopedData}
                   onCreateExpense={(payload) => onCreateRecord("/expenses/", payload, "Gasto capturado.")}
                   onApproveExpense={(expenseId) => onPostAction(`/expenses/${expenseId}/approve/`, "Gasto aprobado.")}
                   onRejectExpense={(expenseId) => onPostAction(`/expenses/${expenseId}/reject/`, "Gasto rechazado.")}
@@ -386,23 +497,23 @@ export function AdminShell({
               )}
               {effectiveActiveTab === "students" && (
                 <StudentsPanel
-                  data={data}
+                  data={scopedData}
                   onCreate={(payload) => onCreateRecord("/students/", payload, "Alumno creado.")}
                   onUpdate={(studentId, payload) => onUpdateRecord(`/students/${studentId}/`, payload, "Alumno actualizado.")}
                 />
               )}
-              {effectiveActiveTab === "guardians" && <GuardiansPanel guardians={data.guardians} onCreate={(payload) => onCreateRecord("/guardians/", payload, "Representante creado.")} />}
+              {effectiveActiveTab === "guardians" && <GuardiansPanel guardians={scopedData.guardians} onCreate={(payload) => onCreateRecord("/guardians/", payload, "Representante creado.")} />}
               {effectiveActiveTab === "sites" && <SitesPanel sites={data.sites} onCreate={(payload) => onCreateRecord("/sites/", payload, "Sede creada.")} />}
               {effectiveActiveTab === "users" && isAdmin && (
                 <UsersPanel
-                  data={data}
+                  data={scopedData}
                   onCreate={(payload) => onCreateRecord("/users/", payload, "Usuario creado.")}
                   onUpdate={(userId, payload) => onUpdateRecord(`/users/${userId}/`, payload, "Permisos actualizados.")}
                 />
               )}
-              {effectiveActiveTab === "invoices" && <InvoicesPanel invoices={data.invoices} onDownloadFile={onDownloadFile} />}
-              {effectiveActiveTab === "historical" && <HistoricalImportsPanel data={data} onUpload={onUploadHistoricalImport} onCommit={onCommitHistoricalImport} />}
-              {effectiveActiveTab === "discrepancies" && isAdmin && <HistoricalDiscrepanciesPanel report={data.historicalDiscrepancies} sites={data.sites} />}
+              {effectiveActiveTab === "invoices" && <InvoicesPanel invoices={scopedData.invoices} onDownloadFile={onDownloadFile} />}
+              {effectiveActiveTab === "historical" && <HistoricalImportsPanel data={scopedData} onUpload={onUploadHistoricalImport} onCommit={onCommitHistoricalImport} />}
+              {effectiveActiveTab === "discrepancies" && isAdmin && <HistoricalDiscrepanciesPanel report={scopedData.historicalDiscrepancies} sites={scopedData.sites} />}
             </section>
           </div>
         </div>

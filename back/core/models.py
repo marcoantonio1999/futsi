@@ -421,6 +421,8 @@ class AttendanceRecord(TimestampedModel):
                 ),
                 name="ck_attendance_record_subject",
             ),
+            models.UniqueConstraint(fields=["session", "student"], condition=Q(student__isnull=False), name="uq_att_record_session_student"),
+            models.UniqueConstraint(fields=["session", "team"], condition=Q(team__isnull=False), name="uq_att_record_session_team"),
         ]
         indexes = [
             models.Index(fields=["session", "status"], name="ix_att_record_session_status"),

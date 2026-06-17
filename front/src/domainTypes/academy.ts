@@ -23,6 +23,7 @@ export type Student = {
   category: string;
   group_name: string;
   status: StudentStatus;
+  photo?: string;
   photo_url: string;
   waiver_url: string;
   medical_notes: string;

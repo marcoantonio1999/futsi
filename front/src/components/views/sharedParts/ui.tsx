@@ -37,6 +37,7 @@ import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, C
 
 
 export function Avatar({ name, imageUrl }: { name: string; imageUrl?: string }) {
+  const canRenderImage = Boolean(imageUrl && /^(https?:|data:|blob:)/i.test(imageUrl));
   const initials = name
     .split(" ")
     .filter(Boolean)
@@ -44,7 +45,7 @@ export function Avatar({ name, imageUrl }: { name: string; imageUrl?: string }) 
     .map((part) => part[0])
     .join("")
     .toUpperCase();
-  return imageUrl ? (
+  return canRenderImage ? (
     <img className="size-16 rounded-md object-cover" src={imageUrl} alt={name} />
   ) : (
     <div className="grid size-16 place-items-center rounded-md bg-emerald-700 text-lg font-semibold text-white">{initials || "U"}</div>

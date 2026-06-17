@@ -8,7 +8,9 @@ venv/
 reports/
 qa/artifacts/
 media/
+*.log
 back/.env
+back/.env.local
 back/staticfiles/
 
 # Frontend

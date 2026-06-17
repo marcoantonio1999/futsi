@@ -1,19 +1,49 @@
 from .common import *
+from core.services.face_insight import (
+    build_student_database,
+    data_url_to_bgr,
+    detect_embeddings,
+    match_embedding,
+    mirror_bgr,
+    resolve_providers,
+)
+
 
 class FaceAttendanceView(APIView):
     permission_classes = [IsOperationsOrCoachRole]
 
     def get(self, request):
+        providers = request.query_params.get("providers", os.getenv("FACE_PROVIDERS", "auto"))
         try:
-            from deepface import DeepFace  # noqa: F401
+            import onnxruntime as ort
 
-            return Response({"deepface_available": True, "engine": "deepface"})
+            return Response(
+                {
+                    "available": True,
+                    "engine": "insightface",
+                    "model": os.getenv("FACE_MODEL_NAME", "buffalo_l"),
+                    "requested_providers": providers,
+                    "resolved_providers": resolve_providers(providers.split(",")),
+                    "available_providers": ort.get_available_providers(),
+                }
+            )
         except Exception as exc:
-            return Response({"deepface_available": False, "engine": "mock", "detail": str(exc)})
+            return Response(
+                {
+                    "available": False,
+                    "engine": "insightface",
+                    "model": os.getenv("FACE_MODEL_NAME", "buffalo_l"),
+                    "detail": str(exc),
+                }
+            )
 
     def post(self, request):
         session_id = request.data.get("session")
-        session = AttendanceSession.objects.get(id=session_id)
+        try:
+            session = AttendanceSession.objects.get(id=session_id)
+        except AttendanceSession.DoesNotExist:
+            return Response({"detail": "La sesion no existe."}, status=status.HTTP_404_NOT_FOUND)
+
         if session.closed_at:
             return Response({"detail": "La sesion ya esta cerrada."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -26,103 +56,61 @@ class FaceAttendanceView(APIView):
 
         forced_student_id = request.data.get("student")
         image_data = request.data.get("image", "")
+        providers = request.data.get("providers") or os.getenv("FACE_PROVIDERS", "auto")
+        threshold = float(request.data.get("threshold") or os.getenv("FACE_MATCH_THRESHOLD", "0.45"))
+        min_margin = float(request.data.get("min_margin") or os.getenv("FACE_MATCH_MIN_MARGIN", "0.03"))
+
         matched_student = None
         confidence = Decimal("0")
-        engine = "mock"
-        notes = "Demo local: seleccion manual o primer alumno del roster."
+        engine = "insightface"
+        notes = "No se recibio imagen para reconocimiento facial."
 
         if forced_student_id:
             matched_student = next((student for student in roster if student.id == int(forced_student_id)), None)
+            if not matched_student:
+                return Response({"detail": "El alumno seleccionado no pertenece a esta lista."}, status=status.HTTP_400_BAD_REQUEST)
             confidence = Decimal("0.9900")
-            notes = "Demo local: alumno forzado manualmente."
+            notes = "Alumno forzado manualmente desde la pantalla de asistencia."
         elif image_data:
             try:
-                from deepface import DeepFace
-
-                engine = "deepface"
-                header, _, payload = image_data.partition(",")
-                raw = base64.b64decode(payload or header)
-                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as captured:
-                    captured.write(raw)
-                    captured_path = captured.name
-                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as mirrored:
-                    mirrored_path = mirrored.name
-                ImageOps.mirror(Image.open(captured_path)).save(mirrored_path, format="JPEG")
-
-                best_distance = None
-                best_student = None
-                best_verified = False
-                best_threshold = Decimal("0")
+                enrolled_students, reference_matrix, skipped = build_student_database(roster, providers_key=providers)
+                compared = len(enrolled_students)
+                best_match = None
                 best_orientation = "original"
-                compared = 0
-                skipped = []
-                candidate_notes = []
-                for student in roster:
-                    reference_path = None
-                    if student.photo:
-                        reference_path = student.photo.path
-                    elif student.photo_url:
-                        try:
-                            ref_file = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-                            ref_file.close()
-                            urlretrieve(student.photo_url, ref_file.name)
-                            reference_path = ref_file.name
-                        except Exception as exc:
-                            skipped.append(f"{student.full_name}: no se pudo leer photo_url ({exc})")
-                            continue
-                    if not reference_path:
-                        continue
-                    for orientation, probe_path in [("original", captured_path), ("espejada", mirrored_path)]:
-                        try:
-                            result = DeepFace.verify(
-                                img1_path=probe_path,
-                                img2_path=reference_path,
-                                model_name="Facenet512",
-                                enforce_detection=False,
-                            )
-                            compared += 1
-                            distance = Decimal(str(result.get("distance", 1)))
-                            threshold = Decimal(str(result.get("threshold", 0.3)))
-                            verified = bool(result.get("verified"))
-                            candidate_notes.append(
-                                f"{student.full_name} {orientation}: distancia {distance:.4f}, umbral {threshold:.4f}, verified={verified}"
-                            )
-                            if best_distance is None or distance < best_distance:
-                                best_distance = distance
-                                best_student = student
-                                best_verified = verified
-                                best_threshold = threshold
-                                best_orientation = orientation
-                        except Exception as exc:
-                            skipped.append(f"{student.full_name} {orientation}: comparacion fallida ({exc})")
-                max_distance = Decimal(os.getenv("FACE_MATCH_MAX_DISTANCE", "0.55"))
-                relaxed_threshold = max(best_threshold * Decimal("1.35"), max_distance) if best_threshold else max_distance
-                if best_student and best_distance is not None and (best_verified or best_distance <= relaxed_threshold):
-                    matched_student = best_student
-                    confidence = max(Decimal("0"), Decimal("1") - best_distance).quantize(Decimal("0.0001"))
+                detected = 0
+
+                captured = data_url_to_bgr(image_data)
+                for orientation, candidate in [("original", captured), ("espejada", mirror_bgr(captured))]:
+                    for face in detect_embeddings(candidate, providers_key=providers):
+                        detected += 1
+                        match = match_embedding(
+                            face.embedding,
+                            enrolled_students,
+                            reference_matrix,
+                            threshold=threshold,
+                            min_margin=min_margin,
+                        )
+                        if best_match is None or match.similarity > best_match.similarity:
+                            best_match = match
+                            best_orientation = orientation
+
+                if best_match and best_match.matched:
+                    matched_student = best_match.student
+                    confidence = Decimal(str(best_match.similarity)).quantize(Decimal("0.0001"))
                     notes = (
-                        f"DeepFace encontro coincidencia contra foto de perfil. Mejor candidato: "
-                        f"{best_student.full_name} ({best_orientation}), distancia {best_distance:.4f}, "
-                        f"umbral {best_threshold:.4f}, limite demo {relaxed_threshold:.4f}. Comparo {compared} imagenes."
+                        "InsightFace encontro coincidencia contra foto de perfil. "
+                        f"Orientacion: {best_orientation}. Similitud {best_match.similarity:.4f}, "
+                        f"margen {best_match.margin:.4f}. Comparo {compared} alumnos."
                     )
                 else:
-                    notes = f"DeepFace no encontro coincidencia confiable. Comparo {compared} imagenes."
-                    if best_student and best_distance is not None:
-                        notes = (
-                            f"{notes} Mejor candidato: {best_student.full_name} ({best_orientation}), "
-                            f"distancia {best_distance:.4f}, umbral {best_threshold:.4f}."
-                        )
-                    if candidate_notes:
-                        notes = f"{notes} Detalle: {' | '.join(candidate_notes[:4])}"
+                    notes = f"InsightFace no encontro coincidencia confiable. Detecto {detected} caras y comparo {compared} alumnos."
+                    if best_match:
+                        notes = f"{notes} Mejor similitud {best_match.similarity:.4f}, margen {best_match.margin:.4f}."
                     if skipped:
-                        notes = f"{notes} Omitidos: {' | '.join(skipped[:3])}"
+                        notes = f"{notes} Omitidos: {' | '.join(skipped[:4])}"
             except Exception as exc:
-                engine = "mock"
-                notes = f"DeepFace no disponible; fallback demo local sin reconocimiento real: {exc}"
-        else:
-            matched_student = roster[0]
-            confidence = Decimal("0.6500")
-            notes = "Demo local: no se recibio imagen, se uso primer alumno del roster."
+                engine = "insightface-error"
+                notes = f"InsightFace no pudo procesar la imagen: {exc}"
 
         attempt = FaceRecognitionAttempt.objects.create(
             session=session,
@@ -142,7 +130,7 @@ class FaceAttendanceView(APIView):
                 defaults={
                     "status": "present",
                     "had_debt_at_capture": matched_student.charges.filter(status__in=["pending", "partial"]).exists(),
-                    "override_reason": "Pase de lista por reconocimiento facial demo.",
+                    "override_reason": "Pase de lista por reconocimiento facial.",
                     "captured_by": request.user,
                 },
             )
@@ -152,4 +140,3 @@ class FaceAttendanceView(APIView):
                 "attendance": AttendanceRecordSerializer(attendance).data if attendance else None,
             }
         )
-

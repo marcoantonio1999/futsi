@@ -4,11 +4,13 @@ django-cors-headers>=4.4,<5.0
 psycopg[binary]>=3.2,<4.0
 python-dotenv>=1.0,<2.0
 Pillow>=10.0,<12.0
+numpy>=1.26,<3.0
 gunicorn>=22.0,<24.0
 whitenoise>=6.7,<7.0
 openpyxl>=3.1,<4.0
 msoffcrypto-tool>=6.0,<7.0
 reportlab>=4.2,<5.0
 
-# Demo local opcional para pase de lista facial:
-# pip install deepface tf-keras
+# Dependencias locales opcionales para pase de lista facial/video:
+# CPU: pip install -r requirements-face-cpu.txt
+# GPU NVIDIA: pip install -r requirements-face-gpu.txt

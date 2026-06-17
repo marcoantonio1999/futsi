@@ -127,6 +127,7 @@ export default function App() {
 
   return (
     <AdminShell
+      token={token}
       user={currentUser}
       data={data}
       theme={theme}

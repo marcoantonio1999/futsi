@@ -139,6 +139,41 @@ npm.cmd install
 npm.cmd run dev
 ```
 
+## Pase de lista automatico local
+
+El backend de produccion no procesa videos por defecto. El procesamiento local se habilita con `DJANGO_DEBUG=true` o `AUTOMATIC_ATTENDANCE_LOCAL_ENABLED=true` y corre desde la nueva seccion `Pase automatico`.
+
+Instalacion en una PC sin GPU:
+
+```powershell
+cd back
+.\.venv\Scripts\python.exe -m pip install -r requirements-face-cpu.txt
+```
+
+Instalacion en una PC con GPU NVIDIA:
+
+```powershell
+cd back
+.\.venv\Scripts\python.exe -m pip install -r requirements-face-gpu.txt
+.\.venv\Scripts\python.exe -c "import onnxruntime as ort; ort.preload_dlls(directory=''); print(ort.get_available_providers())"
+```
+
+Para que la carga manual desde la pantalla funcione, selecciona sede y sesion antes de arrastrar el video. Para colocar videos manualmente en carpeta, usa:
+
+```text
+back/media/automatic_attendance/pendientes/<id-de-sede>/video-20260620.mp4
+```
+
+El sistema revisa esa carpeta desde la pantalla cada 15 segundos. Si el video no trae sesion asignada, intenta inferir sede por subcarpeta y fecha por nombre del archivo o fecha de modificacion. Para partidos, usa los `Match` ya programados en torneo (`played_on`, `starts_at`, sede y equipos), crea o reutiliza sesiones `tournament_match` por equipo y marca asistencia de jugadores.
+
+En videos largos, asume que el archivo inicia a medianoche del dia detectado y procesa una ventana alrededor de la hora de la sesion. Valores por defecto:
+
+```text
+AUTO_ATTENDANCE_SESSION_PRE_MINUTES=15
+AUTO_ATTENDANCE_SESSION_DURATION_MINUTES=120
+AUTO_ATTENDANCE_LONG_VIDEO_SECONDS=14400
+```
+
 ## Validacion
 
 ```powershell

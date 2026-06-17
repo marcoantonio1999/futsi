@@ -1,8 +1,8 @@
 import { FormEvent, useMemo, useState } from "react";
-import { ClipboardCheck, Plus, Trophy } from "lucide-react";
+import { ClipboardCheck, Plus } from "lucide-react";
 import { Metric } from "../cards/Metric";
 import { money } from "../../utils/format";
-import type { AppData, Player, Site, Student, User } from "../../types";
+import type { AppData, Site, Student, User } from "../../types";
 import { FormationBoard } from "./formationBoard";
 import { UniformKitPreview } from "./uniforms";
 import { InvoiceRows, SelectInput, StaffPaymentInbox, TableHeader, TextInput } from "./shared";
@@ -11,9 +11,9 @@ type CoachTeamOption = {
   key: string;
   label: string;
   helper: string;
-  type: "academy_group" | "academy_tournament" | "adult_team";
+  type: "academy_group" | "academy_tournament";
   site: Site | null;
-  members: Array<Pick<Student, "id" | "full_name"> | Pick<Player, "id" | "full_name">>;
+  members: Array<Pick<Student, "id" | "full_name">>;
 };
 
 function uniqueByKey<T extends { key: string }>(items: T[]) {
@@ -58,29 +58,13 @@ function buildCoachTeamOptions(data: AppData): CoachTeamOption[] {
       };
     });
 
-  const adultOptions = data.teams
-    .filter((team) => team.is_active)
-    .map((team) => {
-      const site = data.sites.find((item) => item.id === team.site) ?? null;
-      const members = data.players.filter((player) => player.team === team.id && player.is_active);
-      return {
-        key: `adult-team-${team.id}`,
-        label: team.name,
-        helper: `${team.tournament_name || "Liga adultos"} - ${site?.name || "Sede"}`,
-        type: "adult_team" as const,
-        site,
-        members,
-      };
-    });
-
-  return uniqueByKey([...groupOptions, ...tournamentOptions, ...adultOptions]).filter((option) => option.members.length > 0);
+  return uniqueByKey([...groupOptions, ...tournamentOptions]).filter((option) => option.members.length > 0);
 }
 
 export function CoachDashboardPanel({
   user,
   data,
   onCreateWorkLog,
-  onOpenAdults,
   onAcceptStaffPayment,
   onRejectStaffPayment,
   onDownloadFile,
@@ -88,7 +72,6 @@ export function CoachDashboardPanel({
   user: User;
   data: AppData;
   onCreateWorkLog: (payload: unknown) => void;
-  onOpenAdults: () => void;
   onAcceptStaffPayment: (requestId: number) => void;
   onRejectStaffPayment: (requestId: number) => void;
   onDownloadFile: (path: string, filename: string) => void;
@@ -101,7 +84,7 @@ export function CoachDashboardPanel({
   const selectedOption = options.find((option) => option.key === selectedKey) ?? options[0] ?? null;
   const selectedSite = selectedOption?.site ?? data.sites.find((site) => site.id === user.primary_site) ?? data.sites[0] ?? null;
   const siteIndex = selectedSite ? Math.max(0, data.sites.findIndex((site) => site.id === selectedSite.id)) : 0;
-  const studentMembers = selectedOption?.type === "adult_team" ? [] : (selectedOption?.members as Student[] | undefined) ?? [];
+  const studentMembers = (selectedOption?.members as Student[] | undefined) ?? [];
   const medicalAlerts = studentMembers.filter((student) => "medical_notes" in student && student.medical_notes);
   const debtAlerts = studentMembers.filter((student) => "open_charge_count" in student && student.open_charge_count > 0);
   const totalHours = data.coachWorkLogs.reduce((sum, log) => sum + Number(log.hours || 0), 0);
@@ -137,10 +120,6 @@ export function CoachDashboardPanel({
                 <h2 className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">{user.first_name || user.username}</h2>
                 <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-300">Selecciona el grupo o equipo que vas a revisar.</p>
               </div>
-              <button className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-700 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50 dark:bg-zinc-950 dark:text-white dark:hover:bg-zinc-900" onClick={onOpenAdults} type="button">
-                <Trophy size={16} />
-                Liga adultos
-              </button>
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_320px]">
               <SelectInput label="Equipo asignado" value={selectedOption?.key || ""} onChange={(event) => setSelectedKey(event.target.value)}>
