@@ -18,6 +18,7 @@ import type { Role, TabKey } from "../../types";
 export const fullWidthTabs = new Set<TabKey>([
   "dashboard",
   "adult-dashboard",
+  "calendar",
   "sports",
   "values",
   "tournaments",
@@ -41,6 +42,7 @@ export function tabItems(): Array<{ key: TabKey; label: string; icon: React.Reac
   return [
     { key: "dashboard", label: "Dashboard", icon: <BarChart3 size={16} /> },
     { key: "adult-dashboard", label: "Liga adultos", icon: <UsersRound size={16} /> },
+    { key: "calendar", label: "Calendario", icon: <CalendarDays size={16} /> },
     { key: "sports", label: "Deportivo", icon: <BarChart3 size={16} /> },
     { key: "values", label: "Valores", icon: <Shield size={16} /> },
     { key: "tournaments", label: "Torneos", icon: <Trophy size={16} /> },
@@ -70,9 +72,9 @@ export function defaultSectionsByRole(tabs: Array<{ key: TabKey }>): Record<Role
     dev: tabs.map((tab) => tab.key),
     owner: tabs.map((tab) => tab.key),
     accounting: ["dashboard", "billing", "debts", "expenses", "sales-estimate", "income-statement", "daily-operation", "invoices", "historical", "discrepancies"],
-    site_coordinator: ["dashboard", "sports", "values", "tournaments", "attendance", "billing", "debts", "expenses", "students", "guardians", "uniforms"],
+    site_coordinator: ["dashboard", "calendar", "sports", "values", "tournaments", "attendance", "billing", "debts", "expenses", "students", "guardians", "uniforms"],
     cashier: ["billing", "adult-dashboard"],
-    coach: ["dashboard", "attendance", "sports", "values", "tournaments"],
+    coach: ["dashboard", "calendar", "attendance", "sports", "values", "tournaments"],
     guardian: ["sports"],
     adult_representative: ["adult-dashboard"],
     adult_player: ["adult-dashboard"],

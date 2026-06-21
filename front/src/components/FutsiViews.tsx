@@ -6,6 +6,7 @@ export * from "./views/billing";
 export * from "./views/billingCollection";
 export * from "./views/cashier";
 export * from "./views/catalog";
+export * from "./views/calendar";
 export * from "./views/coach";
 export * from "./views/coachDashboard";
 export * from "./views/dashboard";

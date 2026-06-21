@@ -33,7 +33,7 @@ export type AppData = {
   historicalDiscrepancies: HistoricalDiscrepancyReport | null;
 };
 
-export type TabKey = "dashboard" | "adult-dashboard" | "sports" | "values" | "tournaments" | "coaches" | "referees" | "uniforms" | "debts" | "sales-estimate" | "income-statement" | "daily-operation" | "attendance" | "billing" | "expenses" | "students" | "guardians" | "sites" | "users" | "invoices" | "historical" | "discrepancies";
+export type TabKey = "dashboard" | "adult-dashboard" | "calendar" | "sports" | "values" | "tournaments" | "coaches" | "referees" | "uniforms" | "debts" | "sales-estimate" | "income-statement" | "daily-operation" | "attendance" | "billing" | "expenses" | "students" | "guardians" | "sites" | "users" | "invoices" | "historical" | "discrepancies";
 
 export type AccountingSiteRow = {
   id: number;

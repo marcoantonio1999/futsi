@@ -24,6 +24,7 @@ import {
   AttendancePanel,
   BillingPanel,
   BillingCollectionPanel,
+  CalendarPanel,
   CoachDashboardPanel,
   CoachesConsolidatedPanel,
   DailyOperationPanel,
@@ -393,6 +394,7 @@ export function AdminShell({
                   onPaymentAction={(paymentId, action) => onPostAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
                 />
               )}
+              {effectiveActiveTab === "calendar" && <CalendarPanel data={scopedData} />}
               {effectiveActiveTab === "sports" && (
                 <SportsPanel data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />
               )}
