@@ -76,19 +76,22 @@ import {
 export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match; canEdit: boolean; onUpdateMatch: (matchId: number, payload: unknown) => Promise<void> }) {
   const [homeGoals, setHomeGoals] = useState(String(match.home_goals));
   const [awayGoals, setAwayGoals] = useState(String(match.away_goals));
+  const [durationMinutes, setDurationMinutes] = useState(String(match.duration_minutes || 120));
   const [status, setStatus] = useState(match.status);
 
   useEffect(() => {
     setHomeGoals(String(match.home_goals));
     setAwayGoals(String(match.away_goals));
+    setDurationMinutes(String(match.duration_minutes || 120));
     setStatus(match.status);
-  }, [match.id, match.home_goals, match.away_goals, match.status]);
+  }, [match.id, match.home_goals, match.away_goals, match.duration_minutes, match.status]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     onUpdateMatch(match.id, {
       home_goals: Number(homeGoals),
       away_goals: Number(awayGoals),
+      duration_minutes: Number(durationMinutes || 120),
       status,
     });
   }
@@ -98,7 +101,7 @@ export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase text-zinc-500">Jornada {match.round_number || "-"}</p>
-          <p className="mt-1 text-sm font-medium">{match.played_on} {match.starts_at?.slice(0, 5) || ""}</p>
+          <p className="mt-1 text-sm font-medium">{match.played_on} {match.starts_at?.slice(0, 5) || ""} - {match.duration_minutes || 120} min</p>
         </div>
         <span className={`rounded-md px-2 py-1 text-xs font-medium ${match.status === "live" ? "bg-red-50 text-red-700" : "bg-zinc-100 text-zinc-600"}`}>
           {match.status === "live" ? "En vivo" : match.status === "finished" ? "Finalizado" : "Programado"}
@@ -116,6 +119,7 @@ export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match
         <option value="finished">Finalizado</option>
         <option value="canceled">Cancelado</option>
       </SelectInput>
+      <TextInput className="mt-3" label="Duracion (min)" type="number" min="1" value={durationMinutes} disabled={!canEdit} onChange={(event) => setDurationMinutes(event.target.value)} />
       {canEdit && <button className="mt-3 w-full rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white">Actualizar marcador</button>}
     </form>
   );

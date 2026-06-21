@@ -16,32 +16,33 @@ function currentMinutes() {
   return now.getHours() * 60 + now.getMinutes();
 }
 
-export function isInAttendanceWindow(date: string, startsAt?: string | null) {
+export function isInAttendanceWindow(date: string, startsAt?: string | null, durationMinutes = 120) {
   if (date !== todayKey()) return false;
   const starts = minutesFromTime(startsAt);
   if (starts === null) return true;
   const current = currentMinutes();
-  return current >= starts - 60 && current <= starts + 60;
+  const duration = Math.max(1, Number(durationMinutes || 120));
+  return current >= starts && current <= starts + duration;
 }
 
 export function canMarkSession(session: AttendanceSession) {
   if (session.closed_at) return false;
   if (typeof session.can_mark_attendance === "boolean") return session.can_mark_attendance;
-  return isInAttendanceWindow(session.date, session.starts_at);
+  return isInAttendanceWindow(session.date, session.starts_at, session.duration_minutes);
 }
 
 export function sessionWindowText(session: AttendanceSession) {
   if (session.attendance_window) return session.attendance_window;
   const starts = minutesFromTime(session.starts_at);
   if (starts === null) return "Disponible solo hoy";
-  const start = Math.max(0, starts - 60);
-  const end = Math.min(1439, starts + 60);
+  const start = starts;
+  const end = Math.min(1439, starts + Math.max(1, Number(session.duration_minutes || 120)));
   const format = (value: number) => `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
   return `${format(start)} a ${format(end)}`;
 }
 
 export function matchIsCurrent(match: Match) {
-  return match.played_on === todayKey() && match.status !== "finished" && match.status !== "canceled" && isInAttendanceWindow(match.played_on, match.starts_at);
+  return match.played_on === todayKey() && match.status !== "finished" && match.status !== "canceled" && isInAttendanceWindow(match.played_on, match.starts_at, match.duration_minutes);
 }
 
 export function findCurrentSession(sessions: AttendanceSession[], siteId?: number | null, teamId?: number | null) {

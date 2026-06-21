@@ -142,6 +142,7 @@ CREATE TABLE attendance_sessions (
     session_type VARCHAR(30) NOT NULL,
     date DATE NOT NULL,
     starts_at TIME NULL,
+    duration_minutes SMALLINT NOT NULL DEFAULT 120,
     court_id BIGINT NULL REFERENCES courts(id) ON DELETE RESTRICT,
     group_name VARCHAR(80) NOT NULL DEFAULT '',
     tournament_id BIGINT NULL REFERENCES tournaments(id) ON DELETE RESTRICT,
@@ -149,7 +150,8 @@ CREATE TABLE attendance_sessions (
     team_id BIGINT NULL REFERENCES teams(id) ON DELETE RESTRICT,
     captured_by_id BIGINT NOT NULL REFERENCES core_user(id) ON DELETE RESTRICT,
     closed_at TIMESTAMPTZ NULL,
-    CONSTRAINT ck_attendance_session_type CHECK (session_type IN ('academy_class', 'tournament_match'))
+    CONSTRAINT ck_attendance_session_type CHECK (session_type IN ('academy_class', 'tournament_match')),
+    CONSTRAINT ck_attendance_session_duration CHECK (duration_minutes >= 1)
 );
 
 CREATE INDEX ix_att_session_site_date ON attendance_sessions(site_id, date);

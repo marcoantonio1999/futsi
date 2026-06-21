@@ -197,6 +197,7 @@ export function AdultLeagueDashboardPanel({
       session_type: "tournament_match",
       date: currentMatch?.played_on || today,
       starts_at: currentMatch?.starts_at || "20:00",
+      duration_minutes: currentMatch?.duration_minutes || 120,
       group_name: currentMatch ? `${currentMatch.home_team_name} vs ${currentMatch.away_team_name}` : selectedTeam.name,
       tournament: selectedTeam.tournament,
       match: currentMatch?.id || null,

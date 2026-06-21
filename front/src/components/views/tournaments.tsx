@@ -177,6 +177,7 @@ export function TournamentsPanel({
       away_team: Number(form.get("away_team")),
       played_on: String(form.get("played_on") || today()),
       starts_at: String(form.get("starts_at") || "20:00"),
+      duration_minutes: Number(form.get("duration_minutes") || 120),
       status: "scheduled",
     });
     event.currentTarget.reset();
@@ -366,6 +367,7 @@ export function TournamentsPanel({
               <TeamSelect label="Visitante" name="away_team" teams={tournamentTeams} />
               <TextInput label="Fecha" name="played_on" type="date" defaultValue={today()} />
               <TextInput label="Hora" name="starts_at" type="time" defaultValue="20:00" />
+              <TextInput label="Duracion (min)" name="duration_minutes" type="number" min="1" defaultValue={120} />
               <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Agendar</button>
             </form>
           </div>

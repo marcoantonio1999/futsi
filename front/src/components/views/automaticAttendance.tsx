@@ -42,6 +42,7 @@ type AutomaticSessionSummary = {
   site_name: string;
   date: string;
   starts_at: string | null;
+  duration_minutes: number;
   group_name: string;
   session_type?: string;
   team?: number | null;
@@ -159,7 +160,7 @@ function formatBytes(size: number) {
 
 function sessionLabel(session: AttendanceSession) {
   const type = session.session_type === "tournament_match" ? "Partido" : "Entrenamiento";
-  return `${session.date} ${session.starts_at ?? "--:--"} - ${type} - ${session.site_name ?? "Sede"}${session.group_name ? ` - ${session.group_name}` : ""}`;
+  return `${session.date} ${session.starts_at ?? "--:--"} (${session.duration_minutes || 120} min) - ${type} - ${session.site_name ?? "Sede"}${session.group_name ? ` - ${session.group_name}` : ""}`;
 }
 
 function automaticSessionSummary(session: AttendanceSession): AutomaticSessionSummary {
@@ -169,6 +170,7 @@ function automaticSessionSummary(session: AttendanceSession): AutomaticSessionSu
     site_name: session.site_name ?? "Sede",
     date: session.date,
     starts_at: session.starts_at,
+    duration_minutes: session.duration_minutes || 120,
     group_name: session.group_name,
     session_type: session.session_type,
     team: session.team,

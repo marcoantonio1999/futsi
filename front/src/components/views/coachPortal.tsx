@@ -112,6 +112,7 @@ export function CoachPortal({
   const site = data.sites.find((item) => item.id === user.primary_site) ?? data.sites[0];
   const [date, setDate] = useState(today);
   const [startsAt, setStartsAt] = useState("17:00");
+  const [durationMinutes, setDurationMinutes] = useState("120");
   const [matchId, setMatchId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<number | null>(data.attendanceSessions[0]?.id ?? null);
   const [savingStudentId, setSavingStudentId] = useState<number | null>(null);
@@ -160,6 +161,7 @@ export function CoachPortal({
       setMatchId(String(currentMatch.id));
       setDate(currentMatch.played_on);
       if (currentMatch.starts_at) setStartsAt(currentMatch.starts_at.slice(0, 5));
+      setDurationMinutes(String(currentMatch.duration_minutes || 120));
     }
   }, [currentMatch, matchId]);
 
@@ -173,6 +175,7 @@ export function CoachPortal({
           session_type: "academy_class",
           date,
           starts_at: startsAt || null,
+          duration_minutes: Number(durationMinutes || 120),
           group_name: groupName,
         };
     const session = await onCreateSession(payload);
@@ -255,6 +258,7 @@ export function CoachPortal({
                     if (match) {
                       setDate(match.played_on);
                       if (match.starts_at) setStartsAt(match.starts_at.slice(0, 5));
+                      setDurationMinutes(String(match.duration_minutes || 120));
                     }
                   }}
                 >
@@ -267,6 +271,7 @@ export function CoachPortal({
                 </SelectInput>
                 <TextInput label="Fecha" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
                 <TextInput label="Hora" type="time" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
+                <TextInput label="Duracion (min)" type="number" min="1" value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} />
               </div>
               <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white" data-testid="coach-create-session">
                 <Plus size={16} /> Crear sesion

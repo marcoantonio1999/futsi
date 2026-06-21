@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -286,6 +287,7 @@ class Match(TimestampedModel):
     away_team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="away_matches")
     played_on = models.DateField(default=timezone.localdate)
     starts_at = models.TimeField(null=True, blank=True)
+    duration_minutes = models.PositiveSmallIntegerField(default=120, validators=[MinValueValidator(1)])
     home_goals = models.PositiveSmallIntegerField(default=0)
     away_goals = models.PositiveSmallIntegerField(default=0)
     status = models.CharField(max_length=20, choices=MatchStatus.choices, default=MatchStatus.SCHEDULED)
@@ -379,6 +381,7 @@ class AttendanceSession(TimestampedModel):
     session_type = models.CharField(max_length=30, choices=AttendanceSessionType.choices)
     date = models.DateField()
     starts_at = models.TimeField(null=True, blank=True)
+    duration_minutes = models.PositiveSmallIntegerField(default=120, validators=[MinValueValidator(1)])
     court = models.ForeignKey(Court, null=True, blank=True, on_delete=models.PROTECT, related_name="attendance_sessions")
     group_name = models.CharField(max_length=80, blank=True)
     tournament = models.ForeignKey(Tournament, null=True, blank=True, on_delete=models.PROTECT)

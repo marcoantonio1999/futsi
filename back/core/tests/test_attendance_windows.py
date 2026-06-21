@@ -43,7 +43,7 @@ def test_attendance_can_be_marked_only_inside_operational_window(login_client):
     student = Student.objects.filter(site__code="roma", group_name="Equipo Sub-12 A").first()
     session = create_academy_session(student, starts_at=time(17, 0))
 
-    with patch("core.domain_serializers.attendance.timezone.now", return_value=local_moment(2026, 6, 15, 16, 15)):
+    with patch("core.domain_serializers.attendance.timezone.now", return_value=local_moment(2026, 6, 15, 17, 15)):
         response = client.post(
             "/api/attendance-records/",
             {"session": session.id, "student": student.id, "status": "present"},
@@ -121,7 +121,7 @@ def test_adult_player_attendance_uses_match_team_and_window(login_client):
         captured_by=admin,
     )
 
-    with patch("core.domain_serializers.attendance.timezone.now", return_value=local_moment(2026, 6, 15, 19, 30)):
+    with patch("core.domain_serializers.attendance.timezone.now", return_value=local_moment(2026, 6, 15, 20, 30)):
         ok_response = client.post("/api/player-attendance-records/", {"session": session.id, "player": home_player.id, "status": "present"}, format="json")
         bad_response = client.post("/api/player-attendance-records/", {"session": session.id, "player": away_player.id, "status": "present"}, format="json")
 

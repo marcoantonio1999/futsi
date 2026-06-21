@@ -138,7 +138,17 @@ class MatchSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             validated_data["updated_by"] = request.user
-        return super().update(instance, validated_data)
+        match = super().update(instance, validated_data)
+        AttendanceSession.objects.filter(match=match).update(
+            site_id=match.site_id,
+            date=match.played_on,
+            starts_at=match.starts_at,
+            duration_minutes=match.duration_minutes,
+            tournament_id=match.tournament_id,
+            round_id=match.round_id,
+            updated_at=timezone.now(),
+        )
+        return match
 
 
 class StudentAssessmentSerializer(serializers.ModelSerializer):

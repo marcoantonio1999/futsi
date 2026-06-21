@@ -165,6 +165,7 @@ def summarize_session(session: AttendanceSession) -> dict:
         "site_name": session.site.name,
         "date": session.date.isoformat(),
         "starts_at": session.starts_at.isoformat() if session.starts_at else None,
+        "duration_minutes": session.duration_minutes,
         "session_type": session.session_type,
         "group_name": session.group_name,
         "team": session.team_id,
@@ -187,9 +188,13 @@ def get_or_create_match_sessions(match: Match, user: User) -> list[AttendanceSes
             match=match,
             defaults={
                 "group_name": team.name,
+                "duration_minutes": match.duration_minutes,
                 "captured_by": user,
             },
         )
+        if session.duration_minutes != match.duration_minutes:
+            session.duration_minutes = match.duration_minutes
+            session.save(update_fields=["duration_minutes", "updated_at"])
         sessions.append(session)
     return sessions
 
@@ -506,8 +511,8 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
     fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
     total_duration = total_frames / fps if total_frames and fps else 0
     long_video_threshold = int(os.getenv("AUTO_ATTENDANCE_LONG_VIDEO_SECONDS", "14400"))
-    pre_minutes = int(os.getenv("AUTO_ATTENDANCE_SESSION_PRE_MINUTES", "15"))
-    window_minutes = int(os.getenv("AUTO_ATTENDANCE_SESSION_DURATION_MINUTES", "120"))
+    pre_minutes = int(os.getenv("AUTO_ATTENDANCE_SESSION_PRE_MINUTES", "0"))
+    window_minutes = max(1, int(session.duration_minutes or os.getenv("AUTO_ATTENDANCE_SESSION_DURATION_MINUTES", "120")))
     start_frame = 0
     end_frame = total_frames
     window_label = "video completo"

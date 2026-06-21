@@ -860,6 +860,7 @@ class Command(BaseCommand):
                     "site": site_map["roma"],
                     "played_on": f"2026-05-{number * 7:02d}",
                     "starts_at": "17:00",
+                    "duration_minutes": 120,
                     "home_goals": home_goals,
                     "away_goals": away_goals,
                     "status": status,

@@ -93,6 +93,7 @@ export type Match = {
   away_team_name?: string;
   played_on: string;
   starts_at: string | null;
+  duration_minutes: number;
   home_goals: number;
   away_goals: number;
   status: "scheduled" | "live" | "finished" | "canceled";

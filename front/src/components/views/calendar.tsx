@@ -6,6 +6,7 @@ type CalendarEvent = {
   id: string;
   date: string;
   time: string;
+  durationMinutes: number;
   type: "training" | "match" | "session_match";
   title: string;
   subtitle: string;
@@ -33,6 +34,16 @@ function monthLabel(date: Date) {
 
 function eventTime(value: string | null | undefined) {
   return value?.slice(0, 5) || "Sin hora";
+}
+
+function eventRange(value: string | null | undefined, durationMinutes: number) {
+  if (!value) return "Sin hora";
+  const [hours, minutes] = value.slice(0, 5).split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return eventTime(value);
+  const start = hours * 60 + minutes;
+  const end = Math.min(1439, start + Math.max(1, Number(durationMinutes || 120)));
+  const format = (total: number) => `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  return `${format(start)}-${format(end)}`;
 }
 
 function addMonths(date: Date, delta: number) {
@@ -72,6 +83,7 @@ function buildEvents(data: AppData): CalendarEvent[] {
       id: `match-${match.id}`,
       date: match.played_on,
       time: eventTime(match.starts_at),
+      durationMinutes: match.duration_minutes || 120,
       type: "match",
       title: `${match.home_team_name || "Local"} vs ${match.away_team_name || "Visitante"}`,
       subtitle: match.tournament_name || "Torneo",
@@ -87,6 +99,7 @@ function buildEvents(data: AppData): CalendarEvent[] {
       id: `session-${session.id}`,
       date: session.date,
       time: eventTime(session.starts_at),
+      durationMinutes: session.duration_minutes || 120,
       type: session.session_type === "tournament_match" ? "session_match" : "training",
       title: session.match_name || session.team_name || session.group_name || (session.session_type === "tournament_match" ? "Partido" : "Entrenamiento"),
       subtitle: session.session_type === "tournament_match" ? session.tournament_name || "Torneo" : session.group_name || "Academia",
@@ -248,7 +261,7 @@ export function CalendarPanel({ data }: { data: AppData }) {
                 <h4 className="mt-3 font-semibold text-zinc-950 dark:text-zinc-50">{event.title}</h4>
                 <p className="mt-1 text-sm text-zinc-500">{event.subtitle}</p>
                 <div className="mt-3 grid gap-2 text-sm text-zinc-700 dark:text-zinc-200">
-                  <p className="flex items-center gap-2"><Clock3 size={15} /> {event.time}</p>
+                  <p className="flex items-center gap-2"><Clock3 size={15} /> {eventRange((event.raw as AttendanceSession | Match).starts_at, event.durationMinutes)} ({event.durationMinutes} min)</p>
                   <p className="flex items-center gap-2"><MapPin size={15} /> {event.siteName}</p>
                   {event.type !== "training" && <p className="flex items-center gap-2"><Trophy size={15} /> Partido programado</p>}
                   {event.type === "training" && <p className="flex items-center gap-2"><UsersRound size={15} /> Entrenamiento / sesion academia</p>}

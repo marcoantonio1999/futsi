@@ -8,7 +8,8 @@ def attendance_window_bounds(session):
         return None, None
     current_tz = timezone.get_current_timezone()
     starts_on = timezone.make_aware(datetime.combine(session.date, session.starts_at), current_tz)
-    return starts_on - timedelta(hours=1), starts_on + timedelta(hours=1)
+    duration = max(1, int(session.duration_minutes or 120))
+    return starts_on, starts_on + timedelta(minutes=duration)
 
 
 def can_mark_session(session):
@@ -99,6 +100,7 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             validated_data["session_type"] = "tournament_match"
             validated_data["date"] = match.played_on
             validated_data["starts_at"] = match.starts_at
+            validated_data["duration_minutes"] = match.duration_minutes
             validated_data["tournament"] = match.tournament
             validated_data["round"] = match.round
             validated_data["group_name"] = f"{match.home_team.name} vs {match.away_team.name}"
