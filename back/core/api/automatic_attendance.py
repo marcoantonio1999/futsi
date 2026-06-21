@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.utils.text import get_valid_filename, slugify
 
 from .common import *
+from core.services.match_sessions import ensure_match_attendance_sessions
 from core.services.face_insight import build_student_database, detect_embeddings, student_reference_path
 
 
@@ -175,28 +176,7 @@ def summarize_session(session: AttendanceSession) -> dict:
 
 
 def get_or_create_match_sessions(match: Match, user: User) -> list[AttendanceSession]:
-    sessions = []
-    for team in [match.home_team, match.away_team]:
-        session, _ = AttendanceSession.objects.get_or_create(
-            site=match.site,
-            session_type="tournament_match",
-            date=match.played_on,
-            starts_at=match.starts_at,
-            tournament=match.tournament,
-            round=match.round,
-            team=team,
-            match=match,
-            defaults={
-                "group_name": team.name,
-                "duration_minutes": match.duration_minutes,
-                "captured_by": user,
-            },
-        )
-        if session.duration_minutes != match.duration_minutes:
-            session.duration_minutes = match.duration_minutes
-            session.save(update_fields=["duration_minutes", "updated_at"])
-        sessions.append(session)
-    return sessions
+    return ensure_match_attendance_sessions(match, user)
 
 
 def resolve_sessions(video_path: Path, metadata: dict, user: User) -> list[AttendanceSession]:

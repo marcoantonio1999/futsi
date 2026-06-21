@@ -1,6 +1,7 @@
 from .common import *
 from .attendance import attendance_window_label, can_mark_session, match_team_ids
 from .money import charge_balance
+from core.services.match_sessions import ensure_match_attendance_sessions
 
 class TournamentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -132,22 +133,16 @@ class MatchSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             validated_data["updated_by"] = request.user
-        return super().create(validated_data)
+        match = super().create(validated_data)
+        ensure_match_attendance_sessions(match, request.user if request else None)
+        return match
 
     def update(self, instance, validated_data):
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             validated_data["updated_by"] = request.user
         match = super().update(instance, validated_data)
-        AttendanceSession.objects.filter(match=match).update(
-            site_id=match.site_id,
-            date=match.played_on,
-            starts_at=match.starts_at,
-            duration_minutes=match.duration_minutes,
-            tournament_id=match.tournament_id,
-            round_id=match.round_id,
-            updated_at=timezone.now(),
-        )
+        ensure_match_attendance_sessions(match, request.user if request else None)
         return match
 
 
