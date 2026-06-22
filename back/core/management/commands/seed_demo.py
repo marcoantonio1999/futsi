@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from django.core.management.base import BaseCommand
+from django.db import connection
 from django.utils import timezone
 
 from core.models import (
@@ -46,6 +47,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["reset"]:
+            self._delete_if_table_exists("video_clips")
             CashMovement.objects.all().delete()
             StaffPaymentRequest.objects.all().delete()
             FaceRecognitionAttempt.objects.all().delete()
@@ -55,11 +57,11 @@ class Command(BaseCommand):
             CoachWorkLog.objects.all().delete()
             StudentAssessment.objects.all().delete()
             StudentValueAssessment.objects.all().delete()
+            AttendanceRecord.objects.all().delete()
             PlayerAttendanceRecord.objects.all().delete()
+            AttendanceSession.objects.all().delete()
             Match.objects.all().delete()
             Round.objects.all().delete()
-            AttendanceRecord.objects.all().delete()
-            AttendanceSession.objects.all().delete()
             Payment.objects.all().delete()
             Discount.objects.all().delete()
             Charge.objects.all().delete()
@@ -1335,3 +1337,11 @@ class Command(BaseCommand):
                 "Datos demo listos. Usuarios: admin/admin12345, dev/dev12345, contador/demo12345, coordinador.roma/demo12345, caja.roma/demo12345, coach.roma/demo12345 y coaches por sede con demo12345"
             )
         )
+
+    def _delete_if_table_exists(self, table_name):
+        existing_tables = connection.introspection.table_names()
+        if table_name not in existing_tables:
+            return
+        quoted_name = connection.ops.quote_name(table_name)
+        with connection.cursor() as cursor:
+            cursor.execute(f"DELETE FROM {quoted_name}")

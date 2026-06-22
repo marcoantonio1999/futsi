@@ -130,7 +130,14 @@ def postgres_config_from_url(database_url):
     }
 
 
-if DATABASE_URL and not HAS_POSTGRES_PARTS:
+if DB_ENGINE == "sqlite" and ALLOW_SQLITE and not IS_RENDER:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.getenv("SQLITE_DATABASE_PATH", BASE_DIR / "db.sqlite3"),
+        }
+    }
+elif DATABASE_URL and not HAS_POSTGRES_PARTS:
     DATABASES = {"default": postgres_config_from_url(DATABASE_URL)}
 elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
     missing_postgres_settings = [
@@ -161,13 +168,6 @@ elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
             "HOST": postgres_host,
             "PORT": os.getenv("POSTGRES_PORT", os.getenv("SUPABASE_DB_PORT", "5432")),
             **({"OPTIONS": postgres_options} if postgres_options else {}),
-        }
-    }
-elif DB_ENGINE == "sqlite" and ALLOW_SQLITE:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": os.getenv("SQLITE_DATABASE_PATH", BASE_DIR / "db.sqlite3"),
         }
     }
 else:
