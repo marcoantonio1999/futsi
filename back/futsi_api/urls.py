@@ -6,6 +6,7 @@ from core.api.automatic_attendance import (
     AutomaticAttendanceConfirmReviewView,
     AutomaticAttendanceEvidenceView,
     AutomaticAttendanceProcessView,
+    AutomaticAttendanceReprocessClipView,
     AutomaticAttendanceStatusView,
     AutomaticAttendanceUploadView,
 )
@@ -36,6 +37,7 @@ urlpatterns = [
     path("api/automatic-attendance/status/", AutomaticAttendanceStatusView.as_view()),
     path("api/automatic-attendance/upload/", AutomaticAttendanceUploadView.as_view()),
     path("api/automatic-attendance/process-pending/", AutomaticAttendanceProcessView.as_view()),
+    path("api/automatic-attendance/reprocess-video-clip/", AutomaticAttendanceReprocessClipView.as_view()),
     path("api/automatic-attendance/jobs/<str:job_id>/", AutomaticAttendanceJobView.as_view()),
     path("api/automatic-attendance/jobs/<str:job_id>/confirm-review/", AutomaticAttendanceConfirmReviewView.as_view()),
     path("api/automatic-attendance/evidence/<str:job_id>/<path:evidence_path>", AutomaticAttendanceEvidenceView.as_view()),

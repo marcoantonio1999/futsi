@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, CheckCircle2, Clock3, FolderOpen, Play, RefreshCw, Search, UploadCloud } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Clock3, FolderOpen, Play, RefreshCw, Search, UploadCloud, X } from "lucide-react";
 import { apiFormRequestWithProgress, apiRequest } from "../../api";
 import type { AppData, AttendanceSession } from "../../types";
 import { SelectInput, TextInput } from "./sharedParts/metrics";
@@ -7,6 +7,7 @@ import { SelectInput, TextInput } from "./sharedParts/metrics";
 type PendingVideo = {
   filename: string;
   path: string;
+  source?: "local" | "drive";
   size: number;
   modified_at: string;
   metadata: {
@@ -18,7 +19,12 @@ type PendingVideo = {
     alert_threshold?: string | number | null;
     site_source?: string;
     date_source?: string;
+    video_clip_id?: string;
+    status?: string;
+    processed_at?: string | null;
+    error_message?: string | null;
   };
+  reprocessable?: boolean;
 };
 
 type AutomaticAttendanceJob = {
@@ -28,6 +34,26 @@ type AutomaticAttendanceJob = {
   processed: number;
   percent: number;
   current_video?: string | null;
+  download_percent?: number | null;
+  downloaded_bytes?: number | null;
+  download_total_bytes?: number | null;
+  download_speed_bps?: number | null;
+  download_average_bps?: number | null;
+  download_eta_seconds?: number | null;
+  download_log_tail?: string | null;
+  phase?: string | null;
+  phase_label?: string | null;
+  process_frame?: number | null;
+  process_total_frames?: number | null;
+  process_sampled_frames?: number | null;
+  process_probed_seconds?: number | null;
+  process_active_seconds?: number | null;
+  process_skipped_seconds?: number | null;
+  process_window?: string | null;
+  video_duration_seconds?: number | null;
+  video_total_frames?: number | null;
+  video_fps?: number | null;
+  process_window_seconds?: number | null;
   detail?: string;
   results?: Array<{
     video: string;
@@ -42,6 +68,7 @@ type AutomaticSessionSummary = {
   site_name: string;
   date: string;
   starts_at: string | null;
+  ends_at: string | null;
   duration_minutes: number;
   group_name: string;
   session_type?: string;
@@ -64,6 +91,13 @@ type AutomaticSessionResult = {
   marked: FaceComparison[];
   review?: FaceComparison[];
   unknown_faces?: UnknownFace[];
+  sampled_frames?: number;
+  total_frames?: number;
+  duration_seconds?: number | null;
+  window?: string;
+  probed_seconds?: number;
+  active_seconds?: number;
+  skipped_seconds?: number;
   detail?: string;
   failed?: boolean;
   skipped?: string[];
@@ -73,6 +107,8 @@ type AutomaticSessionResult = {
     min_hits: number;
     review_similarity: number;
     duplicate_guard: number;
+    second_probe?: boolean;
+    dense_frame_stride?: number;
   };
 };
 
@@ -95,6 +131,7 @@ type AutomaticAttendanceStatus = {
   root: string;
   pending_dir: string;
   pending: PendingVideo[];
+  reprocessable?: PendingVideo[];
   active_job: AutomaticAttendanceJob | null;
   jobs: AutomaticAttendanceJob[];
 };
@@ -119,6 +156,19 @@ type VideoOccupancyJob = {
   processed: number;
   percent: number;
   current_video?: string | null;
+  download_percent?: number | null;
+  downloaded_bytes?: number | null;
+  download_total_bytes?: number | null;
+  download_speed_bps?: number | null;
+  download_average_bps?: number | null;
+  download_eta_seconds?: number | null;
+  download_log_tail?: string | null;
+  phase?: string | null;
+  phase_label?: string | null;
+  process_frame?: number | null;
+  process_total_frames?: number | null;
+  process_sampled_frames?: number | null;
+  process_window?: string | null;
   detail?: string;
   results?: Array<{
     video: string;
@@ -158,6 +208,22 @@ function formatBytes(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatSpeed(bytesPerSecond?: number | null) {
+  if (!bytesPerSecond) return "0 KB/s";
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+function formatDuration(seconds?: number | null) {
+  if (seconds == null) return "--";
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  if (safeSeconds < 60) return `${safeSeconds}s`;
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainder = safeSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m${remainder ? ` ${remainder}s` : ""}`;
+  return `${minutes}m ${remainder}s`;
+}
+
 function sessionLabel(session: AttendanceSession) {
   const type = session.session_type === "tournament_match" ? "Partido" : "Entrenamiento";
   return `${session.date} ${session.starts_at ?? "--:--"} (${session.duration_minutes || 120} min) - ${type} - ${session.site_name ?? "Sede"}${session.group_name ? ` - ${session.group_name}` : ""}`;
@@ -170,6 +236,7 @@ function automaticSessionSummary(session: AttendanceSession): AutomaticSessionSu
     site_name: session.site_name ?? "Sede",
     date: session.date,
     starts_at: session.starts_at,
+    ends_at: session.ends_at,
     duration_minutes: session.duration_minutes || 120,
     group_name: session.group_name,
     session_type: session.session_type,
@@ -457,6 +524,155 @@ function AutomaticAttendanceReportTable({ data, sessionResult, token }: { data: 
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function AutomaticJobResultsModal({
+  job,
+  token,
+  onClose,
+}: {
+  job: AutomaticAttendanceJob;
+  token: string;
+  onClose: () => void;
+}) {
+  const isProcessing = job.status === "queued" || job.status === "processing";
+  const jobProgress = Math.max(0, Math.min(100, job.percent ?? 0));
+  const downloadPercent = job.download_percent == null ? null : Math.max(0, Math.min(100, job.download_percent));
+  const hasResults = Boolean(job.results?.length);
+
+  return (
+    <div className="fixed inset-0 z-[1200] flex items-start justify-center overflow-y-auto bg-zinc-950/55 px-3 py-6">
+      <div className="w-full max-w-5xl rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-950 dark:text-zinc-50">Trabajo {job.id.slice(0, 8)}</h3>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              {job.processed}/{job.total} videos - {jobProgress.toFixed(1)}% - {job.status}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{job.phase_label ?? (isProcessing ? "Procesando trabajo" : "Trabajo finalizado")}</p>
+          </div>
+          <button className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={onClose} type="button">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="grid gap-4 p-4">
+          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="font-medium text-zinc-950 dark:text-zinc-50">{job.current_video ?? "Esperando trabajo"}</span>
+              <span className="text-zinc-500 dark:text-zinc-400">{isProcessing ? "En proceso" : "Finalizado"}</span>
+            </div>
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <div className="h-full rounded-full bg-emerald-700 transition-all" style={{ width: `${jobProgress}%` }} />
+            </div>
+            {downloadPercent !== null ? (
+              <div className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold">Descargando desde Drive</span>
+                  <span>{downloadPercent.toFixed(1)}%</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900">
+                  <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${downloadPercent}%` }} />
+                </div>
+                <p className="mt-1 text-xs">
+                  {formatBytes(job.downloaded_bytes ?? 0)} de {formatBytes(job.download_total_bytes || 1)}
+                </p>
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-blue-900/40">Actual: {formatSpeed(job.download_speed_bps)}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-blue-900/40">Promedio: {formatSpeed(job.download_average_bps)}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-blue-900/40">ETA: {formatDuration(job.download_eta_seconds)}</span>
+                </div>
+              </div>
+            ) : null}
+            {job.phase === "processing" || job.process_frame ? (
+              <div className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold">Analizando video</span>
+                  <span>{jobProgress.toFixed(1)}%</span>
+                </div>
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-4">
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Duracion video: {formatDuration(job.video_duration_seconds)}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Ventana: {formatDuration(job.process_window_seconds)}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">FPS: {job.video_fps?.toFixed(2) ?? "-"}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Frames video: {job.video_total_frames ?? "-"}</span>
+                </div>
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Frame: {job.process_frame ?? "-"}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Total ventana: {job.process_total_frames ?? "-"}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Muestreados: {job.process_sampled_frames ?? "-"}</span>
+                </div>
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Segundos probados: {job.process_probed_seconds ?? "-"}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Con cara: {job.process_active_seconds ?? "-"}</span>
+                  <span className="rounded-md bg-white/70 px-2 py-1 dark:bg-emerald-900/40">Saltados: {job.process_skipped_seconds ?? "-"}</span>
+                </div>
+                {job.process_window ? <p className="mt-1 text-xs">Ventana: {job.process_window}</p> : null}
+              </div>
+            ) : null}
+            {job.download_log_tail ? (
+              <details className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+                <summary className="cursor-pointer font-semibold">Log rclone</summary>
+                <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap">{job.download_log_tail}</pre>
+              </details>
+            ) : null}
+            {job.detail && <p className="mt-2 text-sm text-red-700 dark:text-red-300">{job.detail}</p>}
+          </div>
+
+          {!hasResults && (
+            <div className="rounded-md border border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+              {isProcessing ? "Los resultados apareceran aqui cuando termine el procesamiento." : "Este trabajo no tiene resultados."}
+            </div>
+          )}
+
+          {job.results?.map((result) => (
+            <div key={result.video} className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+              <p className="font-semibold text-zinc-950 dark:text-zinc-50">{result.video}</p>
+              {result.detail && <p className="mt-1 text-sm text-red-700 dark:text-red-300">{result.detail}</p>}
+              {result.sessions?.map((sessionResult) => (
+                <div key={sessionResult.session.id} className="mt-3 rounded-md bg-white p-3 dark:bg-zinc-950">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
+                        {sessionResult.session.site_name} - {sessionResult.session.date} - {sessionResult.session.team_name || sessionResult.session.group_name || "Todos"}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {sessionResult.marked.length} marcados - {sessionResult.review?.length ?? 0} en revision - {sessionResult.unknown_faces?.length ?? 0} sin identificar
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Video {formatDuration(sessionResult.duration_seconds)} - ventana {sessionResult.window ?? "-"} - frames video {sessionResult.total_frames ?? "-"} - analizados {sessionResult.sampled_frames ?? "-"}
+                      </p>
+                      {sessionResult.probed_seconds != null ? (
+                        <p className="mt-1 text-xs text-zinc-500">
+                          Segundos probados {sessionResult.probed_seconds} - con cara {sessionResult.active_seconds ?? 0} - saltados {sessionResult.skipped_seconds ?? 0}
+                        </p>
+                      ) : null}
+                    </div>
+                    {sessionResult.thresholds ? (
+                      <div className="rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                        Umbral {similarityPercent(sessionResult.thresholds.similarity)} - margen {similarityPercent(sessionResult.thresholds.margin)} - min hits {sessionResult.thresholds.min_hits}
+                      </div>
+                    ) : null}
+                  </div>
+                  {sessionResult.detail && <p className={`mt-2 text-sm ${sessionResult.failed ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}`}>{sessionResult.detail}</p>}
+                  {sessionResult.skipped?.length ? <p className="mt-1 text-xs text-zinc-500">Omitidos: {sessionResult.skipped.slice(0, 8).join(" | ")}</p> : null}
+                  {sessionResult.marked.length || sessionResult.review?.length ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {sessionResult.marked.slice(0, 4).map((comparison) => (
+                        <FaceComparisonCard key={`modal-marked-${comparison.student_id}-${comparison.frame}`} comparison={comparison} token={token} accepted />
+                      ))}
+                      {(sessionResult.review ?? []).slice(0, 4).map((comparison) => (
+                        <FaceComparisonCard key={`modal-review-${comparison.student_id}-${comparison.frame}-${comparison.reason}`} comparison={comparison} token={token} accepted={false} />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -786,6 +1002,7 @@ export function AutomaticAttendancePanel({
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ loaded: 0, total: 0, percent: 0 });
+  const [resultsModalOpen, setResultsModalOpen] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("tournament_match");
   const [reportSessionId, setReportSessionId] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -963,16 +1180,42 @@ export function AutomaticAttendancePanel({
     }
   }
 
-  async function processPending() {
+  async function processPending(path?: string) {
     setMessage("");
     setError("");
     try {
-      const nextJob = await apiRequest<AutomaticAttendanceJob>("/automatic-attendance/process-pending/", token, { method: "POST" });
+      const nextJob = await apiRequest<AutomaticAttendanceJob>("/automatic-attendance/process-pending/", token, {
+        method: "POST",
+        body: path ? JSON.stringify({ path }) : undefined,
+      });
       setJob(nextJob);
-      setMessage("Procesamiento local iniciado.");
+      setResultsModalOpen(true);
+      setMessage(path ? "Procesamiento del video seleccionado iniciado." : "Procesamiento local iniciado.");
       await loadStatus(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo iniciar el procesamiento.");
+    }
+  }
+
+  async function reprocessVideoClip(video: PendingVideo) {
+    const clipId = video.metadata.video_clip_id;
+    if (!clipId) {
+      setError("Este video no tiene video_clip_id para reprocesar.");
+      return;
+    }
+    setMessage("");
+    setError("");
+    try {
+      const nextJob = await apiRequest<AutomaticAttendanceJob>("/automatic-attendance/reprocess-video-clip/", token, {
+        method: "POST",
+        body: JSON.stringify({ video_clip_id: clipId }),
+      });
+      setJob(nextJob);
+      setResultsModalOpen(true);
+      setMessage(`Reprocesamiento iniciado para ${video.filename}.`);
+      await loadStatus(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo iniciar el reprocesamiento.");
     }
   }
 
@@ -1002,6 +1245,7 @@ export function AutomaticAttendancePanel({
   }
 
   const pendingCount = status?.pending.length ?? 0;
+  const reprocessableVideos = status?.reprocessable ?? [];
   const progress = Math.max(0, Math.min(100, visibleJob?.percent ?? 0));
 
   if (mode === "report") {
@@ -1078,6 +1322,7 @@ export function AutomaticAttendancePanel({
 
   return (
     <div className="grid gap-5">
+      {resultsModalOpen && visibleJob ? <AutomaticJobResultsModal job={visibleJob} token={token} onClose={() => setResultsModalOpen(false)} /> : null}
       <section className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -1093,7 +1338,7 @@ export function AutomaticAttendancePanel({
             <button
               className="flex items-center gap-2 rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
               disabled={!status?.enabled || pendingCount === 0 || isProcessing}
-              onClick={processPending}
+              onClick={() => processPending()}
               type="button"
             >
               <Play size={15} /> Procesar pendientes
@@ -1126,14 +1371,18 @@ export function AutomaticAttendancePanel({
           <div className="mt-4 rounded-md border border-zinc-200 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="font-medium">{visibleJob.current_video ?? `Trabajo ${visibleJob.id.slice(0, 8)}`}</span>
-              <span className="text-zinc-500">
-                {visibleJob.processed}/{visibleJob.total} videos
-              </span>
+              <button className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50" onClick={() => setResultsModalOpen(true)} type="button">
+                Ver progreso y resultados
+              </button>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-zinc-100">
               <div className="h-full rounded-full bg-emerald-700 transition-all" style={{ width: `${progress}%` }} />
             </div>
-            <p className="mt-2 text-xs text-zinc-500">{progress.toFixed(1)}%</p>
+            <p className="mt-2 text-xs text-zinc-500">
+              {visibleJob.phase_label ? `${visibleJob.phase_label} - ` : ""}{visibleJob.processed}/{visibleJob.total} videos - {progress.toFixed(1)}%
+              {visibleJob.download_percent != null ? ` - descarga ${visibleJob.download_percent.toFixed(1)}% (${formatSpeed(visibleJob.download_speed_bps)})` : ""}
+              {visibleJob.process_frame ? ` - frame ${visibleJob.process_frame}` : ""}
+            </p>
             {visibleJob.detail && <p className="mt-2 text-sm text-red-700">{visibleJob.detail}</p>}
           </div>
         )}
@@ -1212,6 +1461,7 @@ export function AutomaticAttendancePanel({
             {status?.pending.map((video) => {
               const site = data.sites.find((item) => String(item.id) === String(video.metadata.site_id));
               const session = data.attendanceSessions.find((item) => String(item.id) === String(video.metadata.session_id));
+              const linkedSessionLabel = session ? `Sesion ligada: ${sessionLabel(session)}` : video.metadata.recorded_date ? `Sin sesion ligada - fecha detectada: ${video.metadata.recorded_date}` : "Sin sesion ligada";
               return (
                 <div key={video.path} className="px-4 py-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -1220,9 +1470,22 @@ export function AutomaticAttendancePanel({
                       <p className="mt-1 text-sm text-zinc-500">{formatBytes(video.size)} - {new Date(video.modified_at).toLocaleString()}</p>
                       <p className="mt-1 break-all text-xs text-zinc-400">{video.path}</p>
                     </div>
-                    <span className="shrink-0 rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-600">{site?.name ?? "Sin sede"}</span>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-600">{site?.name ?? "Sin sede"}</span>
+                      <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{video.source === "drive" ? "Drive/Supabase" : "Local"}</span>
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-zinc-600">{session ? sessionLabel(session) : video.metadata.recorded_date ? `Fecha detectada: ${video.metadata.recorded_date}` : "Sin sesion asignada"}</p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className={`text-sm ${session ? "text-emerald-700" : "text-amber-700"}`}>{linkedSessionLabel}</p>
+                    <button
+                      className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!status?.enabled || isProcessing}
+                      onClick={() => processPending(video.path)}
+                      type="button"
+                    >
+                      <Play size={14} /> Procesar este video
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -1230,6 +1493,48 @@ export function AutomaticAttendancePanel({
           </div>
         </div>
       </section>
+
+      {reprocessableVideos.length ? (
+        <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+            <div>
+              <h3 className="font-semibold">Videos procesados recientemente</h3>
+              <p className="mt-1 text-xs text-zinc-500">Puedes volver a descargar desde Drive y procesar el mismo clip para pruebas.</p>
+            </div>
+            <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">{reprocessableVideos.length}</span>
+          </div>
+          <div className="divide-y divide-zinc-100">
+            {reprocessableVideos.map((video) => {
+              const site = data.sites.find((item) => String(item.id) === String(video.metadata.site_id));
+              const session = data.attendanceSessions.find((item) => String(item.id) === String(video.metadata.session_id));
+              return (
+                <div key={`reprocess-${video.path}`} className="px-4 py-3">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{video.filename}</p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {site?.name ?? "Sin sede"}{session ? ` - ${sessionLabel(session)}` : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Estado: {video.metadata.status ?? "procesado"}{video.metadata.processed_at ? ` - ${new Date(video.metadata.processed_at).toLocaleString()}` : ""}
+                      </p>
+                      {video.metadata.error_message ? <p className="mt-1 text-xs text-red-700">{video.metadata.error_message}</p> : null}
+                    </div>
+                    <button
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!status?.enabled || isProcessing}
+                      onClick={() => reprocessVideoClip(video)}
+                      type="button"
+                    >
+                      <RefreshCw size={14} /> Reprocesar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {visibleJob?.results?.length ? (
         <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
