@@ -1,3 +1,8 @@
+import os
+
+os.environ.setdefault("DB_ENGINE", "sqlite")
+os.environ.setdefault("ALLOW_SQLITE", "true")
+
 import pytest
 from django.core.management import call_command
 from rest_framework.test import APIClient

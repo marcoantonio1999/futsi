@@ -81,8 +81,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "futsi_api.wsgi.application"
 
-DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").lower()
+DB_ENGINE = os.getenv("DB_ENGINE", "postgres").lower()
 DATABASE_URL = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
+ALLOW_SQLITE = os.getenv("ALLOW_SQLITE", "").lower() in {"1", "true", "yes", "si"}
 HAS_POSTGRES_PARTS = any(
     os.getenv(name)
     for name in (
@@ -139,9 +140,9 @@ elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
     ]
     if missing_postgres_settings:
         raise RuntimeError(
-            "Faltan variables de conexion Postgres en Render: "
+            "Faltan variables de conexion Postgres/Supabase: "
             + ", ".join(missing_postgres_settings)
-            + ". Configura las variables POSTGRES_* con los datos del pooler de Supabase."
+            + ". Configura back/.env o las variables de entorno POSTGRES_* con los datos del pooler de Supabase."
         )
     postgres_host = os.getenv("POSTGRES_HOST", os.getenv("SUPABASE_DB_HOST", "localhost"))
     if IS_RENDER and postgres_host in {"localhost", "127.0.0.1", "::1"}:
@@ -162,13 +163,19 @@ elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
             **({"OPTIONS": postgres_options} if postgres_options else {}),
         }
     }
-else:
+elif DB_ENGINE == "sqlite" and ALLOW_SQLITE:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": os.getenv("SQLITE_DATABASE_PATH", BASE_DIR / "db.sqlite3"),
         }
     }
+else:
+    raise RuntimeError(
+        "Futsi ya no usa SQLite por default. Configura Supabase/Postgres con SUPABASE_DATABASE_URL "
+        "o con POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST y POSTGRES_PORT. "
+        "Solo para pruebas aisladas puedes usar DB_ENGINE=sqlite y ALLOW_SQLITE=true."
+    )
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

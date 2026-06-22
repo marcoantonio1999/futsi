@@ -15,6 +15,8 @@ El frontend ya fue preparado para Pages con `VITE_BASE_PATH=/futsi/` y `VITE_API
 
 El backend quedo preparado para Render y Supabase, pero el despliegue final se pausa hasta cerrar Sprint 2 completo en local. La razon es que hoy se agregaron migraciones, facturacion simulada, reporte Excel y DeepFace local.
 
+Local y produccion deben apuntar a Supabase/Postgres. El backend ya no cae a SQLite silenciosamente; si faltan credenciales, Django falla al arrancar. SQLite solo se permite para pruebas aisladas con `DB_ENGINE=sqlite` y `ALLOW_SQLITE=true`.
+
 ## Problemas encontrados y solucion
 
 | Problema | Causa | Solucion |

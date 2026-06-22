@@ -119,17 +119,16 @@ Credenciales demo:
 - `padre.daniela` / `familia12345`
 - `padre.jorge` / `familia12345`
 
-La configuracion local usa SQLite si no existe `.env`. Para usar PostgreSQL:
+La configuracion local debe usar Supabase/Postgres. Si no existe `back/.env` con credenciales de Postgres, Django falla al arrancar para evitar trabajar accidentalmente sobre SQLite.
 
 ```powershell
 Copy-Item .env.example .env
-# Cambiar DB_ENGINE=postgres en back/.env
-docker compose up -d postgres
+# Configurar back/.env con las credenciales reales de Supabase/Postgres.
 cd back
 .\.venv\Scripts\python.exe manage.py migrate
 ```
 
-Para usar Supabase Postgres en produccion, la opcion recomendada es definir variables separadas `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT` y `POSTGRES_SSLMODE=require`. Esto evita errores cuando el password contiene caracteres especiales. El detalle actualizado de Render, GitHub Pages y Supabase esta en `docs/DEPLOYMENT_SUPABASE.md`.
+La opcion recomendada para local y produccion es definir variables separadas `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT` y `POSTGRES_SSLMODE=require`. Esto evita errores cuando el password contiene caracteres especiales. SQLite solo queda permitido para pruebas aisladas con `DB_ENGINE=sqlite` y `ALLOW_SQLITE=true`. El detalle actualizado de Render, GitHub Pages y Supabase esta en `docs/DEPLOYMENT_SUPABASE.md`.
 
 ## Frontend local
 
