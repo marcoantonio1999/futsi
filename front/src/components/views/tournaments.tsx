@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Medal, Plus, Shield, Trophy, UserPlus, UsersRound } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Medal, Plus, Search, Shield, Trophy, UserPlus, UsersRound } from "lucide-react";
 import { Metric } from "../cards/Metric";
 import type { AppData, Match, Team, Tournament, User } from "../../types";
 import { MatchScoreCard } from "./sportsDetails";
@@ -18,6 +18,20 @@ type TournamentsPanelProps = {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function minutesFromTime(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function durationFromRange(startsAt: string, endsAt: string) {
+  const starts = minutesFromTime(startsAt);
+  const ends = minutesFromTime(endsAt);
+  if (starts === null || ends === null) return 120;
+  const normalizedEnd = ends <= starts ? ends + 24 * 60 : ends;
+  return Math.max(1, normalizedEnd - starts);
 }
 
 function billingLabel(value: string) {
@@ -98,6 +112,11 @@ export function TournamentsPanel({
   const tournamentRegistrations = visibleRegistrations.filter((registration) => !selectedTournament || registration.tournament === selectedTournament.id);
   const availableStudents = data.students.filter((student) => !selectedTournament?.site || student.site === selectedTournament.site);
   const leader = tournamentStandings[0] ?? null;
+  const [tournamentSearch, setTournamentSearch] = useState("");
+  const [tournamentSiteFilter, setTournamentSiteFilter] = useState("all");
+  const [tournamentStatusFilter, setTournamentStatusFilter] = useState("active");
+  const [tournamentBillingFilter, setTournamentBillingFilter] = useState("all");
+  const [tournamentPage, setTournamentPage] = useState(0);
 
   useEffect(() => {
     if (!selectedTournament && firstTournament) {
@@ -118,6 +137,20 @@ export function TournamentsPanel({
       return { tournament, teams, registrations, matches, liveCount, top };
     });
   }, [data.standings, visibleMatches, visibleRegistrations, visibleTeams, visibleTournaments]);
+  const filteredTournamentCards = useMemo(() => {
+    const query = tournamentSearch.trim().toLowerCase();
+    return tournamentCards.filter(({ tournament }) => {
+      const site = data.sites.find((item) => item.id === tournament.site);
+      const matchesSearch = !query || `${tournament.name} ${site?.name || ""}`.toLowerCase().includes(query);
+      const matchesSite = tournamentSiteFilter === "all" || String(tournament.site) === tournamentSiteFilter;
+      const matchesStatus = tournamentStatusFilter === "all" || (tournamentStatusFilter === "active" ? tournament.is_active : !tournament.is_active);
+      const matchesBilling = tournamentBillingFilter === "all" || tournament.billing_type === tournamentBillingFilter;
+      return matchesSearch && matchesSite && matchesStatus && matchesBilling;
+    });
+  }, [data.sites, tournamentBillingFilter, tournamentCards, tournamentSearch, tournamentSiteFilter, tournamentStatusFilter]);
+  const tournamentsPerPage = 4;
+  const tournamentPageCount = Math.max(1, Math.ceil(filteredTournamentCards.length / tournamentsPerPage));
+  const visibleTournamentCards = filteredTournamentCards.slice(tournamentPage * tournamentsPerPage, (tournamentPage + 1) * tournamentsPerPage);
 
   function submitTournament(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -170,18 +203,28 @@ export function TournamentsPanel({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const tournament = data.tournaments.find((item) => item.id === Number(form.get("tournament")));
+    const startsAt = String(form.get("starts_at") || "20:00");
+    const endsAt = String(form.get("ends_at") || "22:00");
     onCreateMatch({
       tournament: Number(form.get("tournament")),
       site: tournament?.site,
       home_team: Number(form.get("home_team")),
       away_team: Number(form.get("away_team")),
       played_on: String(form.get("played_on") || today()),
-      starts_at: String(form.get("starts_at") || "20:00"),
-      duration_minutes: Number(form.get("duration_minutes") || 120),
+      starts_at: startsAt,
+      duration_minutes: durationFromRange(startsAt, endsAt),
       status: "scheduled",
     });
     event.currentTarget.reset();
   }
+
+  useEffect(() => {
+    setTournamentPage(0);
+  }, [tournamentSearch, tournamentSiteFilter, tournamentStatusFilter, tournamentBillingFilter]);
+
+  useEffect(() => {
+    if (tournamentPage >= tournamentPageCount) setTournamentPage(tournamentPageCount - 1);
+  }, [tournamentPage, tournamentPageCount]);
 
   return (
     <section className="grid min-w-0 gap-5">
@@ -222,15 +265,68 @@ export function TournamentsPanel({
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.95fr)]">
         <div className="grid gap-5">
           <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-            <TableHeader title="Torneos activos" count={tournamentCards.length} />
-            <div className="grid gap-3 p-4 lg:grid-cols-2">
-              {tournamentCards.map(({ tournament, teams, registrations, matches, liveCount, top }) => (
+            <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+              <div>
+                <h3 className="font-semibold">Torneos activos</h3>
+                <p className="text-xs text-zinc-500">{filteredTournamentCards.length} de {tournamentCards.length} torneos</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="grid size-8 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={tournamentPage === 0}
+                  onClick={() => setTournamentPage((page) => Math.max(0, page - 1))}
+                  type="button"
+                  aria-label="Torneos anteriores"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="grid h-8 min-w-14 place-items-center rounded-md bg-zinc-100 px-2 text-xs font-semibold text-zinc-600">
+                  {tournamentPage + 1}/{tournamentPageCount}
+                </span>
+                <button
+                  className="grid size-8 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={tournamentPage >= tournamentPageCount - 1}
+                  onClick={() => setTournamentPage((page) => Math.min(tournamentPageCount - 1, page + 1))}
+                  type="button"
+                  aria-label="Mas torneos"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="grid min-w-0 gap-2 border-b border-zinc-100 px-4 py-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(0,150px)_minmax(0,130px)_minmax(0,160px)]">
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={15} />
+                <input
+                  className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-600"
+                  placeholder="Buscar torneo o sede"
+                  value={tournamentSearch}
+                  onChange={(event) => setTournamentSearch(event.target.value)}
+                />
+              </label>
+              <select className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={tournamentSiteFilter} onChange={(event) => setTournamentSiteFilter(event.target.value)}>
+                <option value="all">Todas las sedes</option>
+                {data.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+              </select>
+              <select className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={tournamentStatusFilter} onChange={(event) => setTournamentStatusFilter(event.target.value)}>
+                <option value="active">Activos</option>
+                <option value="inactive">Cerrados</option>
+                <option value="all">Todos</option>
+              </select>
+              <select className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={tournamentBillingFilter} onChange={(event) => setTournamentBillingFilter(event.target.value)}>
+                <option value="all">Todos los cobros</option>
+                <option value="weekly_match">Pago semanal</option>
+                <option value="full_tournament">Torneo completo</option>
+              </select>
+            </div>
+            <div className="grid gap-3 p-4 md:grid-cols-2">
+              {visibleTournamentCards.map(({ tournament, teams, registrations, matches, liveCount, top }) => (
                 <button
                   key={tournament.id}
-                  className={`rounded-md border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                  className={`min-h-[158px] rounded-md border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
                     selectedTournament?.id === tournament.id ? "border-emerald-700 bg-emerald-50" : "border-zinc-200 bg-white"
                   }`}
                   onClick={() => setSelectedTournamentId(String(tournament.id))}
@@ -239,20 +335,20 @@ export function TournamentsPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase text-zinc-500">{tournament.starts_on || "sin fecha"} · {billingLabel(tournament.billing_type)}</p>
-                      <h3 className="mt-1 font-semibold">{tournament.name}</h3>
+                      <h3 className="mt-1 line-clamp-2 font-semibold">{tournament.name}</h3>
                     </div>
                     <StatusPill label={tournament.is_active ? "Activo" : "Cerrado"} />
                   </div>
-                  <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
-                    <div className="rounded-md bg-zinc-50 p-2"><p className="font-bold text-base">{teams.length}</p><p>Equipos</p></div>
-                    <div className="rounded-md bg-zinc-50 p-2"><p className="font-bold text-base">{registrations.length}</p><p>Ninos</p></div>
-                    <div className="rounded-md bg-zinc-50 p-2"><p className="font-bold text-base">{matches.length}</p><p>Juegos</p></div>
-                    <div className="rounded-md bg-zinc-50 p-2"><p className="font-bold text-base">{liveCount}</p><p>Activos</p></div>
+                  <div className="mt-3 grid grid-cols-4 gap-1.5 text-center text-xs">
+                    <div className="rounded-md bg-zinc-50 p-1.5"><p className="text-sm font-bold">{teams.length}</p><p>Eq.</p></div>
+                    <div className="rounded-md bg-zinc-50 p-1.5"><p className="text-sm font-bold">{registrations.length}</p><p>Ninos</p></div>
+                    <div className="rounded-md bg-zinc-50 p-1.5"><p className="text-sm font-bold">{matches.length}</p><p>Juegos</p></div>
+                    <div className="rounded-md bg-zinc-50 p-1.5"><p className="text-sm font-bold">{liveCount}</p><p>Act.</p></div>
                   </div>
-                  <p className="mt-3 text-sm text-zinc-500">Lider: <span className="font-medium text-zinc-900">{top?.team_name || "pendiente"}</span></p>
+                  <p className="mt-2 truncate text-xs text-zinc-500">Lider: <span className="font-medium text-zinc-900">{top?.team_name || "pendiente"}</span></p>
                 </button>
               ))}
-              {tournamentCards.length === 0 && <p className="text-sm text-zinc-500">Todavia no hay torneos creados.</p>}
+              {visibleTournamentCards.length === 0 && <p className="col-span-full text-sm text-zinc-500">No hay torneos con esos filtros.</p>}
             </div>
           </div>
 
@@ -286,14 +382,14 @@ export function TournamentsPanel({
           </div>
         </div>
 
-        <div className="grid gap-5">
+        <div className="grid content-start gap-3">
           {!isCoachView && (
-          <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="rounded-md border border-zinc-200 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <Plus size={18} />
               <h3 className="font-semibold">Crear torneo o liguilla</h3>
             </div>
-            <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={submitTournament}>
+            <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={submitTournament}>
               <SelectInput label="Sede" name="site" required>
                 {data.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
               </SelectInput>
@@ -310,29 +406,29 @@ export function TournamentsPanel({
           )}
 
           {!isCoachView && (
-          <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="rounded-md border border-zinc-200 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <Shield size={18} />
               <h3 className="font-semibold">Crear equipo</h3>
             </div>
-            <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={submitTeam}>
+            <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={submitTeam}>
               <TournamentSelect tournaments={visibleTournaments} value={selectedTournamentId} />
               <TextInput label="Equipo" name="name" placeholder="Sub-12 A" required />
               <TextInput label="Representante" name="representative_name" placeholder="Nombre del responsable" />
               <TextInput label="Telefono" name="representative_phone" placeholder="55..." />
-              <TextInput label="Correo" name="representative_email" type="email" className="sm:col-span-2" />
-              <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Crear equipo</button>
+              <TextInput label="Correo" name="representative_email" type="email" />
+              <button className="self-end rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Crear equipo</button>
             </form>
           </div>
           )}
 
           {!isCoachView && (
-          <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="rounded-md border border-zinc-200 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <UserPlus size={18} />
               <h3 className="font-semibold">Inscribir alumno al torneo</h3>
             </div>
-            <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={submitRegistration}>
+            <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={submitRegistration}>
               <TournamentSelect tournaments={visibleTournaments} value={selectedTournamentId} />
               <SelectInput label="Alumno" name="student" required>
                 {availableStudents.map((student) => <option key={student.id} value={student.id}>{student.full_name} · {student.group_name}</option>)}
@@ -349,25 +445,25 @@ export function TournamentsPanel({
               <TextInput label="Monto semanal" name="weekly_amount" type="number" min="0" step="0.01" defaultValue="650" />
               <TextInput label="Monto torneo completo" name="full_amount" type="number" min="0" step="0.01" defaultValue="7800" />
               <TextInput label="Inicio de cobro" name="billing_starts_on" type="date" defaultValue={selectedTournament?.starts_on || today()} />
-              <TextInput label="Notas" name="notes" className="sm:col-span-2" placeholder="Permiso, categoria, observaciones" />
-              <button className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Registrar alumno</button>
+              <TextInput label="Notas" name="notes" placeholder="Permiso, categoria, observaciones" />
+              <button className="self-end rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Registrar alumno</button>
             </form>
           </div>
           )}
 
           {!isCoachView && (
-          <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="rounded-md border border-zinc-200 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <CalendarDays size={18} />
               <h3 className="font-semibold">Agendar partido</h3>
             </div>
-            <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={submitMatch}>
+            <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={submitMatch}>
               <TournamentSelect tournaments={visibleTournaments} value={selectedTournamentId} />
               <TeamSelect label="Local" name="home_team" teams={tournamentTeams} />
               <TeamSelect label="Visitante" name="away_team" teams={tournamentTeams} />
               <TextInput label="Fecha" name="played_on" type="date" defaultValue={today()} />
-              <TextInput label="Hora" name="starts_at" type="time" defaultValue="20:00" />
-              <TextInput label="Duracion (min)" name="duration_minutes" type="number" min="1" defaultValue={120} />
+              <TextInput label="Hora inicio" name="starts_at" type="time" defaultValue="20:00" />
+              <TextInput label="Hora fin" name="ends_at" type="time" defaultValue="22:00" />
               <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Agendar</button>
             </form>
           </div>
