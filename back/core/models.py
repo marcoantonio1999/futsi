@@ -381,6 +381,7 @@ class AttendanceSession(TimestampedModel):
     session_type = models.CharField(max_length=30, choices=AttendanceSessionType.choices)
     date = models.DateField()
     starts_at = models.TimeField(null=True, blank=True)
+    ends_at = models.TimeField(null=True, blank=True)
     duration_minutes = models.PositiveSmallIntegerField(default=120, validators=[MinValueValidator(1)])
     court = models.ForeignKey(Court, null=True, blank=True, on_delete=models.PROTECT, related_name="attendance_sessions")
     group_name = models.CharField(max_length=80, blank=True)

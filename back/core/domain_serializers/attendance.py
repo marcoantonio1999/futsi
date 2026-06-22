@@ -8,6 +8,11 @@ def attendance_window_bounds(session):
         return None, None
     current_tz = timezone.get_current_timezone()
     starts_on = timezone.make_aware(datetime.combine(session.date, session.starts_at), current_tz)
+    if session.ends_at:
+        ends_on = timezone.make_aware(datetime.combine(session.date, session.ends_at), current_tz)
+        if ends_on <= starts_on:
+            ends_on += timedelta(days=1)
+        return starts_on, ends_on
     duration = max(1, int(session.duration_minutes or 120))
     return starts_on, starts_on + timedelta(minutes=duration)
 
@@ -88,6 +93,15 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         match = attrs.get("match") or getattr(self.instance, "match", None)
         team = attrs.get("team") or getattr(self.instance, "team", None)
+        starts_at = attrs.get("starts_at") or getattr(self.instance, "starts_at", None)
+        ends_at = attrs.get("ends_at") or getattr(self.instance, "ends_at", None)
+        session_date = attrs.get("date") or getattr(self.instance, "date", timezone.localdate())
+        if starts_at and ends_at:
+            starts_on = datetime.combine(session_date, starts_at)
+            ends_on = datetime.combine(session_date, ends_at)
+            if ends_on <= starts_on:
+                ends_on += timedelta(days=1)
+            attrs["duration_minutes"] = max(1, int((ends_on - starts_on).total_seconds() // 60))
         if match and team and team.id not in match_team_ids(match):
             raise serializers.ValidationError({"team": "El equipo no pertenece al partido seleccionado."})
         return attrs
@@ -101,6 +115,9 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             validated_data["date"] = match.played_on
             validated_data["starts_at"] = match.starts_at
             validated_data["duration_minutes"] = match.duration_minutes
+            if match.starts_at:
+                starts_on = datetime.combine(match.played_on, match.starts_at)
+                validated_data["ends_at"] = (starts_on + timedelta(minutes=max(1, int(match.duration_minutes or 120)))).time()
             validated_data["tournament"] = match.tournament
             validated_data["round"] = match.round
             validated_data["group_name"] = f"{match.home_team.name} vs {match.away_team.name}"

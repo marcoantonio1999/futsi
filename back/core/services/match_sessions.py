@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from django.db.models import Q
 
 from core.models import AttendanceSession, Match, User
@@ -11,12 +13,20 @@ def default_session_user(match: Match, user: User | None = None) -> User | None:
     return User.objects.filter(Q(role__in=["admin", "dev", "owner"]) | Q(is_superuser=True)).order_by("id").first()
 
 
+def match_ends_at(match: Match):
+    if not match.starts_at:
+        return None
+    duration = max(1, int(match.duration_minutes or 120))
+    return (datetime.combine(match.played_on, match.starts_at) + timedelta(minutes=duration)).time()
+
+
 def ensure_match_attendance_sessions(match: Match, user: User | None = None) -> list[AttendanceSession]:
     captured_by = default_session_user(match, user)
     if not captured_by:
         return []
 
     sessions = []
+    ends_at = match_ends_at(match)
     for team in [match.home_team, match.away_team]:
         session, _created = AttendanceSession.objects.get_or_create(
             match=match,
@@ -26,6 +36,7 @@ def ensure_match_attendance_sessions(match: Match, user: User | None = None) -> 
                 "session_type": "tournament_match",
                 "date": match.played_on,
                 "starts_at": match.starts_at,
+                "ends_at": ends_at,
                 "duration_minutes": match.duration_minutes,
                 "tournament": match.tournament,
                 "round": match.round,
@@ -39,6 +50,7 @@ def ensure_match_attendance_sessions(match: Match, user: User | None = None) -> 
             "session_type": "tournament_match",
             "date": match.played_on,
             "starts_at": match.starts_at,
+            "ends_at": ends_at,
             "duration_minutes": match.duration_minutes,
             "tournament_id": match.tournament_id,
             "round_id": match.round_id,

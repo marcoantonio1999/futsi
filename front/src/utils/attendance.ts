@@ -16,19 +16,22 @@ function currentMinutes() {
   return now.getHours() * 60 + now.getMinutes();
 }
 
-export function isInAttendanceWindow(date: string, startsAt?: string | null, durationMinutes = 120) {
+export function isInAttendanceWindow(date: string, startsAt?: string | null, durationMinutes = 120, endsAt?: string | null) {
   if (date !== todayKey()) return false;
   const starts = minutesFromTime(startsAt);
   if (starts === null) return true;
   const current = currentMinutes();
-  const duration = Math.max(1, Number(durationMinutes || 120));
-  return current >= starts && current <= starts + duration;
+  const explicitEnd = minutesFromTime(endsAt);
+  let end = explicitEnd === null ? starts + Math.max(1, Number(durationMinutes || 120)) : explicitEnd;
+  if (end <= starts) end += 24 * 60;
+  const comparableCurrent = current < starts && end > 24 * 60 ? current + 24 * 60 : current;
+  return comparableCurrent >= starts && comparableCurrent <= end;
 }
 
 export function canMarkSession(session: AttendanceSession) {
   if (session.closed_at) return false;
   if (typeof session.can_mark_attendance === "boolean") return session.can_mark_attendance;
-  return isInAttendanceWindow(session.date, session.starts_at, session.duration_minutes);
+  return isInAttendanceWindow(session.date, session.starts_at, session.duration_minutes, session.ends_at);
 }
 
 export function sessionWindowText(session: AttendanceSession) {
@@ -36,7 +39,8 @@ export function sessionWindowText(session: AttendanceSession) {
   const starts = minutesFromTime(session.starts_at);
   if (starts === null) return "Disponible solo hoy";
   const start = starts;
-  const end = Math.min(1439, starts + Math.max(1, Number(session.duration_minutes || 120)));
+  const explicitEnd = minutesFromTime(session.ends_at);
+  const end = Math.min(1439, explicitEnd === null ? starts + Math.max(1, Number(session.duration_minutes || 120)) : explicitEnd);
   const format = (value: number) => `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
   return `${format(start)} a ${format(end)}`;
 }

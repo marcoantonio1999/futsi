@@ -45,6 +45,7 @@ export type AttendanceSession = {
   session_type: "academy_class" | "tournament_match";
   date: string;
   starts_at: string | null;
+  ends_at: string | null;
   duration_minutes: number;
   group_name: string;
   tournament: number | null;
