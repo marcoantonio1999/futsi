@@ -37,5 +37,3 @@ services:
         value: "true"
       - key: DJANGO_SECURE_HSTS_SECONDS
         value: "31536000"
-      - key: RUN_SEED_DEMO
-        value: "true"
