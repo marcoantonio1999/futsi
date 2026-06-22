@@ -184,7 +184,7 @@ export function AdminShell({
       return;
     }
     setActiveTab(user.role === "cashier" ? "billing" : "dashboard");
-    setBusinessScope(user.role === "cashier" && canSeeAdultDashboard ? "adult" : "academy");
+    setBusinessScope("academy");
   }, [user.id, user.role]);
 
   function selectTab(tab: TabKey) {

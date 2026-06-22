@@ -20,6 +20,8 @@ def test_cashier_portal_has_payment_controls_without_admin_tabs(driver, live_fro
     LoginPage(driver).open(live_frontend).login("caja.roma", "demo12345", "admin-portal")
     page = BasePage(driver)
 
+    page.wait_text("Cobranza")
+    page.click_testid("cashier-charge-row")
     page.testid("cashier-create-payment")
     assert not page.has_testid("tab-users")
 

@@ -119,7 +119,7 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
   if (tab === "billing" || tab === "debts") {
     const [sites, guardians, students, charges, payments, discounts, tournaments, teams, studentTournamentRegistrations, players] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
-      apiRequest<Guardian[]>("/guardians/", authToken),
+      user.role === "cashier" ? Promise.resolve<Guardian[]>([]) : apiRequest<Guardian[]>("/guardians/", authToken),
       apiRequest<Student[]>("/students/", authToken),
       apiRequest<Charge[]>("/charges/", authToken),
       apiRequest<Payment[]>("/payments/", authToken),

@@ -223,7 +223,7 @@ export function BillingCollectionPanel({
                   <option value="card">Tarjeta de credito</option>
                 </SelectInput>
                 <TextInput label="Monto" type="number" min="0" step="0.01" required value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} />
-                <button className="col-span-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white lg:col-span-1 lg:self-end" type="submit">
+                <button data-testid="cashier-create-payment" className="col-span-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white lg:col-span-1 lg:self-end" type="submit">
                   Crear solicitud
                 </button>
               </div>
@@ -406,6 +406,7 @@ export function BillingCollectionPanel({
               {visibleCharges.map((charge) => (
                 <div key={charge.id}>
                   <div
+                    data-testid="cashier-charge-row"
                     className={`${rowGridClass} text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
                       selectedChargeId === charge.id ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
                     }`}
