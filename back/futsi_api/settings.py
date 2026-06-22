@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -84,6 +85,7 @@ WSGI_APPLICATION = "futsi_api.wsgi.application"
 DB_ENGINE = os.getenv("DB_ENGINE", "postgres").lower()
 DATABASE_URL = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
 ALLOW_SQLITE = os.getenv("ALLOW_SQLITE", "").lower() in {"1", "true", "yes", "si"}
+IS_COLLECTSTATIC = "collectstatic" in sys.argv
 HAS_POSTGRES_PARTS = any(
     os.getenv(name)
     for name in (
@@ -130,7 +132,11 @@ def postgres_config_from_url(database_url):
     }
 
 
-if DB_ENGINE == "sqlite" and ALLOW_SQLITE and not IS_RENDER:
+if (DB_ENGINE == "sqlite" and ALLOW_SQLITE and not IS_RENDER) or (
+    IS_COLLECTSTATIC and not DATABASE_URL and not HAS_POSTGRES_PARTS
+):
+    # Render builds static assets before runtime secrets are available. collectstatic
+    # does not need the application database, but Django requires a configured backend.
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
