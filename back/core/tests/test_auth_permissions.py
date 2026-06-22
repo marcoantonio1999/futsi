@@ -1,4 +1,8 @@
+from datetime import datetime
+from unittest.mock import patch
+
 import pytest
+from django.utils import timezone
 
 from core.models import CoachWorkLog
 
@@ -126,15 +130,16 @@ def test_coach_sees_only_assigned_group_and_can_register_attendance_and_hours(lo
     )
     assert session_response.status_code == 201
 
-    attendance_response = client.post(
-        "/api/attendance-records/",
-        {
-            "session": session_response.json()["id"],
-            "student": students[0]["id"],
-            "status": "present",
-        },
-        format="json",
-    )
+    with patch("core.domain_serializers.attendance.timezone.now", return_value=timezone.make_aware(datetime(2026, 5, 26, 17, 15))):
+        attendance_response = client.post(
+            "/api/attendance-records/",
+            {
+                "session": session_response.json()["id"],
+                "student": students[0]["id"],
+                "status": "present",
+            },
+            format="json",
+        )
     assert attendance_response.status_code == 201
 
     work_log_response = client.post(

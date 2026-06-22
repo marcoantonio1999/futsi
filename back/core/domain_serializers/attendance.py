@@ -3,6 +3,9 @@ from datetime import datetime
 from .common import *
 
 
+ATTENDANCE_EARLY_CHECK_IN_MINUTES = 30
+
+
 def attendance_window_bounds(session):
     if not session.starts_at:
         return None, None
@@ -26,14 +29,16 @@ def can_mark_session(session):
     window_start, window_end = attendance_window_bounds(session)
     if not window_start or not window_end:
         return True
-    return window_start <= now <= window_end
+    check_in_start = window_start - timedelta(minutes=ATTENDANCE_EARLY_CHECK_IN_MINUTES)
+    return check_in_start <= now <= window_end
 
 
 def attendance_window_label(session):
     window_start, window_end = attendance_window_bounds(session)
     if not window_start or not window_end:
         return "Disponible solo durante el dia de la sesion."
-    return f"{timezone.localtime(window_start).strftime('%H:%M')} a {timezone.localtime(window_end).strftime('%H:%M')}"
+    check_in_start = window_start - timedelta(minutes=ATTENDANCE_EARLY_CHECK_IN_MINUTES)
+    return f"{timezone.localtime(check_in_start).strftime('%H:%M')} a {timezone.localtime(window_end).strftime('%H:%M')}"
 
 
 def match_team_ids(match):
