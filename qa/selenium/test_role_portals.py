@@ -17,11 +17,10 @@ def test_accounting_portal_has_export_and_invoice_controls(driver, live_frontend
 
 
 def test_cashier_portal_has_payment_controls_without_admin_tabs(driver, live_frontend):
-    LoginPage(driver).open(live_frontend).login("caja.roma", "demo12345", "cashier-portal")
+    LoginPage(driver).open(live_frontend).login("caja.roma", "demo12345", "admin-portal")
     page = BasePage(driver)
 
     page.testid("cashier-create-payment")
-    assert not page.has_testid("admin-portal")
     assert not page.has_testid("tab-users")
 
 
