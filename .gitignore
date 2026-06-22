@@ -16,6 +16,7 @@ back/staticfiles/
 # Frontend
 front/node_modules/
 front/dist/
+front/.env.local
 
 # OS / editor
 .DS_Store
