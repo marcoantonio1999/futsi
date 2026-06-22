@@ -1,25 +1,38 @@
 import { useEffect, useState } from "react";
 import { ApiError, apiFormRequest, apiRequest, downloadApiFile } from "../api";
 import { emptyData } from "../appState";
-import type { AppData, HistoricalDiscrepancyReport, HistoricalImport, PlayerAttendanceRecord, User } from "../types";
-import { loadAppDataForUser } from "./futsiDataLoaders";
+import type { AppData, HistoricalDiscrepancyReport, HistoricalImport, PlayerAttendanceRecord, TabKey, User } from "../types";
+import { loadAppDataForUser, loadSectionData, mergeAppData } from "./futsiDataLoaders";
 
 export function useFutsiData() {
   const [token, setToken] = useState(() => localStorage.getItem("futsi_token") ?? "");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [data, setData] = useState<AppData>(emptyData);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem("futsi_token")));
+  const [sectionLoading, setSectionLoading] = useState<TabKey | null>(null);
+  const [activeSection, setActiveSection] = useState<TabKey>("dashboard");
+  const [loadedSections, setLoadedSections] = useState<TabKey[]>([]);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  async function loadData(authToken = token) {
+  async function loadData(authToken = token, section = activeSection) {
     if (!authToken) return;
     setLoading(true);
     setError("");
     try {
-      const result = await loadAppDataForUser(authToken);
-      setCurrentUser(result.user);
-      setData(result.data);
+      if (!currentUser || !hasLoadedData) {
+        const result = await loadAppDataForUser(authToken);
+        setCurrentUser(result.user);
+        setActiveSection(result.initialSection);
+        setLoadedSections([result.initialSection]);
+        setData(result.data);
+        setHasLoadedData(true);
+      } else {
+        const patch = await loadSectionData(authToken, currentUser, section);
+        setData((current) => mergeAppData(current, patch));
+        setLoadedSections((current) => (current.includes(section) ? current : [...current, section]));
+      }
     } catch (err) {
       const shouldLogout = err instanceof ApiError && err.status === 401 && err.path === "/auth/me/";
       setError(err instanceof Error ? err.message : "No se pudo cargar informacion.");
@@ -37,20 +50,31 @@ export function useFutsiData() {
     if (token) loadData(token);
   }, [token]);
 
-  useEffect(() => {
+  async function loadSection(section: TabKey, options: { force?: boolean; silent?: boolean } = {}) {
     if (!token || !currentUser) return;
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadData(token);
-      }
-    }, 12000);
-    return () => window.clearInterval(interval);
-  }, [token, currentUser?.id]);
+    setActiveSection(section);
+    if (!options.force && loadedSections.includes(section)) return;
+    if (!options.silent) setSectionLoading(section);
+    setError("");
+    try {
+      const patch = await loadSectionData(token, currentUser, section);
+      setData((current) => mergeAppData(current, patch));
+      setLoadedSections((current) => (current.includes(section) ? current : [...current, section]));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cargar la seccion.");
+    } finally {
+      if (!options.silent) setSectionLoading(null);
+    }
+  }
 
   function handleLogin(nextToken: string, user: User) {
+    setLoading(true);
+    setHasLoadedData(false);
     localStorage.setItem("futsi_token", nextToken);
     setToken(nextToken);
-    setCurrentUser(user);
+    setCurrentUser(null);
+    setLoadedSections([]);
+    void loadData(nextToken);
   }
 
   async function logout() {
@@ -61,6 +85,9 @@ export function useFutsiData() {
     setToken("");
     setCurrentUser(null);
     setData(emptyData);
+    setLoadedSections([]);
+    setActiveSection("dashboard");
+    setHasLoadedData(false);
   }
 
   async function createRecord(path: string, payload: unknown, success: string) {
@@ -72,7 +99,7 @@ export function useFutsiData() {
         body: JSON.stringify(payload),
       });
       setMessage(success);
-      await loadData();
+      await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
     }
@@ -87,7 +114,7 @@ export function useFutsiData() {
         body: JSON.stringify(payload),
       });
       setMessage(success);
-      await loadData();
+      await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar.");
     }
@@ -101,7 +128,7 @@ export function useFutsiData() {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      await loadData();
+      await loadSection(activeSection, { force: true, silent: true });
       return result;
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
@@ -139,7 +166,7 @@ export function useFutsiData() {
         body: JSON.stringify(payload),
       });
       setMessage("Historico firmado y cargado a la base.");
-      await loadData();
+      await loadSection(activeSection, { force: true, silent: true });
       return result;
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo confirmar el historico.");
@@ -153,7 +180,7 @@ export function useFutsiData() {
     try {
       await apiRequest(`/attendance-sessions/${sessionId}/close/`, token, { method: "POST" });
       setMessage("Asistencia cerrada.");
-      await loadData();
+      await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cerrar la asistencia.");
     }
@@ -165,7 +192,7 @@ export function useFutsiData() {
     try {
       await apiRequest(path, token, { method: "POST" });
       setMessage(success);
-      await loadData();
+      await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo completar la accion.");
     }
@@ -181,7 +208,7 @@ export function useFutsiData() {
       });
       setCurrentUser(updatedUser);
       setMessage("Perfil actualizado.");
-      await loadData();
+      await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el perfil.");
     }
@@ -193,10 +220,6 @@ export function useFutsiData() {
 
   async function saveStudentAssessment(payload: unknown) {
     await createRecord("/student-assessments/", payload, "Evaluacion deportiva guardada.");
-  }
-
-  async function saveStudentValueAssessment(payload: unknown) {
-    await createRecord("/student-value-assessments/", payload, "Evaluacion de valores guardada.");
   }
 
   async function markAdultPlayer(payload: unknown) {
@@ -219,9 +242,14 @@ export function useFutsiData() {
     currentUser,
     data,
     loading,
+    sectionLoading,
+    loadedSections,
+    activeSection,
+    hasLoadedData,
     message,
     error,
     loadData,
+    loadSection,
     handleLogin,
     logout,
     createRecord,
@@ -234,7 +262,6 @@ export function useFutsiData() {
     updateProfile,
     updateMatchScore,
     saveStudentAssessment,
-    saveStudentValueAssessment,
     markAdultPlayer,
     downloadFile,
   };

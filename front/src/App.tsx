@@ -8,6 +8,7 @@ import {
   ThemeToggle,
 } from "./components/FutsiViews";
 import { AdminShell } from "./components/layout/AdminShell";
+import { AppSkeleton } from "./components/loading/AppSkeleton";
 import { useFutsiData } from "./hooks/useFutsiData";
 import { useThemeMode } from "./hooks/useThemeMode";
 import type { AttendanceRecord, AttendanceSession, FaceRecognitionResponse } from "./types";
@@ -19,9 +20,13 @@ export default function App() {
     currentUser,
     data,
     loading,
+    sectionLoading,
+    loadedSections,
+    hasLoadedData,
     message,
     error,
     loadData,
+    loadSection,
     handleLogin,
     logout,
     createRecord,
@@ -34,10 +39,18 @@ export default function App() {
     updateProfile,
     updateMatchScore,
     saveStudentAssessment,
-    saveStudentValueAssessment,
     markAdultPlayer,
     downloadFile,
   } = useFutsiData();
+
+  if (token && loading && !hasLoadedData && !error) {
+    return (
+      <>
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        <AppSkeleton />
+      </>
+    );
+  }
 
   if (!token || !currentUser) {
     return (
@@ -132,10 +145,12 @@ export default function App() {
       data={data}
       theme={theme}
       loading={loading}
+      sectionLoading={sectionLoading}
+      loadedSections={loadedSections}
       message={message}
       error={error}
       onToggleTheme={toggleTheme}
-      onRefresh={() => loadData()}
+      onLoadSection={loadSection}
       onLogout={logout}
       onCreateRecord={createRecord}
       onUpdateRecord={updateRecord}
@@ -147,7 +162,6 @@ export default function App() {
       onDownloadFile={downloadFile}
       onUpdateMatchScore={updateMatchScore}
       onSaveStudentAssessment={saveStudentAssessment}
-      onSaveStudentValueAssessment={saveStudentValueAssessment}
       onMarkAdultPlayer={markAdultPlayer}
     />
   );

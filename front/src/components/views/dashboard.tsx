@@ -73,6 +73,10 @@ import {
 import { MonthlySiteFlowPanel } from "./monthlySiteFlow";
 
 export function DashboardPanel({ data }: { data: AppData }) {
+  if (data.dashboardSummary) {
+    return <DashboardSummaryPanel data={data} />;
+  }
+
   const confirmedPayments = data.payments.filter((payment) => payment.status === "registered" || payment.status === "reconciled");
   const pendingPayments = data.payments.filter((payment) => payment.status === "processing" || payment.status === "awaiting_confirmation");
   const totalIncome = confirmedPayments
@@ -250,6 +254,127 @@ export function DashboardPanel({ data }: { data: AppData }) {
                 subtitle: record.override_reason || "Autorizacion registrada en cancha",
               })),
             ]}
+          />
+        </section>
+      </div>
+    </>
+  );
+}
+
+function DashboardSummaryPanel({ data }: { data: AppData }) {
+  const summary = data.dashboardSummary!;
+  const metrics = summary.metrics;
+  const financialRows = summary.site_rows.map((site) => ({
+    label: site.name,
+    ingresos: site.payments,
+    egresos: site.expenses,
+    utilidad: site.utility,
+  }));
+  const monthlyRows = summary.monthly_rows
+    .filter((row) => row.site_id === "all")
+    .map((row) => ({ label: row.label, ingresos: row.ingresos, egresos: row.egresos, utilidad: row.utilidad }));
+
+  return (
+    <>
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label="Sedes activas" value={metrics.active_sites} />
+        <Metric label="Alumnos" value={metrics.students} />
+        <Metric label="Gastos pendientes" value={`$${money(metrics.pending_expenses)}`} />
+        <Metric label="Cobros pendientes" value={`$${money(metrics.open_balance)}`} />
+        <Metric
+          label="Ticket promedio mensual"
+          value={`$${money(metrics.ticket_average.amount)}`}
+          helper={`${metrics.ticket_average.month_label} - ${metrics.ticket_average.payer_count} pagadores`}
+        />
+      </div>
+
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label="Ingresos registrados" value={`$${money(metrics.total_income)}`} />
+        <Metric label="Gastos aprobados" value={`$${money(metrics.approved_expenses)}`} />
+        <Metric label="Utilidad estimada" value={`$${money(metrics.utility)}`} />
+        <Metric label="Pagos en proceso" value={`$${money(metrics.pending_payment_total)}`} />
+        <Metric label="Descuentos por aprobar" value={metrics.requested_discounts} />
+      </div>
+
+      <div className="grid min-w-0 gap-5">
+        <section className="grid gap-3 sm:grid-cols-3">
+          <Metric label="Cobros pendientes" value={`$${money(metrics.open_balance)}`} />
+          <Metric label="Alumnos con cobro pendiente" value={metrics.students_with_debt} />
+          <Metric label="Asistieron con pago pendiente" value={metrics.attendance_with_debt} />
+        </section>
+
+        <section className="grid min-w-0 gap-5">
+          <FinancialComboChart title="Ingresos, egresos y utilidad por sede" rows={financialRows} />
+        </section>
+
+        {monthlyRows.length ? (
+          <section className="grid min-w-0 gap-5">
+            <FinancialComboChart title="Timeline mensual financiero" rows={monthlyRows} />
+          </section>
+        ) : null}
+
+        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <PaymentMethodDonut title="Ingresos confirmados por metodo" rows={summary.method_rows} />
+          <CollectionFunnel title="Embudo de cobranza" rows={summary.payment_status_rows} />
+        </section>
+
+        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <PendingBySiteChart title="Cobros pendientes por sede" rows={summary.site_rows.map((site) => ({ label: site.name, value: site.balance }))} />
+          <StudentStatusDonut title="Estado de alumnos" rows={summary.student_status_rows} />
+        </section>
+
+        <SitesMap sites={data.sites} siteRows={summary.site_rows} />
+
+        <div className="min-w-0 rounded-md border border-zinc-200 bg-white shadow-sm">
+          <TableHeader title="Operacion por sede" count={summary.site_rows.length} />
+          <div className="max-w-full overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="px-4 py-3">Sede</th>
+                  <th className="px-4 py-3">Alumnos</th>
+                  <th className="px-4 py-3">Asistencias</th>
+                  <th className="px-4 py-3">Ingresos</th>
+                  <th className="px-4 py-3">Gastos</th>
+                  <th className="px-4 py-3">Utilidad</th>
+                  <th className="px-4 py-3">Saldo pendiente</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.site_rows.map((site) => (
+                  <tr key={site.id} className="border-b border-zinc-100">
+                    <td className="px-4 py-3 font-medium">{site.name}</td>
+                    <td className="px-4 py-3">{site.students}</td>
+                    <td className="px-4 py-3">{site.attendance}</td>
+                    <td className="px-4 py-3">${money(site.payments)}</td>
+                    <td className="px-4 py-3">${money(site.expenses)}</td>
+                    <td className="px-4 py-3 font-semibold">${money(site.utility)}</td>
+                    <td className="px-4 py-3">${money(site.balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <SimpleList
+            title="Ingresos por metodo"
+            count={summary.method_rows.length}
+            rows={summary.method_rows.map((row, index) => ({
+              id: index,
+              title: row.label,
+              subtitle: `$${money(row.value)}`,
+            }))}
+          />
+          <SimpleList
+            title="Alertas operativas"
+            count={summary.alerts.length}
+            rows={summary.alerts.map((alert) => ({
+              id: alert.id,
+              title: alert.title,
+              subtitle: alert.subtitle,
+            }))}
           />
         </section>
       </div>

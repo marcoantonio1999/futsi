@@ -23,4 +23,3 @@ export * from "./views/students";
 export * from "./views/staffConsolidated";
 export * from "./views/tournaments";
 export * from "./views/uniforms";
-export * from "./views/values";

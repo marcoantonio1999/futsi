@@ -22,6 +22,7 @@ export const statusLabels: Record<StudentStatus, string> = {
 };
 
 export const emptyData: AppData = {
+  dashboardSummary: null,
   users: [],
   sites: [],
   guardians: [],

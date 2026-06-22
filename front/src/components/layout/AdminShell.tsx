@@ -6,6 +6,7 @@ import {
   X,
 } from "lucide-react";
 import { roleLabels } from "../../appState";
+import { RefreshSkeletonBar, SectionSkeleton } from "../loading/AppSkeleton";
 import type {
   AppData,
   AttendanceRecord,
@@ -45,14 +46,13 @@ import {
   TournamentsPanel,
   UniformsPanel,
   UsersPanel,
-  ValuesPanel,
   VideoOccupancyPanel,
 } from "../FutsiViews";
 
 type AttendanceSubsection = "manual" | "automatic" | "report" | "occupancy";
 type BusinessScope = "academy" | "adult";
 
-const adultHiddenTabs = new Set<TabKey>(["adult-dashboard", "attendance", "coaches", "guardians", "students", "uniforms", "values"]);
+const adultHiddenTabs = new Set<TabKey>(["adult-dashboard", "attendance", "coaches", "guardians", "students", "uniforms"]);
 
 function adultLeagueData(data: AppData): AppData {
   const adultTeamIds = new Set(data.teams.map((team) => team.id));
@@ -103,10 +103,12 @@ type AdminShellProps = {
   data: AppData;
   theme: ThemeMode;
   loading: boolean;
+  sectionLoading: TabKey | null;
+  loadedSections: TabKey[];
   message: string;
   error: string;
   onToggleTheme: () => void;
-  onRefresh: () => void;
+  onLoadSection: (section: TabKey, options?: { force?: boolean; silent?: boolean }) => Promise<void>;
   onLogout: () => void;
   onCreateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
   onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
@@ -118,7 +120,6 @@ type AdminShellProps = {
   onDownloadFile: (path: string, filename: string) => Promise<void>;
   onUpdateMatchScore: (matchId: number, payload: unknown) => Promise<void>;
   onSaveStudentAssessment: (payload: unknown) => Promise<void>;
-  onSaveStudentValueAssessment: (payload: unknown) => Promise<void>;
   onMarkAdultPlayer: (payload: unknown) => Promise<void>;
 };
 
@@ -128,10 +129,12 @@ export function AdminShell({
   data,
   theme,
   loading,
+  sectionLoading,
+  loadedSections,
   message,
   error,
   onToggleTheme,
-  onRefresh,
+  onLoadSection,
   onLogout,
   onCreateRecord,
   onUpdateRecord,
@@ -143,7 +146,6 @@ export function AdminShell({
   onDownloadFile,
   onUpdateMatchScore,
   onSaveStudentAssessment,
-  onSaveStudentValueAssessment,
   onMarkAdultPlayer,
 }: AdminShellProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
@@ -165,6 +167,15 @@ export function AdminShell({
   const scopedData = businessScope === "adult" ? adultLeagueData(data) : data;
   const canSeeAdultDashboard = visibleTabs.some((tab) => tab.key === "adult-dashboard");
   const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
+  const isFirstSectionLoad = sectionLoading === effectiveActiveTab && !loadedSections.includes(effectiveActiveTab);
+
+  useEffect(() => {
+    onLoadSection(effectiveActiveTab);
+  }, [effectiveActiveTab, user.id]);
+
+  function refreshActiveSection() {
+    void onLoadSection(effectiveActiveTab, { force: true });
+  }
 
   useEffect(() => {
     if (user.role === "adult_representative" || user.role === "adult_player") {
@@ -299,7 +310,7 @@ export function AdminShell({
           <div className="mt-3 shrink-0 rounded-[18px] bg-zinc-950 p-3 text-white">
             <p className="text-xs text-zinc-300">Modo demo</p>
             <p className="mt-1 text-sm font-semibold">Datos operativos vivos</p>
-            <button className="mt-3 w-full rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold" onClick={onRefresh} type="button">
+            <button className="mt-3 w-full rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold" onClick={refreshActiveSection} type="button">
               Actualizar
             </button>
           </div>
@@ -347,7 +358,7 @@ export function AdminShell({
                     {businessScope === "adult" ? "Academia" : "Liga adultos"}
                   </button>
                 )}
-                <button className="grid size-10 place-items-center rounded-md border border-zinc-200 bg-white hover:bg-zinc-50" onClick={onRefresh} title="Actualizar" type="button">
+                <button className="grid size-10 place-items-center rounded-md border border-zinc-200 bg-white hover:bg-zinc-50" onClick={refreshActiveSection} title="Actualizar" type="button">
                   <RefreshCw size={16} />
                 </button>
                 <div className="hidden items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-1 pr-3 sm:flex">
@@ -367,9 +378,13 @@ export function AdminShell({
           <div className="px-1 py-5">
             {message && <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p>}
             {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-            {loading && <p className="mt-4 text-sm text-zinc-500">Cargando informacion...</p>}
+            {(loading || (sectionLoading === effectiveActiveTab && !isFirstSectionLoad)) && <RefreshSkeletonBar />}
 
             <section className={`${effectiveActiveTab !== "dashboard" && effectiveActiveTab !== "adult-dashboard" ? "mt-6" : "mt-0"} grid min-w-0 gap-5 pb-20 sm:pb-0 ${fullWidthTabs.has(effectiveActiveTab) ? "grid-cols-1" : "lg:grid-cols-[360px_1fr]"}`}>
+              {isFirstSectionLoad ? (
+                <SectionSkeleton />
+              ) : (
+                <>
               {effectiveActiveTab === "dashboard" && (
                 user.role === "coach" ? (
                   <CoachDashboardPanel
@@ -398,7 +413,6 @@ export function AdminShell({
               {effectiveActiveTab === "sports" && (
                 <SportsPanel data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />
               )}
-              {effectiveActiveTab === "values" && <ValuesPanel data={scopedData} onSaveAssessment={onSaveStudentValueAssessment} />}
               {effectiveActiveTab === "tournaments" && (
                 <TournamentsPanel
                   data={scopedData}
@@ -450,8 +464,8 @@ export function AdminShell({
                       onFaceAttendance={(payload) => onCreateAndReturn<FaceRecognitionResponse>("/face-attendance/recognize/", payload)}
                     />
                   )}
-                  {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefresh} mode="process" />}
-                  {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefresh} mode="report" />}
+                  {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={refreshActiveSection} mode="process" />}
+                  {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={refreshActiveSection} mode="report" />}
                   {attendanceSubsection === "occupancy" && <VideoOccupancyPanel token={token} data={scopedData} />}
                 </div>
               )}
@@ -516,6 +530,8 @@ export function AdminShell({
               {effectiveActiveTab === "invoices" && <InvoicesPanel invoices={scopedData.invoices} onDownloadFile={onDownloadFile} />}
               {effectiveActiveTab === "historical" && <HistoricalImportsPanel data={scopedData} onUpload={onUploadHistoricalImport} onCommit={onCommitHistoricalImport} />}
               {effectiveActiveTab === "discrepancies" && isAdmin && <HistoricalDiscrepanciesPanel report={scopedData.historicalDiscrepancies} sites={scopedData.sites} />}
+                </>
+              )}
             </section>
           </div>
         </div>
