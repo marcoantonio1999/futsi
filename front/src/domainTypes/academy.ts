@@ -9,6 +9,7 @@ export type Guardian = {
   tax_id: string;
   virtual_clabe: string;
   notes: string;
+  username?: string;
 };
 
 export type Student = {

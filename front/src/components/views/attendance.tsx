@@ -330,8 +330,8 @@ export function AttendancePanel({
       )}
       </div>
 
-      <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-semibold">{activeSession ? "Lista de asistencia" : isCoach ? "Sin sesion para hoy" : "Selecciona o crea una sesion"}</h2>
             {activeSession && (
@@ -345,7 +345,7 @@ export function AttendancePanel({
           </div>
           {activeSession && (
             <button
-              className="flex items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
               disabled={Boolean(activeSession.closed_at)}
               onClick={() => onClose(activeSession.id)}
             >
@@ -355,12 +355,12 @@ export function AttendancePanel({
         </div>
 
         {activeSession && (
-          <div className="grid grid-cols-3 border-b border-zinc-200 text-center text-sm">
+          <div className="grid grid-cols-3 border-b border-zinc-200 text-center text-sm dark:border-zinc-800">
             <div className="px-3 py-3">
               <p className="text-xs uppercase text-zinc-500">Asisten</p>
               <p className="text-xl font-semibold">{sessionSummary.present}</p>
             </div>
-            <div className="border-x border-zinc-200 px-3 py-3">
+            <div className="border-x border-zinc-200 px-3 py-3 dark:border-zinc-800">
               <p className="text-xs uppercase text-zinc-500">Faltan</p>
               <p className="text-xl font-semibold">{sessionSummary.absent}</p>
             </div>
@@ -371,7 +371,7 @@ export function AttendancePanel({
           </div>
         )}
 
-        <div className="divide-y divide-zinc-100">
+        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
           {!activeSession && <p className="px-4 py-8 text-sm text-zinc-500">{isCoach ? "Cuando exista un entrenamiento o partido programado para hoy, aparecera aqui para pasar lista." : "Crea una sesion para empezar el pase de lista."}</p>}
           {activeSession &&
             roster.map((student) => {

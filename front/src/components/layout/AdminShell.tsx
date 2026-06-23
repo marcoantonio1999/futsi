@@ -52,7 +52,49 @@ import {
 type AttendanceSubsection = "manual" | "automatic" | "report" | "occupancy";
 type BusinessScope = "academy" | "adult";
 
-const adultHiddenTabs = new Set<TabKey>(["adult-dashboard", "attendance", "coaches", "guardians", "students", "uniforms"]);
+const academyMenuTabs: TabKey[] = [
+  "dashboard",
+  "calendar",
+  "sports",
+  "tournaments",
+  "coaches",
+  "uniforms",
+  "attendance",
+  "billing",
+  "debts",
+  "expenses",
+  "students",
+  "guardians",
+  "sites",
+  "users",
+  "invoices",
+  "historical",
+  "discrepancies",
+];
+const adultMenuTabs: TabKey[] = [
+  "adult-dashboard",
+  "calendar",
+  "tournaments",
+  "billing",
+  "debts",
+  "expenses",
+  "referees",
+  "invoices",
+  "sites",
+  "users",
+];
+const adultTabLabels: Partial<Record<TabKey, string>> = {
+  "adult-dashboard": "Dashboard adultos",
+  calendar: "Calendario adultos",
+  tournaments: "Torneos adultos",
+  billing: "Cobranza adultos",
+  debts: "Adeudos adultos",
+  expenses: "Gastos adultos",
+  referees: "Arbitros",
+  invoices: "Facturas adultos",
+};
+const academyDefaultTab: TabKey = "dashboard";
+const adultDefaultTab: TabKey = "adult-dashboard";
 
 function adultLeagueData(data: AppData): AppData {
   const adultTeamIds = new Set(data.teams.map((team) => team.id));
@@ -160,10 +202,15 @@ export function AdminShell({
     ...((user.section_permissions || []) as TabKey[]),
   ]);
   const visibleTabs = tabs.filter((tab) => isAdmin || allowedSections.has(tab.key));
-  const sidebarTabs = visibleTabs.filter((tab) => tab.key !== "adult-dashboard" && (businessScope === "academy" || !adultHiddenTabs.has(tab.key)));
-  const activeTabMeta = visibleTabs.find((tab) => tab.key === activeTab);
-  const effectiveActiveTab = activeTabMeta ? activeTab : visibleTabs[0]?.key ?? "dashboard";
-  const effectiveActiveTabMeta = visibleTabs.find((tab) => tab.key === effectiveActiveTab);
+  const menuOrder = businessScope === "adult" ? adultMenuTabs : academyMenuTabs;
+  const sidebarTabs = menuOrder
+    .map((key) => visibleTabs.find((tab) => tab.key === key))
+    .filter((tab): tab is NonNullable<typeof tab> => Boolean(tab))
+    .map((tab) => ({ ...tab, label: businessScope === "adult" ? adultTabLabels[tab.key] ?? tab.label : tab.label }));
+  const activeTabMeta = sidebarTabs.find((tab) => tab.key === activeTab);
+  const fallbackTab = sidebarTabs[0]?.key ?? (businessScope === "adult" ? adultDefaultTab : academyDefaultTab);
+  const effectiveActiveTab = activeTabMeta ? activeTab : fallbackTab;
+  const effectiveActiveTabMeta = sidebarTabs.find((tab) => tab.key === effectiveActiveTab) ?? visibleTabs.find((tab) => tab.key === effectiveActiveTab);
   const scopedData = businessScope === "adult" ? adultLeagueData(data) : data;
   const canSeeAdultDashboard = visibleTabs.some((tab) => tab.key === "adult-dashboard");
   const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
@@ -173,25 +220,59 @@ export function AdminShell({
     onLoadSection(effectiveActiveTab);
   }, [effectiveActiveTab, user.id]);
 
+  useEffect(() => {
+    if (!sidebarTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(fallbackTab);
+    }
+  }, [activeTab, fallbackTab, sidebarTabs]);
+
   function refreshActiveSection() {
     void onLoadSection(effectiveActiveTab, { force: true });
   }
 
   useEffect(() => {
     if (user.role === "adult_representative" || user.role === "adult_player") {
-      setActiveTab("adult-dashboard");
+      setActiveTab(adultDefaultTab);
       setBusinessScope("adult");
       return;
     }
-    setActiveTab(user.role === "cashier" ? "billing" : "dashboard");
+    setActiveTab(user.role === "cashier" ? "billing" : academyDefaultTab);
     setBusinessScope("academy");
   }, [user.id, user.role]);
 
   function selectTab(tab: TabKey) {
-    if (tab === "adult-dashboard") setBusinessScope("adult");
-    if (tab === "dashboard") setBusinessScope("academy");
     setActiveTab(tab);
   }
+
+  function switchBusinessScope(nextScope: BusinessScope) {
+    setBusinessScope(nextScope);
+    setActiveTab(nextScope === "adult" ? adultDefaultTab : academyDefaultTab);
+    setMobileMenuOpen(false);
+  }
+
+  const shellTone = businessScope === "adult"
+    ? {
+        appName: "Liga adultos",
+        subtitle: "Sistema de torneos adultos",
+        accent: "blue",
+        activeClass: "bg-blue-50 text-blue-800",
+        indicatorClass: "bg-blue-700",
+        hoverClass: "hover:bg-blue-50",
+        menuTitle: "Liga adultos",
+        demoCard: "bg-blue-700 text-white",
+        refreshButton: "bg-white/15 text-white hover:bg-white/20",
+      }
+    : {
+        appName: "Futsi",
+        subtitle: "Mini ERP operativo",
+        accent: "emerald",
+        activeClass: "bg-emerald-50 text-emerald-800",
+        indicatorClass: "bg-emerald-700",
+        hoverClass: "hover:bg-zinc-50",
+        menuTitle: "Academia",
+        demoCard: "bg-zinc-950 text-white",
+        refreshButton: "bg-emerald-600 text-white hover:bg-emerald-700",
+      };
 
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
     mobileSwipeStartX.current = event.touches[0]?.clientX ?? null;
@@ -215,7 +296,7 @@ export function AdminShell({
 
   return (
     <main
-      className="min-h-screen bg-stone-50 text-zinc-950"
+      className={`min-h-screen text-zinc-950 ${businessScope === "adult" ? "bg-blue-50/45" : "bg-stone-50"}`}
       onTouchStart={handleMobileTouchStart}
       onTouchEnd={handleMobileTouchEnd}
       data-testid="admin-portal"
@@ -232,8 +313,8 @@ export function AdminShell({
               <div className="flex items-center gap-2">
                 <img className="h-10 w-10 rounded-full object-cover" src="./favicon.png" alt="Futsi" />
                 <div>
-                  <p className="font-semibold">Futsi</p>
-                  <p className="text-xs text-zinc-500">Mini ERP</p>
+                  <p className="font-semibold">{shellTone.appName}</p>
+                  <p className="text-xs text-zinc-500">{shellTone.subtitle}</p>
                 </div>
               </div>
               <button className="grid size-9 place-items-center rounded-md border border-zinc-200" onClick={() => setMobileMenuOpen(false)} type="button">
@@ -246,7 +327,7 @@ export function AdminShell({
                   key={tab.key}
                   data-testid={`menu-tab-${tab.key}`}
                   className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
-                    effectiveActiveTab === tab.key ? "bg-emerald-50 text-emerald-800" : "text-zinc-600 hover:bg-zinc-50"
+                    effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
                   }`}
                   onClick={() => {
                     selectTab(tab.key);
@@ -271,21 +352,39 @@ export function AdminShell({
         <aside className="fixed top-4 z-[910] hidden h-[calc(100vh-2rem)] min-h-0 w-64 shrink-0 flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white p-4 shadow-sm lg:left-[max(1rem,calc((100vw-1540px)/2+1rem))] lg:flex">
           <div className="shrink-0 px-2 py-2">
             <img className="h-auto w-44 object-contain" src="./logo-futsi.png" alt="Futsi Mini ERP" />
-            <p className="mt-2 text-xs font-medium text-zinc-500">Mini ERP operativo</p>
+            <p className="mt-2 text-xs font-medium text-zinc-500">{shellTone.subtitle}</p>
+            {canToggleAdultDashboard && (
+              <div className="mt-4 grid grid-cols-2 gap-1 rounded-md border border-zinc-200 bg-zinc-50 p-1">
+                <button
+                  className={`rounded-md px-2 py-2 text-xs font-semibold transition ${businessScope === "academy" ? "bg-white text-emerald-800 shadow-sm" : "text-zinc-500 hover:bg-white"}`}
+                  onClick={() => switchBusinessScope("academy")}
+                  type="button"
+                >
+                  Academia
+                </button>
+                <button
+                  className={`rounded-md px-2 py-2 text-xs font-semibold transition ${businessScope === "adult" ? "bg-white text-blue-800 shadow-sm" : "text-zinc-500 hover:bg-white"}`}
+                  onClick={() => switchBusinessScope("adult")}
+                  type="button"
+                >
+                  Adultos
+                </button>
+              </div>
+            )}
           </div>
           <nav className="mt-6 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto pr-1">
-            <p className="px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">Principal</p>
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">{shellTone.menuTitle}</p>
             {sidebarTabs.slice(0, 10).map((tab) => (
               <button
                 key={tab.key}
                 data-testid={`menu-tab-${tab.key}`}
                 className={`relative flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
-                  effectiveActiveTab === tab.key ? "bg-emerald-50 text-emerald-800" : "text-zinc-600 hover:bg-zinc-50"
+                  effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
                 }`}
                 onClick={() => selectTab(tab.key)}
                 type="button"
               >
-                {effectiveActiveTab === tab.key && <span className="absolute -left-4 h-7 w-1 rounded-r-full bg-emerald-700" />}
+                {effectiveActiveTab === tab.key && <span className={`absolute -left-4 h-7 w-1 rounded-r-full ${shellTone.indicatorClass}`} />}
                 {tab.icon}
                 {tab.label}
               </button>
@@ -296,21 +395,21 @@ export function AdminShell({
                 key={tab.key}
                 data-testid={`menu-tab-${tab.key}`}
                 className={`relative flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
-                  effectiveActiveTab === tab.key ? "bg-emerald-50 text-emerald-800" : "text-zinc-600 hover:bg-zinc-50"
+                  effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
                 }`}
                 onClick={() => selectTab(tab.key)}
                 type="button"
               >
-                {effectiveActiveTab === tab.key && <span className="absolute -left-4 h-7 w-1 rounded-r-full bg-emerald-700" />}
+                {effectiveActiveTab === tab.key && <span className={`absolute -left-4 h-7 w-1 rounded-r-full ${shellTone.indicatorClass}`} />}
                 {tab.icon}
                 {tab.label}
               </button>
             ))}
           </nav>
-          <div className="mt-3 shrink-0 rounded-[18px] bg-zinc-950 p-3 text-white">
-            <p className="text-xs text-zinc-300">Modo demo</p>
+          <div className={`mt-3 shrink-0 rounded-[18px] p-3 ${shellTone.demoCard}`}>
+            <p className="text-xs opacity-80">Modo {businessScope === "adult" ? "liga adultos" : "academia"}</p>
             <p className="mt-1 text-sm font-semibold">Datos operativos vivos</p>
-            <button className="mt-3 w-full rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold" onClick={refreshActiveSection} type="button">
+            <button className={`mt-3 w-full rounded-md px-3 py-2 text-xs font-semibold ${shellTone.refreshButton}`} onClick={refreshActiveSection} type="button">
               Actualizar
             </button>
           </div>
@@ -332,7 +431,7 @@ export function AdminShell({
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-3">
                     <img className="hidden h-7 w-auto object-contain sm:block" src="./logo-futsi.png" alt="Futsi" />
-                    <h1 className="truncate text-xl font-semibold">{effectiveActiveTabMeta?.label || "Operacion base"}</h1>
+                    <h1 className="truncate text-xl font-semibold">{effectiveActiveTabMeta?.label || (businessScope === "adult" ? "Liga adultos" : "Operacion base")}</h1>
                   </div>
                 </div>
               </div>
@@ -344,15 +443,7 @@ export function AdminShell({
                         ? "border-blue-700 bg-blue-700 text-white"
                         : "border-blue-700 bg-white text-blue-800 hover:bg-blue-50 dark:bg-zinc-950 dark:text-white dark:hover:bg-zinc-900"
                     }`}
-                    onClick={() => {
-                      if (businessScope === "adult") {
-                        setBusinessScope("academy");
-                        setActiveTab("dashboard");
-                        return;
-                      }
-                      setBusinessScope("adult");
-                      setActiveTab("adult-dashboard");
-                    }}
+                    onClick={() => switchBusinessScope(businessScope === "adult" ? "academy" : "adult")}
                     type="button"
                   >
                     {businessScope === "adult" ? "Academia" : "Liga adultos"}
@@ -527,7 +618,13 @@ export function AdminShell({
                   onUpdate={(userId, payload) => onUpdateRecord(`/users/${userId}/`, payload, "Permisos actualizados.")}
                 />
               )}
-              {effectiveActiveTab === "invoices" && <InvoicesPanel invoices={scopedData.invoices} onDownloadFile={onDownloadFile} />}
+              {effectiveActiveTab === "invoices" && (
+                <InvoicesPanel
+                  data={scopedData}
+                  onCreateInvoice={(payload) => onCreateRecord("/invoices/simulate/", payload, "Factura simulada generada.")}
+                  onDownloadFile={onDownloadFile}
+                />
+              )}
               {effectiveActiveTab === "historical" && <HistoricalImportsPanel data={scopedData} onUpload={onUploadHistoricalImport} onCommit={onCommitHistoricalImport} />}
               {effectiveActiveTab === "discrepancies" && isAdmin && <HistoricalDiscrepanciesPanel report={scopedData.historicalDiscrepancies} sites={scopedData.sites} />}
                 </>

@@ -98,21 +98,35 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         elif source_type == "charge":
             charge = Charge.objects.select_related("site", "student", "student__guardian", "team").get(id=source_id)
             guardian = charge.student.guardian if charge.student else None
+            team = charge.team
+            recipient_name = (
+                (guardian.tax_name or guardian.full_name)
+                if guardian
+                else (team.representative_name if team and team.representative_name else "Cliente general")
+            )
+            recipient_email = guardian.email if guardian else (team.representative_email if team else "")
             invoice_data.update(
                 kind="income",
                 charge=charge,
                 site=charge.site,
                 student=charge.student,
                 guardian=guardian,
-                recipient_name=guardian.tax_name or guardian.full_name if guardian else charge.team.representative_name,
+                recipient_name=recipient_name,
                 recipient_tax_id=guardian.tax_id if guardian else "XAXX010101000",
-                recipient_email=guardian.email if guardian else charge.team.representative_email,
+                recipient_email=recipient_email,
                 concept=f"Ingreso: {charge.concept} - {charge.description or 'Cobro operativo'}",
                 subtotal=charge.amount,
             )
         elif source_type == "payment":
             payment = Payment.objects.select_related("site", "charge", "student", "student__guardian", "team").get(id=source_id)
             guardian = payment.student.guardian if payment.student else None
+            team = payment.team
+            recipient_name = (
+                (guardian.tax_name or guardian.full_name)
+                if guardian
+                else (team.representative_name if team and team.representative_name else "Cliente general")
+            )
+            recipient_email = guardian.email if guardian else (team.representative_email if team else "")
             invoice_data.update(
                 kind="income",
                 payment=payment,
@@ -120,9 +134,9 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
                 site=payment.site,
                 student=payment.student,
                 guardian=guardian,
-                recipient_name=guardian.tax_name or guardian.full_name if guardian else payment.team.representative_name,
+                recipient_name=recipient_name,
                 recipient_tax_id=guardian.tax_id if guardian else "XAXX010101000",
-                recipient_email=guardian.email if guardian else payment.team.representative_email,
+                recipient_email=recipient_email,
                 concept=f"Ingreso pagado: {payment.charge.concept if payment.charge else payment.get_method_display()}",
                 subtotal=payment.amount,
             )

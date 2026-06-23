@@ -139,15 +139,15 @@ export function FaceAttendanceCard({
   }, []);
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className="rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
       <h2 className="flex items-center gap-2 text-base font-semibold">
         <Camera size={16} /> Pasar lista con camara
       </h2>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
         Toma una foto y marca asistencia automaticamente. Para demo puedes forzar el alumno.
       </p>
       {engineStatus && (
-        <p className={`mt-2 rounded-md px-3 py-2 text-sm ${engineStatus.deepface_available ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+        <p className={`mt-2 rounded-md px-3 py-2 text-sm ${engineStatus.deepface_available ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"}`}>
           Motor activo: {engineStatus.deepface_available ? "DeepFace real disponible" : `Demo/mock (${engineStatus.detail || "DeepFace no disponible"})`}
         </p>
       )}
@@ -172,7 +172,7 @@ export function FaceAttendanceCard({
       {cameraError && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{cameraError}</p>}
       {resultMessage && <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{resultMessage}</p>}
       {lastAttempt && (
-        <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+        <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
           <p><span className="font-semibold">Motor:</span> {lastAttempt.engine === "deepface" ? "DeepFace real" : "Demo/mock"}</p>
           <p><span className="font-semibold">Alumno:</span> {lastAttempt.student_name || "Sin coincidencia"}</p>
           <p><span className="font-semibold">Confianza:</span> {Math.round(Number(lastAttempt.confidence || 0) * 100)}%</p>
@@ -188,13 +188,13 @@ export function FaceAttendanceCard({
         ))}
       </SelectInput>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <button type="button" className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium" onClick={startCamera}>
+        <button type="button" className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={startCamera}>
           Abrir camara
         </button>
-        <button type="button" className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium" onClick={stopCamera}>
+        <button type="button" className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={stopCamera}>
           Apagar
         </button>
-        <button type="button" disabled={disabled || working} className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50" onClick={capture}>
+        <button type="button" disabled={disabled || working} className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950" onClick={capture}>
           {working ? "Procesando..." : "Pasar lista"}
         </button>
       </div>

@@ -82,6 +82,11 @@ class TournamentViewSet(viewsets.ModelViewSet):
     serializer_class = TournamentSerializer
     permission_classes = [IsAdminOrSiteCoordinatorRole]
 
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsOperationsCashierCoachOrGuardianRole()]
+        return super().get_permissions()
+
     def get_queryset(self):
         queryset = super().get_queryset()
         site = self.request.query_params.get("site")
@@ -96,6 +101,11 @@ class TeamViewSet(viewsets.ModelViewSet):
     queryset = Team.objects.select_related("tournament", "tournament__site").annotate(player_count=Count("players")).all()
     serializer_class = TeamSerializer
     permission_classes = [IsAdminOrSiteCoordinatorRole]
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsOperationsCashierCoachOrGuardianRole()]
+        return super().get_permissions()
 
     def get_queryset(self):
         queryset = super().get_queryset()

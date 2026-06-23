@@ -73,11 +73,40 @@ import {
 
 export function GuardiansPanel({ guardians, onCreate }: { guardians: Guardian[]; onCreate: (payload: unknown) => void }) {
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", tax_name: "", tax_id: "", notes: "" });
+  const [filters, setFilters] = useState({ query: "", account: "" });
+  const [page, setPage] = useState(0);
+  const guardiansPerPage = 8;
 
   function submit(event: FormEvent) {
     event.preventDefault();
     onCreate(form);
     setForm({ full_name: "", phone: "", email: "", tax_name: "", tax_id: "", notes: "" });
+  }
+
+  const filteredGuardians = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    return guardians.filter((guardian) => {
+      const text = `${guardian.full_name} ${guardian.phone} ${guardian.email} ${guardian.tax_name} ${guardian.tax_id} ${guardian.username ?? ""}`.toLowerCase();
+      const matchesQuery = !query || text.includes(query);
+      const hasAccount = Boolean(guardian.username);
+      const matchesAccount = !filters.account || (filters.account === "with" ? hasAccount : !hasAccount);
+      return matchesQuery && matchesAccount;
+    });
+  }, [filters, guardians]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredGuardians.length / guardiansPerPage));
+  const visibleGuardians = filteredGuardians.slice(page * guardiansPerPage, (page + 1) * guardiansPerPage);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filters]);
+
+  useEffect(() => {
+    if (page >= pageCount) setPage(pageCount - 1);
+  }, [page, pageCount]);
+
+  function clearFilters() {
+    setFilters({ query: "", account: "" });
   }
 
   return (
@@ -95,15 +124,81 @@ export function GuardiansPanel({ guardians, onCreate }: { guardians: Guardian[];
           </button>
         </div>
       </form>
-      <SimpleList
-        title="Representantes"
-        count={guardians.length}
-        rows={guardians.map((guardian) => ({
-          id: guardian.id,
-          title: guardian.full_name,
-          subtitle: `${guardian.phone}${guardian.email ? ` - ${guardian.email}` : ""}`,
-        }))}
-      />
+      <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Representantes</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {filteredGuardians.length} de {guardians.length} representantes filtrados · mostrando {visibleGuardians.length} por pagina
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={page === 0}
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              type="button"
+              aria-label="Representantes anteriores"
+            >
+              ‹
+            </button>
+            <span className="min-w-16 text-center text-sm font-semibold text-zinc-700">
+              {page + 1}/{pageCount}
+            </span>
+            <button
+              className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+              type="button"
+              aria-label="Mas representantes"
+            >
+              ›
+            </button>
+            <button className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium" onClick={clearFilters} type="button">
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_220px]">
+          <TextInput
+            label="Buscar"
+            placeholder="Nombre, telefono, correo, RFC o usuario"
+            value={filters.query}
+            onChange={(event) => setFilters({ ...filters, query: event.target.value })}
+          />
+          <SelectInput label="Cuenta" value={filters.account} onChange={(event) => setFilters({ ...filters, account: event.target.value })}>
+            <option value="">Todos</option>
+            <option value="with">Con cuenta</option>
+            <option value="without">Sin cuenta</option>
+          </SelectInput>
+        </div>
+
+        <div className="grid gap-3 border-t border-zinc-200 p-4 lg:grid-cols-2">
+          {visibleGuardians.map((guardian) => (
+            <article key={guardian.id} className="rounded-md border border-zinc-200 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="font-semibold text-zinc-950">{guardian.full_name}</p>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {guardian.phone || "Sin telefono"}{guardian.email ? ` - ${guardian.email}` : ""}
+                  </p>
+                  {guardian.tax_id || guardian.tax_name ? (
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Fiscal: {guardian.tax_name || "Sin razon social"} · {guardian.tax_id || "Sin RFC"}
+                    </p>
+                  ) : null}
+                </div>
+                <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${guardian.username ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+                  {guardian.username ? `Cuenta: ${guardian.username}` : "Sin cuenta"}
+                </span>
+              </div>
+              {guardian.notes ? <p className="mt-3 rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-600">{guardian.notes}</p> : null}
+            </article>
+          ))}
+          {filteredGuardians.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay representantes con estos filtros.</p>}
+        </div>
+      </section>
     </>
   );
 }
@@ -200,6 +295,35 @@ export function UsersPanel({ data, onCreate, onUpdate }: { data: AppData; onCrea
     password: "demo12345",
     is_active: true,
   });
+  const [filters, setFilters] = useState({ query: "", role: "", site: "", status: "" });
+  const [page, setPage] = useState(0);
+  const usersPerPage = 8;
+
+  const filteredUsers = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    return data.users.filter((user) => {
+      const text = `${user.username} ${user.email} ${user.first_name} ${user.last_name} ${user.primary_site_name ?? ""} ${user.coach_group_name ?? ""}`.toLowerCase();
+      const matchesQuery = !query || text.includes(query);
+      const matchesRole = !filters.role || user.role === filters.role;
+      const matchesSite = !filters.site || (filters.site === "none" ? !user.primary_site : String(user.primary_site ?? "") === filters.site);
+      const matchesStatus = !filters.status || (filters.status === "active" ? user.is_active : !user.is_active);
+      return matchesQuery && matchesRole && matchesSite && matchesStatus;
+    });
+  }, [data.users, filters]);
+  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
+  const visibleUsers = filteredUsers.slice(page * usersPerPage, (page + 1) * usersPerPage);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filters]);
+
+  useEffect(() => {
+    if (page >= pageCount) setPage(pageCount - 1);
+  }, [page, pageCount]);
+
+  function clearFilters() {
+    setFilters({ query: "", role: "", site: "", status: "" });
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -265,11 +389,71 @@ export function UsersPanel({ data, onCreate, onUpdate }: { data: AppData; onCrea
         </div>
       </form>
       <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-        <TableHeader title="Usuarios" count={data.users.length} />
+        <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Usuarios</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {filteredUsers.length} de {data.users.length} usuarios filtrados · mostrando {visibleUsers.length} por pagina
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={page === 0}
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              type="button"
+              aria-label="Usuarios anteriores"
+            >
+              ‹
+            </button>
+            <span className="min-w-16 text-center text-sm font-semibold text-zinc-700">
+              {page + 1}/{pageCount}
+            </span>
+            <button
+              className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+              type="button"
+              aria-label="Mas usuarios"
+            >
+              ›
+            </button>
+            <button className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium" onClick={clearFilters} type="button">
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+          <TextInput
+            label="Buscar"
+            placeholder="Usuario, correo, nombre, sede o grupo"
+            value={filters.query}
+            onChange={(event) => setFilters({ ...filters, query: event.target.value })}
+          />
+          <SelectInput label="Rol" value={filters.role} onChange={(event) => setFilters({ ...filters, role: event.target.value })}>
+            <option value="">Todos</option>
+            {Object.entries(roleLabels).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </SelectInput>
+          <SelectInput label="Sede" value={filters.site} onChange={(event) => setFilters({ ...filters, site: event.target.value })}>
+            <option value="">Todas</option>
+            <option value="none">Sin sede</option>
+            {data.sites.map((site) => (
+              <option key={site.id} value={site.id}>{site.name}</option>
+            ))}
+          </SelectInput>
+          <SelectInput label="Estatus" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+            <option value="">Todos</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </SelectInput>
+        </div>
         <div className="divide-y divide-zinc-100">
-          {data.users.map((user) => (
+          {visibleUsers.map((user) => (
             <UserPermissionRow key={user.id} user={user} onUpdate={onUpdate} />
           ))}
+          {filteredUsers.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay usuarios con estos filtros.</p>}
         </div>
       </div>
     </>

@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import type { ThemeMode } from "../types";
 
+const THEME_STORAGE_KEY = "futsi_theme_v2";
+const LEGACY_THEME_STORAGE_KEY = "futsi_theme";
+
 export function useThemeMode() {
   const [theme, setTheme] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem("futsi_theme");
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved === "light" || saved === "dark") return saved;
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return "light";
   });
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem("futsi_theme", theme);
+    localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
   function toggleTheme() {

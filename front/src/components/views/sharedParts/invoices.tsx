@@ -63,11 +63,22 @@ export function InvoiceRows({ invoices, onDownloadFile }: { invoices: Invoice[];
   );
 }
 
-export function InvoicesPanel({ invoices, onDownloadFile }: { invoices: Invoice[]; onDownloadFile: (path: string, filename: string) => void }) {
+export function InvoicesPanel({
+  data,
+  onCreateInvoice,
+  onDownloadFile,
+}: {
+  data: AppData;
+  onCreateInvoice: (payload: unknown) => void;
+  onDownloadFile: (path: string, filename: string) => void;
+}) {
   return (
-    <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-      <TableHeader title="Facturas disponibles" count={invoices.length} />
-      <InvoiceRows invoices={invoices} onDownloadFile={onDownloadFile} />
+    <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
+      <InvoiceGenerator data={data} onCreateInvoice={onCreateInvoice} />
+      <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+        <TableHeader title="Facturas disponibles" count={data.invoices.length} />
+        <InvoiceRows invoices={data.invoices} onDownloadFile={onDownloadFile} />
+      </div>
     </div>
   );
 }
@@ -88,11 +99,11 @@ export function InvoiceGenerator({ data, onCreateInvoice }: { data: AppData; onC
   }
 
   return (
-    <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+    <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
       <h2 className="flex items-center gap-2 text-base font-semibold">
         <FileText size={16} /> PAC simulado
       </h2>
-      <p className="mt-1 text-sm text-zinc-500">Genera PDF, XML y UUID demo; queda guardado en la base de datos.</p>
+      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Genera PDF, XML y UUID demo; queda guardado en la base de datos.</p>
       <div className="mt-4 grid gap-3">
         <SelectInput label="Tipo" value={sourceType} onChange={(event) => setSourceType(event.target.value as "charge" | "payment" | "expense")}>
           <option value="charge">Alumno / cargo</option>
@@ -115,7 +126,7 @@ export function InvoiceGenerator({ data, onCreateInvoice }: { data: AppData; onC
             );
           })}
         </SelectInput>
-        <button className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white" data-testid="invoice-generate-submit">Generar factura simulada</button>
+        <button className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950" disabled={!sourceId} data-testid="invoice-generate-submit">Generar factura simulada</button>
       </div>
     </form>
   );

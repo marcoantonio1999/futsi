@@ -1323,7 +1323,7 @@ export function AutomaticAttendancePanel({
   return (
     <div className="grid gap-5">
       {resultsModalOpen && visibleJob ? <AutomaticJobResultsModal job={visibleJob} token={token} onClose={() => setResultsModalOpen(false)} /> : null}
-      <section className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+      <section className="rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="flex items-center gap-2 text-base font-semibold">
@@ -1332,11 +1332,11 @@ export function AutomaticAttendancePanel({
             <p className="mt-1 text-sm text-zinc-500">Carpeta local: {status?.pending_dir ?? "Cargando..."}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button className="flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium" onClick={() => loadStatus()} type="button">
+            <button className="flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={() => loadStatus()} type="button">
               <RefreshCw size={15} /> Actualizar
             </button>
             <button
-              className="flex items-center gap-2 rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="flex items-center gap-2 rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950"
               disabled={!status?.enabled || pendingCount === 0 || isProcessing}
               onClick={() => processPending()}
               type="button"
@@ -1347,19 +1347,19 @@ export function AutomaticAttendancePanel({
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-md border border-zinc-200 p-3">
-            <p className="text-xs font-medium uppercase text-zinc-500">Servicio local</p>
+          <div className="rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+            <p className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Servicio local</p>
             <p className={`mt-2 inline-flex items-center gap-2 rounded-md border px-2 py-1 text-sm font-medium ${status?.enabled ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>
               {status?.enabled ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
               {status?.enabled ? "Disponible" : "No habilitado"}
             </p>
           </div>
-          <div className="rounded-md border border-zinc-200 p-3">
-            <p className="text-xs font-medium uppercase text-zinc-500">Pendientes</p>
+          <div className="rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+            <p className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Pendientes</p>
             <p className="mt-2 text-2xl font-semibold">{pendingCount}</p>
           </div>
-          <div className="rounded-md border border-zinc-200 p-3">
-            <p className="text-xs font-medium uppercase text-zinc-500">Ultimo trabajo</p>
+          <div className="rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+            <p className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Ultimo trabajo</p>
             <p className={`mt-2 inline-flex items-center gap-2 rounded-md border px-2 py-1 text-sm font-medium ${statusTone(visibleJob?.status)}`}>
               <Clock3 size={15} />
               {visibleJob?.status ?? "Sin trabajos"}
@@ -1368,10 +1368,10 @@ export function AutomaticAttendancePanel({
         </div>
 
         {visibleJob && (
-          <div className="mt-4 rounded-md border border-zinc-200 p-3">
+          <div className="mt-4 rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="font-medium">{visibleJob.current_video ?? `Trabajo ${visibleJob.id.slice(0, 8)}`}</span>
-              <button className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50" onClick={() => setResultsModalOpen(true)} type="button">
+              <button className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900" onClick={() => setResultsModalOpen(true)} type="button">
                 Ver progreso y resultados
               </button>
             </div>
@@ -1393,7 +1393,7 @@ export function AutomaticAttendancePanel({
       </section>
 
       <section className="grid gap-5 lg:grid-cols-[360px_1fr]">
-        <form className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
+        <form className="rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <UploadCloud size={16} /> Carga manual
           </h3>
@@ -1422,7 +1422,7 @@ export function AutomaticAttendancePanel({
           </div>
 
           <button
-            className="mt-4 flex min-h-40 w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-4 py-5 text-center text-sm text-zinc-600 hover:bg-zinc-100"
+            className="mt-4 flex min-h-40 w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-4 py-5 text-center text-sm text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
@@ -1437,7 +1437,7 @@ export function AutomaticAttendancePanel({
           </button>
           <input ref={fileInputRef} className="hidden" type="file" accept="video/*" onChange={(event) => event.target.files && uploadFiles(event.target.files)} />
           {uploading && (
-            <div className="mt-3 rounded-md border border-zinc-200 bg-white p-3">
+            <div className="mt-3 rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="font-medium text-zinc-800">Subiendo video</span>
                 <span className="font-semibold text-zinc-950">{uploadProgress.percent.toFixed(0)}%</span>
@@ -1452,12 +1452,12 @@ export function AutomaticAttendancePanel({
           )}
         </form>
 
-        <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+        <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <h3 className="font-semibold">Videos pendientes</h3>
             <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">{pendingCount}</span>
           </div>
-          <div className="divide-y divide-zinc-100">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {status?.pending.map((video) => {
               const site = data.sites.find((item) => String(item.id) === String(video.metadata.site_id));
               const session = data.attendanceSessions.find((item) => String(item.id) === String(video.metadata.session_id));
@@ -1495,15 +1495,15 @@ export function AutomaticAttendancePanel({
       </section>
 
       {reprocessableVideos.length ? (
-        <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+        <section className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <div>
               <h3 className="font-semibold">Videos procesados recientemente</h3>
               <p className="mt-1 text-xs text-zinc-500">Puedes volver a descargar desde Drive y procesar el mismo clip para pruebas.</p>
             </div>
             <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">{reprocessableVideos.length}</span>
           </div>
-          <div className="divide-y divide-zinc-100">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {reprocessableVideos.map((video) => {
               const site = data.sites.find((item) => String(item.id) === String(video.metadata.site_id));
               const session = data.attendanceSessions.find((item) => String(item.id) === String(video.metadata.session_id));
@@ -1521,7 +1521,7 @@ export function AutomaticAttendancePanel({
                       {video.metadata.error_message ? <p className="mt-1 text-xs text-red-700">{video.metadata.error_message}</p> : null}
                     </div>
                     <button
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                       disabled={!status?.enabled || isProcessing}
                       onClick={() => reprocessVideoClip(video)}
                       type="button"
@@ -1537,17 +1537,17 @@ export function AutomaticAttendancePanel({
       ) : null}
 
       {visibleJob?.results?.length ? (
-        <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
-          <div className="border-b border-zinc-200 px-4 py-3">
+        <section className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+          <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <h3 className="font-semibold">Resultados recientes</h3>
           </div>
-          <div className="divide-y divide-zinc-100">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {visibleJob.results.map((result) => (
               <div key={result.video} className="px-4 py-3">
                 <p className="font-medium">{result.video}</p>
                 {result.detail && <p className="mt-1 text-sm text-red-700">{result.detail}</p>}
                 {result.sessions?.map((sessionResult) => (
-                  <div key={sessionResult.session.id} className="mt-3 rounded-md bg-zinc-50 p-3">
+                  <div key={sessionResult.session.id} className="mt-3 rounded-md bg-zinc-50 p-3 dark:bg-zinc-900/50">
                     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                       <div>
                         <p className="text-sm font-medium">

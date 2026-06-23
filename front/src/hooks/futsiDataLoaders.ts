@@ -151,7 +151,27 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
     return { sites, guardians, students, charges, payments, discounts, tournaments, teams, studentTournamentRegistrations, players };
   }
 
-  if (tab === "expenses" || tab === "income-statement" || tab === "daily-operation" || tab === "sales-estimate" || tab === "referees" || tab === "coaches") {
+  if (tab === "coaches") {
+    const [sites, users, students, expenses, staffPaymentRequests, cashMovements, coachWorkLogs, charges, payments, discounts, tournaments, teams, players, matches] = await Promise.all([
+      apiRequest<Site[]>("/sites/", authToken),
+      apiRequest<User[]>("/users/", authToken),
+      apiRequest<Student[]>("/students/", authToken),
+      apiRequest<Expense[]>("/expenses/", authToken),
+      optionalApi<StaffPaymentRequest[]>("/staff-payment-requests/", authToken, []),
+      optionalApi<CashMovement[]>("/cash-movements/", authToken, []),
+      apiRequest<CoachWorkLog[]>("/coach-work-logs/", authToken).catch(() => []),
+      apiRequest<Charge[]>("/charges/", authToken),
+      apiRequest<Payment[]>("/payments/", authToken),
+      apiRequest<Discount[]>("/discounts/", authToken),
+      apiRequest<Tournament[]>("/tournaments/", authToken),
+      apiRequest<Team[]>("/teams/", authToken),
+      apiRequest<Player[]>("/players/", authToken),
+      apiRequest<Match[]>("/matches/", authToken),
+    ]);
+    return { sites, users, students, expenses, staffPaymentRequests, cashMovements, coachWorkLogs, charges, payments, discounts, tournaments, teams, players, matches };
+  }
+
+  if (tab === "expenses" || tab === "income-statement" || tab === "daily-operation" || tab === "sales-estimate" || tab === "referees") {
     const [sites, expenses, staffPaymentRequests, cashMovements, coachWorkLogs, charges, payments, discounts, tournaments, teams, players, matches] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<Expense[]>("/expenses/", authToken),
@@ -191,7 +211,16 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
 
   if (tab === "sites") return { sites: await apiRequest<Site[]>("/sites/", authToken) };
   if (tab === "users") return { users: await apiRequest<User[]>("/users/", authToken) };
-  if (tab === "invoices") return { invoices: await apiRequest<Invoice[]>("/invoices/", authToken) };
+  if (tab === "invoices") {
+    const [sites, charges, payments, expenses, invoices] = await Promise.all([
+      apiRequest<Site[]>("/sites/", authToken),
+      apiRequest<Charge[]>("/charges/", authToken),
+      apiRequest<Payment[]>("/payments/", authToken),
+      apiRequest<Expense[]>("/expenses/", authToken),
+      apiRequest<Invoice[]>("/invoices/", authToken),
+    ]);
+    return { sites, charges, payments, expenses, invoices };
+  }
   if (tab === "historical") return { historicalImports: await apiRequest<HistoricalImport[]>("/historical-imports/", authToken) };
   if (tab === "discrepancies") return { historicalDiscrepancies: await apiRequest<HistoricalDiscrepancyReport>("/historical-imports/discrepancies/", authToken) };
   return {};

@@ -103,6 +103,7 @@ export function StudentsPanel({
     payment: "",
     medical: "",
   });
+  const [studentPage, setStudentPage] = useState(0);
   const [form, setForm] = useState({
     full_name: "",
     site: "",
@@ -183,6 +184,17 @@ export function StudentsPanel({
       return queryMatches && siteMatches && groupMatches && statusMatches && uniformMatches && waiverMatches && paymentMatches && medicalMatches;
     });
   }, [data.students, filters]);
+  const studentsPerPage = 8;
+  const studentPageCount = Math.max(1, Math.ceil(filteredStudents.length / studentsPerPage));
+  const visibleStudents = filteredStudents.slice(studentPage * studentsPerPage, (studentPage + 1) * studentsPerPage);
+
+  useEffect(() => {
+    setStudentPage(0);
+  }, [filters]);
+
+  useEffect(() => {
+    if (studentPage >= studentPageCount) setStudentPage(studentPageCount - 1);
+  }, [studentPage, studentPageCount]);
 
   const filterSummary = {
     pendingPayment: filteredStudents.filter((student) => student.open_charge_count > 0).length,
@@ -261,11 +273,36 @@ export function StudentsPanel({
         <div className="flex flex-col gap-2 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-semibold">Alumnos registrados</h2>
-            <p className="mt-1 text-sm text-zinc-500">{filteredStudents.length} de {data.students.length} alumnos visibles</p>
+            <p className="mt-1 text-sm text-zinc-500">
+              {filteredStudents.length} de {data.students.length} alumnos filtrados · mostrando {visibleStudents.length} por pagina
+            </p>
           </div>
-          <button className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium" onClick={clearFilters}>
-            Limpiar filtros
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={studentPage === 0}
+              onClick={() => setStudentPage((page) => Math.max(0, page - 1))}
+              type="button"
+              aria-label="Alumnos anteriores"
+            >
+              ‹
+            </button>
+            <span className="min-w-16 text-center text-sm font-semibold text-zinc-700">
+              {studentPage + 1}/{studentPageCount}
+            </span>
+            <button
+              className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={studentPage >= studentPageCount - 1}
+              onClick={() => setStudentPage((page) => Math.min(studentPageCount - 1, page + 1))}
+              type="button"
+              aria-label="Mas alumnos"
+            >
+              ›
+            </button>
+            <button className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium" onClick={clearFilters} type="button">
+              Limpiar filtros
+            </button>
+          </div>
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
           <TextInput label="Buscar" placeholder="Alumno, tutor, grupo" value={filters.query} onChange={(e) => setFilters({ ...filters, query: e.target.value })} />
@@ -316,7 +353,7 @@ export function StudentsPanel({
           <Metric label="Con nota medica" value={filterSummary.medical} />
         </div>
         <div className="grid gap-3 border-t border-zinc-200 p-4 xl:grid-cols-2">
-          {filteredStudents.map((student) => (
+          {visibleStudents.map((student) => (
             <div key={student.id} className="rounded-md border border-zinc-200 p-3">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="flex min-w-0 gap-3">
