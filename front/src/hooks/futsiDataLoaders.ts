@@ -79,7 +79,26 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
     return { sites, attendanceSessions, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, invoices };
   }
 
-  if (tab === "calendar" || tab === "attendance") {
+  if (tab === "calendar") {
+    const [sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords] = await Promise.all([
+      apiRequest<Site[]>("/sites/", authToken),
+      apiRequest<Student[]>("/students/", authToken),
+      apiRequest<AttendanceSession[]>("/attendance-sessions/", authToken),
+      apiRequest<AttendanceRecord[]>("/attendance-records/", authToken),
+      apiRequest<Charge[]>("/charges/", authToken),
+      apiRequest<Payment[]>("/payments/", authToken),
+      apiRequest<Tournament[]>("/tournaments/", authToken),
+      apiRequest<Team[]>("/teams/", authToken),
+      apiRequest<StudentTournamentRegistration[]>("/student-tournament-registrations/", authToken),
+      apiRequest<Player[]>("/players/", authToken),
+      optionalApi<Match[]>("/matches/", authToken, []),
+      optionalApi<StandingRow[]>("/matches/standings/", authToken, []),
+      apiRequest<PlayerAttendanceRecord[]>("/player-attendance-records/", authToken),
+    ]);
+    return { sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords };
+  }
+
+  if (tab === "attendance") {
     const [sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<Student[]>("/students/", authToken),

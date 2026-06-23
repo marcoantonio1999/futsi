@@ -116,7 +116,7 @@ export function AccountingPortal({
     const siteCharges = data.charges.filter((charge) => charge.site === site.id);
     const siteChargeIds = new Set(siteCharges.map((charge) => charge.id));
     const siteIncome = confirmedPayments
-      .filter((payment) => payment.charge && siteChargeIds.has(payment.charge))
+      .filter((payment) => payment.site === site.id || (!payment.site && payment.charge && siteChargeIds.has(payment.charge)))
       .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
     const siteExpenses = approvedExpenses
       .filter((expense) => expense.site === site.id)
@@ -166,7 +166,7 @@ export function AccountingPortal({
         </div>
       </header>
       <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-            <TableHeader title="Estado de resultados por sede" count={siteRows.length} />
+        <TableHeader title="Estado de resultados por sede" count={siteRows.length} />
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
@@ -176,6 +176,7 @@ export function AccountingPortal({
                     <th className="px-4 py-3">Egresos</th>
                     <th className="px-4 py-3">Utilidad</th>
                     <th className="px-4 py-3">Por cobrar</th>
+                    <th className="px-4 py-3">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -186,6 +187,15 @@ export function AccountingPortal({
                       <td className="px-4 py-3">${money(row.egresos)}</td>
                       <td className={`px-4 py-3 font-semibold ${row.utilidad >= 0 ? "text-emerald-700" : "text-red-700"}`}>${money(row.utilidad)}</td>
                       <td className="px-4 py-3">${money(row.pendiente)}</td>
+                      <td className="px-4 py-3">
+                        {row.ingresos === 0 && row.egresos === 0 && row.pendiente > 0 ? (
+                          <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">Por cobrar</span>
+                        ) : row.ingresos > 0 || row.egresos > 0 ? (
+                          <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">Con movimiento</span>
+                        ) : (
+                          <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">Sin movimiento</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   <tr className="bg-zinc-50 font-semibold">
@@ -194,6 +204,7 @@ export function AccountingPortal({
                     <td className="px-4 py-3">${money(siteTotals.egresos)}</td>
                     <td className={`px-4 py-3 ${siteTotals.utilidad >= 0 ? "text-emerald-700" : "text-red-700"}`}>${money(siteTotals.utilidad)}</td>
                     <td className="px-4 py-3">${money(siteTotals.pendiente)}</td>
+                    <td className="px-4 py-3">Resumen</td>
                   </tr>
                 </tbody>
               </table>

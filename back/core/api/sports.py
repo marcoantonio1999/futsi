@@ -23,7 +23,7 @@ class MatchViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsCashierCoachOrGuardianRole()]
-        return [IsAdminForWrites()]
+        return [IsAdminOrSiteCoordinatorRole()]
 
     @action(detail=False, methods=["get"], url_path="standings")
     def standings(self, request):

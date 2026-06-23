@@ -25,6 +25,7 @@ from reportlab.pdfgen import canvas
 from PIL import Image, ImageOps
 
 from core.permissions import (
+    IsAdminOrSiteCoordinatorRole,
     IsAdminForWrites,
     IsAdminRole,
     IsOperationsCashierOrGuardianRole,

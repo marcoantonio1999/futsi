@@ -14,6 +14,15 @@ class IsAdminRole(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.role in ADMIN_ROLES)
 
 
+class IsAdminOrSiteCoordinatorRole(BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in (ADMIN_ROLES | {"site_coordinator"})
+        )
+
+
 class IsOperationsRole(BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.role in OPERATIONS_ROLES)

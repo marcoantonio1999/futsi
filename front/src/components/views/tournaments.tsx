@@ -9,11 +9,16 @@ type TournamentsPanelProps = {
   data: AppData;
   user?: User;
   readOnly?: boolean;
-  onCreateTournament: (payload: unknown) => Promise<void>;
-  onCreateTeam: (payload: unknown) => Promise<void>;
-  onRegisterStudent: (payload: unknown) => Promise<void>;
-  onCreateMatch: (payload: unknown) => Promise<void>;
+  onCreateTournament: (payload: unknown) => Promise<unknown>;
+  onCreateTeam: (payload: unknown) => Promise<unknown>;
+  onRegisterStudent: (payload: unknown) => Promise<unknown>;
+  onCreateMatch: (payload: unknown) => Promise<unknown>;
   onUpdateMatch: (matchId: number, payload: unknown) => Promise<void>;
+};
+
+type SuccessNotice = {
+  title: string;
+  detail: string;
 };
 
 function today() {
@@ -117,6 +122,7 @@ export function TournamentsPanel({
   const [tournamentStatusFilter, setTournamentStatusFilter] = useState("active");
   const [tournamentBillingFilter, setTournamentBillingFilter] = useState("all");
   const [tournamentPage, setTournamentPage] = useState(0);
+  const [successNotice, setSuccessNotice] = useState<SuccessNotice | null>(null);
 
   useEffect(() => {
     if (!selectedTournament && firstTournament) {
@@ -152,41 +158,53 @@ export function TournamentsPanel({
   const tournamentPageCount = Math.max(1, Math.ceil(filteredTournamentCards.length / tournamentsPerPage));
   const visibleTournamentCards = filteredTournamentCards.slice(tournamentPage * tournamentsPerPage, (tournamentPage + 1) * tournamentsPerPage);
 
-  function submitTournament(event: FormEvent<HTMLFormElement>) {
+  async function submitTournament(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    onCreateTournament({
+    const tournamentName = String(form.get("name") || "").trim();
+    await onCreateTournament({
       site: Number(form.get("site")),
-      name: String(form.get("name") || ""),
+      name: tournamentName,
       billing_type: String(form.get("billing_type") || "weekly_match"),
       starts_on: String(form.get("starts_on") || today()),
       expected_weeks: Number(form.get("expected_weeks") || 12),
       is_active: true,
     });
+    setSuccessNotice({
+      title: "Torneo creado",
+      detail: `${tournamentName || "El torneo"} se guardo correctamente.`,
+    });
     event.currentTarget.reset();
   }
 
-  function submitTeam(event: FormEvent<HTMLFormElement>) {
+  async function submitTeam(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    onCreateTeam({
+    const teamName = String(form.get("name") || "").trim();
+    await onCreateTeam({
       tournament: Number(form.get("tournament")),
-      name: String(form.get("name") || ""),
+      name: teamName,
       representative_name: String(form.get("representative_name") || "Pendiente"),
       representative_phone: String(form.get("representative_phone") || ""),
       representative_email: String(form.get("representative_email") || ""),
       is_active: true,
     });
+    setSuccessNotice({
+      title: "Equipo creado",
+      detail: `${teamName || "El equipo"} se registro correctamente.`,
+    });
     event.currentTarget.reset();
   }
 
-  function submitRegistration(event: FormEvent<HTMLFormElement>) {
+  async function submitRegistration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const team = String(form.get("team") || "");
-    onRegisterStudent({
+    const studentId = Number(form.get("student"));
+    const studentName = data.students.find((student) => student.id === studentId)?.full_name || "El alumno";
+    await onRegisterStudent({
       tournament: Number(form.get("tournament")),
-      student: Number(form.get("student")),
+      student: studentId,
       team: team ? Number(team) : null,
       jersey_number: form.get("jersey_number") ? Number(form.get("jersey_number")) : null,
       billing_type: String(form.get("billing_type") || "weekly_match"),
@@ -196,24 +214,36 @@ export function TournamentsPanel({
       status: "registered",
       notes: String(form.get("notes") || ""),
     });
+    setSuccessNotice({
+      title: "Alumno inscrito",
+      detail: `${studentName} quedo inscrito correctamente en el torneo.`,
+    });
     event.currentTarget.reset();
   }
 
-  function submitMatch(event: FormEvent<HTMLFormElement>) {
+  async function submitMatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const tournament = data.tournaments.find((item) => item.id === Number(form.get("tournament")));
     const startsAt = String(form.get("starts_at") || "20:00");
     const endsAt = String(form.get("ends_at") || "22:00");
-    onCreateMatch({
+    const homeTeamId = Number(form.get("home_team"));
+    const awayTeamId = Number(form.get("away_team"));
+    const homeTeamName = data.teams.find((team) => team.id === homeTeamId)?.name || "Local";
+    const awayTeamName = data.teams.find((team) => team.id === awayTeamId)?.name || "Visitante";
+    await onCreateMatch({
       tournament: Number(form.get("tournament")),
       site: tournament?.site,
-      home_team: Number(form.get("home_team")),
-      away_team: Number(form.get("away_team")),
+      home_team: homeTeamId,
+      away_team: awayTeamId,
       played_on: String(form.get("played_on") || today()),
       starts_at: startsAt,
       duration_minutes: durationFromRange(startsAt, endsAt),
       status: "scheduled",
+    });
+    setSuccessNotice({
+      title: "Partido agendado",
+      detail: `${homeTeamName} vs ${awayTeamName} se programo correctamente.`,
     });
     event.currentTarget.reset();
   }
@@ -228,6 +258,27 @@ export function TournamentsPanel({
 
   return (
     <section className="grid min-w-0 gap-5">
+      {successNotice ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/35 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-emerald-700">
+              <Shield size={20} />
+              <p className="text-sm font-semibold uppercase tracking-wide">Operacion completada</p>
+            </div>
+            <h3 className="mt-3 text-xl font-semibold text-zinc-950">{successNotice.title}</h3>
+            <p className="mt-2 text-sm text-zinc-600">{successNotice.detail}</p>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                onClick={() => setSuccessNotice(null)}
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="overflow-hidden rounded-[22px] border border-zinc-200 bg-zinc-950 text-white shadow-sm">
         <div className="grid gap-5 p-5 lg:grid-cols-[1.1fr_0.9fr]">
           <div>

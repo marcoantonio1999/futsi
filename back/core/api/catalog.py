@@ -80,7 +80,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 class TournamentViewSet(viewsets.ModelViewSet):
     queryset = Tournament.objects.select_related("site").all()
     serializer_class = TournamentSerializer
-    permission_classes = [IsAdminForWrites]
+    permission_classes = [IsAdminOrSiteCoordinatorRole]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -95,7 +95,7 @@ class TournamentViewSet(viewsets.ModelViewSet):
 class TeamViewSet(viewsets.ModelViewSet):
     queryset = Team.objects.select_related("tournament", "tournament__site").annotate(player_count=Count("players")).all()
     serializer_class = TeamSerializer
-    permission_classes = [IsAdminForWrites]
+    permission_classes = [IsAdminOrSiteCoordinatorRole]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -115,7 +115,7 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method not in ("GET", "HEAD", "OPTIONS"):
-            return [IsAdminForWrites()]
+            return [IsAdminOrSiteCoordinatorRole()]
         return super().get_permissions()
 
     def get_queryset(self):

@@ -418,10 +418,10 @@ export function AdminShell({
                   data={scopedData}
                   user={user}
                   readOnly={user.role === "coach"}
-                  onCreateTournament={(payload) => onCreateRecord("/tournaments/", payload, "Torneo creado.")}
-                  onCreateTeam={(payload) => onCreateRecord("/teams/", payload, "Equipo creado.")}
-                  onRegisterStudent={(payload) => onCreateRecord("/student-tournament-registrations/", payload, "Alumno inscrito al torneo.")}
-                  onCreateMatch={(payload) => onCreateRecord("/matches/", payload, "Partido creado.")}
+                  onCreateTournament={(payload) => onCreateAndReturn("/tournaments/", payload)}
+                  onCreateTeam={(payload) => onCreateAndReturn("/teams/", payload)}
+                  onRegisterStudent={(payload) => onCreateAndReturn("/student-tournament-registrations/", payload)}
+                  onCreateMatch={(payload) => onCreateAndReturn("/matches/", payload)}
                   onUpdateMatch={onUpdateMatchScore}
                 />
               )}

@@ -10,13 +10,27 @@ from pathlib import Path
 from typing import Iterable
 from urllib.request import urlretrieve
 
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError as exc:
+    np = None
+    _FACE_IMPORT_ERROR = exc
+else:
+    _FACE_IMPORT_ERROR = None
 from PIL import Image, ImageOps
 
 from core.services.supabase_storage import download_private_file, parse_storage_uri
 
 
 _DLL_DIRECTORY_HANDLES: list[object] = []
+
+
+def ensure_face_dependencies() -> None:
+    if _FACE_IMPORT_ERROR is not None:
+        raise RuntimeError(
+            "Faltan dependencias opcionales de reconocimiento facial. "
+            "Instala back/requirements-face-cpu.txt o back/requirements-face-gpu.txt."
+        ) from _FACE_IMPORT_ERROR
 
 
 @dataclass(frozen=True)
@@ -54,6 +68,7 @@ def add_nvidia_dll_directories() -> None:
 
 
 def preload_onnxruntime() -> None:
+    ensure_face_dependencies()
     import onnxruntime as ort
 
     preload_dlls = getattr(ort, "preload_dlls", None)
@@ -86,6 +101,7 @@ def get_face_app(model_name: str = "buffalo_l", providers_key: str = "auto"):
 
 
 def image_file_to_bgr(path: str | Path):
+    ensure_face_dependencies()
     import cv2
 
     image = cv2.imread(str(path))
@@ -95,6 +111,7 @@ def image_file_to_bgr(path: str | Path):
 
 
 def data_url_to_bgr(image_data: str):
+    ensure_face_dependencies()
     import cv2
 
     header, _, payload = image_data.partition(",")
@@ -107,12 +124,14 @@ def data_url_to_bgr(image_data: str):
 
 
 def mirror_bgr(image_bgr):
+    ensure_face_dependencies()
     import cv2
 
     return cv2.flip(image_bgr, 1)
 
 
 def detect_embeddings(image_bgr, providers_key: str = "auto") -> list[FaceEmbedding]:
+    ensure_face_dependencies()
     app = get_face_app(providers_key=providers_key)
     faces = app.get(image_bgr)
     detections: list[FaceEmbedding] = []
@@ -152,6 +171,7 @@ def student_reference_path(student) -> str | None:
 
 
 def build_student_database(students: Iterable[object], providers_key: str = "auto") -> tuple[list[object], np.ndarray, list[str]]:
+    ensure_face_dependencies()
     enrolled_students = []
     embeddings = []
     skipped = []
@@ -186,6 +206,7 @@ def match_embedding(
     threshold: float = 0.45,
     min_margin: float = 0.03,
 ) -> FaceMatch:
+    ensure_face_dependencies()
     if matrix.size == 0:
         return FaceMatch(None, 0.0, 0.0, False)
     query = embedding.astype(np.float32)
@@ -203,6 +224,7 @@ def match_embedding(
 
 
 def save_debug_image(image_bgr, path: str | Path) -> None:
+    ensure_face_dependencies()
     import cv2
 
     cv2.imwrite(str(path), image_bgr)
