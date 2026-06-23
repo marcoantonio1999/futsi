@@ -1,18 +1,19 @@
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open("futsi-shell-v1").then((cache) => cache.addAll(["./", "./manifest.webmanifest", "./icon.svg"])),
-  );
   self.skipWaiting();
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key)))),
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener("fetch", (event) => {
-  const request = event.request;
-  if (request.method !== "GET" || new URL(request.url).pathname.includes("/api/")) return;
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).catch(() => caches.match("./"))),
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .then(() => self.registration.unregister())
+      .then(() => self.clients.matchAll({ type: "window" }))
+      .then((clients) => Promise.all(clients.map((client) => client.navigate(client.url)))),
   );
 });
+
+self.addEventListener("fetch", () => undefined);
