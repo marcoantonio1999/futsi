@@ -47,7 +47,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["reset"]:
-            self._delete_if_table_exists("video_clips")
             CashMovement.objects.all().delete()
             StaffPaymentRequest.objects.all().delete()
             FaceRecognitionAttempt.objects.all().delete()
