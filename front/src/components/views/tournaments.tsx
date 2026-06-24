@@ -124,6 +124,7 @@ export function TournamentsPanel({
   const [tournamentBillingFilter, setTournamentBillingFilter] = useState("all");
   const [tournamentPage, setTournamentPage] = useState(0);
   const [successNotice, setSuccessNotice] = useState<SuccessNotice | null>(null);
+  const [formNotice, setFormNotice] = useState<SuccessNotice | null>(null);
 
   useEffect(() => {
     if (!selectedTournament && firstTournament) {
@@ -233,6 +234,27 @@ export function TournamentsPanel({
     const endsAt = String(form.get("ends_at") || "22:00");
     const homeTeamId = Number(form.get("home_team"));
     const awayTeamId = Number(form.get("away_team"));
+    if (tournamentTeams.length < 2) {
+      setFormNotice({
+        title: "Faltan equipos",
+        detail: "Para agendar un partido necesitas registrar al menos dos equipos en este torneo.",
+      });
+      return;
+    }
+    if (!homeTeamId || !awayTeamId) {
+      setFormNotice({
+        title: "Selecciona equipos",
+        detail: "Elige un equipo local y un equipo visitante para agendar el partido.",
+      });
+      return;
+    }
+    if (homeTeamId === awayTeamId) {
+      setFormNotice({
+        title: "Equipos repetidos",
+        detail: "El equipo local y el visitante deben ser diferentes.",
+      });
+      return;
+    }
     const homeTeamName = data.teams.find((team) => team.id === homeTeamId)?.name || "Local";
     const awayTeamName = data.teams.find((team) => team.id === awayTeamId)?.name || "Visitante";
     await onCreateMatch({
@@ -276,6 +298,27 @@ export function TournamentsPanel({
                 type="button"
                 className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                 onClick={() => setSuccessNotice(null)}
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {formNotice ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/35 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-700">
+              <Shield size={20} />
+              <p className="text-sm font-semibold uppercase tracking-wide">Revisa el formulario</p>
+            </div>
+            <h3 className="mt-3 text-xl font-semibold text-zinc-950">{formNotice.title}</h3>
+            <p className="mt-2 text-sm text-zinc-600">{formNotice.detail}</p>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                onClick={() => setFormNotice(null)}
               >
                 Entendido
               </button>
@@ -512,14 +555,21 @@ export function TournamentsPanel({
               <CalendarDays size={18} />
               <h3 className="font-semibold">Agendar partido</h3>
             </div>
+            {tournamentTeams.length < 2 ? (
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                Debe haber minimo dos equipos registrados en este torneo para poder agendar un partido.
+              </div>
+            ) : null}
             <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={submitMatch}>
               <TournamentSelect tournaments={visibleTournaments} value={selectedTournamentId} />
-              <TeamSelect label="Local" name="home_team" teams={tournamentTeams} />
-              <TeamSelect label="Visitante" name="away_team" teams={tournamentTeams} />
-              <TextInput label="Fecha" name="played_on" type="date" defaultValue={today()} />
-              <TextInput label="Hora inicio" name="starts_at" type="time" defaultValue="20:00" />
-              <TextInput label="Hora fin" name="ends_at" type="time" defaultValue="22:00" />
-              <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Agendar</button>
+              <TeamSelect label="Local" name="home_team" teams={tournamentTeams} disabled={tournamentTeams.length < 2} />
+              <TeamSelect label="Visitante" name="away_team" teams={tournamentTeams} disabled={tournamentTeams.length < 2} />
+              <TextInput label="Fecha" name="played_on" type="date" defaultValue={today()} required />
+              <TextInput label="Hora inicio" name="starts_at" type="time" defaultValue="20:00" required />
+              <TextInput label="Hora fin" name="ends_at" type="time" defaultValue="22:00" required />
+              <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={tournamentTeams.length < 2}>
+                Agendar
+              </button>
             </form>
           </div>
           )}
@@ -602,9 +652,10 @@ function TournamentSelect({ tournaments, value }: { tournaments: Tournament[]; v
   );
 }
 
-function TeamSelect({ label, name, teams }: { label: string; name: string; teams: Team[] }) {
+function TeamSelect({ label, name, teams, disabled = false }: { label: string; name: string; teams: Team[]; disabled?: boolean }) {
   return (
-    <SelectInput label={label} name={name} required>
+    <SelectInput label={label} name={name} required disabled={disabled}>
+      <option value="">Selecciona equipo</option>
       {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
     </SelectInput>
   );
