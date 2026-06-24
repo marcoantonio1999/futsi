@@ -1,8 +1,28 @@
 import { useEffect, useState } from "react";
 import { ApiError, apiFormRequest, apiRequest, downloadApiFile } from "../api";
 import { emptyData } from "../appState";
-import type { AppData, HistoricalDiscrepancyReport, HistoricalImport, PlayerAttendanceRecord, TabKey, User } from "../types";
+import type {
+  AppData,
+  AttendanceRecord,
+  AttendanceSession,
+  HistoricalDiscrepancyReport,
+  HistoricalImport,
+  Match,
+  PlayerAttendanceRecord,
+  StandingRow,
+  StudentTournamentRegistration,
+  TabKey,
+  Team,
+  Tournament,
+  User,
+} from "../types";
 import { loadAppDataForUser, loadSectionData, mergeAppData } from "./futsiDataLoaders";
+
+type EntityWithId = { id: number };
+
+function upsertById<T extends EntityWithId>(rows: T[], row: T) {
+  return [row, ...rows.filter((item) => item.id !== row.id)];
+}
 
 export function useFutsiData() {
   const [token, setToken] = useState(() => localStorage.getItem("futsi_token") ?? "");
@@ -136,7 +156,10 @@ export function useFutsiData() {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      await loadSection(activeSection, { force: true, silent: true });
+      const handledLocally = await applyCreatedRecord(path, result);
+      if (!handledLocally) {
+        await loadSection(activeSection, { force: true, silent: true });
+      }
       return result;
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
@@ -144,6 +167,50 @@ export function useFutsiData() {
     } finally {
       setActionLoadingMessage("");
     }
+  }
+
+  async function applyCreatedRecord<T>(path: string, result: T): Promise<boolean> {
+    if (path === "/tournaments/") {
+      setData((current) => ({ ...current, tournaments: upsertById(current.tournaments, result as Tournament) }));
+      return true;
+    }
+    if (path === "/teams/") {
+      setData((current) => ({ ...current, teams: upsertById(current.teams, result as Team) }));
+      return true;
+    }
+    if (path === "/student-tournament-registrations/") {
+      setData((current) => ({
+        ...current,
+        studentTournamentRegistrations: upsertById(current.studentTournamentRegistrations, result as StudentTournamentRegistration),
+      }));
+      return true;
+    }
+    if (path === "/matches/") {
+      const [standings, attendanceSessions] = await Promise.all([
+        apiRequest<StandingRow[]>("/matches/standings/", token),
+        apiRequest<AttendanceSession[]>("/attendance-sessions/", token),
+      ]);
+      setData((current) => ({
+        ...current,
+        matches: upsertById(current.matches, result as Match),
+        standings,
+        attendanceSessions,
+      }));
+      return true;
+    }
+    if (path === "/attendance-sessions/") {
+      setData((current) => ({ ...current, attendanceSessions: upsertById(current.attendanceSessions, result as AttendanceSession) }));
+      return true;
+    }
+    if (path === "/attendance-records/") {
+      setData((current) => ({ ...current, attendanceRecords: upsertById(current.attendanceRecords, result as AttendanceRecord) }));
+      return true;
+    }
+    if (path === "/player-attendance-records/") {
+      setData((current) => ({ ...current, playerAttendanceRecords: upsertById(current.playerAttendanceRecords, result as PlayerAttendanceRecord) }));
+      return true;
+    }
+    return false;
   }
 
   async function uploadHistoricalImport(formData: FormData) {
