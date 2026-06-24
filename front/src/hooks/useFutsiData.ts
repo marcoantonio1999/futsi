@@ -215,7 +215,7 @@ export function useFutsiData() {
   }
 
   async function updateMatchScore(matchId: number, payload: unknown) {
-    await updateRecord(`/matches/${matchId}/`, payload, "Marcador actualizado.");
+    await updateRecord(`/matches/${matchId}/`, payload, "Partido actualizado.");
   }
 
   async function saveStudentAssessment(payload: unknown) {

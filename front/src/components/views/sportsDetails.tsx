@@ -73,39 +73,79 @@ import {
 } from "./shared";
 
 
+function minutesFromTime(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function durationFromRange(startsAt: string, endsAt: string) {
+  const starts = minutesFromTime(startsAt);
+  const ends = minutesFromTime(endsAt);
+  if (starts === null || ends === null) return 120;
+  const normalizedEnd = ends <= starts ? ends + 24 * 60 : ends;
+  return Math.max(1, normalizedEnd - starts);
+}
+
+function addMinutesToTime(value: string | null, minutes: number) {
+  if (!value) return "";
+  const starts = minutesFromTime(value.slice(0, 5));
+  if (starts === null) return "";
+  const total = (starts + Math.max(1, minutes || 120)) % (24 * 60);
+  const hours = Math.floor(total / 60).toString().padStart(2, "0");
+  const mins = (total % 60).toString().padStart(2, "0");
+  return `${hours}:${mins}`;
+}
+
 export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match; canEdit: boolean; onUpdateMatch: (matchId: number, payload: unknown) => Promise<void> }) {
   const [homeGoals, setHomeGoals] = useState(String(match.home_goals));
   const [awayGoals, setAwayGoals] = useState(String(match.away_goals));
-  const [durationMinutes, setDurationMinutes] = useState(String(match.duration_minutes || 120));
+  const [playedOn, setPlayedOn] = useState(match.played_on);
+  const [startsAt, setStartsAt] = useState(match.starts_at?.slice(0, 5) || "");
+  const [endsAt, setEndsAt] = useState(addMinutesToTime(match.starts_at, match.duration_minutes || 120));
   const [status, setStatus] = useState(match.status);
+  const durationMinutes = startsAt && endsAt ? durationFromRange(startsAt, endsAt) : match.duration_minutes || 120;
 
   useEffect(() => {
     setHomeGoals(String(match.home_goals));
     setAwayGoals(String(match.away_goals));
-    setDurationMinutes(String(match.duration_minutes || 120));
+    setPlayedOn(match.played_on);
+    setStartsAt(match.starts_at?.slice(0, 5) || "");
+    setEndsAt(addMinutesToTime(match.starts_at, match.duration_minutes || 120));
     setStatus(match.status);
-  }, [match.id, match.home_goals, match.away_goals, match.duration_minutes, match.status]);
+  }, [match.id, match.played_on, match.starts_at, match.home_goals, match.away_goals, match.duration_minutes, match.status]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     onUpdateMatch(match.id, {
+      played_on: playedOn,
+      starts_at: startsAt || null,
       home_goals: Number(homeGoals),
       away_goals: Number(awayGoals),
-      duration_minutes: Number(durationMinutes || 120),
+      duration_minutes: durationMinutes,
       status,
     });
   }
 
+  function cancelMatch() {
+    onUpdateMatch(match.id, { status: "canceled" });
+  }
+
   return (
-    <form onSubmit={submit} className="rounded-md border border-zinc-200 p-3">
+    <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-3 text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase text-zinc-500">Jornada {match.round_number || "-"}</p>
           <p className="mt-1 text-sm font-medium">{match.played_on} {match.starts_at?.slice(0, 5) || ""} - {match.duration_minutes || 120} min</p>
         </div>
         <span className={`rounded-md px-2 py-1 text-xs font-medium ${match.status === "live" ? "bg-red-50 text-red-700" : "bg-zinc-100 text-zinc-600"}`}>
-          {match.status === "live" ? "En vivo" : match.status === "finished" ? "Finalizado" : "Programado"}
+          {match.status === "live" ? "En vivo" : match.status === "finished" ? "Finalizado" : match.status === "canceled" ? "Cancelado" : "Programado"}
         </span>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <TextInput label="Fecha" type="date" value={playedOn} disabled={!canEdit} onChange={(event) => setPlayedOn(event.target.value)} />
+        <TextInput label="Inicio" type="time" value={startsAt} disabled={!canEdit} onChange={(event) => setStartsAt(event.target.value)} />
+        <TextInput label="Fin" type="time" value={endsAt} disabled={!canEdit} onChange={(event) => setEndsAt(event.target.value)} />
       </div>
       <div className="mt-3 grid grid-cols-[1fr_68px] items-center gap-2">
         <span className="truncate font-medium">{match.home_team_name}</span>
@@ -119,8 +159,17 @@ export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match
         <option value="finished">Finalizado</option>
         <option value="canceled">Cancelado</option>
       </SelectInput>
-      <TextInput className="mt-3" label="Duracion (min)" type="number" min="1" value={durationMinutes} disabled={!canEdit} onChange={(event) => setDurationMinutes(event.target.value)} />
-      {canEdit && <button className="mt-3 w-full rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white">Actualizar marcador</button>}
+      <p className="mt-2 text-xs font-medium text-zinc-500">Duracion calculada: {durationMinutes} min</p>
+      {canEdit && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-950">Guardar partido</button>
+          {match.status !== "canceled" && (
+            <button className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100" type="button" onClick={cancelMatch}>
+              Cancelar
+            </button>
+          )}
+        </div>
+      )}
     </form>
   );
 }

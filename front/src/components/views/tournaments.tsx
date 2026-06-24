@@ -113,6 +113,7 @@ export function TournamentsPanel({
   const selectedTournament = visibleTournaments.find((tournament) => String(tournament.id) === selectedTournamentId) ?? firstTournament;
   const tournamentTeams = visibleTeams.filter((team) => !selectedTournament || team.tournament === selectedTournament.id);
   const tournamentMatches = visibleMatches.filter((match) => !selectedTournament || match.tournament === selectedTournament.id);
+  const visibleTournamentMatches = tournamentMatches.filter((match) => match.status !== "canceled");
   const tournamentStandings = data.standings.filter((row) => !selectedTournament || row.tournament === selectedTournament.id);
   const tournamentRegistrations = visibleRegistrations.filter((registration) => !selectedTournament || registration.tournament === selectedTournament.id);
   const availableStudents = data.students.filter((student) => !selectedTournament?.site || student.site === selectedTournament.site);
@@ -556,12 +557,12 @@ export function TournamentsPanel({
         )}
 
         <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-          <TableHeader title="Partidos y marcadores" count={tournamentMatches.length} />
+          <TableHeader title="Partidos y marcadores" count={visibleTournamentMatches.length} />
           <div className="grid gap-3 p-4 md:grid-cols-2">
-            {tournamentMatches.slice(0, 8).map((match) => (
+            {visibleTournamentMatches.slice(0, 8).map((match) => (
               <MatchScoreCard key={match.id} match={match as Match} canEdit={!isCoachView} onUpdateMatch={onUpdateMatch} />
             ))}
-            {tournamentMatches.length === 0 && <p className="text-sm text-zinc-500">No hay partidos programados para este torneo.</p>}
+            {visibleTournamentMatches.length === 0 && <p className="text-sm text-zinc-500">No hay partidos programados para este torneo.</p>}
           </div>
         </div>
       </div>

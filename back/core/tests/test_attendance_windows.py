@@ -100,6 +100,54 @@ def test_tournament_attendance_roster_uses_registered_students_only(login_client
     assert "roster" in str(bad_response.content)
 
 
+def test_match_updates_keep_generated_attendance_sessions_in_sync(login_client):
+    client, _user = login_client("admin", "admin12345")
+    site = Site.objects.get(code="roma")
+    tournament = Tournament.objects.create(site=site, name="Copa Sync QA", billing_type="weekly_match", starts_on=date(2026, 6, 15), expected_weeks=12)
+    home = Team.objects.create(tournament=tournament, name="Sync Local", representative_name="Rep Local", representative_phone="5500000005")
+    away = Team.objects.create(tournament=tournament, name="Sync Visita", representative_name="Rep Visita", representative_phone="5500000006")
+
+    create_response = client.post(
+        "/api/matches/",
+        {
+            "tournament": tournament.id,
+            "site": site.id,
+            "home_team": home.id,
+            "away_team": away.id,
+            "played_on": "2026-06-15",
+            "starts_at": "18:00",
+            "duration_minutes": 45,
+            "status": "scheduled",
+        },
+        format="json",
+    )
+
+    assert create_response.status_code == 201
+    match_id = create_response.data["id"]
+    sessions = AttendanceSession.objects.filter(match_id=match_id).order_by("team_id")
+    assert sessions.count() == 2
+    assert {session.team_id for session in sessions} == {home.id, away.id}
+    assert all(session.ends_at == time(18, 45) for session in sessions)
+
+    update_response = client.patch(
+        f"/api/matches/{match_id}/",
+        {"played_on": "2026-06-16", "starts_at": "19:10", "duration_minutes": 20},
+        format="json",
+    )
+
+    assert update_response.status_code == 200
+    sessions = AttendanceSession.objects.filter(match_id=match_id)
+    assert sessions.count() == 2
+    assert all(session.date == date(2026, 6, 16) for session in sessions)
+    assert all(session.starts_at == time(19, 10) for session in sessions)
+    assert all(session.ends_at == time(19, 30) for session in sessions)
+
+    cancel_response = client.patch(f"/api/matches/{match_id}/", {"status": "canceled"}, format="json")
+
+    assert cancel_response.status_code == 200
+    assert AttendanceSession.objects.filter(match_id=match_id).count() == 0
+
+
 def test_adult_player_attendance_uses_match_team_and_window(login_client):
     client, _user = login_client("admin", "admin12345")
     site = Site.objects.get(code="roma")

@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError
+from django.utils import timezone
 
 from core.models import AttendanceSession, Match, User
 
@@ -20,7 +22,28 @@ def match_ends_at(match: Match):
     return (datetime.combine(match.played_on, match.starts_at) + timedelta(minutes=duration)).time()
 
 
+def cancel_match_attendance_sessions(match: Match) -> None:
+    sessions = AttendanceSession.objects.filter(match=match)
+    for session in sessions:
+        has_attendance = session.records.exists() or session.player_records.exists() or session.face_attempts.exists()
+        if has_attendance:
+            if session.closed_at is None:
+                session.closed_at = timezone.now()
+                session.save(update_fields=["closed_at", "updated_at"])
+            continue
+        try:
+            session.delete()
+        except ProtectedError:
+            if session.closed_at is None:
+                session.closed_at = timezone.now()
+                session.save(update_fields=["closed_at", "updated_at"])
+
+
 def ensure_match_attendance_sessions(match: Match, user: User | None = None) -> list[AttendanceSession]:
+    if match.status == "canceled":
+        cancel_match_attendance_sessions(match)
+        return []
+
     captured_by = default_session_user(match, user)
     if not captured_by:
         return []
