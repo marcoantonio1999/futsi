@@ -15,6 +15,7 @@ export function useFutsiData() {
   const [hasLoadedData, setHasLoadedData] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [actionLoadingMessage, setActionLoadingMessage] = useState("");
 
   async function loadData(authToken = token, section = activeSection) {
     if (!authToken) return;
@@ -93,6 +94,7 @@ export function useFutsiData() {
   async function createRecord(path: string, payload: unknown, success: string) {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Guardando...");
     try {
       await apiRequest(path, token, {
         method: "POST",
@@ -102,12 +104,15 @@ export function useFutsiData() {
       await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
-  async function updateRecord(path: string, payload: unknown, success: string) {
+  async function updateRecord(path: string, payload: unknown, success: string, loadingLabel = "Guardando cambios...") {
     setMessage("");
     setError("");
+    setActionLoadingMessage(loadingLabel);
     try {
       await apiRequest(path, token, {
         method: "PATCH",
@@ -117,12 +122,15 @@ export function useFutsiData() {
       await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar.");
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
   async function createAndReturn<T>(path: string, payload: unknown): Promise<T> {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Guardando...");
     try {
       const result = await apiRequest<T>(path, token, {
         method: "POST",
@@ -133,12 +141,15 @@ export function useFutsiData() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
       throw err;
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
   async function uploadHistoricalImport(formData: FormData) {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Subiendo archivo...");
     try {
       const result = await apiFormRequest<HistoricalImport>("/historical-imports/preview/", token, formData);
       setData((current) => ({
@@ -154,12 +165,15 @@ export function useFutsiData() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo analizar el Excel.");
       throw err;
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
   async function commitHistoricalImport(importId: number, payload: unknown) {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Confirmando informacion...");
     try {
       const result = await apiRequest<HistoricalImport>(`/historical-imports/${importId}/commit/`, token, {
         method: "POST",
@@ -171,36 +185,45 @@ export function useFutsiData() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo confirmar el historico.");
       throw err;
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
   async function closeAttendanceSession(sessionId: number) {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Cerrando asistencia...");
     try {
       await apiRequest(`/attendance-sessions/${sessionId}/close/`, token, { method: "POST" });
       setMessage("Asistencia cerrada.");
       await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cerrar la asistencia.");
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
   async function postAction(path: string, success: string) {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Procesando...");
     try {
       await apiRequest(path, token, { method: "POST" });
       setMessage(success);
       await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo completar la accion.");
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
   async function updateProfile(payload: unknown) {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Actualizando perfil...");
     try {
       const updatedUser = await apiRequest<User>("/auth/me/", token, {
         method: "PATCH",
@@ -211,11 +234,14 @@ export function useFutsiData() {
       await loadSection(activeSection, { force: true, silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el perfil.");
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
   async function updateMatchScore(matchId: number, payload: unknown) {
-    await updateRecord(`/matches/${matchId}/`, payload, "Partido actualizado.");
+    const isCancel = Boolean(payload && typeof payload === "object" && "status" in payload && (payload as { status?: unknown }).status === "canceled");
+    await updateRecord(`/matches/${matchId}/`, payload, "Partido actualizado.", isCancel ? "Cancelando partido..." : "Guardando partido...");
   }
 
   async function saveStudentAssessment(payload: unknown) {
@@ -229,11 +255,14 @@ export function useFutsiData() {
   async function downloadFile(path: string, filename: string) {
     setMessage("");
     setError("");
+    setActionLoadingMessage("Preparando archivo...");
     try {
       await downloadApiFile(path, token, filename);
       setMessage("Archivo generado correctamente.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo descargar el archivo.");
+    } finally {
+      setActionLoadingMessage("");
     }
   }
 
@@ -248,6 +277,7 @@ export function useFutsiData() {
     hasLoadedData,
     message,
     error,
+    actionLoadingMessage,
     loadData,
     loadSection,
     handleLogin,

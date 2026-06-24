@@ -25,6 +25,7 @@ export default function App() {
     hasLoadedData,
     message,
     error,
+    actionLoadingMessage,
     loadData,
     loadSection,
     handleLogin,
@@ -67,6 +68,7 @@ export default function App() {
     return (
       <>
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        <ActionLoadingOverlay message={actionLoadingMessage} />
         <GuardianPortal
           user={currentUser}
           data={data}
@@ -85,6 +87,7 @@ export default function App() {
     return (
       <>
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        <ActionLoadingOverlay message={actionLoadingMessage} />
         <main className="min-h-screen bg-blue-50/40 text-zinc-950" data-testid="adult-portal">
           <header className="border-b border-blue-200 bg-white">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
@@ -122,6 +125,7 @@ export default function App() {
     return (
       <>
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        <ActionLoadingOverlay message={actionLoadingMessage} />
         <AccountingPortal
           user={currentUser}
           data={data}
@@ -139,30 +143,45 @@ export default function App() {
   }
 
   return (
-    <AdminShell
-      token={token}
-      user={currentUser}
-      data={data}
-      theme={theme}
-      loading={loading}
-      sectionLoading={sectionLoading}
-      loadedSections={loadedSections}
-      message={message}
-      error={error}
-      onToggleTheme={toggleTheme}
-      onLoadSection={loadSection}
-      onLogout={logout}
-      onCreateRecord={createRecord}
-      onUpdateRecord={updateRecord}
-      onCreateAndReturn={createAndReturn}
-      onUploadHistoricalImport={uploadHistoricalImport}
-      onCommitHistoricalImport={commitHistoricalImport}
-      onCloseAttendanceSession={closeAttendanceSession}
-      onPostAction={postAction}
-      onDownloadFile={downloadFile}
-      onUpdateMatchScore={updateMatchScore}
-      onSaveStudentAssessment={saveStudentAssessment}
-      onMarkAdultPlayer={markAdultPlayer}
-    />
+    <>
+      <ActionLoadingOverlay message={actionLoadingMessage} />
+      <AdminShell
+        token={token}
+        user={currentUser}
+        data={data}
+        theme={theme}
+        loading={loading}
+        sectionLoading={sectionLoading}
+        loadedSections={loadedSections}
+        message={message}
+        error={error}
+        onToggleTheme={toggleTheme}
+        onLoadSection={loadSection}
+        onLogout={logout}
+        onCreateRecord={createRecord}
+        onUpdateRecord={updateRecord}
+        onCreateAndReturn={createAndReturn}
+        onUploadHistoricalImport={uploadHistoricalImport}
+        onCommitHistoricalImport={commitHistoricalImport}
+        onCloseAttendanceSession={closeAttendanceSession}
+        onPostAction={postAction}
+        onDownloadFile={downloadFile}
+        onUpdateMatchScore={updateMatchScore}
+        onSaveStudentAssessment={saveStudentAssessment}
+        onMarkAdultPlayer={markAdultPlayer}
+      />
+    </>
+  );
+}
+
+function ActionLoadingOverlay({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <div className="fixed inset-0 z-[1300] grid place-items-center bg-zinc-950/25 px-4 backdrop-blur-[1px]">
+      <div className="grid min-w-[240px] place-items-center rounded-md border border-zinc-200 bg-white px-6 py-5 text-center shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="size-9 animate-spin rounded-full border-4 border-zinc-200 border-t-emerald-700" />
+        <p className="mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">{message}</p>
+      </div>
+    </div>
   );
 }
