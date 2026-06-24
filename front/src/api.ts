@@ -12,6 +12,19 @@ export class ApiError extends Error {
   }
 }
 
+function formatApiError(detail: unknown, fallback: string) {
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (typeof detail !== "object") return fallback;
+  if ("detail" in detail && typeof detail.detail === "string") return detail.detail;
+  const rows = Object.entries(detail as Record<string, unknown>).map(([field, value]) => {
+    const label = field === "non_field_errors" ? "Formulario" : field.replaceAll("_", " ");
+    const message = Array.isArray(value) ? value.join(" ") : typeof value === "string" ? value : JSON.stringify(value);
+    return `${label}: ${message}`;
+  });
+  return rows.length ? rows.join(" | ") : fallback;
+}
+
 export function authHeaders(token: string) {
   return {
     Authorization: `Token ${token}`,
@@ -34,7 +47,7 @@ export async function apiRequest<T>(path: string, token: string, options: Reques
       response.status === 404
         ? "Esta ruta no existe en el backend desplegado. Render probablemente necesita redeploy con el backend mas reciente."
         : "No se pudo completar la accion.";
-    throw new ApiError(`${detail?.detail ?? fallback} (${path})`, response.status, path);
+    throw new ApiError(`${formatApiError(detail, fallback)} (${path})`, response.status, path);
   }
 
   if (response.status === 204) {
@@ -52,7 +65,7 @@ export async function apiFormRequest<T>(path: string, token: string, formData: F
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
-    throw new ApiError(`${detail?.detail ?? "No se pudo procesar el archivo."} (${path})`, response.status, path);
+    throw new ApiError(`${formatApiError(detail, "No se pudo procesar el archivo.")} (${path})`, response.status, path);
   }
   return response.json();
 }
@@ -80,7 +93,7 @@ export function apiFormRequestWithProgress<T>(
     request.onload = () => {
       const parsed = request.responseText ? JSON.parse(request.responseText) : null;
       if (request.status < 200 || request.status >= 300) {
-        reject(new ApiError(`${parsed?.detail ?? "No se pudo procesar el archivo."} (${path})`, request.status, path));
+        reject(new ApiError(`${formatApiError(parsed, "No se pudo procesar el archivo.")} (${path})`, request.status, path));
         return;
       }
       resolve(parsed as T);
@@ -97,7 +110,7 @@ export async function downloadApiFile(path: string, token: string, fallbackName:
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
-    throw new ApiError(`${detail?.detail ?? "No se pudo descargar el archivo."} (${path})`, response.status, path);
+    throw new ApiError(`${formatApiError(detail, "No se pudo descargar el archivo.")} (${path})`, response.status, path);
   }
   const disposition = response.headers.get("content-disposition") ?? "";
   const match = disposition.match(/filename="?([^"]+)"?/i);

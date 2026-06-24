@@ -188,9 +188,9 @@ export function TournamentsPanel({
     await onCreateTeam({
       tournament: Number(form.get("tournament")),
       name: teamName,
-      representative_name: String(form.get("representative_name") || "Pendiente"),
-      representative_phone: String(form.get("representative_phone") || ""),
-      representative_email: String(form.get("representative_email") || ""),
+      representative_name: String(form.get("representative_name") || "").trim(),
+      representative_phone: String(form.get("representative_phone") || "").trim(),
+      representative_email: String(form.get("representative_email") || "").trim(),
       is_active: true,
     });
     setSuccessNotice({
@@ -469,8 +469,8 @@ export function TournamentsPanel({
             <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={submitTeam}>
               <TournamentSelect tournaments={visibleTournaments} value={selectedTournamentId} />
               <TextInput label="Equipo" name="name" placeholder="Sub-12 A" required />
-              <TextInput label="Representante" name="representative_name" placeholder="Nombre del responsable" />
-              <TextInput label="Telefono" name="representative_phone" placeholder="55..." />
+              <TextInput label="Representante" name="representative_name" placeholder="Nombre del responsable" required />
+              <TextInput label="Telefono" name="representative_phone" placeholder="55..." required />
               <TextInput label="Correo" name="representative_email" type="email" />
               <button className="self-end rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Crear equipo</button>
             </form>

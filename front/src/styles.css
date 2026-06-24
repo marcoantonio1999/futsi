@@ -40,6 +40,20 @@ table {
   max-width: 100%;
 }
 
+input:required:invalid,
+select:required:invalid,
+textarea:required:invalid {
+  border-color: #ef4444;
+  background-color: #fef2f2;
+}
+
+input:required:invalid:focus,
+select:required:invalid:focus,
+textarea:required:invalid:focus {
+  border-color: #dc2626;
+  outline: 2px solid rgba(220, 38, 38, 0.16);
+}
+
 .dark {
   color-scheme: dark;
 }
@@ -115,6 +129,13 @@ table {
   background-color: #18181b !important;
   border-color: #3f3f46 !important;
   color: #f4f4f5 !important;
+}
+
+.dark input:required:invalid,
+.dark select:required:invalid,
+.dark textarea:required:invalid {
+  background-color: rgba(127, 29, 29, 0.24) !important;
+  border-color: #ef4444 !important;
 }
 
 .dark input::placeholder,

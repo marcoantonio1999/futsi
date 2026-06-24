@@ -92,10 +92,14 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement> & {
   const { label, className = "", ...inputProps } = props;
   return (
     <label className={`block text-sm ${className}`}>
-      <span className="font-medium text-zinc-700">{label}</span>
+      <span className="font-medium text-zinc-700">
+        {label}
+        {inputProps.required ? <span className="ml-1 text-red-600">*</span> : null}
+      </span>
       <input
         {...inputProps}
-        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none focus:border-emerald-700"
+        aria-required={inputProps.required || undefined}
+        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none invalid:border-red-500 invalid:bg-red-50 focus:border-emerald-700 invalid:focus:border-red-600"
       />
     </label>
   );
@@ -105,10 +109,14 @@ export function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>
   const { label, children, className = "", ...selectProps } = props;
   return (
     <label className={`block text-sm ${className}`}>
-      <span className="font-medium text-zinc-700">{label}</span>
+      <span className="font-medium text-zinc-700">
+        {label}
+        {selectProps.required ? <span className="ml-1 text-red-600">*</span> : null}
+      </span>
       <select
         {...selectProps}
-        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none focus:border-emerald-700"
+        aria-required={selectProps.required || undefined}
+        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none invalid:border-red-500 invalid:bg-red-50 focus:border-emerald-700 invalid:focus:border-red-600"
       >
         {children}
       </select>
