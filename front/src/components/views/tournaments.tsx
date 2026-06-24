@@ -163,14 +163,17 @@ export function TournamentsPanel({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const tournamentName = String(form.get("name") || "").trim();
-    await onCreateTournament({
+    const createdTournament = await onCreateTournament({
       site: Number(form.get("site")),
       name: tournamentName,
       billing_type: String(form.get("billing_type") || "weekly_match"),
       starts_on: String(form.get("starts_on") || today()),
       expected_weeks: Number(form.get("expected_weeks") || 12),
       is_active: true,
-    });
+    }) as Tournament;
+    if (createdTournament?.id) {
+      setSelectedTournamentId(String(createdTournament.id));
+    }
     setSuccessNotice({
       title: "Torneo creado",
       detail: `${tournamentName || "El torneo"} se guardo correctamente.`,
