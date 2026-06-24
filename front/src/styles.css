@@ -167,12 +167,6 @@ table {
 }
 
 @media (max-width: 640px) {
-  header > div {
-    align-items: flex-start !important;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
   header button,
   nav button {
     min-height: 44px;

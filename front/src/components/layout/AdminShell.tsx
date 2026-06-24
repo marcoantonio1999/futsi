@@ -194,6 +194,7 @@ export function AdminShell({
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("manual");
   const [businessScope, setBusinessScope] = useState<BusinessScope>("academy");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
   const mobileSwipeStartX = useRef<number | null>(null);
   const isAdmin = user.role === "admin" || user.role === "owner" || user.role === "dev";
   const tabs = tabItems();
@@ -239,6 +240,13 @@ export function AdminShell({
     setActiveTab(user.role === "cashier" ? "billing" : academyDefaultTab);
     setBusinessScope("academy");
   }, [user.id, user.role]);
+
+  useEffect(() => {
+    const updateHeaderState = () => setHeaderScrolled(window.scrollY > 12);
+    updateHeaderState();
+    window.addEventListener("scroll", updateHeaderState, { passive: true });
+    return () => window.removeEventListener("scroll", updateHeaderState);
+  }, []);
 
   function selectTab(tab: TabKey) {
     setActiveTab(tab);
@@ -415,13 +423,19 @@ export function AdminShell({
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1 pt-20 lg:ml-[17rem] lg:pt-0">
-          <header className="fixed left-3 right-3 top-3 z-[900] rounded-[24px] border border-white/70 bg-white px-4 py-3 shadow-sm lg:sticky lg:left-auto lg:right-auto lg:top-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 pt-[76px] sm:pt-20 lg:ml-[17rem] lg:pt-0">
+          <header
+            className={`app-header fixed left-2 right-2 top-2 z-[900] rounded-[18px] border px-3 py-2 shadow-sm transition-colors duration-200 sm:left-3 sm:right-3 sm:top-3 sm:rounded-[24px] sm:px-4 sm:py-3 lg:sticky lg:left-auto lg:right-auto lg:top-4 ${
+              headerScrolled
+                ? "border-white/45 bg-white/70 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-950/65"
+                : "border-white/80 bg-white/95 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/95"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-3">
                 <button
                   data-testid="section-menu-open"
-                  className="grid size-10 place-items-center rounded-md border border-zinc-200 bg-white lg:hidden"
+                  className="grid size-10 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white/90 lg:hidden"
                   onClick={() => setMobileMenuOpen(true)}
                   type="button"
                   aria-label="Abrir secciones"
@@ -431,11 +445,11 @@ export function AdminShell({
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-3">
                     <img className="hidden h-7 w-auto object-contain sm:block" src="./logo-futsi.png" alt="Futsi" />
-                    <h1 className="truncate text-xl font-semibold">{effectiveActiveTabMeta?.label || (businessScope === "adult" ? "Liga adultos" : "Operacion base")}</h1>
+                    <h1 className="truncate text-base font-semibold sm:text-xl">{effectiveActiveTabMeta?.label || (businessScope === "adult" ? "Liga adultos" : "Operacion base")}</h1>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 {canToggleAdultDashboard && (
                   <button
                     className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
@@ -446,10 +460,11 @@ export function AdminShell({
                     onClick={() => switchBusinessScope(businessScope === "adult" ? "academy" : "adult")}
                     type="button"
                   >
-                    {businessScope === "adult" ? "Academia" : "Liga adultos"}
+                    <span className="sm:hidden">{businessScope === "adult" ? "Acad." : "Adultos"}</span>
+                    <span className="hidden sm:inline">{businessScope === "adult" ? "Academia" : "Liga adultos"}</span>
                   </button>
                 )}
-                <button className="grid size-10 place-items-center rounded-md border border-zinc-200 bg-white hover:bg-zinc-50" onClick={refreshActiveSection} title="Actualizar" type="button">
+                <button className="grid size-10 place-items-center rounded-md border border-zinc-200 bg-white/90 hover:bg-zinc-50" onClick={refreshActiveSection} title="Actualizar" type="button">
                   <RefreshCw size={16} />
                 </button>
                 <div className="hidden items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-1 pr-3 sm:flex">
