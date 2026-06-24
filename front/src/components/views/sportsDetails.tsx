@@ -97,13 +97,25 @@ function addMinutesToTime(value: string | null, minutes: number) {
   return `${hours}:${mins}`;
 }
 
-export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match; canEdit: boolean; onUpdateMatch: (matchId: number, payload: unknown) => Promise<void> }) {
+export function MatchScoreCard({
+  match,
+  canEdit,
+  onUpdateMatch,
+  onMatchCanceled,
+}: {
+  match: Match;
+  canEdit: boolean;
+  onUpdateMatch: (matchId: number, payload: unknown) => Promise<void>;
+  onMatchCanceled?: (match: Match) => void;
+}) {
   const [homeGoals, setHomeGoals] = useState(String(match.home_goals));
   const [awayGoals, setAwayGoals] = useState(String(match.away_goals));
   const [playedOn, setPlayedOn] = useState(match.played_on);
   const [startsAt, setStartsAt] = useState(match.starts_at?.slice(0, 5) || "");
   const [endsAt, setEndsAt] = useState(addMinutesToTime(match.starts_at, match.duration_minutes || 120));
   const [status, setStatus] = useState(match.status);
+  const [savingMessage, setSavingMessage] = useState("");
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const durationMinutes = startsAt && endsAt ? durationFromRange(startsAt, endsAt) : match.duration_minutes || 120;
 
   useEffect(() => {
@@ -115,24 +127,73 @@ export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match
     setStatus(match.status);
   }, [match.id, match.played_on, match.starts_at, match.home_goals, match.away_goals, match.duration_minutes, match.status]);
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    onUpdateMatch(match.id, {
-      played_on: playedOn,
-      starts_at: startsAt || null,
-      home_goals: Number(homeGoals),
-      away_goals: Number(awayGoals),
-      duration_minutes: durationMinutes,
-      status,
-    });
+    setSavingMessage("Guardando partido...");
+    try {
+      await onUpdateMatch(match.id, {
+        played_on: playedOn,
+        starts_at: startsAt || null,
+        home_goals: Number(homeGoals),
+        away_goals: Number(awayGoals),
+        duration_minutes: durationMinutes,
+        status,
+      });
+    } finally {
+      setSavingMessage("");
+    }
   }
 
-  function cancelMatch() {
-    onUpdateMatch(match.id, { status: "canceled" });
+  async function cancelMatch() {
+    setConfirmCancelOpen(false);
+    setSavingMessage("Cancelando partido...");
+    try {
+      await onUpdateMatch(match.id, { status: "canceled" });
+      onMatchCanceled?.(match);
+    } finally {
+      setSavingMessage("");
+    }
   }
 
   return (
     <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-3 text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+      {savingMessage ? (
+        <div className="fixed inset-0 z-[1200] grid place-items-center bg-zinc-950/25 px-4 backdrop-blur-[1px]">
+          <div className="grid min-w-[240px] place-items-center rounded-md border border-zinc-200 bg-white px-6 py-5 text-center shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="size-9 animate-spin rounded-full border-4 border-zinc-200 border-t-emerald-700" />
+            <p className="mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">{savingMessage}</p>
+          </div>
+        </div>
+      ) : null}
+      {confirmCancelOpen ? (
+        <div className="fixed inset-0 z-[1190] grid place-items-center bg-zinc-950/35 px-4">
+          <div className="w-full max-w-md rounded-md border border-red-100 bg-white p-5 shadow-2xl dark:border-red-900/40 dark:bg-zinc-950">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertTriangle size={18} />
+              <h3 className="font-semibold">Cancelar partido</h3>
+            </div>
+            <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
+              Se cancelara {match.home_team_name} vs {match.away_team_name}. Si no hay asistencia guardada, tambien se quitaran las sesiones automaticas de grabacion.
+            </p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                type="button"
+                onClick={() => setConfirmCancelOpen(false)}
+              >
+                No cancelar
+              </button>
+              <button
+                className="rounded-md bg-red-700 px-3 py-2 text-sm font-semibold text-white hover:bg-red-800"
+                type="button"
+                onClick={cancelMatch}
+              >
+                Si, cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase text-zinc-500">Jornada {match.round_number || "-"}</p>
@@ -143,17 +204,17 @@ export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match
         </span>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <TextInput label="Fecha" type="date" value={playedOn} disabled={!canEdit} onChange={(event) => setPlayedOn(event.target.value)} />
-        <TextInput label="Inicio" type="time" value={startsAt} disabled={!canEdit} onChange={(event) => setStartsAt(event.target.value)} />
-        <TextInput label="Fin" type="time" value={endsAt} disabled={!canEdit} onChange={(event) => setEndsAt(event.target.value)} />
+        <TextInput label="Fecha" type="date" value={playedOn} disabled={!canEdit || Boolean(savingMessage)} onChange={(event) => setPlayedOn(event.target.value)} />
+        <TextInput label="Inicio" type="time" value={startsAt} disabled={!canEdit || Boolean(savingMessage)} onChange={(event) => setStartsAt(event.target.value)} />
+        <TextInput label="Fin" type="time" value={endsAt} disabled={!canEdit || Boolean(savingMessage)} onChange={(event) => setEndsAt(event.target.value)} />
       </div>
       <div className="mt-3 grid grid-cols-[1fr_68px] items-center gap-2">
         <span className="truncate font-medium">{match.home_team_name}</span>
-        <input className="rounded-md border border-zinc-300 px-2 py-2 text-center" type="number" min="0" value={homeGoals} disabled={!canEdit} onChange={(event) => setHomeGoals(event.target.value)} />
+        <input className="rounded-md border border-zinc-300 px-2 py-2 text-center" type="number" min="0" value={homeGoals} disabled={!canEdit || Boolean(savingMessage)} onChange={(event) => setHomeGoals(event.target.value)} />
         <span className="truncate font-medium">{match.away_team_name}</span>
-        <input className="rounded-md border border-zinc-300 px-2 py-2 text-center" type="number" min="0" value={awayGoals} disabled={!canEdit} onChange={(event) => setAwayGoals(event.target.value)} />
+        <input className="rounded-md border border-zinc-300 px-2 py-2 text-center" type="number" min="0" value={awayGoals} disabled={!canEdit || Boolean(savingMessage)} onChange={(event) => setAwayGoals(event.target.value)} />
       </div>
-      <SelectInput className="mt-3" label="Estado" value={status} disabled={!canEdit} onChange={(event) => setStatus(event.target.value as Match["status"])}>
+      <SelectInput className="mt-3" label="Estado" value={status} disabled={!canEdit || Boolean(savingMessage)} onChange={(event) => setStatus(event.target.value as Match["status"])}>
         <option value="scheduled">Programado</option>
         <option value="live">En vivo</option>
         <option value="finished">Finalizado</option>
@@ -162,9 +223,11 @@ export function MatchScoreCard({ match, canEdit, onUpdateMatch }: { match: Match
       <p className="mt-2 text-xs font-medium text-zinc-500">Duracion calculada: {durationMinutes} min</p>
       {canEdit && (
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-950">Guardar partido</button>
+          <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-950" disabled={Boolean(savingMessage)}>
+            Guardar partido
+          </button>
           {match.status !== "canceled" && (
-            <button className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100" type="button" onClick={cancelMatch}>
+            <button className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60" type="button" disabled={Boolean(savingMessage)} onClick={() => setConfirmCancelOpen(true)}>
               Cancelar
             </button>
           )}

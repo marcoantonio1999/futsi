@@ -560,7 +560,16 @@ export function TournamentsPanel({
           <TableHeader title="Partidos y marcadores" count={visibleTournamentMatches.length} />
           <div className="grid gap-3 p-4 md:grid-cols-2">
             {visibleTournamentMatches.slice(0, 8).map((match) => (
-              <MatchScoreCard key={match.id} match={match as Match} canEdit={!isCoachView} onUpdateMatch={onUpdateMatch} />
+              <MatchScoreCard
+                key={match.id}
+                match={match as Match}
+                canEdit={!isCoachView}
+                onUpdateMatch={onUpdateMatch}
+                onMatchCanceled={(canceledMatch) => setSuccessNotice({
+                  title: "Juego cancelado",
+                  detail: `${canceledMatch.home_team_name || "Local"} vs ${canceledMatch.away_team_name || "Visitante"} se cancelo correctamente.`,
+                })}
+              />
             ))}
             {visibleTournamentMatches.length === 0 && <p className="text-sm text-zinc-500">No hay partidos programados para este torneo.</p>}
           </div>
