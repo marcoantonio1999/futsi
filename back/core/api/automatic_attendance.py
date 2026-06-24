@@ -1348,7 +1348,7 @@ class AutomaticAttendanceStatusView(APIView):
     def get(self, request):
         ensure_dirs()
         latest_jobs = []
-        for path in sorted(jobs_dir().glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:5]:
+        for path in sorted(jobs_dir().glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:30]:
             latest_jobs.append(hydrate_job_evidence_urls(read_json(path, {}), request))
         current_job = active_job()
         return Response(

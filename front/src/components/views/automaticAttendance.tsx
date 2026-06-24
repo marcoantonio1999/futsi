@@ -30,6 +30,9 @@ type PendingVideo = {
 type AutomaticAttendanceJob = {
   id: string;
   status: "queued" | "processing" | "done" | "error";
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string;
   total: number;
   processed: number;
   percent: number;
@@ -1039,12 +1042,20 @@ export function AutomaticAttendancePanel({
   const selectedSessionStats = sessionId ? sessionPhotoStats.get(Number(sessionId)) : undefined;
 
   const visibleJob = job ?? status?.active_job ?? status?.jobs?.[0] ?? null;
+  const recentJobs = useMemo(() => {
+    const seen = new Set<string>();
+    return [job, status?.active_job, ...(status?.jobs ?? [])].filter(Boolean).filter((candidate) => {
+      const current = candidate as AutomaticAttendanceJob;
+      if (seen.has(current.id)) return false;
+      seen.add(current.id);
+      return true;
+    }) as AutomaticAttendanceJob[];
+  }, [job, status?.active_job, status?.jobs]);
   const isProcessing = visibleJob?.status === "queued" || visibleJob?.status === "processing";
   const automaticResultsBySession = useMemo(() => {
     const resultMap = new Map<number, { result: AutomaticSessionResult; video: string; jobId: string }>();
     const seenJobs = new Set<string>();
-    const jobs = [job, status?.active_job, ...(status?.jobs ?? [])].filter(Boolean) as AutomaticAttendanceJob[];
-    jobs.forEach((candidate) => {
+    recentJobs.forEach((candidate) => {
       if (seenJobs.has(candidate.id)) return;
       seenJobs.add(candidate.id);
       candidate.results?.forEach((videoResult) => {
@@ -1056,7 +1067,7 @@ export function AutomaticAttendancePanel({
       });
     });
     return resultMap;
-  }, [job, status?.active_job, status?.jobs]);
+  }, [recentJobs]);
 
   const reportSessions = useMemo(() => {
     return data.attendanceSessions
@@ -1391,6 +1402,45 @@ export function AutomaticAttendancePanel({
         {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {loadingStatus && <p className="mt-3 text-sm text-zinc-500">Leyendo carpeta local...</p>}
       </section>
+
+      {recentJobs.length ? (
+        <section className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <div>
+              <h3 className="font-semibold">Historial local de procesamientos</h3>
+              <p className="mt-1 text-xs text-zinc-500">Trabajos guardados en esta PC. Selecciona uno para volver a ver sus resultados.</p>
+            </div>
+            <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">{recentJobs.length}</span>
+          </div>
+          <div className="max-h-72 divide-y divide-zinc-100 overflow-auto dark:divide-zinc-800">
+            {recentJobs.map((candidate) => {
+              const firstVideo = candidate.results?.[0]?.video ?? candidate.current_video ?? `Trabajo ${candidate.id.slice(0, 8)}`;
+              const resultCount = candidate.results?.reduce((total, result) => total + (result.sessions?.length ?? 0), 0) ?? 0;
+              const timestamp = candidate.completed_at ?? candidate.updated_at ?? candidate.created_at;
+              return (
+                <div key={`history-${candidate.id}`} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{firstVideo}</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {timestamp ? new Date(timestamp).toLocaleString() : "Sin fecha"} - {candidate.status} - {candidate.processed}/{candidate.total} videos - {resultCount} sesiones
+                    </p>
+                  </div>
+                  <button
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    onClick={() => {
+                      setJob(candidate);
+                      setResultsModalOpen(true);
+                    }}
+                    type="button"
+                  >
+                    Ver resultados
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <form className="rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
