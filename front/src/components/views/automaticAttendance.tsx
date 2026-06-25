@@ -134,9 +134,41 @@ type AutomaticAttendanceStatus = {
   root: string;
   pending_dir: string;
   pending: PendingVideo[];
+  video_clips?: VideoClipMonitor[];
   reprocessable?: PendingVideo[];
   active_job: AutomaticAttendanceJob | null;
   jobs: AutomaticAttendanceJob[];
+};
+
+type VideoClipMonitor = {
+  id: string;
+  filename: string;
+  camera_id: string;
+  clip_type: string;
+  status: "recording" | "recorded" | "uploading" | "uploaded" | "processing" | "processed" | "failed" | "deleted" | string;
+  size: number;
+  recorded_at?: string | null;
+  uploaded_at?: string | null;
+  processed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  recording_started_at?: string | null;
+  recording_ended_at?: string | null;
+  duration_seconds?: number | null;
+  recording_progress_percent?: number | null;
+  upload_progress_percent?: number | null;
+  last_heartbeat_at?: string | null;
+  last_error_at?: string | null;
+  error_message?: string;
+  drive_web_url?: string;
+  attendance_session_id?: number | null;
+  match_id?: number | null;
+  site_id?: number | null;
+  site_name?: string;
+  team_name?: string;
+  tournament_name?: string;
+  session_label?: string;
+  processable?: boolean;
 };
 
 type OccupancyFace = {
@@ -258,6 +290,39 @@ function statusTone(status?: AutomaticAttendanceJob["status"]) {
   if (status === "done") return "text-emerald-700 bg-emerald-50 border-emerald-200";
   if (status === "error") return "text-red-700 bg-red-50 border-red-200";
   return "text-amber-800 bg-amber-50 border-amber-200";
+}
+
+function videoClipStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    recording: "Grabando",
+    recorded: "Grabado",
+    uploading: "Subiendo a Drive",
+    uploaded: "Listo para pase de lista",
+    processing: "Procesando pase de lista",
+    processed: "Procesado",
+    failed: "Fallo",
+    deleted: "Eliminado",
+  };
+  return labels[status] ?? status;
+}
+
+function videoClipStatusTone(status: string) {
+  if (status === "failed") return "border-red-200 bg-red-50 text-red-700";
+  if (status === "uploaded") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (status === "processed") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "recording" || status === "uploading" || status === "processing") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-zinc-200 bg-zinc-50 text-zinc-700";
+}
+
+function videoClipProgress(clip: VideoClipMonitor) {
+  if (clip.status === "recording") return clip.recording_progress_percent ?? 0;
+  if (clip.status === "uploading") return clip.upload_progress_percent ?? 0;
+  if (clip.status === "uploaded" || clip.status === "processed") return 100;
+  return clip.upload_progress_percent ?? clip.recording_progress_percent ?? 0;
+}
+
+function isLiveVideoClip(clip: VideoClipMonitor) {
+  return ["recording", "uploading", "processing"].includes(clip.status);
 }
 
 function similarityPercent(value?: number) {
@@ -1052,6 +1117,8 @@ export function AutomaticAttendancePanel({
     }) as AutomaticAttendanceJob[];
   }, [job, status?.active_job, status?.jobs]);
   const isProcessing = visibleJob?.status === "queued" || visibleJob?.status === "processing";
+  const videoClips = status?.video_clips ?? [];
+  const hasLiveVideoClips = videoClips.some(isLiveVideoClip);
   const automaticResultsBySession = useMemo(() => {
     const resultMap = new Map<number, { result: AutomaticSessionResult; video: string; jobId: string }>();
     const seenJobs = new Set<string>();
@@ -1125,9 +1192,9 @@ export function AutomaticAttendancePanel({
 
   useEffect(() => {
     loadStatus(true);
-    const interval = window.setInterval(() => loadStatus(true), 15000);
+    const interval = window.setInterval(() => loadStatus(true), hasLiveVideoClips ? 5000 : 15000);
     return () => window.clearInterval(interval);
-  }, [token]);
+  }, [hasLiveVideoClips, token]);
 
   useEffect(() => {
     if (!visibleJob?.id || !isProcessing) return;
@@ -1401,6 +1468,98 @@ export function AutomaticAttendancePanel({
         {message && <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p>}
         {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {loadingStatus && <p className="mt-3 text-sm text-zinc-500">Leyendo carpeta local...</p>}
+      </section>
+
+      <section className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+        <div className="flex flex-col gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold">Sesiones pendientes y estado de grabacion</h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              Se actualiza cada {hasLiveVideoClips ? "5" : "15"} segundos. Cuando un video llega a 100% de subida aparece como listo para procesar.
+            </p>
+          </div>
+          <span className="w-fit rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">{videoClips.length}</span>
+        </div>
+        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          {videoClips.map((clip) => {
+            const progressValue = Math.max(0, Math.min(100, videoClipProgress(clip)));
+            const heartbeatDate = clip.last_heartbeat_at ? new Date(clip.last_heartbeat_at) : null;
+            const updatedDate = clip.updated_at ? new Date(clip.updated_at) : null;
+            return (
+              <div key={clip.id} className="px-4 py-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate font-medium">{clip.filename}</p>
+                      <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${videoClipStatusTone(clip.status)}`}>
+                        {videoClipStatusLabel(clip.status)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      {clip.session_label || clip.site_name || "Sesion sin ligar"}
+                      {clip.camera_id ? ` - ${clip.camera_id}` : ""}
+                      {clip.clip_type ? ` - ${clip.clip_type}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {clip.recording_started_at ? `Inicio grabacion: ${new Date(clip.recording_started_at).toLocaleString()}` : "Sin inicio de grabacion"}
+                      {clip.recording_ended_at ? ` - Fin: ${new Date(clip.recording_ended_at).toLocaleString()}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {heartbeatDate ? `Ultimo pulso: ${heartbeatDate.toLocaleTimeString()}` : updatedDate ? `Actualizado: ${updatedDate.toLocaleTimeString()}` : "Sin pulso reciente"}
+                      {clip.uploaded_at ? ` - Subido: ${new Date(clip.uploaded_at).toLocaleString()}` : ""}
+                    </p>
+                    {clip.error_message ? <p className="mt-2 rounded-md bg-red-50 px-2 py-1 text-xs text-red-700">{clip.error_message}</p> : null}
+                  </div>
+                  <div className="w-full shrink-0 lg:w-72">
+                    <div className="grid gap-2 text-xs">
+                      <div>
+                        <div className="mb-1 flex justify-between gap-2">
+                          <span className="font-medium text-zinc-600">Grabacion</span>
+                          <span className="font-semibold text-zinc-900">{(clip.recording_progress_percent ?? (clip.recording_ended_at ? 100 : 0)).toFixed(1)}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+                          <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, clip.recording_progress_percent ?? (clip.recording_ended_at ? 100 : 0)))}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 flex justify-between gap-2">
+                          <span className="font-medium text-zinc-600">Subida Drive</span>
+                          <span className="font-semibold text-zinc-900">{(clip.upload_progress_percent ?? (clip.uploaded_at ? 100 : 0)).toFixed(1)}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+                          <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${Math.max(0, Math.min(100, clip.upload_progress_percent ?? (clip.uploaded_at ? 100 : 0)))}%` }} />
+                        </div>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <span className="text-zinc-500">{formatBytes(clip.size || 0)}</span>
+                        {clip.processable ? (
+                          <button
+                            className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                            disabled={!status?.enabled || isProcessing}
+                            onClick={() => processPending(`video_clip:${clip.id}`)}
+                            type="button"
+                          >
+                            <Play size={13} /> Procesar
+                          </button>
+                        ) : (
+                          <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">
+                            {clip.status === "failed" ? "Revisar grabacion" : "Aun no procesable"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {isLiveVideoClip(clip) ? (
+                  <div className="mt-3 h-1 overflow-hidden rounded-full bg-zinc-100">
+                    <div className="h-full rounded-full bg-emerald-700 transition-all" style={{ width: `${progressValue}%` }} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          {videoClips.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay grabaciones recientes o pendientes registradas en video_clips.</p>}
+        </div>
       </section>
 
       {recentJobs.length ? (
