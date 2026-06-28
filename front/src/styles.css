@@ -18,6 +18,43 @@ body {
   transform: scaleX(-1);
 }
 
+@keyframes progress-stripes {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 32px 0;
+  }
+}
+
+@keyframes progress-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.progress-fill-active {
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill-active::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.28) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.28) 50%, rgba(255, 255, 255, 0.28) 75%, transparent 75%, transparent);
+  background-size: 32px 32px;
+  animation:
+    progress-stripes 0.9s linear infinite,
+    progress-glow 1.6s ease-in-out infinite;
+}
+
 html,
 body,
 #root {

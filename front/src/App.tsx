@@ -1,10 +1,10 @@
+import { lazy, Suspense } from "react";
 import { LogOut, RefreshCw } from "lucide-react";
 import { roleLabels } from "./appState";
 import {
   AccountingPortal,
   AdultLeagueDashboardPanel,
   GuardianPortal,
-  LoginScreen,
   ThemeToggle,
 } from "./components/FutsiViews";
 import { AdminShell } from "./components/layout/AdminShell";
@@ -12,6 +12,8 @@ import { AppSkeleton } from "./components/loading/AppSkeleton";
 import { useFutsiData } from "./hooks/useFutsiData";
 import { useThemeMode } from "./hooks/useThemeMode";
 import type { AttendanceRecord, AttendanceSession, FaceRecognitionResponse } from "./types";
+
+const FutsiLanding = lazy(() => import("./components/landing/FutsiLanding").then((module) => ({ default: module.FutsiLanding })));
 
 export default function App() {
   const { theme, toggleTheme } = useThemeMode();
@@ -57,7 +59,9 @@ export default function App() {
     return (
       <>
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
-        <LoginScreen onLogin={handleLogin} />
+        <Suspense fallback={<LandingFallback />}>
+          <FutsiLanding onLogin={handleLogin} />
+        </Suspense>
       </>
     );
   }
@@ -171,6 +175,14 @@ export default function App() {
         onMarkAdultPlayer={markAdultPlayer}
       />
     </>
+  );
+}
+
+function LandingFallback() {
+  return (
+    <main className="grid min-h-screen place-items-center bg-zinc-950 px-4 text-white">
+      <div className="size-10 animate-spin rounded-full border-4 border-emerald-100/20 border-t-emerald-300" />
+    </main>
   );
 }
 
