@@ -33,8 +33,8 @@ def test_coach_portal_has_attendance_camera_and_hours_controls(driver, live_fron
     page.testid("coach-register-hours")
     page.wait_text("Horas y nomina estimada")
     page.click_testid("menu-tab-attendance")
-    page.wait_text("Sesiones de hoy")
-    page.wait_text("Agenda del dia")
+    page.wait_text("Sesiones procesadas y pase de lista")
+    page.wait_text("Pase manual")
 
 
 def test_guardian_portal_shows_debts_profile_and_invoices(driver, live_frontend):

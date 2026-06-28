@@ -12,7 +12,7 @@ def test_invalid_login_stays_on_login_page(driver, live_frontend):
     page = LoginPage(driver).open(live_frontend)
     page.login("admin' OR 1=1 --", "incorrecto")
 
-    assert page.has_testid("login-page")
+    assert page.has_testid("login-form")
     page.wait_not_busy("login-submit")
     assert page.has_text("Usuario o password incorrecto.")
 
