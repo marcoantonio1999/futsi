@@ -18,6 +18,7 @@ import { MiniMoneyTooltip } from "../charts/ChartTooltips";
 import { compactMoney, money } from "../../utils/format";
 import type { AppData, StaffPaymentRequest, User } from "../../types";
 import { getCoachStudentLoad } from "./coachLoad";
+import { MiniCountTooltip } from "./staffConsolidatedTooltip";
 import { staffPaymentStatusLabel, TableHeader } from "./shared";
 
 type MoneyRow = { label: string; value: number };
@@ -89,18 +90,6 @@ function payrollByMonth(requests: StaffPaymentRequest[]) {
   const months = new Map<string, number>();
   requests.forEach((request) => months.set(monthKey(request.requested_payment_date), (months.get(monthKey(request.requested_payment_date)) || 0) + amount(request.amount)));
   return [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([label, value]) => ({ label, value }));
-}
-
-function MiniCountTooltip({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) {
-  if (!active || !payload?.length) return null;
-  const value = Number(payload[0]?.value || 0);
-  const name = payload[0]?.payload?.label || payload[0]?.name || label;
-  return (
-    <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-lg">
-      <p className="font-semibold text-zinc-900">{name}</p>
-      <p className="text-zinc-600">{value.toLocaleString("es-MX")} alumnos</p>
-    </div>
-  );
 }
 
 function MoneyBarCard({

@@ -71,9 +71,10 @@ import {
   staffPaymentStatusLabel,
   sumAccountingRows,
 } from "./shared";
+import { CoachAttendanceRow } from "./coachAttendanceRow";
+import { CoachAlertsPanel } from "./coachAlertsPanel";
+import { CoachHoursPanel } from "./coachHoursPanel";
 import { SportsPanel } from "./sports";
-
-
 import { FormationBoard } from "./formationBoard";
 
 export function CoachPortal({
@@ -370,60 +371,22 @@ export function CoachPortal({
                 const record = recordsByStudent.get(student.id);
                 const locked = !activeSession || !activeSessionCanMark;
                 return (
-                  <div key={student.id} className="grid gap-3 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
-                    <div className="flex gap-3">
-                      <Avatar name={student.full_name} imageUrl={student.photo_url} />
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{student.full_name}</p>
-                          <StatusPill label={statusLabels[student.status]} />
-                          {student.open_charge_count > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
-                              <AlertTriangle size={12} /> Debe ${money(student.balance_due)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-sm text-zinc-500">{student.category} - {student.guardian_name} - {student.guardian_phone}</p>
-                        {student.medical_notes && <p className="mt-1 text-xs text-red-700">Medico: {student.medical_notes}</p>}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <AttendanceButton active={record?.status === "present"} disabled={locked || savingStudentId === student.id} label="Asiste" icon={<Check size={16} />} onClick={() => mark(student, "present")} />
-                      <AttendanceButton active={record?.status === "absent"} disabled={locked || savingStudentId === student.id} label="Falta" icon={<X size={16} />} onClick={() => mark(student, "absent")} />
-                      <AttendanceButton active={record?.status === "justified"} disabled={locked || savingStudentId === student.id} label="Justif." icon={<ClipboardCheck size={16} />} onClick={() => mark(student, "justified")} />
-                    </div>
-                  </div>
+                  <CoachAttendanceRow
+                    key={student.id}
+                    student={student}
+                    record={record}
+                    locked={locked}
+                    saving={savingStudentId === student.id}
+                    onMark={mark}
+                  />
                 );
               })}
             </div>
           </div>
 
           <div className="grid gap-5">
-            <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-              <TableHeader title="Alertas del coach" count={medicalAlerts.length + debtAlerts.length} />
-              <div className="divide-y divide-zinc-100">
-                {[...medicalAlerts, ...debtAlerts.filter((student) => !medicalAlerts.some((medical) => medical.id === student.id))].map((student) => (
-                  <div key={student.id} className="px-4 py-3">
-                    <p className="font-medium">{student.full_name}</p>
-                    {student.medical_notes && <p className="mt-1 text-sm text-red-700">{student.medical_notes}</p>}
-                    {student.open_charge_count > 0 && <p className="mt-1 text-sm text-amber-700">Pago pendiente: ${money(student.balance_due)}</p>}
-                  </div>
-                ))}
-                {medicalAlerts.length + debtAlerts.length === 0 && <p className="px-4 py-6 text-sm text-zinc-500">Sin alertas para este grupo.</p>}
-              </div>
-            </div>
-            <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-              <TableHeader title="Horas recientes" count={data.coachWorkLogs.length} />
-              <div className="divide-y divide-zinc-100">
-                {data.coachWorkLogs.map((log) => (
-                  <div key={log.id} className="px-4 py-3 text-sm">
-                    <p className="font-medium">{log.work_date} - {log.activity}</p>
-                    <p className="mt-1 text-zinc-500">{Number(log.hours).toFixed(1)} h - ${money(log.total_amount)}</p>
-                    {log.notes && <p className="mt-1 text-zinc-500">{log.notes}</p>}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <CoachAlertsPanel medicalAlerts={medicalAlerts} debtAlerts={debtAlerts} />
+            <CoachHoursPanel data={data} />
           </div>
         </section>
       </div>

@@ -2,42 +2,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Metric } from "../cards/Metric";
 import type { AppData, Charge } from "../../types";
 import { money } from "../../utils/format";
-import { SelectInput, TextInput, StatusPill, TableHeader, chargeStatusLabel, normalizeText, paymentMethodLabel, paymentStatusLabel } from "./shared";
-
-function getChargeDueBucket(charge: Charge) {
-  if (charge.status === "paid" || charge.status === "canceled") return charge.status;
-  if (!charge.due_date) return "without_due_date";
-  const todayDate = new Date(new Date().toISOString().slice(0, 10));
-  const dueDate = new Date(charge.due_date);
-  const days = Math.round((dueDate.getTime() - todayDate.getTime()) / 86400000);
-  if (days < 0) return "overdue";
-  if (days <= 2) return "due_soon";
-  return "scheduled";
-}
-
-function dueLabel(charge: Charge) {
-  const bucket = charge.due_bucket || getChargeDueBucket(charge);
-  if (charge.status === "paid") return "Pagado";
-  if (charge.status === "canceled") return "Cancelado";
-  if (!charge.due_date) return "Sin fecha";
-  const days = charge.due_in_days ?? Math.round((new Date(charge.due_date).getTime() - new Date(new Date().toISOString().slice(0, 10)).getTime()) / 86400000);
-  if (bucket === "overdue") return `Vencido hace ${Math.abs(days)} dia(s)`;
-  if (bucket === "due_soon") return days === 0 ? "Vence hoy" : `Vence en ${days} dia(s)`;
-  return `Vence ${charge.due_date}`;
-}
-
-function dueTone(charge: Charge) {
-  const bucket = charge.due_bucket || getChargeDueBucket(charge);
-  if (bucket === "overdue") return "bg-red-50 text-red-700";
-  if (bucket === "due_soon") return "bg-amber-50 text-amber-800";
-  if (charge.status === "paid") return "bg-emerald-50 text-emerald-800";
-  return "bg-zinc-100 text-zinc-600";
-}
-
-function chargeSubject(charge: Charge) {
-  return charge.student_name || charge.team_name || "Cliente";
-}
-
+import { SelectInput, TextInput, TableHeader, normalizeText, paymentMethodLabel, paymentStatusLabel } from "./shared";
+import { BillingCollectionRow, BillingDueNotices, billingHeaderGridClass, chargeSubject, getChargeDueBucket } from "./billingCollectionRow";
 export function BillingCollectionPanel({
   data,
   compact = false,
@@ -156,9 +122,6 @@ export function BillingCollectionPanel({
   const filterGridClass = compact
     ? "mt-4 grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2 xl:grid-cols-4"
     : "mt-4 grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 md:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-9";
-  const headerGridClass = "hidden grid-cols-[1.3fr_1fr_0.8fr_0.7fr_0.7fr_0.7fr_0.8fr] gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-semibold uppercase text-zinc-500 xl:grid";
-  const rowGridClass = "grid min-w-0 gap-3 px-4 py-4 xl:grid-cols-[1.3fr_1fr_0.8fr_0.7fr_0.7fr_0.7fr_0.8fr] xl:items-center";
-
   function selectChargeForPayment(charge: Charge) {
     setSelectedChargeId(charge.id);
     setPaymentForm({ method: "cash", amount: String(charge.balance || charge.amount || "") });
@@ -393,7 +356,7 @@ export function BillingCollectionPanel({
         </div>
 
           <div className="mt-4 min-w-0 overflow-hidden rounded-md border border-zinc-200">
-            <div className={headerGridClass}>
+            <div className={billingHeaderGridClass}>
               <span>Cliente</span>
               <span>Concepto</span>
               <span>Vence</span>
@@ -404,46 +367,13 @@ export function BillingCollectionPanel({
             </div>
             <div className="divide-y divide-zinc-100">
               {visibleCharges.map((charge) => (
-                <div key={charge.id}>
-                  <div
-                    data-testid="cashier-charge-row"
-                    className={`${rowGridClass} text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
-                      selectedChargeId === charge.id ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
-                    }`}
-                    onClick={() => selectChargeForPayment(charge)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") selectChargeForPayment(charge);
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="min-w-0">
-                      <p className="break-words font-semibold">{chargeSubject(charge)}</p>
-                      <p className="mt-1 text-sm text-zinc-500">{charge.payer_name || "Sin pagador"} {charge.payer_phone ? `- ${charge.payer_phone}` : ""}</p>
-                      <p className="mt-1 text-xs text-zinc-400">{charge.site_name}</p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-medium">{charge.concept}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{charge.description || "Sin detalle"}</p>
-                    </div>
-                    <span className={`w-fit rounded-md px-2 py-1 text-xs font-semibold ${dueTone(charge)}`}>{dueLabel(charge)}</span>
-                    <p className="text-sm">${money(charge.amount)}</p>
-                    <p className="text-sm">${money(charge.paid_amount || 0)}</p>
-                    <p className="text-sm font-semibold">${money(charge.balance)}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <StatusPill label={chargeStatusLabel(charge.status)} />
-                      {charge.status === "partial" && (
-                        <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">Pago parcial</span>
-                      )}
-                      {charge.schedule_type && charge.schedule_type !== "one_time" && (
-                        <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800">
-                          {charge.schedule_type === "monthly" ? "Mensual" : charge.schedule_type === "weekly" ? "Semanal" : "Torneo"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {selectedChargeId === charge.id && <div className="px-4 pb-4">{renderSelectedChargeActions()}</div>}
-                </div>
+                <BillingCollectionRow
+                  key={charge.id}
+                  charge={charge}
+                  selectedChargeId={selectedChargeId}
+                  onSelect={selectChargeForPayment}
+                  renderSelectedActions={renderSelectedChargeActions}
+                />
               ))}
               {visibleCharges.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay cobros con estos filtros.</p>}
             </div>
@@ -463,19 +393,7 @@ export function BillingCollectionPanel({
       </div>
 
       {!compact && (
-        <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-          <TableHeader title="Avisos de vencimiento simulados" count={billingSummary.dueSoon.length} />
-          <div className="divide-y divide-zinc-100">
-            {billingSummary.dueSoon.slice(0, 8).map((charge) => (
-              <div key={charge.id} className="px-4 py-3">
-                <p className="font-medium">{chargeSubject(charge)} - ${money(charge.balance)}</p>
-                <p className="mt-1 text-sm text-zinc-500">{charge.customer_notice || dueLabel(charge)}</p>
-                <p className="mt-1 text-xs text-zinc-400">Simulado: WhatsApp/SMS a {charge.payer_phone || "telefono no registrado"}</p>
-              </div>
-            ))}
-            {billingSummary.dueSoon.length === 0 && <p className="px-4 py-6 text-sm text-zinc-500">Sin avisos por vencer en los proximos 2 dias.</p>}
-          </div>
-        </div>
+        <BillingDueNotices charges={billingSummary.dueSoon} />
       )}
     </div>
   );

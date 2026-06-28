@@ -71,6 +71,7 @@ import {
   staffPaymentStatusLabel,
   sumAccountingRows,
 } from "./shared";
+import { AdultCollectionPanel, type AdultPaymentForm } from "./adultCollectionPanel";
 
 export function AdultLeagueDashboardPanel({
   data,
@@ -110,17 +111,7 @@ export function AdultLeagueDashboardPanel({
   const standings = data.standings.filter((row) => !activeTournament || row.tournament === activeTournament.id);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(adultTeams[0]?.id ?? null);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
-  const [paymentForm, setPaymentForm] = useState({ charge: "", amount: "", method: "cash", channel: "cash_confirmation" });
-  const [adultChargeFilters, setAdultChargeFilters] = useState({
-    query: "",
-    status: "all",
-    minAmount: "",
-    maxAmount: "",
-    fromDate: "",
-    toDate: "",
-  });
-  const [adultChargePage, setAdultChargePage] = useState(1);
-  const adultChargePageSize = 8;
+  const [paymentForm, setPaymentForm] = useState<AdultPaymentForm>({ charge: "", amount: "", method: "cash", channel: "cash_confirmation" });
 
   const selectedTeam = adultTeams.find((team) => team.id === selectedTeamId) ?? adultTeams[0] ?? null;
   const selectedPlayers = selectedTeam ? adultPlayers.filter((player) => player.team === selectedTeam.id).sort((a, b) => Number(a.jersey_number || 99) - Number(b.jersey_number || 99)) : [];
@@ -140,46 +131,6 @@ export function AdultLeagueDashboardPanel({
     return map;
   }, [activeSession?.id, data.playerAttendanceRecords]);
   const presentCount = Array.from(recordsByPlayer.values()).filter((record) => record.status === "present").length;
-  const filteredAdultCharges = useMemo(() => {
-    const query = normalizeText(adultChargeFilters.query);
-    const minAmount = adultChargeFilters.minAmount === "" ? null : Number(adultChargeFilters.minAmount);
-    const maxAmount = adultChargeFilters.maxAmount === "" ? null : Number(adultChargeFilters.maxAmount);
-
-    return openAdultCharges.filter((charge) => {
-      const team = adultTeams.find((item) => item.id === charge.team);
-      const balance = Number(charge.balance || 0);
-      const searchable = normalizeText([
-        charge.team_name,
-        team?.name,
-        team?.representative_name,
-        team?.representative_phone,
-        charge.payer_name,
-        charge.payer_phone,
-        charge.concept,
-        charge.description,
-        charge.site_name,
-      ].filter(Boolean).join(" "));
-
-      if (query && !searchable.includes(query)) return false;
-      if (adultChargeFilters.status !== "all" && charge.status !== adultChargeFilters.status) return false;
-      if (minAmount !== null && balance < minAmount) return false;
-      if (maxAmount !== null && balance > maxAmount) return false;
-      if (adultChargeFilters.fromDate && (!charge.due_date || charge.due_date < adultChargeFilters.fromDate)) return false;
-      if (adultChargeFilters.toDate && (!charge.due_date || charge.due_date > adultChargeFilters.toDate)) return false;
-      return true;
-    });
-  }, [adultChargeFilters, adultTeams, openAdultCharges]);
-  const adultChargeTotalPages = Math.max(1, Math.ceil(filteredAdultCharges.length / adultChargePageSize));
-  const paginatedAdultCharges = filteredAdultCharges.slice((adultChargePage - 1) * adultChargePageSize, adultChargePage * adultChargePageSize);
-
-  useEffect(() => {
-    setAdultChargePage(1);
-  }, [adultChargeFilters]);
-
-  useEffect(() => {
-    setAdultChargePage((page) => Math.min(page, adultChargeTotalPages));
-  }, [adultChargeTotalPages]);
-
   useEffect(() => {
     if (!selectedTeamId && adultTeams[0]) setSelectedTeamId(adultTeams[0].id);
   }, [adultTeams, selectedTeamId]);
@@ -269,150 +220,16 @@ export function AdultLeagueDashboardPanel({
       </div>
 
       {collectionOnly && (
-        <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
-          <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
-            <TableHeader title="Cobros pendientes adultos" count={filteredAdultCharges.length} />
-            <div className="grid gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:grid-cols-2 lg:grid-cols-6">
-              <TextInput
-                label="Buscar"
-                placeholder="Equipo, representante, concepto"
-                value={adultChargeFilters.query}
-                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, query: event.target.value })}
-              />
-              <SelectInput
-                label="Estado"
-                value={adultChargeFilters.status}
-                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, status: event.target.value })}
-              >
-                <option value="all">Todos</option>
-                <option value="pending">Pendiente</option>
-                <option value="partial">Parcial</option>
-              </SelectInput>
-              <TextInput
-                label="Monto min."
-                type="number"
-                min="0"
-                step="0.01"
-                value={adultChargeFilters.minAmount}
-                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, minAmount: event.target.value })}
-              />
-              <TextInput
-                label="Monto max."
-                type="number"
-                min="0"
-                step="0.01"
-                value={adultChargeFilters.maxAmount}
-                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, maxAmount: event.target.value })}
-              />
-              <TextInput
-                label="Desde"
-                type="date"
-                value={adultChargeFilters.fromDate}
-                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, fromDate: event.target.value })}
-              />
-              <TextInput
-                label="Hasta"
-                type="date"
-                value={adultChargeFilters.toDate}
-                onChange={(event) => setAdultChargeFilters({ ...adultChargeFilters, toDate: event.target.value })}
-              />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-                  <tr>
-                    <th className="px-4 py-3">Equipo</th>
-                    <th className="px-4 py-3">Representante</th>
-                    <th className="px-4 py-3">Cobro</th>
-                    <th className="px-4 py-3">Vence</th>
-                    <th className="px-4 py-3">Saldo</th>
-                    <th className="px-4 py-3">Accion</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-                  {paginatedAdultCharges.map((charge) => {
-                    const team = adultTeams.find((item) => item.id === charge.team);
-                    return (
-                      <tr key={charge.id} className="border-b border-zinc-100 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-                        <td className="px-4 py-3 font-semibold">{charge.team_name || team?.name || "Equipo"}</td>
-                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-200">
-                          {team?.representative_name || charge.payer_name || "Sin representante"}
-                          <br />
-                          <span className="text-xs text-zinc-500 dark:text-zinc-400">{team?.representative_phone || charge.payer_phone || "Sin telefono"}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium">{charge.concept}</p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">{charge.description || "Sin detalle"}</p>
-                          <span className={`mt-2 inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${charge.status === "partial" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"}`}>
-                            {chargeStatusLabel(charge.status)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-200">{charge.due_date || "Sin fecha"}</td>
-                        <td className="px-4 py-3 text-base font-bold">${money(charge.balance)}</td>
-                        <td className="px-4 py-3">
-                          <button className="rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white" onClick={() => selectPendingCharge(charge.id)} type="button">
-                            Cobrar
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {filteredAdultCharges.length === 0 && (
-                    <tr>
-                      <td className="px-4 py-8 text-center text-sm text-zinc-500" colSpan={6}>Sin cobros pendientes de liga adultos.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {filteredAdultCharges.length > adultChargePageSize && (
-              <div className="flex flex-col gap-3 border-t border-zinc-200 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300 sm:flex-row sm:items-center sm:justify-between">
-                <span>
-                  Mostrando {(adultChargePage - 1) * adultChargePageSize + 1}-{Math.min(adultChargePage * adultChargePageSize, filteredAdultCharges.length)} de {filteredAdultCharges.length}
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    className="rounded-md border border-zinc-200 px-3 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800"
-                    disabled={adultChargePage <= 1}
-                    onClick={() => setAdultChargePage((page) => Math.max(1, page - 1))}
-                    type="button"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    className="rounded-md border border-zinc-200 px-3 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800"
-                    disabled={adultChargePage >= adultChargeTotalPages}
-                    onClick={() => setAdultChargePage((page) => Math.min(adultChargeTotalPages, page + 1))}
-                    type="button"
-                  >
-                    Siguiente
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Hacer cobro</h3>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-300">
-              {selectedTeam?.name || "Selecciona un cobro pendiente"} - {selectedTeam?.representative_name || "representante"}
-            </p>
-            <form onSubmit={submitPayment} className="mt-4 grid gap-3">
-              <SelectInput label="Cobro pendiente" value={paymentForm.charge} onChange={(event) => selectPendingCharge(Number(event.target.value))} required>
-                <option value="">{filteredAdultCharges.length ? "Seleccionar cobro filtrado" : "Sin cobros pendientes"}</option>
-                {filteredAdultCharges.slice(0, 30).map((charge) => (
-                  <option key={charge.id} value={charge.id}>{charge.team_name} - {chargeLabel(charge)} - ${money(charge.balance)}</option>
-                ))}
-              </SelectInput>
-              <SelectInput label="Metodo" value={paymentForm.method} onChange={(event) => changePaymentMethod(event.target.value)}>
-                <option value="cash">Efectivo</option>
-                <option value="card">Tarjeta</option>
-              </SelectInput>
-              <TextInput label="Monto" type="number" min="0" step="0.01" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} required />
-              <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white" type="submit">Crear solicitud de cobro</button>
-            </form>
-          </div>
-        </div>
+        <AdultCollectionPanel
+          adultTeams={adultTeams}
+          openAdultCharges={openAdultCharges}
+          selectedTeam={selectedTeam}
+          paymentForm={paymentForm}
+          onPaymentFormChange={setPaymentForm}
+          onSelectPendingCharge={selectPendingCharge}
+          onChangePaymentMethod={changePaymentMethod}
+          onSubmitPayment={submitPayment}
+        />
       )}
 
       {collectionOnly ? null : (

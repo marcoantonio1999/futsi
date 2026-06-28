@@ -1,143 +1,25 @@
 import React, { useEffect, useRef, useState } from "react";
+import type { AppData, TabKey, ThemeMode, User } from "../../types";
+import { defaultSectionsByRole, tabItems } from "./adminNavigation";
+import { AdminShellContent } from "./AdminShellContent";
+import { AdminShellHeader } from "./AdminShellHeader";
+import { AdminShellMobileMenu } from "./AdminShellMobileMenu";
+import { AdminShellSidebar } from "./AdminShellSidebar";
 import {
-  LogOut,
-  Menu,
-  RefreshCw,
-  X,
-} from "lucide-react";
-import { roleLabels } from "../../appState";
-import { RefreshSkeletonBar, SectionSkeleton } from "../loading/AppSkeleton";
-import type {
-  AppData,
-  AttendanceRecord,
-  AttendanceSession,
-  FaceRecognitionResponse,
-  PlayerAttendanceRecord,
-  Role,
-  TabKey,
-  ThemeMode,
-  User,
-} from "../../types";
-import { defaultSectionsByRole, fullWidthTabs, tabItems } from "./adminNavigation";
-import {
-  AdultLeagueDashboardPanel,
-  AutomaticAttendancePanel,
-  AttendancePanel,
-  BillingPanel,
-  BillingCollectionPanel,
-  CalendarPanel,
-  CoachDashboardPanel,
-  CoachesConsolidatedPanel,
-  DailyOperationPanel,
-  DashboardPanel,
-  DebtsPanel,
-  ExpensesPanel,
-  GuardiansPanel,
-  HistoricalDiscrepanciesPanel,
-  HistoricalImportsPanel,
-  IncomeStatementPanel,
-  InvoicesPanel,
-  RefereesConsolidatedPanel,
-  SalesEstimationPanel,
-  SitesPanel,
-  SportsPanel,
-  StudentsPanel,
-  ThemeToggle,
-  TournamentsPanel,
-  UniformsPanel,
-  UsersPanel,
-  VideoOccupancyPanel,
-} from "../FutsiViews";
-
-type AttendanceSubsection = "manual" | "automatic" | "report" | "occupancy";
-type BusinessScope = "academy" | "adult";
-
-const academyMenuTabs: TabKey[] = [
-  "dashboard",
-  "calendar",
-  "sports",
-  "tournaments",
-  "coaches",
-  "uniforms",
-  "attendance",
-  "billing",
-  "debts",
-  "expenses",
-  "students",
-  "guardians",
-  "sites",
-  "users",
-  "invoices",
-  "historical",
-  "discrepancies",
-];
-const adultMenuTabs: TabKey[] = [
-  "adult-dashboard",
-  "calendar",
-  "tournaments",
-  "billing",
-  "debts",
-  "expenses",
-  "referees",
-  "invoices",
-  "sites",
-  "users",
-];
-const adultTabLabels: Partial<Record<TabKey, string>> = {
-  "adult-dashboard": "Dashboard adultos",
-  calendar: "Calendario adultos",
-  tournaments: "Torneos adultos",
-  billing: "Cobranza adultos",
-  debts: "Adeudos adultos",
-  expenses: "Gastos adultos",
-  referees: "Arbitros",
-  invoices: "Facturas adultos",
-};
-const academyDefaultTab: TabKey = "dashboard";
-const adultDefaultTab: TabKey = "adult-dashboard";
-
-function adultLeagueData(data: AppData): AppData {
-  const adultTeamIds = new Set(data.teams.map((team) => team.id));
-  const adultTournamentIds = new Set(data.teams.map((team) => team.tournament));
-  const adultChargeIds = new Set(data.charges.filter((charge) => charge.team && adultTeamIds.has(charge.team)).map((charge) => charge.id));
-  const adultPaymentIds = new Set(data.payments.filter((payment) => payment.charge && adultChargeIds.has(payment.charge)).map((payment) => payment.id));
-  const adultSessionIds = new Set(data.attendanceSessions.filter((session) => session.team && adultTeamIds.has(session.team)).map((session) => session.id));
-  const adultStaffPaymentIds = new Set(data.staffPaymentRequests.filter((request) => request.kind === "referee_payroll").map((request) => request.id));
-
-  return {
-    ...data,
-    users: data.users.filter((item) => item.role === "adult_player" || item.role === "adult_representative"),
-    guardians: [],
-    students: [],
-    attendanceSessions: data.attendanceSessions.filter((session) => adultSessionIds.has(session.id)),
-    attendanceRecords: [],
-    charges: data.charges.filter((charge) => adultChargeIds.has(charge.id)),
-    payments: data.payments.filter((payment) => adultPaymentIds.has(payment.id)),
-    discounts: data.discounts.filter((discount) => Boolean(discount.charge && adultChargeIds.has(discount.charge))),
-    expenses: data.expenses.filter((expense) => {
-      const category = expense.category.toLowerCase();
-      const description = expense.description.toLowerCase();
-      return category.includes("arbit") || description.includes("arbit") || category.includes("referee") || description.includes("referee");
-    }),
-    staffPaymentRequests: data.staffPaymentRequests.filter((request) => adultStaffPaymentIds.has(request.id)),
-    cashMovements: data.cashMovements.filter((movement) => Boolean(movement.staff_payment_request && adultStaffPaymentIds.has(movement.staff_payment_request))),
-    coachWorkLogs: [],
-    tournaments: data.tournaments.filter((tournament) => adultTournamentIds.has(tournament.id)),
-    teams: data.teams.filter((team) => adultTeamIds.has(team.id)),
-    studentTournamentRegistrations: [],
-    players: data.players.filter((player) => adultTeamIds.has(player.team)),
-    matches: data.matches.filter((match) => adultTournamentIds.has(match.tournament)),
-    standings: data.standings.filter((row) => adultTournamentIds.has(row.tournament)),
-    playerAttendanceRecords: data.playerAttendanceRecords.filter((record) => adultSessionIds.has(record.session)),
-    studentAssessments: [],
-    studentValueAssessments: [],
-    invoices: data.invoices.filter((invoice) => {
-      if (invoice.charge && adultChargeIds.has(invoice.charge)) return true;
-      if (invoice.payment && adultPaymentIds.has(invoice.payment)) return true;
-      return false;
-    }),
-  };
-}
+  academyDefaultTab,
+  academyMenuTabs,
+  adultDefaultTab,
+  adultLeagueData,
+  adultMenuTabs,
+  adultTabLabels,
+  desktopSidebarAutoCollapseMs,
+  desktopSidebarNearPx,
+  desktopSidebarOpenEdgePx,
+  shellToneForScope,
+  type AttendanceSubsection,
+  type BusinessScope,
+} from "./adminShellModel";
+import { ThemeToggle } from "../FutsiViews";
 
 type AdminShellProps = {
   token: string;
@@ -191,11 +73,18 @@ export function AdminShell({
   onMarkAdultPlayer,
 }: AdminShellProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
-  const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("manual");
+  const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
+  const [unknownDetailDate, setUnknownDetailDate] = useState("");
+  const [unknownDetailReport, setUnknownDetailReport] = useState<unknown>(null);
   const [businessScope, setBusinessScope] = useState<BusinessScope>("academy");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const mobileSwipeStartX = useRef<number | null>(null);
+  const desktopSidebarRef = useRef<HTMLElement | null>(null);
+  const desktopSidebarCollapseTimer = useRef<number | null>(null);
+  const latestPointerPosition = useRef<{ x: number; y: number } | null>(null);
+
   const isAdmin = user.role === "admin" || user.role === "owner" || user.role === "dev";
   const tabs = tabItems();
   const allowedSections = new Set<TabKey>([
@@ -216,6 +105,7 @@ export function AdminShell({
   const canSeeAdultDashboard = visibleTabs.some((tab) => tab.key === "adult-dashboard");
   const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
   const isFirstSectionLoad = sectionLoading === effectiveActiveTab && !loadedSections.includes(effectiveActiveTab);
+  const shellTone = shellToneForScope(businessScope);
 
   useEffect(() => {
     onLoadSection(effectiveActiveTab);
@@ -226,10 +116,6 @@ export function AdminShell({
       setActiveTab(fallbackTab);
     }
   }, [activeTab, fallbackTab, sidebarTabs]);
-
-  function refreshActiveSection() {
-    void onLoadSection(effectiveActiveTab, { force: true });
-  }
 
   useEffect(() => {
     if (user.role === "adult_representative" || user.role === "adult_player") {
@@ -248,39 +134,101 @@ export function AdminShell({
     return () => window.removeEventListener("scroll", updateHeaderState);
   }, []);
 
+  useEffect(() => {
+    const handleDesktopPointerMove = (event: PointerEvent) => {
+      if (!isDesktopSidebarViewport()) return;
+      latestPointerPosition.current = { x: event.clientX, y: event.clientY };
+      if (event.clientX <= desktopSidebarOpenEdgePx) {
+        setSidebarExpanded(true);
+        clearDesktopSidebarCollapse();
+        return;
+      }
+      if (!sidebarExpanded) return;
+      if (isPointerNearDesktopSidebar(event.clientX, event.clientY)) clearDesktopSidebarCollapse();
+      else startDesktopSidebarCollapse();
+    };
+
+    window.addEventListener("pointermove", handleDesktopPointerMove, { passive: true });
+    return () => window.removeEventListener("pointermove", handleDesktopPointerMove);
+  }, [sidebarExpanded]);
+
+  useEffect(() => {
+    if (!sidebarExpanded) {
+      clearDesktopSidebarCollapse();
+      return;
+    }
+    const pointer = latestPointerPosition.current;
+    if (!pointer || !isPointerNearDesktopSidebar(pointer.x, pointer.y)) startDesktopSidebarCollapse();
+  }, [sidebarExpanded]);
+
+  useEffect(() => () => clearDesktopSidebarCollapse(), []);
+
+  function refreshActiveSection() {
+    void onLoadSection(effectiveActiveTab, { force: true });
+  }
+
+  function clearDesktopSidebarCollapse() {
+    if (desktopSidebarCollapseTimer.current === null) return;
+    window.clearTimeout(desktopSidebarCollapseTimer.current);
+    desktopSidebarCollapseTimer.current = null;
+  }
+
+  function startDesktopSidebarCollapse() {
+    if (!sidebarExpanded || desktopSidebarCollapseTimer.current !== null) return;
+    desktopSidebarCollapseTimer.current = window.setTimeout(() => {
+      setSidebarExpanded(false);
+      desktopSidebarCollapseTimer.current = null;
+    }, desktopSidebarAutoCollapseMs);
+  }
+
+  function isDesktopSidebarViewport() {
+    return window.innerWidth >= 1024;
+  }
+
+  function isPointerNearDesktopSidebar(x: number, y: number) {
+    const rect = desktopSidebarRef.current?.getBoundingClientRect();
+    if (!rect) return x <= desktopSidebarOpenEdgePx;
+    return x >= rect.left - desktopSidebarNearPx && x <= rect.right + desktopSidebarNearPx && y >= rect.top - desktopSidebarNearPx && y <= rect.bottom + desktopSidebarNearPx;
+  }
+
+  function scrollToTop() {
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }
+
   function selectTab(tab: TabKey) {
     setActiveTab(tab);
+    scrollToTop();
   }
 
   function switchBusinessScope(nextScope: BusinessScope) {
     setBusinessScope(nextScope);
     setActiveTab(nextScope === "adult" ? adultDefaultTab : academyDefaultTab);
     setMobileMenuOpen(false);
+    scrollToTop();
   }
 
-  const shellTone = businessScope === "adult"
-    ? {
-        appName: "Liga adultos",
-        subtitle: "Sistema de torneos adultos",
-        accent: "blue",
-        activeClass: "bg-blue-50 text-blue-800",
-        indicatorClass: "bg-blue-700",
-        hoverClass: "hover:bg-blue-50",
-        menuTitle: "Liga adultos",
-        demoCard: "bg-blue-700 text-white",
-        refreshButton: "bg-white/15 text-white hover:bg-white/20",
-      }
-    : {
-        appName: "Futsi",
-        subtitle: "Mini ERP operativo",
-        accent: "emerald",
-        activeClass: "bg-emerald-50 text-emerald-800",
-        indicatorClass: "bg-emerald-700",
-        hoverClass: "hover:bg-zinc-50",
-        menuTitle: "Academia",
-        demoCard: "bg-zinc-950 text-white",
-        refreshButton: "bg-emerald-600 text-white hover:bg-emerald-700",
-      };
+  function selectAttendanceSubsection(section: AttendanceSubsection) {
+    setAttendanceSubsection(section);
+    if (section !== "unknown-detail") {
+      setUnknownDetailDate("");
+      setUnknownDetailReport(null);
+    }
+    scrollToTop();
+  }
+
+  function openUnknownDetail(date: string, report: unknown) {
+    setUnknownDetailDate(date);
+    setUnknownDetailReport(report);
+    setAttendanceSubsection("unknown-detail");
+    scrollToTop();
+  }
+
+  function closeUnknownDetail() {
+    setUnknownDetailDate("");
+    setUnknownDetailReport(null);
+    setAttendanceSubsection("unknown");
+    scrollToTop();
+  }
 
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
     mobileSwipeStartX.current = event.touches[0]?.clientX ?? null;
@@ -291,15 +239,9 @@ export function AdminShell({
     const endX = event.changedTouches[0]?.clientX ?? null;
     mobileSwipeStartX.current = null;
     if (startX === null || endX === null) return;
-
-    const screenWidth = window.innerWidth;
     const deltaX = endX - startX;
-    if (!mobileMenuOpen && startX > screenWidth - 28 && deltaX < -50) {
-      setMobileMenuOpen(true);
-    }
-    if (mobileMenuOpen && deltaX > 50) {
-      setMobileMenuOpen(false);
-    }
+    if (!mobileMenuOpen && startX > window.innerWidth - 28 && deltaX < -50) setMobileMenuOpen(true);
+    if (mobileMenuOpen && deltaX > 50) setMobileMenuOpen(false);
   }
 
   return (
@@ -310,342 +252,79 @@ export function AdminShell({
       data-testid="admin-portal"
     >
       <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[1001] bg-zinc-950/35 lg:hidden" onClick={() => setMobileMenuOpen(false)}>
-          <aside
-            className="flex h-dvh max-h-dvh w-[min(86vw,300px)] flex-col overflow-hidden rounded-r-[20px] bg-white p-4 shadow-xl"
-            data-testid="section-menu-dropdown"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-center justify-between">
-              <div className="flex items-center gap-2">
-                <img className="h-10 w-10 rounded-full object-cover" src="./favicon.png" alt="Futsi" />
-                <div>
-                  <p className="font-semibold">{shellTone.appName}</p>
-                  <p className="text-xs text-zinc-500">{shellTone.subtitle}</p>
-                </div>
-              </div>
-              <button className="grid size-9 place-items-center rounded-md border border-zinc-200" onClick={() => setMobileMenuOpen(false)} type="button">
-                <X size={16} />
-              </button>
-            </div>
-            <nav className="mt-5 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto pr-1">
-              {sidebarTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  data-testid={`menu-tab-${tab.key}`}
-                  className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
-                    effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
-                  }`}
-                  onClick={() => {
-                    selectTab(tab.key);
-                    setMobileMenuOpen(false);
-                  }}
-                  type="button"
-                >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-            <button className="mt-3 flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50" onClick={onLogout} type="button">
-              <LogOut size={16} />
-              Cerrar sesion
-            </button>
-          </aside>
-        </div>
-      )}
-
+      <AdminShellMobileMenu
+        isOpen={mobileMenuOpen}
+        sidebarTabs={sidebarTabs}
+        effectiveActiveTab={effectiveActiveTab}
+        shellTone={shellTone}
+        onClose={() => setMobileMenuOpen(false)}
+        onLogout={onLogout}
+        onSelectTab={(tab) => {
+          selectTab(tab);
+          setMobileMenuOpen(false);
+        }}
+      />
       <div className="mx-auto flex min-h-screen max-w-[1540px] gap-5 p-4">
-        <aside className="fixed top-4 z-[910] hidden h-[calc(100vh-2rem)] min-h-0 w-64 shrink-0 flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white p-4 shadow-sm lg:left-[max(1rem,calc((100vw-1540px)/2+1rem))] lg:flex">
-          <div className="shrink-0 px-2 py-2">
-            <img className="h-auto w-44 object-contain" src="./logo-futsi.png" alt="Futsi Mini ERP" />
-            <p className="mt-2 text-xs font-medium text-zinc-500">{shellTone.subtitle}</p>
-            {canToggleAdultDashboard && (
-              <div className="mt-4 grid grid-cols-2 gap-1 rounded-md border border-zinc-200 bg-zinc-50 p-1">
-                <button
-                  className={`rounded-md px-2 py-2 text-xs font-semibold transition ${businessScope === "academy" ? "bg-white text-emerald-800 shadow-sm" : "text-zinc-500 hover:bg-white"}`}
-                  onClick={() => switchBusinessScope("academy")}
-                  type="button"
-                >
-                  Academia
-                </button>
-                <button
-                  className={`rounded-md px-2 py-2 text-xs font-semibold transition ${businessScope === "adult" ? "bg-white text-blue-800 shadow-sm" : "text-zinc-500 hover:bg-white"}`}
-                  onClick={() => switchBusinessScope("adult")}
-                  type="button"
-                >
-                  Adultos
-                </button>
-              </div>
-            )}
-          </div>
-          <nav className="mt-6 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto pr-1">
-            <p className="px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">{shellTone.menuTitle}</p>
-            {sidebarTabs.slice(0, 10).map((tab) => (
-              <button
-                key={tab.key}
-                data-testid={`menu-tab-${tab.key}`}
-                className={`relative flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
-                  effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
-                }`}
-                onClick={() => selectTab(tab.key)}
-                type="button"
-              >
-                {effectiveActiveTab === tab.key && <span className={`absolute -left-4 h-7 w-1 rounded-r-full ${shellTone.indicatorClass}`} />}
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-            <p className="mt-5 px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">General</p>
-            {sidebarTabs.slice(10).map((tab) => (
-              <button
-                key={tab.key}
-                data-testid={`menu-tab-${tab.key}`}
-                className={`relative flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
-                  effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
-                }`}
-                onClick={() => selectTab(tab.key)}
-                type="button"
-              >
-                {effectiveActiveTab === tab.key && <span className={`absolute -left-4 h-7 w-1 rounded-r-full ${shellTone.indicatorClass}`} />}
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-          <div className={`mt-3 shrink-0 rounded-[18px] p-3 ${shellTone.demoCard}`}>
-            <p className="text-xs opacity-80">Modo {businessScope === "adult" ? "liga adultos" : "academia"}</p>
-            <p className="mt-1 text-sm font-semibold">Datos operativos vivos</p>
-            <button className={`mt-3 w-full rounded-md px-3 py-2 text-xs font-semibold ${shellTone.refreshButton}`} onClick={refreshActiveSection} type="button">
-              Actualizar
-            </button>
-          </div>
-        </aside>
-
-        <div className="min-w-0 flex-1 pt-[76px] sm:pt-20 lg:ml-[17rem] lg:pt-0">
-          <header
-            className={`app-header fixed left-2 right-2 top-2 z-[900] rounded-[18px] border px-3 py-2 shadow-sm transition-colors duration-200 sm:left-3 sm:right-3 sm:top-3 sm:rounded-[24px] sm:px-4 sm:py-3 lg:sticky lg:left-auto lg:right-auto lg:top-4 ${
-              headerScrolled
-                ? "border-white/45 bg-white/70 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-950/65"
-                : "border-white/80 bg-white/95 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/95"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-3">
-                <button
-                  data-testid="section-menu-open"
-                  className="grid size-10 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white/90 lg:hidden"
-                  onClick={() => setMobileMenuOpen(true)}
-                  type="button"
-                  aria-label="Abrir secciones"
-                >
-                  <Menu size={18} />
-                </button>
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <img className="hidden h-7 w-auto object-contain sm:block" src="./logo-futsi.png" alt="Futsi" />
-                    <h1 className="truncate text-base font-semibold sm:text-xl">{effectiveActiveTabMeta?.label || (businessScope === "adult" ? "Liga adultos" : "Operacion base")}</h1>
-                  </div>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                {canToggleAdultDashboard && (
-                  <button
-                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
-                      businessScope === "adult"
-                        ? "border-blue-700 bg-blue-700 text-white"
-                        : "border-blue-700 bg-white text-blue-800 hover:bg-blue-50 dark:bg-zinc-950 dark:text-white dark:hover:bg-zinc-900"
-                    }`}
-                    onClick={() => switchBusinessScope(businessScope === "adult" ? "academy" : "adult")}
-                    type="button"
-                  >
-                    <span className="sm:hidden">{businessScope === "adult" ? "Acad." : "Adultos"}</span>
-                    <span className="hidden sm:inline">{businessScope === "adult" ? "Academia" : "Liga adultos"}</span>
-                  </button>
-                )}
-                <button className="grid size-10 place-items-center rounded-md border border-zinc-200 bg-white/90 hover:bg-zinc-50" onClick={refreshActiveSection} title="Actualizar" type="button">
-                  <RefreshCw size={16} />
-                </button>
-                <div className="hidden items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-1 pr-3 sm:flex">
-                  <span className="grid size-8 place-items-center rounded-full bg-rose-400 text-sm font-semibold text-white">{user.username.slice(0, 1).toUpperCase()}</span>
-                  <div className="text-sm leading-tight">
-                    <p className="font-medium">{user.username}</p>
-                    <p className="text-xs text-zinc-500">{roleLabels[user.role]}</p>
-                  </div>
-                </div>
-                <button className="hidden size-10 place-items-center rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 sm:grid" onClick={onLogout} title="Salir" type="button">
-                  <LogOut size={16} />
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <div className="px-1 py-5">
-            {message && <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p>}
-            {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-            {(loading || (sectionLoading === effectiveActiveTab && !isFirstSectionLoad)) && <RefreshSkeletonBar />}
-
-            <section className={`${effectiveActiveTab !== "dashboard" && effectiveActiveTab !== "adult-dashboard" ? "mt-6" : "mt-0"} grid min-w-0 gap-5 pb-20 sm:pb-0 ${fullWidthTabs.has(effectiveActiveTab) ? "grid-cols-1" : "lg:grid-cols-[360px_1fr]"}`}>
-              {isFirstSectionLoad ? (
-                <SectionSkeleton />
-              ) : (
-                <>
-              {effectiveActiveTab === "dashboard" && (
-                user.role === "coach" ? (
-                  <CoachDashboardPanel
-                    user={user}
-                    data={data}
-                    onCreateWorkLog={(payload) => onCreateRecord("/coach-work-logs/", payload, "Horas registradas.")}
-                    onAcceptStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/accept/`, "Pago aceptado.")}
-                    onRejectStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/reject/`, "Pago rechazado.")}
-                    onDownloadFile={onDownloadFile}
-                  />
-                ) : (
-                  <DashboardPanel data={data} />
-                )
-              )}
-              {effectiveActiveTab === "adult-dashboard" && (
-                <AdultLeagueDashboardPanel
-                  data={scopedData}
-                  collectionOnly={user.role === "cashier"}
-                  onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
-                  onMarkPlayer={onMarkAdultPlayer}
-                  onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago adulto registrado.")}
-                  onPaymentAction={(paymentId, action) => onPostAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
-                />
-              )}
-              {effectiveActiveTab === "calendar" && <CalendarPanel data={scopedData} />}
-              {effectiveActiveTab === "sports" && (
-                <SportsPanel data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />
-              )}
-              {effectiveActiveTab === "tournaments" && (
-                <TournamentsPanel
-                  data={scopedData}
-                  user={user}
-                  readOnly={user.role === "coach"}
-                  onCreateTournament={(payload) => onCreateAndReturn("/tournaments/", payload)}
-                  onCreateTeam={(payload) => onCreateAndReturn("/teams/", payload)}
-                  onRegisterStudent={(payload) => onCreateAndReturn("/student-tournament-registrations/", payload)}
-                  onCreateMatch={(payload) => onCreateAndReturn("/matches/", payload)}
-                  onUpdateMatch={onUpdateMatchScore}
-                />
-              )}
-              {effectiveActiveTab === "coaches" && <CoachesConsolidatedPanel data={scopedData} />}
-              {effectiveActiveTab === "referees" && <RefereesConsolidatedPanel data={scopedData} />}
-              {effectiveActiveTab === "uniforms" && <UniformsPanel data={scopedData} />}
-              {effectiveActiveTab === "sales-estimate" && <SalesEstimationPanel data={scopedData} />}
-              {effectiveActiveTab === "income-statement" && <IncomeStatementPanel data={scopedData} />}
-              {effectiveActiveTab === "daily-operation" && <DailyOperationPanel data={scopedData} />}
-              {effectiveActiveTab === "debts" && <DebtsPanel data={scopedData} />}
-              {effectiveActiveTab === "attendance" && (
-                <div className="grid gap-5">
-                  <div className="rounded-md border border-zinc-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      {[
-                        { key: "manual", label: "Pase manual" },
-                        { key: "automatic", label: "Pase automatico" },
-                        { key: "report", label: "Reporte automatico" },
-                        { key: "occupancy", label: "Aforo en video" },
-                      ].map((item) => (
-                        <button
-                          key={item.key}
-                          className={`rounded-md px-3 py-2 text-sm font-semibold transition ${attendanceSubsection === item.key ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950" : "bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"}`}
-                          onClick={() => setAttendanceSubsection(item.key as AttendanceSubsection)}
-                          type="button"
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {attendanceSubsection === "manual" && (
-                    <AttendancePanel
-                      data={scopedData}
-                      user={user}
-                      onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
-                      onMark={(payload) => onCreateAndReturn<AttendanceRecord>("/attendance-records/", payload)}
-                      onClose={onCloseAttendanceSession}
-                      onFaceAttendance={(payload) => onCreateAndReturn<FaceRecognitionResponse>("/face-attendance/recognize/", payload)}
-                    />
-                  )}
-                  {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={refreshActiveSection} mode="process" />}
-                  {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={refreshActiveSection} mode="report" />}
-                  {attendanceSubsection === "occupancy" && <VideoOccupancyPanel token={token} data={scopedData} />}
-                </div>
-              )}
-              {effectiveActiveTab === "billing" && (
-                businessScope === "adult" ? (
-                  <AdultLeagueDashboardPanel
-                    data={scopedData}
-                    collectionOnly
-                    onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
-                    onMarkPlayer={onMarkAdultPlayer}
-                    onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago adulto registrado.")}
-                    onPaymentAction={(paymentId, action) => onPostAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
-                  />
-                ) : user.role === "cashier" ? (
-                  <BillingCollectionPanel
-                    data={scopedData}
-                    compact
-                    onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Solicitud de pago creada.")}
-                    onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento registrado.")}
-                    discountActionLabel="Solicitar descuento"
-                  />
-                ) : (
-                  <BillingPanel
-                    data={scopedData}
-                    onCreateCharge={(payload) => onCreateRecord("/charges/", payload, "Cargo creado.")}
-                    onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago registrado.")}
-                    onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento solicitado.")}
-                    onApproveDiscount={(discountId) => onPostAction(`/discounts/${discountId}/approve/`, "Descuento aprobado.")}
-                    onRejectDiscount={(discountId) => onPostAction(`/discounts/${discountId}/reject/`, "Descuento rechazado.")}
-                  />
-                )
-              )}
-              {effectiveActiveTab === "expenses" && (
-                <ExpensesPanel
-                  data={scopedData}
-                  onCreateExpense={(payload) => onCreateRecord("/expenses/", payload, "Gasto capturado.")}
-                  onApproveExpense={(expenseId) => onPostAction(`/expenses/${expenseId}/approve/`, "Gasto aprobado.")}
-                  onRejectExpense={(expenseId) => onPostAction(`/expenses/${expenseId}/reject/`, "Gasto rechazado.")}
-                  onCreateInvoice={(payload) => onCreateRecord("/invoices/simulate/", payload, "Factura simulada generada.")}
-                  onCreateStaffPayment={(payload) => onCreateRecord("/staff-payment-requests/", payload, "Solicitud de pago enviada.")}
-                  onAcceptStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/accept/`, "Pago aceptado.")}
-                  onRejectStaffPayment={(requestId) => onPostAction(`/staff-payment-requests/${requestId}/reject/`, "Pago rechazado.")}
-                  onCreateCashMovement={(payload) => onCreateRecord("/cash-movements/", payload, "Movimiento de caja registrado.")}
-                />
-              )}
-              {effectiveActiveTab === "students" && (
-                <StudentsPanel
-                  data={scopedData}
-                  onCreate={(payload) => onCreateRecord("/students/", payload, "Alumno creado.")}
-                  onUpdate={(studentId, payload) => onUpdateRecord(`/students/${studentId}/`, payload, "Alumno actualizado.")}
-                />
-              )}
-              {effectiveActiveTab === "guardians" && <GuardiansPanel guardians={scopedData.guardians} onCreate={(payload) => onCreateRecord("/guardians/", payload, "Representante creado.")} />}
-              {effectiveActiveTab === "sites" && <SitesPanel sites={data.sites} onCreate={(payload) => onCreateRecord("/sites/", payload, "Sede creada.")} />}
-              {effectiveActiveTab === "users" && isAdmin && (
-                <UsersPanel
-                  data={scopedData}
-                  onCreate={(payload) => onCreateRecord("/users/", payload, "Usuario creado.")}
-                  onUpdate={(userId, payload) => onUpdateRecord(`/users/${userId}/`, payload, "Permisos actualizados.")}
-                />
-              )}
-              {effectiveActiveTab === "invoices" && (
-                <InvoicesPanel
-                  data={scopedData}
-                  onCreateInvoice={(payload) => onCreateRecord("/invoices/simulate/", payload, "Factura simulada generada.")}
-                  onDownloadFile={onDownloadFile}
-                />
-              )}
-              {effectiveActiveTab === "historical" && <HistoricalImportsPanel data={scopedData} onUpload={onUploadHistoricalImport} onCommit={onCommitHistoricalImport} />}
-              {effectiveActiveTab === "discrepancies" && isAdmin && <HistoricalDiscrepanciesPanel report={scopedData.historicalDiscrepancies} sites={scopedData.sites} />}
-                </>
-              )}
-            </section>
-          </div>
+        <AdminShellSidebar
+          sidebarRef={desktopSidebarRef}
+          sidebarExpanded={sidebarExpanded}
+          canToggleAdultDashboard={canToggleAdultDashboard}
+          businessScope={businessScope}
+          sidebarTabs={sidebarTabs}
+          effectiveActiveTab={effectiveActiveTab}
+          shellTone={shellTone}
+          onToggleExpanded={() => setSidebarExpanded((value) => !value)}
+          onSwitchScope={switchBusinessScope}
+          onSelectTab={selectTab}
+          onRefresh={refreshActiveSection}
+          onLogout={onLogout}
+          onMouseEnter={clearDesktopSidebarCollapse}
+          onMouseLeave={startDesktopSidebarCollapse}
+        />
+        <div className={`min-w-0 flex-1 pt-[76px] transition-[margin] duration-200 sm:pt-20 lg:pt-0 ${sidebarExpanded ? "lg:ml-[17rem]" : "lg:ml-[5.75rem]"}`}>
+          <AdminShellHeader
+            user={user}
+            businessScope={businessScope}
+            canToggleAdultDashboard={canToggleAdultDashboard}
+            headerScrolled={headerScrolled}
+            effectiveActiveTabMeta={effectiveActiveTabMeta}
+            onOpenMobileMenu={() => setMobileMenuOpen(true)}
+            onRefresh={refreshActiveSection}
+            onSwitchScope={switchBusinessScope}
+            onLogout={onLogout}
+          />
+          <AdminShellContent
+            token={token}
+            user={user}
+            data={data}
+            scopedData={scopedData}
+            businessScope={businessScope}
+            isAdmin={isAdmin}
+            effectiveActiveTab={effectiveActiveTab}
+            loading={loading}
+            sectionLoading={sectionLoading}
+            isFirstSectionLoad={isFirstSectionLoad}
+            message={message}
+            error={error}
+            attendanceSubsection={attendanceSubsection}
+            unknownDetailDate={unknownDetailDate}
+            unknownDetailReport={unknownDetailReport}
+            onSelectAttendanceSubsection={selectAttendanceSubsection}
+            onOpenUnknownDetail={openUnknownDetail}
+            onCloseUnknownDetail={closeUnknownDetail}
+            onRefreshActiveSection={refreshActiveSection}
+            onCreateRecord={onCreateRecord}
+            onUpdateRecord={onUpdateRecord}
+            onCreateAndReturn={onCreateAndReturn}
+            onUploadHistoricalImport={onUploadHistoricalImport}
+            onCommitHistoricalImport={onCommitHistoricalImport}
+            onCloseAttendanceSession={onCloseAttendanceSession}
+            onPostAction={onPostAction}
+            onDownloadFile={onDownloadFile}
+            onUpdateMatchScore={onUpdateMatchScore}
+            onSaveStudentAssessment={onSaveStudentAssessment}
+            onMarkAdultPlayer={onMarkAdultPlayer}
+          />
         </div>
       </div>
     </main>
