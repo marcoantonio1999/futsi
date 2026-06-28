@@ -8,6 +8,7 @@ from core.api.automatic_attendance import (
     AutomaticAttendanceProcessView,
     AutomaticAttendanceReprocessClipView,
     AutomaticAttendanceStatusView,
+    AutomaticAttendanceStorageEvidenceView,
     AutomaticAttendanceUploadView,
 )
 from core.api.video_occupancy import (
@@ -16,6 +17,13 @@ from core.api.video_occupancy import (
     VideoOccupancyProcessView,
     VideoOccupancyStatusView,
     VideoOccupancyUploadView,
+)
+from core.api.unknown_attendance import (
+    UnknownAttendanceCaptureImageView,
+    UnknownAttendanceLocalFaceImageView,
+    UnknownAttendanceProcessView,
+    UnknownAttendanceStatusView,
+    UnknownAttendanceSubjectAcceptView,
 )
 from core.api.dashboard import DashboardSummaryView
 from core.api.router import AccountingExportView, FaceAttendanceView, router
@@ -41,10 +49,16 @@ urlpatterns = [
     path("api/automatic-attendance/jobs/<str:job_id>/", AutomaticAttendanceJobView.as_view()),
     path("api/automatic-attendance/jobs/<str:job_id>/confirm-review/", AutomaticAttendanceConfirmReviewView.as_view()),
     path("api/automatic-attendance/evidence/<str:job_id>/<path:evidence_path>", AutomaticAttendanceEvidenceView.as_view()),
+    path("api/automatic-attendance/evidence-storage/<str:bucket>/<path:object_path>", AutomaticAttendanceStorageEvidenceView.as_view()),
     path("api/video-occupancy/status/", VideoOccupancyStatusView.as_view()),
     path("api/video-occupancy/upload/", VideoOccupancyUploadView.as_view()),
     path("api/video-occupancy/process-pending/", VideoOccupancyProcessView.as_view()),
     path("api/video-occupancy/jobs/<str:job_id>/", VideoOccupancyJobView.as_view()),
     path("api/video-occupancy/evidence/<str:job_id>/<path:evidence_path>", VideoOccupancyEvidenceView.as_view()),
+    path("api/unknown-attendance/status/", UnknownAttendanceStatusView.as_view()),
+    path("api/unknown-attendance/process-pending/", UnknownAttendanceProcessView.as_view()),
+    path("api/unknown-attendance/subjects/<str:subject_id>/accept/", UnknownAttendanceSubjectAcceptView.as_view()),
+    path("api/unknown-attendance/captures/<str:capture_id>/image/", UnknownAttendanceCaptureImageView.as_view()),
+    path("api/unknown-attendance/faces/<path:object_path>", UnknownAttendanceLocalFaceImageView.as_view()),
     path("api/", include(router.urls)),
 ]

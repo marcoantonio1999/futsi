@@ -171,7 +171,23 @@ En videos largos, asume que el archivo inicia a medianoche del dia detectado y p
 AUTO_ATTENDANCE_SESSION_PRE_MINUTES=15
 AUTO_ATTENDANCE_SESSION_DURATION_MINUTES=120
 AUTO_ATTENDANCE_LONG_VIDEO_SECONDS=14400
+AUTO_ATTENDANCE_EVIDENCE_BUCKET=automatic-attendance-evidence
+AUTO_ATTENDANCE_KEEP_FAILED_VIDEO=false
+AUTO_ATTENDANCE_PROBE_WINDOW_SECONDS=4
+AUTO_ATTENDANCE_DENSE_FRAME_STRIDE=8
+AUTO_ATTENDANCE_VIDEO_CLUSTER_SIMILARITY=0.52
+AUTO_ATTENDANCE_CLUSTER_TOP_FACES=3
+AUTO_ATTENDANCE_MAX_FACE_GROUPS=80
+AUTO_ATTENDANCE_MIN_DET_SCORE=0.45
+AUTO_ATTENDANCE_MIN_FACE_SIZE=24
+AUTO_ATTENDANCE_MIN_BLUR=5
 ```
+
+El procesamiento de asistencia usa dos etapas: primero detecta y agrupa rostros unicos del video, luego compara solo los mejores recortes de cada grupo contra el roster de la sesion. Esto reduce comparaciones repetidas contra Supabase/InsightFace y evita que la misma persona aparezca como varios alumnos. `AUTO_ATTENDANCE_DENSE_FRAME_STRIDE=8` analiza aproximadamente 15 frames por bloque activo de 4 segundos en videos de 30 FPS; baja el valor para mas sensibilidad o subelo para mas velocidad.
+
+Las evidencias de comparacion se suben a Supabase Storage privado en `AUTO_ATTENDANCE_EVIDENCE_BUCKET`. El backend las sirve a usuarios autenticados desde `/api/automatic-attendance/evidence-storage/...`, sin exponer la service role key al frontend. Si Storage falla durante una prueba, se usa la copia local como fallback.
+
+Al terminar el procesamiento, el video local descargado desde Drive o subido manualmente se borra para no llenar disco. El `.json` de metadata se conserva dentro del job. Si necesitas depurar un fallo con el archivo completo, usa `AUTO_ATTENDANCE_KEEP_FAILED_VIDEO=true` y solo los videos fallidos se conservaran en `back/media/automatic_attendance/errores/<job_id>/`.
 
 ## Validacion
 

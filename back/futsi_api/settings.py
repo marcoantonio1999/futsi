@@ -95,6 +95,8 @@ HAS_POSTGRES_PARTS = any(
         "SUPABASE_DB_PASSWORD",
     )
 )
+DB_CONN_MAX_AGE = int(os.getenv("DB_CONN_MAX_AGE", "60"))
+DB_CONN_HEALTH_CHECKS = os.getenv("DB_CONN_HEALTH_CHECKS", "true").lower() in {"1", "true", "yes", "si", "on"}
 
 
 def postgres_config_from_url(database_url):
@@ -129,6 +131,8 @@ def postgres_config_from_url(database_url):
         "HOST": parsed.hostname or "",
         "PORT": port,
         "OPTIONS": {"sslmode": sslmode},
+        "CONN_MAX_AGE": DB_CONN_MAX_AGE,
+        "CONN_HEALTH_CHECKS": DB_CONN_HEALTH_CHECKS,
     }
 
 
@@ -173,6 +177,8 @@ elif DB_ENGINE == "postgres" or HAS_POSTGRES_PARTS:
             "PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("SUPABASE_DB_PASSWORD", "")),
             "HOST": postgres_host,
             "PORT": os.getenv("POSTGRES_PORT", os.getenv("SUPABASE_DB_PORT", "5432")),
+            "CONN_MAX_AGE": DB_CONN_MAX_AGE,
+            "CONN_HEALTH_CHECKS": DB_CONN_HEALTH_CHECKS,
             **({"OPTIONS": postgres_options} if postgres_options else {}),
         }
     }
