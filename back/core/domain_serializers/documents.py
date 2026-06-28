@@ -68,8 +68,11 @@ class DailyClosureSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyClosure
         fields = "__all__"
+        read_only_fields = ["closed_by", "closed_at", "created_at", "updated_at"]
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = AuditLog
+        fields = "__all__"
+        read_only_fields = ["created_at", "updated_at"]

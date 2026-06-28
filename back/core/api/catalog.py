@@ -34,7 +34,7 @@ class GuardianViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.request.user.role == "cashier" and self.request.user.primary_site_id:
+        if self.request.user.role == "site_coordinator" and self.request.user.primary_site_id:
             queryset = queryset.filter(students__site_id=self.request.user.primary_site_id)
         return queryset.distinct()
 
@@ -149,6 +149,12 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
 class PlayerViewSet(viewsets.ModelViewSet):
     queryset = Player.objects.select_related("team", "team__tournament", "team__tournament__site", "user").all()
     serializer_class = PlayerSerializer
+    permission_classes = [IsOperationsCashierCoachOrGuardianRole]
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsOperationsCashierCoachOrGuardianRole()]
+        return [IsAdminOrSiteCoordinatorRole()]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -197,6 +203,12 @@ class PlayerAttendanceRecordViewSet(viewsets.ModelViewSet):
 class RoundViewSet(viewsets.ModelViewSet):
     queryset = Round.objects.select_related("tournament").all()
     serializer_class = RoundSerializer
+    permission_classes = [IsOperationsCashierCoachOrGuardianRole]
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsOperationsCashierCoachOrGuardianRole()]
+        return [IsAdminOrSiteCoordinatorRole()]
 
     def get_queryset(self):
         queryset = super().get_queryset()

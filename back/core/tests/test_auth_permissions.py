@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from core.models import CoachWorkLog
+from core.models import AuditLog, CoachWorkLog, Site
 
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
@@ -241,3 +241,57 @@ def test_coach_cannot_administer_tournaments_or_registrations(login_client):
             format="json",
         )
         assert match_response.status_code == 403
+
+
+def test_audit_logs_are_admin_only(login_client):
+    AuditLog.objects.create(
+        action="security_probe",
+        table_name="students",
+        record_id="1",
+        metadata={"source": "test"},
+    )
+
+    cashier_client, _cashier = login_client("caja.roma", "demo12345")
+    assert cashier_client.get("/api/audit-logs/").status_code == 403
+
+    coach_client, _coach = login_client("coach.roma", "demo12345")
+    assert coach_client.get("/api/audit-logs/").status_code == 403
+
+    admin_client, _admin = login_client("admin", "admin12345")
+    response = admin_client.get("/api/audit-logs/")
+    assert response.status_code == 200
+    assert any(item["action"] == "security_probe" for item in response.json())
+
+
+def test_site_coordinator_finance_scope_cannot_be_expanded_by_site_filter(login_client):
+    client, user = login_client("coordinador.roma", "demo12345")
+    assert user["role"] == "site_coordinator"
+
+    coyoacan = Site.objects.get(code="coyoacan")
+    expenses_response = client.get(f"/api/expenses/?site={coyoacan.id}")
+    assert expenses_response.status_code == 200
+    assert expenses_response.json()
+    assert all(item["site_name"] == "Roma" for item in expenses_response.json())
+
+    staff_response = client.get(f"/api/staff-payment-requests/?site={coyoacan.id}")
+    assert staff_response.status_code == 200
+    assert staff_response.json()
+    assert all(item["site_name"] == "Roma" for item in staff_response.json())
+
+
+def test_cashier_cannot_close_another_site(login_client):
+    client, user = login_client("caja.roma", "demo12345")
+    assert user["role"] == "cashier"
+
+    coyoacan = Site.objects.get(code="coyoacan")
+    response = client.post(
+        "/api/daily-closures/",
+        {
+            "site": coyoacan.id,
+            "business_date": "2026-06-15",
+            "cash_expected": "100.00",
+            "cash_reported": "100.00",
+        },
+        format="json",
+    )
+    assert response.status_code == 400

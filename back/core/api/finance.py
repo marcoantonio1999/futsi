@@ -15,11 +15,14 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        if user.role in {"site_coordinator", "cashier"} and user.primary_site_id:
+            queryset = queryset.filter(site_id=user.primary_site_id)
         status_value = self.request.query_params.get("status")
         site = self.request.query_params.get("site")
         if status_value:
             queryset = queryset.filter(status=status_value)
-        if site:
+        if site and user.role in {"admin", "dev", "owner", "accounting"}:
             queryset = queryset.filter(site_id=site)
         return queryset
 
@@ -52,12 +55,12 @@ class StaffPaymentRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role not in {"admin", "dev", "owner", "accounting", "site_coordinator", "cashier"}:
             queryset = queryset.filter(recipient=user)
-        if user.role == "cashier" and user.primary_site_id:
+        if user.role in {"site_coordinator", "cashier"} and user.primary_site_id:
             queryset = queryset.filter(site_id=user.primary_site_id)
         site = self.request.query_params.get("site")
         status_value = self.request.query_params.get("status")
         mine = self.request.query_params.get("mine")
-        if site:
+        if site and user.role in {"admin", "dev", "owner", "accounting"}:
             queryset = queryset.filter(site_id=site)
         if status_value:
             queryset = queryset.filter(status=status_value)
@@ -122,11 +125,11 @@ class CashMovementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.request.user.role == "cashier" and self.request.user.primary_site_id:
+        if self.request.user.role in {"site_coordinator", "cashier"} and self.request.user.primary_site_id:
             queryset = queryset.filter(site_id=self.request.user.primary_site_id)
         site = self.request.query_params.get("site")
         movement_type = self.request.query_params.get("movement_type")
-        if site:
+        if site and self.request.user.role in {"admin", "dev", "owner", "accounting"}:
             queryset = queryset.filter(site_id=site)
         if movement_type:
             queryset = queryset.filter(movement_type=movement_type)
