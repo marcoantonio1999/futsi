@@ -3,8 +3,12 @@ omit =
     */migrations/*
     */tests/*
     back/core/api/automatic_attendance.py
+    back/core/api/automatic_attendance_*.py
+    back/core/api/unknown_attendance.py
     back/core/api/video_occupancy.py
     back/core/services/face_insight.py
     core/api/automatic_attendance.py
+    core/api/automatic_attendance_*.py
+    core/api/unknown_attendance.py
     core/api/video_occupancy.py
     core/services/face_insight.py
