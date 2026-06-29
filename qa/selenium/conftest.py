@@ -94,9 +94,25 @@ def live_backend(e2e_config):
         db_path.unlink()
 
     env = os.environ.copy()
+    for name in (
+        "DATABASE_URL",
+        "SUPABASE_DATABASE_URL",
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "SUPABASE_DB_NAME",
+        "SUPABASE_DB_USER",
+        "SUPABASE_DB_PASSWORD",
+        "SUPABASE_DB_HOST",
+        "SUPABASE_DB_PORT",
+    ):
+        env.pop(name, None)
     env.update(
         {
             "DB_ENGINE": "sqlite",
+            "ALLOW_SQLITE": "true",
             "SQLITE_DATABASE_PATH": str(db_path),
             "DJANGO_ALLOWED_HOSTS": "localhost,127.0.0.1,testserver",
             "CORS_ALLOWED_ORIGINS": f"http://127.0.0.1:{e2e_config['web_port']},http://localhost:{e2e_config['web_port']}",

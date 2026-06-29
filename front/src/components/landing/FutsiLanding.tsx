@@ -10,6 +10,8 @@ type FutsiLandingProps = {
 };
 
 function useLandingScene(mountRef: React.RefObject<HTMLDivElement | null>) {
+  const [sceneReady, setSceneReady] = useState(false);
+
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -22,7 +24,15 @@ function useLandingScene(mountRef: React.RefObject<HTMLDivElement | null>) {
     camera.position.set(0, 1.45, 5.9);
     camera.lookAt(0, 0.45, -4.2);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    } catch (error) {
+      console.warn("Landing WebGL scene unavailable; using static fallback.", error);
+      setSceneReady(false);
+      return;
+    }
+
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -31,6 +41,7 @@ function useLandingScene(mountRef: React.RefObject<HTMLDivElement | null>) {
     renderer.domElement.style.height = "100%";
     renderer.domElement.style.width = "100%";
     mount.appendChild(renderer.domElement);
+    setSceneReady(true);
 
     const ambient = new THREE.HemisphereLight("#d1fae5", "#052e16", 2.2);
     scene.add(ambient);
@@ -172,19 +183,34 @@ function useLandingScene(mountRef: React.RefObject<HTMLDivElement | null>) {
         else material.dispose();
       });
       renderer.domElement.remove();
+      setSceneReady(false);
     };
   }, [mountRef]);
+
+  return sceneReady;
 }
 
 export function FutsiLanding({ onLogin }: FutsiLandingProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
-  useLandingScene(mountRef);
+  const sceneReady = useLandingScene(mountRef);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white" data-testid="landing-page">
       <section className="relative min-h-[92svh] overflow-hidden">
         <div ref={mountRef} className="absolute inset-0" data-testid="landing-three-scene" aria-hidden="true" />
+        {!sceneReady ? (
+          <div
+            className="absolute inset-0 bg-[radial-gradient(circle_at_72%_36%,rgba(56,189,248,0.22),transparent_28%),linear-gradient(155deg,#052e16_0%,#047857_48%,#0f172a_100%)]"
+            data-testid="landing-static-scene"
+            aria-hidden="true"
+          >
+            <div className="absolute inset-x-[-8%] bottom-[-18%] h-2/5 rotate-[-3deg] bg-emerald-700/70" />
+            <div className="absolute bottom-[14%] left-1/2 h-[2px] w-[82%] -translate-x-1/2 bg-white/55" />
+            <div className="absolute bottom-[22%] left-1/2 h-[16%] w-[34%] -translate-x-1/2 border-2 border-white/55" />
+            <div className="absolute bottom-[27%] left-1/2 h-[8%] w-[16%] -translate-x-1/2 border-2 border-white/50" />
+          </div>
+        ) : null}
         <div className="absolute inset-0 bg-zinc-950/10" />
 
         <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
