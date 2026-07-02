@@ -82,6 +82,8 @@ Reglas obligatorias:
 - Los datos demo nunca deben mezclarse con datos reales.
 - Antes de una migracion productiva: backup, revision de migracion y smoke test.
 
+La operacion diaria de demo/staging, credenciales demo, comando permitido y bitacora de regeneracion estan en `docs/OPERACION_DEMO_STAGING.md`.
+
 ## GitHub Pages
 
 Variables en GitHub Actions:

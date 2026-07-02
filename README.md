@@ -142,6 +142,8 @@ Separacion de entornos:
 
 `seed_demo --reset` es destructivo y siempre requiere `ALLOW_DESTRUCTIVE_SEED=true`. Con `DJANGO_DEBUG=false`, `seed_demo` solo se permite si `FUTSI_ENV=demo` o `FUTSI_ENV=staging`.
 
+La operacion de bases demo/staging y la bitacora de regeneracion estan en `docs/OPERACION_DEMO_STAGING.md`.
+
 ## Frontend local
 
 ```powershell
@@ -231,6 +233,7 @@ La documentacion formal actualizada esta en `docs/`:
 - propuesta Android PWA gratis;
 - APK Android con React + Capacitor;
 - plan de liderazgo tecnico y tablero actual: `docs/PLAN_LIDERAZGO_TECNICO.md` y `docs/TABLERO_TECNICO_ACTUAL.md`;
+- operacion de demo/staging: `docs/OPERACION_DEMO_STAGING.md`;
 - tema oscuro web/Android;
 - importacion historica de Excel con preview, password, firma y auditoria;
 - plan Sprint 3 de importacion historica ampliada para conservar informacion anterior de ingresos, egresos, gastos, utilidad y posibles fugas;
