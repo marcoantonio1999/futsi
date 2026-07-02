@@ -11,6 +11,20 @@ on:
 jobs:
   release-check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: futsi_release_check
+          POSTGRES_USER: futsi
+          POSTGRES_PASSWORD: futsi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U futsi -d futsi_release_check"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: back
@@ -20,8 +34,14 @@ jobs:
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
       CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
       CSRF_TRUSTED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
-      DB_ENGINE: sqlite
-      ALLOW_SQLITE: "true"
+      DB_ENGINE: postgres
+      FUTSI_ENV: staging
+      POSTGRES_DB: futsi_release_check
+      POSTGRES_USER: futsi
+      POSTGRES_PASSWORD: futsi
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_SSLMODE: disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
