@@ -27,6 +27,7 @@ from rest_framework.views import APIView
 
 from .common import Guardian, IsOperationsCashierOrCoachRole, IsOperationsOrCoachRole, Player, Student, Team
 from core.api.automatic_attendance import download_drive_file, rclone_executable
+from core.file_security import FileSecurityError, IMAGE_EXTENSIONS, secure_file_response
 from core.services.face_insight import build_student_database, detect_embeddings
 from core.services.supabase_storage import download_private_file, parse_storage_uri, upload_private_file
 
@@ -2312,9 +2313,17 @@ class UnknownAttendanceCaptureImageView(APIView):
             return Response({"detail": "Captura no encontrada."}, status=status.HTTP_404_NOT_FOUND)
         try:
             local_path = materialize_capture(capture)
+            return secure_file_response(
+                local_path,
+                allowed_extensions=IMAGE_EXTENSIONS,
+                max_bytes=settings.FILE_EVIDENCE_MAX_IMAGE_BYTES,
+                content_type="image/jpeg",
+                retention_days=settings.FILE_EVIDENCE_RETENTION_DAYS,
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
         except Exception as exc:
             return Response({"detail": f"No se pudo preparar la evidencia: {exc}"}, status=status.HTTP_404_NOT_FOUND)
-        return FileResponse(open(local_path, "rb"), content_type="image/jpeg")
 
 
 class UnknownAttendanceLocalFaceImageView(APIView):
@@ -2325,7 +2334,16 @@ class UnknownAttendanceLocalFaceImageView(APIView):
         local_path = local_face_uri_to_path(uri)
         if not local_path or not local_path.exists():
             return Response({"detail": "Recorte local no encontrado."}, status=status.HTTP_404_NOT_FOUND)
-        return FileResponse(open(local_path, "rb"), content_type="image/jpeg")
+        try:
+            return secure_file_response(
+                local_path,
+                allowed_extensions=IMAGE_EXTENSIONS,
+                max_bytes=settings.FILE_EVIDENCE_MAX_IMAGE_BYTES,
+                content_type="image/jpeg",
+                retention_days=settings.FILE_EVIDENCE_RETENTION_DAYS,
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
 
 
 class UnknownAttendanceSubjectAcceptView(APIView):

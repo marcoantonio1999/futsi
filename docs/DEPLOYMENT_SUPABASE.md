@@ -45,11 +45,20 @@ POSTGRES_SSLMODE=require
 DJANGO_SECURE_SSL_REDIRECT=true
 DJANGO_SECURE_HSTS_SECONDS=31536000
 API_TOKEN_TTL_MINUTES=720
+FILE_UPLOAD_MAX_VIDEO_BYTES=786432000
+FILE_EVIDENCE_MAX_IMAGE_BYTES=10485760
+FILE_INVOICE_MAX_PDF_BYTES=15728640
+FILE_INVOICE_MAX_XML_BYTES=2097152
+FILE_UPLOAD_MAX_EXCEL_BYTES=26214400
+FILE_EXPORT_MAX_EXCEL_BYTES=26214400
+FILE_EVIDENCE_RETENTION_DAYS=30
 ```
 
 No usar `SUPABASE_DATABASE_URL` si el password tiene caracteres especiales y no esta URL encoded. La configuracion actual de Django prioriza `POSTGRES_*` cuando existen.
 
 `API_TOKEN_TTL_MINUTES` controla la duracion maxima de sesion de la API. El valor recomendado inicial es 720 minutos; al expirar, el token se borra en backend y el frontend obliga a iniciar sesion nuevamente.
+
+Los limites `FILE_*` controlan uploads y descargas servidas por el backend: videos de asistencia/aforo, imagenes de evidencia, PDFs/XML de facturas y Excel contable. `FILE_EVIDENCE_RETENTION_DAYS` define durante cuantos dias se sirven evidencias locales desde disco; Storage privado sigue protegido por autenticacion y validacion de bucket/ruta.
 
 ## Render
 

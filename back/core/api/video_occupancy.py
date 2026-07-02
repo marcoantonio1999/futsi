@@ -18,6 +18,16 @@ from django.utils import timezone
 from django.utils.text import get_valid_filename
 
 from .common import *
+from core.file_security import (
+    FileSecurityError,
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS as SECURE_VIDEO_EXTENSIONS,
+    VIDEO_MIME_TYPES,
+    resolve_child_path,
+    secure_file_response,
+    validate_job_id,
+    validate_upload,
+)
 from core.services.face_insight import build_student_database, detect_embeddings
 
 
@@ -486,9 +496,15 @@ class VideoOccupancyUploadView(APIView):
         upload = request.FILES.get("video")
         if not upload:
             return Response({"detail": "Sube un archivo de video."}, status=status.HTTP_400_BAD_REQUEST)
-        suffix = Path(upload.name).suffix.lower()
-        if suffix not in VIDEO_EXTENSIONS:
-            return Response({"detail": "Formato de video no soportado."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_upload(
+                upload,
+                allowed_extensions=SECURE_VIDEO_EXTENSIONS,
+                allowed_mime_types=VIDEO_MIME_TYPES,
+                max_bytes=settings.FILE_UPLOAD_MAX_VIDEO_BYTES,
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
 
         metadata = {
             "source": "upload",
@@ -556,8 +572,15 @@ class VideoOccupancyEvidenceView(APIView):
     permission_classes = [IsOperationsOrCoachRole]
 
     def get(self, request, job_id: str, evidence_path: str):
-        base_dir = processed_dir(job_id).resolve()
-        target = (base_dir / evidence_path).resolve()
-        if not str(target).startswith(str(base_dir)) or not target.exists() or not target.is_file():
+        try:
+            validate_job_id(job_id)
+            target = resolve_child_path(processed_dir(job_id), evidence_path)
+            return secure_file_response(
+                target,
+                allowed_extensions=IMAGE_EXTENSIONS,
+                max_bytes=settings.FILE_EVIDENCE_MAX_IMAGE_BYTES,
+                content_type="image/jpeg",
+                retention_days=settings.FILE_EVIDENCE_RETENTION_DAYS,
+            )
+        except FileSecurityError:
             return Response({"detail": "La evidencia no existe."}, status=status.HTTP_404_NOT_FOUND)
-        return FileResponse(open(target, "rb"), content_type="image/jpeg")

@@ -27,6 +27,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .common import *
+from core.file_security import (
+    FileSecurityError,
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS as SECURE_VIDEO_EXTENSIONS,
+    VIDEO_MIME_TYPES,
+    resolve_child_path,
+    secure_file_response,
+    validate_job_id,
+    validate_storage_reference,
+    validate_upload,
+)
 from core.services.match_sessions import ensure_match_attendance_sessions
 from core.services.face_insight import build_student_database, detect_embeddings, student_reference_path
 from core.services.supabase_storage import download_private_file, parse_storage_uri, upload_private_file
@@ -107,9 +118,15 @@ class AutomaticAttendanceUploadView(APIView):
         upload = request.FILES.get("video")
         if not upload:
             return Response({"detail": "Sube un archivo de video."}, status=status.HTTP_400_BAD_REQUEST)
-        suffix = Path(upload.name).suffix.lower()
-        if suffix not in VIDEO_EXTENSIONS:
-            return Response({"detail": "Formato de video no soportado."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_upload(
+                upload,
+                allowed_extensions=SECURE_VIDEO_EXTENSIONS,
+                allowed_mime_types=VIDEO_MIME_TYPES,
+                max_bytes=settings.FILE_UPLOAD_MAX_VIDEO_BYTES,
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
 
         metadata = {
             "source": "upload",
@@ -381,11 +398,18 @@ class AutomaticAttendanceEvidenceView(APIView):
     permission_classes = [IsOperationsOrCoachRole]
 
     def get(self, request, job_id: str, evidence_path: str):
-        base_dir = processed_dir(job_id).resolve()
-        target = (base_dir / evidence_path).resolve()
-        if not str(target).startswith(str(base_dir)) or not target.exists() or not target.is_file():
+        try:
+            validate_job_id(job_id)
+            target = resolve_child_path(processed_dir(job_id), evidence_path)
+            return secure_file_response(
+                target,
+                allowed_extensions=IMAGE_EXTENSIONS,
+                max_bytes=settings.FILE_EVIDENCE_MAX_IMAGE_BYTES,
+                content_type="image/jpeg",
+                retention_days=settings.FILE_EVIDENCE_RETENTION_DAYS,
+            )
+        except FileSecurityError:
             return Response({"detail": "La evidencia no existe."}, status=status.HTTP_404_NOT_FOUND)
-        return FileResponse(open(target, "rb"), content_type="image/jpeg")
 
 
 class AutomaticAttendanceStorageEvidenceView(APIView):
@@ -393,7 +417,15 @@ class AutomaticAttendanceStorageEvidenceView(APIView):
 
     def get(self, request, bucket: str, object_path: str):
         try:
+            bucket, object_path = validate_storage_reference(bucket, object_path, IMAGE_EXTENSIONS)
             local_path = download_private_file(bucket, object_path, suffix=Path(object_path).suffix or ".jpg")
+            return secure_file_response(
+                Path(local_path),
+                allowed_extensions=IMAGE_EXTENSIONS,
+                max_bytes=settings.FILE_EVIDENCE_MAX_IMAGE_BYTES,
+                content_type="image/jpeg",
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
         except Exception as exc:
             return Response({"detail": f"No se pudo leer la evidencia privada: {exc}"}, status=status.HTTP_404_NOT_FOUND)
-        return FileResponse(open(local_path, "rb"), content_type="image/jpeg")

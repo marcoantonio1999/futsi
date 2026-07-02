@@ -1,4 +1,9 @@
+from pathlib import Path
+
+from django.conf import settings
+
 from .common import *
+from core.file_security import FileSecurityError, PDF_EXTENSIONS, secure_file_response
 
 def build_invoice_xml(invoice):
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -222,12 +227,35 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         invoice = self.get_object()
         if not invoice.pdf_file:
             invoice.pdf_file.save(f"factura-demo-{invoice.uuid}.pdf", ContentFile(build_invoice_pdf(invoice)), save=True)
-        return FileResponse(invoice.pdf_file.open("rb"), as_attachment=True, filename=f"factura-demo-{invoice.uuid}.pdf")
+        try:
+            return secure_file_response(
+                Path(invoice.pdf_file.path),
+                allowed_extensions=PDF_EXTENSIONS,
+                max_bytes=settings.FILE_INVOICE_MAX_PDF_BYTES,
+                content_type="application/pdf",
+                as_attachment=True,
+                filename=f"factura-demo-{invoice.uuid}.pdf",
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+        except (NotImplementedError, ValueError):
+            if invoice.pdf_file.size > settings.FILE_INVOICE_MAX_PDF_BYTES:
+                return Response({"detail": "PDF excede el tamano permitido."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+            return FileResponse(
+                invoice.pdf_file.open("rb"),
+                as_attachment=True,
+                filename=f"factura-demo-{invoice.uuid}.pdf",
+                content_type="application/pdf",
+            )
 
     @action(detail=True, methods=["get"])
     def xml(self, request, pk=None):
         invoice = self.get_object()
-        response = HttpResponse(invoice.xml_content or build_invoice_xml(invoice), content_type="application/xml")
+        xml_payload = invoice.xml_content or build_invoice_xml(invoice)
+        if len(xml_payload.encode("utf-8")) > settings.FILE_INVOICE_MAX_XML_BYTES:
+            return Response({"detail": "XML excede el tamano permitido."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        response = HttpResponse(xml_payload, content_type="application/xml; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="factura-demo-{invoice.uuid}.xml"'
+        response["X-Content-Type-Options"] = "nosniff"
         return response
 

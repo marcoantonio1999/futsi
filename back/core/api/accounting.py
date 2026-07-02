@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 from .common import *
+from django.conf import settings
 
 def money_value(value):
     return float(value or 0)
@@ -290,11 +291,15 @@ class AccountingExportView(APIView):
         buffer = BytesIO()
         workbook.save(buffer)
         buffer.seek(0)
+        payload = buffer.getvalue()
+        if len(payload) > settings.FILE_EXPORT_MAX_EXCEL_BYTES:
+            return Response({"detail": "Reporte excede el tamano permitido."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
         filename = f"reporte-contable-futsi-{timezone.localdate().isoformat()}.xlsx"
         response = HttpResponse(
-            buffer.getvalue(),
+            payload,
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["X-Content-Type-Options"] = "nosniff"
         return response
 

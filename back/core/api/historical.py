@@ -1,4 +1,7 @@
+from django.conf import settings
+
 from .common import *
+from core.file_security import EXCEL_EXTENSIONS, EXCEL_MIME_TYPES, FileSecurityError, validate_upload
 from .historical_parser import HISTORICAL_IMPORT_ROLES, parse_historical_workbook
 
 class HistoricalImportViewSet(viewsets.ReadOnlyModelViewSet):
@@ -18,6 +21,15 @@ class HistoricalImportViewSet(viewsets.ReadOnlyModelViewSet):
         upload = request.FILES.get("file")
         if not upload:
             return Response({"detail": "Debes adjuntar un archivo Excel."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_upload(
+                upload,
+                allowed_extensions=EXCEL_EXTENSIONS,
+                allowed_mime_types=EXCEL_MIME_TYPES,
+                max_bytes=settings.FILE_UPLOAD_MAX_EXCEL_BYTES,
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
 
         password = request.data.get("password", "")
         try:
