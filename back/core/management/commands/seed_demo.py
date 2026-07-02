@@ -1,6 +1,9 @@
+import os
 from datetime import datetime
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.core.management.base import CommandError
 from django.db import connection
 from django.utils import timezone
 
@@ -10,6 +13,7 @@ from core.models import (
     CashMovement,
     Charge,
     CoachWorkLog,
+    Court,
     DailyClosure,
     Discount,
     Expense,
@@ -37,6 +41,8 @@ from core.models import (
 
 class Command(BaseCommand):
     help = "Carga datos demo reproducibles para Sprint 1."
+    protected_envs = {"production"}
+    debug_false_allowed_envs = {"demo", "staging"}
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -46,7 +52,21 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        debug = os.getenv("DJANGO_DEBUG", str(settings.DEBUG)).lower() in {"1", "true", "yes", "si", "on"}
+        futsi_env = os.getenv("FUTSI_ENV", getattr(settings, "FUTSI_ENV", "local" if debug else "production")).lower()
+        if futsi_env in self.protected_envs:
+            raise CommandError(
+                "seed_demo bloqueado en FUTSI_ENV=production. Produccion usa Supabase/Postgres real, "
+                "migraciones controladas y nunca datos demo."
+            )
+        if not debug and futsi_env not in self.debug_false_allowed_envs:
+            raise CommandError(
+                "seed_demo bloqueado con DJANGO_DEBUG=false. Solo se permite en FUTSI_ENV=demo o FUTSI_ENV=staging."
+            )
         if options["reset"]:
+            allow_destructive_seed = os.getenv("ALLOW_DESTRUCTIVE_SEED", "").lower() in {"1", "true", "yes", "si", "on"}
+            if not allow_destructive_seed:
+                raise CommandError("seed_demo --reset requiere ALLOW_DESTRUCTIVE_SEED=true.")
             CashMovement.objects.all().delete()
             StaffPaymentRequest.objects.all().delete()
             FaceRecognitionAttempt.objects.all().delete()
@@ -66,6 +86,7 @@ class Command(BaseCommand):
             Charge.objects.all().delete()
             Expense.objects.all().delete()
             DailyClosure.objects.all().delete()
+            Court.objects.all().delete()
             StudentTournamentRegistration.objects.all().delete()
             Student.objects.all().delete()
             Player.objects.all().delete()

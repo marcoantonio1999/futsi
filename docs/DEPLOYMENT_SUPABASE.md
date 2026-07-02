@@ -31,6 +31,7 @@ Local y produccion deben apuntar a Supabase/Postgres. El backend ya no cae a SQL
 ```env
 DJANGO_SECRET_KEY=valor-largo-y-secreto
 DJANGO_DEBUG=false
+FUTSI_ENV=production
 DJANGO_ALLOWED_HOSTS=futsi.onrender.com,.onrender.com
 CORS_ALLOWED_ORIGINS=https://marcoantonio1999.github.io
 CSRF_TRUSTED_ORIGINS=https://marcoantonio1999.github.io
@@ -59,6 +60,28 @@ Servicio recomendado: Web Service con Docker.
 
 El contenedor corre migraciones antes de levantar gunicorn. No ejecutar `seed_demo --reset` en produccion con datos reales.
 
+## Separacion de entornos y seed demo
+
+Futsi separa cinco entornos operativos:
+
+| Entorno | Variable | Base de datos | Uso de `seed_demo` |
+| --- | --- | --- | --- |
+| Produccion | `FUTSI_ENV=production` | Supabase/Postgres real | Prohibido |
+| Staging | `FUTSI_ENV=staging` | Supabase/Postgres separado o descartable | Permitido con control |
+| Demo | `FUTSI_ENV=demo` | Supabase/Postgres separado o descartable | Permitido con control |
+| Testing | `FUTSI_ENV=test` | Base aislada de pruebas | Temporal para compatibilidad |
+| Local | `FUTSI_ENV=local` | Local o Supabase dev | Permitido con control |
+
+`seed_demo --reset` es un comando destructivo. Siempre requiere `ALLOW_DESTRUCTIVE_SEED=true`.
+
+Reglas obligatorias:
+
+- Produccion nunca ejecuta `seed_demo`, con o sin `--reset`.
+- Con `DJANGO_DEBUG=false`, `seed_demo` se bloquea salvo `FUTSI_ENV=demo` o `FUTSI_ENV=staging`.
+- Render/Docker productivo solo debe correr migraciones controladas.
+- Los datos demo nunca deben mezclarse con datos reales.
+- Antes de una migracion productiva: backup, revision de migracion y smoke test.
+
 ## GitHub Pages
 
 Variables en GitHub Actions:
@@ -69,6 +92,23 @@ VITE_BASE_PATH=/futsi/
 ```
 
 Pages debe publicar desde `gh-pages` o desde el artifact generado por el workflow de frontend.
+
+## CI backend
+
+Los jobs `backend-pytest` y `sonarqube` de GitHub Actions levantan Postgres efimero (`postgres:16`) y ejecutan `pytest` con:
+
+```env
+DB_ENGINE=postgres
+FUTSI_ENV=test
+POSTGRES_DB=futsi_test
+POSTGRES_USER=futsi
+POSTGRES_PASSWORD=futsi
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+POSTGRES_SSLMODE=disable
+```
+
+SQLite queda reservado para pruebas locales aisladas y Selenium/demo, no para validar el backend principal en CI.
 
 ## Checklist antes de reintentar produccion
 

@@ -102,6 +102,8 @@ cd back
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe manage.py migrate
+$env:FUTSI_ENV="demo"
+$env:ALLOW_DESTRUCTIVE_SEED="true"
 .\.venv\Scripts\python.exe manage.py seed_demo --reset
 .\.venv\Scripts\python.exe manage.py runserver
 ```
@@ -129,6 +131,16 @@ cd back
 ```
 
 La opcion recomendada para local y produccion es definir variables separadas `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT` y `POSTGRES_SSLMODE=require`. Esto evita errores cuando el password contiene caracteres especiales. SQLite solo queda permitido para pruebas aisladas con `DB_ENGINE=sqlite` y `ALLOW_SQLITE=true`. El detalle actualizado de Render, GitHub Pages y Supabase esta en `docs/DEPLOYMENT_SUPABASE.md`.
+
+Separacion de entornos:
+
+- `FUTSI_ENV=production`: entorno real. No se debe ejecutar `seed_demo`, con o sin `--reset`.
+- `FUTSI_ENV=staging`: base separada o descartable para validacion previa.
+- `FUTSI_ENV=demo`: base descartable para demostraciones y Selenium.
+- `FUTSI_ENV=test`: pruebas automatizadas aisladas.
+- `FUTSI_ENV=local`: desarrollo local.
+
+`seed_demo --reset` es destructivo y siempre requiere `ALLOW_DESTRUCTIVE_SEED=true`. Con `DJANGO_DEBUG=false`, `seed_demo` solo se permite si `FUTSI_ENV=demo` o `FUTSI_ENV=staging`.
 
 ## Frontend local
 
@@ -218,6 +230,7 @@ La documentacion formal actualizada esta en `docs/`:
 - demo de pase de lista facial;
 - propuesta Android PWA gratis;
 - APK Android con React + Capacitor;
+- plan de liderazgo tecnico y tablero actual: `docs/PLAN_LIDERAZGO_TECNICO.md` y `docs/TABLERO_TECNICO_ACTUAL.md`;
 - tema oscuro web/Android;
 - importacion historica de Excel con preview, password, firma y auditoria;
 - plan Sprint 3 de importacion historica ampliada para conservar informacion anterior de ingresos, egresos, gastos, utilidad y posibles fugas;

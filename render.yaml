@@ -11,6 +11,8 @@ services:
     envVars:
       - key: DJANGO_DEBUG
         value: "false"
+      - key: FUTSI_ENV
+        value: production
       - key: DJANGO_SECRET_KEY
         sync: false
       - key: DJANGO_ALLOWED_HOSTS

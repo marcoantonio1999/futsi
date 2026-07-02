@@ -10,18 +10,20 @@ class Command(BaseCommand):
     help = "Carga datos demo solo si la base operativa esta vacia."
 
     def handle(self, *args, **options):
+        debug = os.getenv("DJANGO_DEBUG", str(settings.DEBUG)).lower() in {"1", "true", "yes", "si", "on"}
+        futsi_env = os.getenv("FUTSI_ENV", getattr(settings, "FUTSI_ENV", "local" if debug else "production")).lower()
         force_seed = os.getenv("RUN_SEED_DEMO", "false").lower() == "true"
-        allow_production_seed = os.getenv("ALLOW_PRODUCTION_SEED", "false").lower() == "true"
-        is_production = not settings.DEBUG or bool(
+        is_render = bool(
             os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_EXTERNAL_HOSTNAME")
         )
-        auto_seed_default = "false" if is_production else "true"
+        is_production = futsi_env == "production"
+        auto_seed_default = "false" if is_production or is_render or not debug else "true"
         auto_seed = os.getenv("AUTO_SEED_IF_EMPTY", auto_seed_default).lower() == "true"
 
         if force_seed:
-            if is_production and not allow_production_seed:
+            if is_production:
                 self.stdout.write(
-                    "RUN_SEED_DEMO=true ignorado en produccion. Usa ALLOW_PRODUCTION_SEED=true si realmente quieres sembrar demo."
+                    "RUN_SEED_DEMO=true ignorado en FUTSI_ENV=production. Produccion nunca carga datos demo."
                 )
                 return
             self.stdout.write("RUN_SEED_DEMO=true; cargando datos demo.")
