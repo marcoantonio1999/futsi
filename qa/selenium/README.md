@@ -25,6 +25,7 @@ La suite levanta automaticamente:
 - Django en `http://127.0.0.1:8100`
 - Vite en `http://127.0.0.1:5176`
 - SQLite aislado en `qa/artifacts/e2e.sqlite3`
+- `FUTSI_ENV=demo` con `seed_demo --reset` habilitado solo para regenerar datos demo de esta suite
 
 ## Reusar servidores locales
 

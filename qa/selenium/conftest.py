@@ -113,6 +113,10 @@ def live_backend(e2e_config):
         {
             "DB_ENGINE": "sqlite",
             "ALLOW_SQLITE": "true",
+            "FUTSI_ENV": "demo",
+            "ALLOW_DESTRUCTIVE_SEED": "true",
+            "DJANGO_DEBUG": "true",
+            "DJANGO_TEST_FAST_PASSWORD_HASHERS": "true",
             "SQLITE_DATABASE_PATH": str(db_path),
             "DJANGO_ALLOWED_HOSTS": "localhost,127.0.0.1,testserver",
             "CORS_ALLOWED_ORIGINS": f"http://127.0.0.1:{e2e_config['web_port']},http://localhost:{e2e_config['web_port']}",
