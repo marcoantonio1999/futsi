@@ -85,12 +85,20 @@ def build_video_session_result(
     video_cluster_similarity = scan_metrics["video_cluster_similarity"]
     group_top_faces = scan_metrics["group_top_faces"]
     max_face_groups = scan_metrics["max_face_groups"]
+    processing_video_source = scan_metrics.get("processing_video_source") or "full_video"
+    frame_proxy = bool(scan_metrics.get("frame_proxy"))
+    analysis_video_mod8 = bool(scan_metrics.get("analysis_video_mod8"))
+    analysis_frame_interval = int(scan_metrics.get("analysis_frame_interval") or 0)
+    detail_candidate_windows = int(scan_metrics.get("detail_candidate_windows") or 0)
     hits: dict[str, dict] = {}
     off_roster_hits: dict[str, dict] = {}
     accepted_assignments = []
     duplicate_rejections = []
     for observation in sorted(accepted_observations, key=lambda item: item["best_similarity"], reverse=True):
         person = observation["student"]
+        is_expected = bool(observation.get("is_expected_roster", True))
+        if not is_expected and observation.get("padding_only"):
+            continue
         query = normalize_embedding(observation["embedding"])
         conflict = None
         for assignment in accepted_assignments:
@@ -102,25 +110,37 @@ def build_video_session_result(
             duplicate_rejections.append(observation)
             continue
         accepted_assignments.append({"person_key": person_key(person), "person_name": person.full_name, "embedding": query})
-        target_hits = hits if observation.get("is_expected_roster", True) else off_roster_hits
+        target_hits = hits if is_expected else off_roster_hits
         entry = target_hits.setdefault(
             person_key(person),
             {
                 "student": person,
                 "person_type": person_type(person),
                 "person_key": person_key(person),
-                "is_expected_roster": bool(observation.get("is_expected_roster", True)),
+                "is_expected_roster": is_expected,
                 "count": 0,
+                "core_hit_count": 0,
+                "padding_hit_count": 0,
                 "best_similarity": 0.0,
                 "margin": 0.0,
                 "best_frame": None,
                 "best_bbox": None,
                 "best_frame_index": 0,
+                "video_second": None,
+                "video_time": "",
+                "session_second": None,
+                "session_time": "",
+                "observed_at": "",
+                "observed_date": "",
+                "observed_time": "",
+                "window_phase": "unknown",
                 "candidates": observation["candidates"],
                 "group_ids": [],
             },
         )
         entry["count"] += int(observation.get("count") or 1)
+        entry["core_hit_count"] += int(observation.get("core_hit_count") or 0)
+        entry["padding_hit_count"] += int(observation.get("padding_hit_count") or 0)
         entry["group_ids"].append(observation.get("group_id"))
         if observation["best_similarity"] > entry["best_similarity"]:
             entry.update(
@@ -130,6 +150,14 @@ def build_video_session_result(
                     "best_frame": observation["best_frame"],
                     "best_bbox": observation["best_bbox"],
                     "best_frame_index": observation["best_frame_index"],
+                    "video_second": observation.get("video_second"),
+                    "video_time": observation.get("video_time", ""),
+                    "session_second": observation.get("session_second"),
+                    "session_time": observation.get("session_time", ""),
+                    "observed_at": observation.get("observed_at", ""),
+                    "observed_date": observation.get("observed_date", ""),
+                    "observed_time": observation.get("observed_time", ""),
+                    "window_phase": observation.get("window_phase", "unknown"),
                     "candidates": observation["candidates"],
                     "quality": observation.get("quality", {}),
                 }
@@ -158,6 +186,16 @@ def build_video_session_result(
                 "similarity": round(entry["best_similarity"], 4),
                 "margin": round(entry["margin"], 4),
                 "frame": entry.get("best_frame_index", 0),
+                "video_second": entry.get("video_second"),
+                "video_time": entry.get("video_time", ""),
+                "session_second": entry.get("session_second"),
+                "session_time": entry.get("session_time", ""),
+                "observed_at": entry.get("observed_at", ""),
+                "observed_date": entry.get("observed_date", ""),
+                "observed_time": entry.get("observed_time", ""),
+                "window_phase": entry.get("window_phase", "unknown"),
+                "core_hit_count": entry.get("core_hit_count", 0),
+                "padding_hit_count": entry.get("padding_hit_count", 0),
                 "evidence_path": evidence_path,
                 "candidates": entry.get("candidates", []),
                 "group_ids": [group_id for group_id in entry.get("group_ids", []) if group_id is not None],
@@ -181,6 +219,16 @@ def build_video_session_result(
                 "similarity": round(entry["best_similarity"], 4),
                 "margin": round(entry["margin"], 4),
                 "frame": entry.get("best_frame_index", 0),
+                "video_second": entry.get("video_second"),
+                "video_time": entry.get("video_time", ""),
+                "session_second": entry.get("session_second"),
+                "session_time": entry.get("session_time", ""),
+                "observed_at": entry.get("observed_at", ""),
+                "observed_date": entry.get("observed_date", ""),
+                "observed_time": entry.get("observed_time", ""),
+                "window_phase": entry.get("window_phase", "unknown"),
+                "core_hit_count": entry.get("core_hit_count", 0),
+                "padding_hit_count": entry.get("padding_hit_count", 0),
                 "reason": "Detectado por video, pero no pertenece al roster esperado de esta sesion.",
                 "evidence_path": evidence_path,
                 "candidates": entry.get("candidates", []),
@@ -226,6 +274,16 @@ def build_video_session_result(
                 "margin": round(entry.get("margin", 0.0), 4),
                 "hits": entry.get("count", 1),
                 "frame": entry.get("best_frame_index", 0),
+                "video_second": entry.get("video_second"),
+                "video_time": entry.get("video_time", ""),
+                "session_second": entry.get("session_second"),
+                "session_time": entry.get("session_time", ""),
+                "observed_at": entry.get("observed_at", ""),
+                "observed_date": entry.get("observed_date", ""),
+                "observed_time": entry.get("observed_time", ""),
+                "window_phase": entry.get("window_phase", "unknown"),
+                "core_hit_count": entry.get("core_hit_count", 0),
+                "padding_hit_count": entry.get("padding_hit_count", 0),
                 "reason": entry.get("reason", "Requiere revision"),
                 "evidence_path": evidence_path,
                 "candidates": entry.get("candidates", []),
@@ -241,6 +299,16 @@ def build_video_session_result(
                 "hits": entry.get("count", 1),
                 "similarity": round(entry.get("best_similarity", 0.0), 4),
                 "frame": entry.get("best_frame_index", 0),
+                "video_second": entry.get("video_second"),
+                "video_time": entry.get("video_time", ""),
+                "session_second": entry.get("session_second"),
+                "session_time": entry.get("session_time", ""),
+                "observed_at": entry.get("observed_at", ""),
+                "observed_date": entry.get("observed_date", ""),
+                "observed_time": entry.get("observed_time", ""),
+                "window_phase": entry.get("window_phase", "unknown"),
+                "core_hit_count": entry.get("core_hit_count", 0),
+                "padding_hit_count": entry.get("padding_hit_count", 0),
                 "evidence_path": evidence_path,
                 "group_id": entry.get("group_id"),
                 "quality": entry.get("quality", {}),
@@ -261,6 +329,11 @@ def build_video_session_result(
         "face_groups": face_groups_count,
         "rejected_quality_faces": rejected_quality_faces,
         "clustered_pipeline": True,
+        "processing_video_source": processing_video_source,
+        "frame_proxy": frame_proxy,
+        "analysis_video_mod8": analysis_video_mod8,
+        "analysis_frame_interval": analysis_frame_interval,
+        "detail_candidate_windows": detail_candidate_windows,
         "total_frames": total_frames,
         "duration_seconds": duration,
         "window": window_label,
@@ -278,7 +351,7 @@ def build_video_session_result(
             "cluster_top_faces": group_top_faces,
             "max_face_groups": max_face_groups,
             "min_det_score": float(os.getenv("AUTO_ATTENDANCE_MIN_DET_SCORE", "0.45")),
-            "min_face_size": int(os.getenv("AUTO_ATTENDANCE_MIN_FACE_SIZE", "24")),
+            "min_face_size": int(os.getenv("AUTO_ATTENDANCE_MIN_FACE_SIZE", "80")),
             "min_blur": float(os.getenv("AUTO_ATTENDANCE_MIN_BLUR", "5")),
         },
     }

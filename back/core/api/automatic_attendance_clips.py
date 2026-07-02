@@ -119,6 +119,18 @@ def pending_videos() -> list[dict]:
     return videos + remotes
 
 
+def pending_video_matches_request(item: dict, requested_path: str | None) -> bool:
+    if not requested_path:
+        return True
+    if item.get("path") == requested_path:
+        return True
+    if requested_path.startswith("video_clip:"):
+        requested_clip_id = requested_path.split(":", 1)[1]
+        item_clip_id = str((item.get("metadata") or {}).get("video_clip_id") or "").strip()
+        return bool(item_clip_id and item_clip_id == requested_clip_id)
+    return False
+
+
 def video_clips_table_exists() -> bool:
     with connection.cursor() as cursor:
         cursor.execute("select to_regclass('public.video_clips')")
@@ -317,6 +329,28 @@ def mark_video_clip_processed(clip_id: str, failed: bool, error_message: str = "
              where id = %s
             """,
             ["failed" if failed else "processed", error_message or None, clip_id],
+        )
+
+
+def mark_video_clip_processing(clip_id: str, job_id: str = "") -> None:
+    if not clip_id:
+        return
+    processing_metadata = {"automatic_attendance_processing_job_id": job_id} if job_id else {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            update public.video_clips
+               set status = 'processing',
+                   error_message = null,
+                   last_heartbeat_at = now(),
+                   metadata = coalesce(metadata, '{}'::jsonb) || %s::jsonb,
+                   updated_at = now()
+             where id = %s
+               and deleted_at is null
+               and processed_at is null
+               and status in ('uploaded', 'queued', 'processing')
+            """,
+            [json.dumps(processing_metadata), clip_id],
         )
 
 

@@ -4,6 +4,7 @@ from django.urls import include, path
 from core.api.automatic_attendance import (
     AutomaticAttendanceJobView,
     AutomaticAttendanceConfirmReviewView,
+    AutomaticAttendanceDownloadPendingView,
     AutomaticAttendanceEvidenceView,
     AutomaticAttendanceProcessView,
     AutomaticAttendanceReprocessClipView,
@@ -24,6 +25,7 @@ from core.api.unknown_attendance import (
     UnknownAttendanceProcessView,
     UnknownAttendanceStatusView,
     UnknownAttendanceSubjectAcceptView,
+    UnknownAttendanceSubjectRegisterPersonView,
 )
 from core.api.dashboard import DashboardSummaryView
 from core.api.router import AccountingExportView, FaceAttendanceView, router
@@ -44,6 +46,7 @@ urlpatterns = [
     path("api/face-attendance/recognize/", FaceAttendanceView.as_view()),
     path("api/automatic-attendance/status/", AutomaticAttendanceStatusView.as_view()),
     path("api/automatic-attendance/upload/", AutomaticAttendanceUploadView.as_view()),
+    path("api/automatic-attendance/download-pending-local/", AutomaticAttendanceDownloadPendingView.as_view()),
     path("api/automatic-attendance/process-pending/", AutomaticAttendanceProcessView.as_view()),
     path("api/automatic-attendance/reprocess-video-clip/", AutomaticAttendanceReprocessClipView.as_view()),
     path("api/automatic-attendance/jobs/<str:job_id>/", AutomaticAttendanceJobView.as_view()),
@@ -58,6 +61,7 @@ urlpatterns = [
     path("api/unknown-attendance/status/", UnknownAttendanceStatusView.as_view()),
     path("api/unknown-attendance/process-pending/", UnknownAttendanceProcessView.as_view()),
     path("api/unknown-attendance/subjects/<str:subject_id>/accept/", UnknownAttendanceSubjectAcceptView.as_view()),
+    path("api/unknown-attendance/subjects/<str:subject_id>/register-person/", UnknownAttendanceSubjectRegisterPersonView.as_view()),
     path("api/unknown-attendance/captures/<str:capture_id>/image/", UnknownAttendanceCaptureImageView.as_view()),
     path("api/unknown-attendance/faces/<path:object_path>", UnknownAttendanceLocalFaceImageView.as_view()),
     path("api/", include(router.urls)),

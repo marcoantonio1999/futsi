@@ -39,6 +39,9 @@ from .automatic_attendance_domain import *
 from .automatic_attendance_evidence import *
 from .automatic_attendance_processor import *
 from .automatic_attendance_worker import *
+from .automatic_attendance_cache_worker import cache_pending_videos_worker
+from .automatic_attendance_local_cache import local_cache_summary
+from .automatic_attendance_neighbors import expand_requested_path_with_neighbors, pending_video_matches_any_request
 
 
 class AutomaticAttendanceStatusView(APIView):
@@ -75,6 +78,7 @@ class AutomaticAttendanceStatusView(APIView):
                     "pending": [],
                     "video_clips": [],
                     "reprocessable": [],
+                    "local_cache": local_cache_summary(),
                     "active_job": active_payload,
                     "jobs": latest_jobs,
                 }
@@ -87,6 +91,7 @@ class AutomaticAttendanceStatusView(APIView):
                 "pending": pending_videos(),
                 "video_clips": video_clip_monitor_items(),
                 "reprocessable": recent_reprocessable_videos(),
+                "local_cache": local_cache_summary(),
                 "active_job": active_payload,
                 "jobs": latest_jobs,
             }
@@ -148,9 +153,10 @@ class AutomaticAttendanceProcessView(APIView):
             return Response({"detail": "El procesamiento local no esta habilitado en este entorno."}, status=status.HTTP_403_FORBIDDEN)
         ensure_dirs()
         requested_path = request.data.get("path") or None
+        requested_paths = expand_requested_path_with_neighbors(requested_path) if requested_path else []
         pending = pending_videos()
         if requested_path:
-            pending = [item for item in pending if item.get("path") == requested_path]
+            pending = [item for item in pending if pending_video_matches_any_request(item, requested_paths)]
             if not pending:
                 return Response({"detail": "El video pendiente seleccionado ya no existe o ya fue procesado."}, status=status.HTTP_404_NOT_FOUND)
         if not pending:
@@ -168,13 +174,57 @@ class AutomaticAttendanceProcessView(APIView):
                 "worker_pid": PROCESS_ID,
                 "created_by": request.user.id,
                 "target_path": requested_path,
+                "target_paths": requested_paths,
+                "neighbor_expanded": bool(requested_paths and len(requested_paths) > 1),
                 "total": len(pending),
                 "processed": 0,
                 "percent": 0,
                 "results": [],
             }
             write_json(job_path(job["id"]), job)
-            thread = threading.Thread(target=process_pending_worker, args=(job["id"], request.user.id, requested_path), daemon=True)
+            thread = threading.Thread(target=process_pending_worker, args=(job["id"], request.user.id, requested_path, requested_paths), daemon=True)
+            thread.start()
+        return Response(job, status=status.HTTP_202_ACCEPTED)
+
+
+class AutomaticAttendanceDownloadPendingView(APIView):
+    permission_classes = [IsOperationsOrCoachRole]
+
+    def post(self, request):
+        if not is_local_enabled():
+            return Response({"detail": "El procesamiento local no esta habilitado en este entorno."}, status=status.HTTP_403_FORBIDDEN)
+        ensure_dirs()
+        requested_path = request.data.get("path") or None
+        pending = [item for item in pending_videos() if item.get("source") == "drive"]
+        if requested_path:
+            pending = [item for item in pending if pending_video_matches_request(item, requested_path)]
+            if not pending:
+                return Response({"detail": "El video pendiente seleccionado ya no existe o ya esta local."}, status=status.HTTP_404_NOT_FOUND)
+        if not pending:
+            return Response({"detail": "No hay videos remotos pendientes para descargar a local."}, status=status.HTTP_400_BAD_REQUEST)
+        with JOB_LOCK:
+            running = active_job()
+            if running:
+                return Response(running, status=status.HTTP_202_ACCEPTED)
+            job = {
+                "id": uuid4().hex,
+                "status": "queued",
+                "phase": "local_cache",
+                "phase_label": "Descargando pendientes a cache local",
+                "created_at": timezone.now().isoformat(),
+                "updated_at": timezone.now().isoformat(),
+                "heartbeat_at": timezone.now().isoformat(),
+                "worker_pid": PROCESS_ID,
+                "created_by": request.user.id,
+                "target_path": requested_path,
+                "cache_only": True,
+                "total": len(pending),
+                "processed": 0,
+                "percent": 0,
+                "results": [],
+            }
+            write_json(job_path(job["id"]), job)
+            thread = threading.Thread(target=cache_pending_videos_worker, args=(job["id"], requested_path), daemon=True)
             thread.start()
         return Response(job, status=status.HTTP_202_ACCEPTED)
 
@@ -198,7 +248,8 @@ class AutomaticAttendanceReprocessClipView(APIView):
             if not reset_video_clip_for_reprocess(clip_id):
                 return Response({"detail": "El video no existe o no esta en estado reprocesable."}, status=status.HTTP_404_NOT_FOUND)
             requested_path = f"video_clip:{clip_id}"
-            pending = [item for item in pending_videos() if item.get("path") == requested_path]
+            requested_paths = expand_requested_path_with_neighbors(requested_path)
+            pending = [item for item in pending_videos() if pending_video_matches_any_request(item, requested_paths)]
             if not pending:
                 return Response({"detail": "No se pudo preparar el video para reprocesar."}, status=status.HTTP_400_BAD_REQUEST)
             job = {
@@ -210,14 +261,16 @@ class AutomaticAttendanceReprocessClipView(APIView):
                 "worker_pid": PROCESS_ID,
                 "created_by": request.user.id,
                 "target_path": requested_path,
+                "target_paths": requested_paths,
+                "neighbor_expanded": bool(len(requested_paths) > 1),
                 "reprocess": True,
-                "total": 1,
+                "total": len(pending),
                 "processed": 0,
                 "percent": 0,
                 "results": [],
             }
             write_json(job_path(job["id"]), job)
-            thread = threading.Thread(target=process_pending_worker, args=(job["id"], request.user.id, requested_path), daemon=True)
+            thread = threading.Thread(target=process_pending_worker, args=(job["id"], request.user.id, requested_path, requested_paths), daemon=True)
             thread.start()
         return Response(job, status=status.HTTP_202_ACCEPTED)
 

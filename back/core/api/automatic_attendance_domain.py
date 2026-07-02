@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time as time_module
 from collections.abc import Sequence
+from datetime import datetime, time
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote
@@ -19,6 +20,7 @@ from uuid import uuid4
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import close_old_connections, connection
+from django.db.models import Q
 from django.http import FileResponse
 from django.utils import timezone
 from django.utils.text import get_valid_filename, slugify
@@ -32,6 +34,7 @@ from core.services.face_insight import build_student_database, detect_embeddings
 from core.services.supabase_storage import download_private_file, parse_storage_uri, upload_private_file
 
 from .automatic_attendance_state import *
+from .automatic_attendance_windows import recording_interval_from_metadata, session_window_for_recording
 
 
 def summarize_session(session: AttendanceSession) -> dict:
@@ -58,14 +61,82 @@ def get_or_create_match_sessions(match: Match, user: User) -> list[AttendanceSes
     return ensure_match_attendance_sessions(match, user)
 
 
+def resolve_sessions_overlapping_recording(
+    video_path: Path,
+    metadata: dict,
+    user: User,
+    seed_sessions: Sequence[AttendanceSession] | None = None,
+) -> list[AttendanceSession]:
+    recording = recording_interval_from_metadata(metadata)
+    seed_sessions = list(seed_sessions or [])
+    site_id = metadata.get("site_id") or (seed_sessions[0].site_id if seed_sessions else None)
+    if not recording or not site_id:
+        return []
+
+    recording_start, recording_end = recording
+    dates = {recording_start.date(), recording_end.date()}
+    recorded_date = metadata.get("recorded_date")
+    if recorded_date:
+        try:
+            dates.add(datetime.fromisoformat(str(recorded_date)).date())
+        except ValueError:
+            pass
+
+    existing_sessions = list(
+        AttendanceSession.objects.select_related("site", "match", "tournament", "team")
+        .filter(site_id=site_id, date__in=dates, closed_at__isnull=True)
+        .order_by("starts_at", "id")
+    )
+    match_sessions: list[AttendanceSession] = []
+    matches = (
+        Match.objects.select_related("site", "tournament", "round", "home_team", "away_team")
+        .filter(site_id=site_id, played_on__in=dates)
+        .exclude(status="canceled")
+        .order_by("starts_at", "id")
+    )
+    for match in matches:
+        match_sessions.extend(get_or_create_match_sessions(match, user))
+
+    sessions_by_id = {session.id: session for session in [*seed_sessions, *existing_sessions, *match_sessions] if not session.closed_at}
+    overrides = {}
+    resolved = []
+    for session in sessions_by_id.values():
+        window = session_window_for_recording(session, recording_start, recording_end)
+        if not window:
+            continue
+        overrides[str(session.id)] = window
+        resolved.append(session)
+    if resolved:
+        metadata["_automatic_attendance_session_windows"] = overrides
+    return sorted(resolved, key=lambda session: (session.date, session.starts_at or time.min, session.id))
+
+
 def resolve_sessions(video_path: Path, metadata: dict, user: User) -> list[AttendanceSession]:
     session_id = metadata.get("session_id")
     if session_id:
-        return list(AttendanceSession.objects.select_related("site").filter(id=session_id, closed_at__isnull=True))
+        sessions = list(
+            AttendanceSession.objects.select_related("site", "match", "tournament", "team")
+            .filter(id=session_id, closed_at__isnull=True)
+        )
+        if sessions:
+            metadata.setdefault("site_id", sessions[0].site_id)
+            metadata.setdefault("recorded_date", sessions[0].date.isoformat())
+            overlapping_sessions = resolve_sessions_overlapping_recording(video_path, metadata, user, sessions)
+            if overlapping_sessions:
+                return overlapping_sessions
+        if len(sessions) == 1 and sessions[0].session_type == "tournament_match" and sessions[0].match_id:
+            match_sessions = [session for session in get_or_create_match_sessions(sessions[0].match, user) if not session.closed_at]
+            if match_sessions:
+                return sorted(match_sessions, key=lambda session: (session.starts_at or time.min, session.id))
+        return sessions
 
     site_id = metadata.get("site_id")
     if not site_id:
         return []
+
+    overlapping_sessions = resolve_sessions_overlapping_recording(video_path, metadata, user)
+    if overlapping_sessions:
+        return overlapping_sessions
 
     recorded_date = metadata.get("recorded_date")
     if recorded_date:
@@ -138,6 +209,47 @@ def person_team_name(person: object) -> str:
     return getattr(team, "name", "") if team else ""
 
 
+def person_photo_identity(person: object) -> str:
+    photo = getattr(person, "photo", None)
+    if photo and getattr(photo, "name", ""):
+        return f"photo:{str(photo.name).strip().lower()}"
+    photo_url = str(getattr(person, "photo_url", "") or "").strip().lower()
+    return f"url:{photo_url}" if photo_url else ""
+
+
+def person_identity_key(person: object) -> str:
+    photo_key = person_photo_identity(person)
+    if photo_key:
+        return photo_key
+    user_id = getattr(person, "user_id", None)
+    if user_id:
+        return f"user:{user_id}"
+    phone = re.sub(r"\D+", "", str(getattr(person, "phone", "") or ""))
+    if len(phone) >= 7:
+        return f"phone:{phone}"
+    return person_key(person)
+
+
+def person_identity_members(person: object) -> list[object]:
+    members = getattr(person, "_automatic_attendance_identity_members", None)
+    return list(members) if members else [person]
+
+
+def dedupe_people_by_identity(people: Sequence[object], preferred_keys: set[str] | None = None) -> list[object]:
+    preferred_keys = preferred_keys or set()
+    grouped: dict[str, list[object]] = {}
+    for person in people:
+        grouped.setdefault(person_identity_key(person), []).append(person)
+
+    deduped = []
+    for members in grouped.values():
+        canonical = next((person for person in members if person_key(person) in preferred_keys), members[0])
+        ordered_members = [canonical] + [person for person in members if person is not canonical]
+        setattr(canonical, "_automatic_attendance_identity_members", ordered_members)
+        deduped.append(canonical)
+    return deduped
+
+
 def expected_roster_keys(session: AttendanceSession) -> set[str]:
     return {person_key(person) for person in roster_for_session(session)}
 
@@ -148,26 +260,38 @@ def comparison_roster_for_session(session: AttendanceSession) -> Sequence[object
     if not include_off_roster or session.session_type != "tournament_match":
         return roster
 
+    preferred_keys = {person_key(person) for person in roster}
     candidates: list[object] = list(roster)
-    if session.tournament_id:
-        candidates.extend(
-            Player.objects.select_related("team")
-            .filter(team__tournament_id=session.tournament_id, is_active=True)
-            .order_by("team_id", "full_name", "id")
-        )
-        candidates.extend(
-            Student.objects.filter(
-                tournament_registrations__tournament_id=session.tournament_id,
-                tournament_registrations__status="registered",
-                status__in=ACTIVE_STUDENT_STATUSES,
-            )
-            .distinct()
-            .order_by("full_name", "id")
-        )
-    elif session.match_id:
-        team_ids = [session.match.home_team_id, session.match.away_team_id]
-        candidates.extend(Player.objects.select_related("team").filter(team_id__in=team_ids, is_active=True))
+    candidates.extend(adult_reference_roster_for_session())
+    return dedupe_people_by_identity(candidates, preferred_keys=preferred_keys)
 
+
+def adult_reference_roster_for_session() -> Sequence[object]:
+    return list(
+        Player.objects.select_related("team", "team__tournament")
+        .filter(is_active=True)
+        .filter(Q(photo__gt="") | Q(photo_url__gt=""))
+        .order_by("full_name", "id")
+    )
+
+
+def tournament_reference_roster_for_session(session: AttendanceSession) -> Sequence[object]:
+    if session.session_type != "tournament_match" or not session.tournament_id:
+        return []
+    candidates: list[object] = list(
+        Player.objects.select_related("team")
+        .filter(team__tournament_id=session.tournament_id, is_active=True)
+        .order_by("team_id", "full_name", "id")
+    )
+    candidates.extend(
+        Student.objects.filter(
+            tournament_registrations__tournament_id=session.tournament_id,
+            tournament_registrations__status="registered",
+            status__in=ACTIVE_STUDENT_STATUSES,
+        )
+        .distinct()
+        .order_by("full_name", "id")
+    )
     deduped: dict[str, object] = {}
     for person in candidates:
         deduped.setdefault(person_key(person), person)

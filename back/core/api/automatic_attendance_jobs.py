@@ -92,16 +92,21 @@ def job_is_stale(job: dict) -> bool:
     return (timezone.now() - last_seen).total_seconds() > JOB_STALE_AFTER_SECONDS
 
 
-def interrupted_clip_id(job: dict) -> str:
-    target_path = str(job.get("target_path") or "")
-    if target_path.startswith("video_clip:"):
-        return target_path.split(":", 1)[1]
-    return ""
+def interrupted_clip_ids(job: dict) -> list[str]:
+    paths = list(job.get("target_paths") or [])
+    if job.get("target_path"):
+        paths.append(str(job.get("target_path") or ""))
+    clip_ids = []
+    for target_path in paths:
+        target_path = str(target_path or "")
+        if target_path.startswith("video_clip:"):
+            clip_ids.append(target_path.split(":", 1)[1])
+    return list(dict.fromkeys([clip_id for clip_id in clip_ids if clip_id]))
 
 
 def reset_interrupted_video_clip(job: dict, detail: str) -> None:
-    clip_id = interrupted_clip_id(job)
-    if not clip_id or not video_clips_table_exists():
+    clip_ids = interrupted_clip_ids(job)
+    if not clip_ids or not video_clips_table_exists():
         return
     with connection.cursor() as cursor:
         cursor.execute(
@@ -112,12 +117,12 @@ def reset_interrupted_video_clip(job: dict, detail: str) -> None:
                    error_message = %s,
                    last_error_at = now(),
                    updated_at = now()
-             where id = %s
+             where id = any(%s::uuid[])
                and deleted_at is null
                and processed_at is null
                and status in ('queued', 'processing', 'uploaded')
             """,
-            [detail, clip_id],
+            [detail, clip_ids],
         )
 
 

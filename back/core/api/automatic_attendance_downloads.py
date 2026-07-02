@@ -33,6 +33,11 @@ from core.services.supabase_storage import download_private_file, parse_storage_
 
 from .automatic_attendance_state import *
 from .automatic_attendance_jobs import update_job
+from .automatic_attendance_local_cache import (
+    copy_cached_video_to_target,
+    find_or_import_cached_video,
+    store_materialized_video_in_cache,
+)
 
 
 def rclone_executable() -> str:
@@ -76,21 +81,144 @@ def format_rclone_tail(log_path: Path) -> str:
     return "\n".join(lines[-20:])[:2000]
 
 
-def materialize_remote_video(item: dict, job: dict | None = None) -> Path:
+def frame_proxy_package(metadata: dict) -> dict | None:
+    package = metadata.get("frame_package")
+    if not isinstance(package, dict):
+        return None
+    if package.get("status") != "uploaded":
+        return None
+    if package.get("package_type") != "video_proxy_1fps":
+        return None
+    remote_path = str(package.get("remote_path") or package.get("drive_remote_path") or "").strip()
+    if not remote_path:
+        return None
+    return package
+
+
+def analysis_video_package(metadata: dict) -> dict | None:
+    package = metadata.get("analysis_video")
+    if not isinstance(package, dict):
+        return None
+    if package.get("status") != "uploaded":
+        return None
+    if package.get("package_type") != "video_frame_index_mod8":
+        return None
+    remote_path = str(package.get("remote_path") or package.get("drive_remote_path") or "").strip()
+    if not remote_path:
+        return None
+    return package
+
+
+def should_use_analysis_video(metadata: dict) -> bool:
+    if os.getenv("AUTO_ATTENDANCE_USE_ANALYSIS_VIDEO", "1").lower() in {"0", "false", "no", "off"}:
+        return False
+    return analysis_video_package(metadata) is not None
+
+
+def should_use_frame_proxy(metadata: dict) -> bool:
+    if os.getenv("AUTO_ATTENDANCE_USE_FRAME_PROXY", "0").lower() in {"0", "false", "no", "off"}:
+        return False
+    return frame_proxy_package(metadata) is not None
+
+
+def remote_video_download_source(item: dict, metadata: dict, source_kind: str | None = None) -> dict:
+    if source_kind == "analysis_video_mod8":
+        package = analysis_video_package(metadata)
+        if not package:
+            raise RuntimeError("El clip no tiene video de analisis mod8 disponible.")
+    elif source_kind == "frame_proxy_1fps":
+        package = frame_proxy_package(metadata)
+        if not package:
+            raise RuntimeError("El clip no tiene proxy 1 FPS disponible.")
+    elif source_kind == "full_video":
+        package = None
+    else:
+        package = analysis_video_package(metadata) if should_use_analysis_video(metadata) else None
+        if package is None:
+            package = frame_proxy_package(metadata) if should_use_frame_proxy(metadata) else None
+    if package:
+        remote_path = str(package.get("remote_path") or package.get("drive_remote_path") or "").strip()
+        filename = str(package.get("video_file_name") or Path(remote_path).name or item["filename"]).strip()
+        is_analysis_video = package.get("package_type") == "video_frame_index_mod8"
+        return {
+            "kind": "analysis_video_mod8" if is_analysis_video else "frame_proxy_1fps",
+            "remote_path": remote_path,
+            "file_id": "",
+            "filename": filename,
+            "size": int(package.get("size_bytes") or 0),
+            "phase_label": "Descargando video de analisis mod8 desde Drive" if is_analysis_video else "Descargando proxy 1 FPS desde Drive",
+            "summary_label": "video analisis mod8" if is_analysis_video else "proxy 1 FPS",
+            "package": package,
+        }
+    return {
+        "kind": "full_video",
+        "remote_path": metadata.get("download_drive_remote_path") or metadata.get("drive_remote_path") or "",
+        "file_id": metadata.get("drive_file_id") or "",
+        "filename": item["filename"],
+        "size": int(item.get("size") or 0),
+        "phase_label": "Descargando video desde Drive",
+        "summary_label": "video completo",
+        "package": None,
+    }
+
+
+def materialize_remote_video(item: dict, job: dict | None = None, source_kind: str | None = None) -> Path:
     metadata = dict(item.get("metadata") or {})
     clip_id = metadata.get("video_clip_id")
     if not clip_id:
         raise RuntimeError("El video remoto no tiene video_clip_id.")
     site_folder = str(metadata.get("site_id") or "sin-sede")
-    filename = f"{timezone.now().strftime('%Y%m%d-%H%M%S')}-{str(clip_id)[:8]}-{get_valid_filename(item['filename'])}"
+    source = remote_video_download_source(item, metadata, source_kind=source_kind)
+    filename = f"{timezone.now().strftime('%Y%m%d-%H%M%S')}-{str(clip_id)[:8]}-{get_valid_filename(source['filename'])}"
     target = pending_dir() / site_folder / filename
     target.parent.mkdir(parents=True, exist_ok=True)
-    drive_remote_path = metadata.get("download_drive_remote_path") or metadata.get("drive_remote_path") or ""
-    drive_file_id = metadata.get("drive_file_id") or ""
+    drive_remote_path = source["remote_path"]
+    drive_file_id = source["file_id"]
+    metadata.update(
+        {
+            "processing_video_source": source["kind"],
+            "processing_source_label": source["summary_label"],
+            "source_video_filename": item["filename"],
+            "source_video_size_bytes": int(item.get("size") or 0),
+            "materialized_filename": filename,
+        }
+    )
+    if source["package"]:
+        if source["kind"] == "analysis_video_mod8":
+            metadata["processing_analysis_video"] = source["package"]
+        else:
+            metadata["processing_frame_package"] = source["package"]
+
+    cached_path = find_or_import_cached_video(
+        str(clip_id),
+        source["filename"],
+        source["kind"],
+        metadata,
+        expected_size=int(source.get("size") or item.get("size") or 0),
+    )
+    if cached_path:
+        if job:
+            cache_size = download_observed_bytes(cached_path)
+            update_job(
+                job,
+                download_percent=100,
+                downloaded_bytes=cache_size,
+                download_total_bytes=cache_size,
+                download_speed_bps=0,
+                download_average_bps=0,
+                download_eta_seconds=0,
+                download_source=source["kind"],
+                phase="preparing",
+                phase_label="Usando video local cacheado",
+                current_video=f"Preparando {source['filename']} desde cache local",
+                local_cache_path=str(cached_path),
+            )
+        copy_cached_video_to_target(cached_path, target, metadata)
+        return target
 
     rclone_path = rclone_executable()
     if drive_remote_path and rclone_path:
-        total_bytes = int(item.get("size") or 0)
+        total_bytes = int(source["size"] or 0)
         log_path = jobs_dir() / f"{job['id']}-rclone.log" if job else target.with_suffix(target.suffix + ".rclone.log")
         if job:
             update_job(
@@ -103,8 +231,10 @@ def materialize_remote_video(item: dict, job: dict | None = None) -> Path:
                 download_eta_seconds=None,
                 download_log_path=str(log_path),
                 phase="downloading",
-                phase_label="Descargando video desde Drive",
-                current_video=f"Descargando {item['filename']}",
+                phase_label=source["phase_label"],
+                current_video=f"Descargando {source['filename']}",
+                current_video_started_at=timezone.now().isoformat(),
+                download_source=source["kind"],
             )
         command = [
             rclone_path,
@@ -141,7 +271,7 @@ def materialize_remote_video(item: dict, job: dict | None = None) -> Path:
                 percent = round((downloaded / total_bytes) * 100, 1) if total_bytes else 0
                 if job and (percent != last_percent or speed_bps > 0):
                     last_percent = percent
-                    phase_label = "Verificando descarga local" if total_bytes and downloaded >= total_bytes else "Descargando video desde Drive"
+                    phase_label = "Verificando descarga local" if total_bytes and downloaded >= total_bytes else source["phase_label"]
                     update_job(
                         job,
                         download_percent=percent,
@@ -152,6 +282,7 @@ def materialize_remote_video(item: dict, job: dict | None = None) -> Path:
                         download_eta_seconds=eta_seconds,
                         phase="downloading",
                         phase_label=phase_label,
+                        download_source=source["kind"],
                     )
                 last_checked_at = now
                 last_downloaded = downloaded
@@ -172,6 +303,7 @@ def materialize_remote_video(item: dict, job: dict | None = None) -> Path:
                 download_eta_seconds=0,
                 download_log_tail=format_rclone_tail(log_path),
                 last_download_summary=f"{format(final_size / (1024 * 1024), '.1f')} MB descargados en {format(elapsed, '.1f')}s",
+                download_source=source["kind"],
                 phase="preparing",
                 phase_label="Descarga completa; preparando archivo local",
             )
@@ -181,6 +313,7 @@ def materialize_remote_video(item: dict, job: dict | None = None) -> Path:
         raise RuntimeError("El video remoto no tiene drive_remote_path ni drive_file_id.")
 
     write_json(sidecar_path(target), metadata)
+    store_materialized_video_in_cache(target, metadata, source["kind"], source["filename"])
     return target
 
 
