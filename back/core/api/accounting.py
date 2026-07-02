@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from .common import *
 
 def money_value(value):
@@ -7,6 +9,7 @@ def money_value(value):
 def write_sheet(workbook, title, headers, rows):
     sheet = workbook.create_sheet(title[:31])
     header_fill = PatternFill("solid", fgColor="111827")
+    column_widths = [len(str(header or "")) for header in headers]
     for column, header in enumerate(headers, start=1):
         cell = sheet.cell(row=1, column=column, value=header)
         cell.font = Font(color="FFFFFF", bold=True)
@@ -15,9 +18,11 @@ def write_sheet(workbook, title, headers, rows):
     for row_index, row in enumerate(rows, start=2):
         for column, value in enumerate(row, start=1):
             sheet.cell(row=row_index, column=column, value=value)
-    for column_cells in sheet.columns:
-        max_length = max(len(str(cell.value or "")) for cell in column_cells)
-        sheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 42)
+            value_length = len(str(value or ""))
+            if value_length > column_widths[column - 1]:
+                column_widths[column - 1] = value_length
+    for column, width in enumerate(column_widths, start=1):
+        sheet.column_dimensions[sheet.cell(row=1, column=column).column_letter].width = min(max(width + 2, 12), 42)
     return sheet
 
 
@@ -28,27 +33,142 @@ class AccountingExportView(APIView):
         if request.user.role not in {"admin", "owner", "accounting"}:
             return Response({"detail": "No tienes permiso para exportar reportes contables."}, status=status.HTTP_403_FORBIDDEN)
 
-        sites = list(Site.objects.all())
-        charges = list(Charge.objects.select_related("site", "student", "team").all())
-        payments = list(Payment.objects.select_related("site", "charge", "student", "team", "received_by").all())
-        expenses = list(Expense.objects.select_related("site", "captured_by", "approved_by").all())
-        discounts = list(Discount.objects.select_related("charge", "student", "team", "requested_by", "approved_by").all())
+        sites = list(Site.objects.only("id", "name"))
+        charges = list(
+            Charge.objects.select_related("site", "student", "team").only(
+                "id",
+                "site",
+                "student",
+                "team",
+                "concept",
+                "description",
+                "amount",
+                "due_date",
+                "status",
+                "site__id",
+                "site__name",
+                "student__id",
+                "student__full_name",
+                "team__id",
+                "team__name",
+            )
+        )
+        payments = list(
+            Payment.objects.select_related("site", "charge", "student", "team", "received_by").only(
+                "id",
+                "site",
+                "charge",
+                "student",
+                "team",
+                "method",
+                "channel",
+                "status",
+                "amount",
+                "paid_at",
+                "confirmed_at",
+                "reference",
+                "tracking_key",
+                "site__id",
+                "site__name",
+                "charge__id",
+                "charge__concept",
+                "charge__site",
+                "student__id",
+                "student__full_name",
+                "team__id",
+                "team__name",
+                "received_by__id",
+                "received_by__username",
+            )
+        )
+        expenses = list(
+            Expense.objects.select_related("site", "captured_by", "approved_by").only(
+                "id",
+                "site",
+                "category",
+                "description",
+                "provider_name",
+                "amount",
+                "expense_date",
+                "status",
+                "site__id",
+                "site__name",
+                "captured_by__id",
+                "captured_by__username",
+                "approved_by__id",
+                "approved_by__username",
+            )
+        )
+        discounts = list(
+            Discount.objects.select_related("charge", "student", "team", "requested_by", "approved_by").only(
+                "id",
+                "charge",
+                "student",
+                "team",
+                "reason",
+                "amount",
+                "status",
+                "charge__id",
+                "charge__concept",
+                "student__id",
+                "student__full_name",
+                "team__id",
+                "team__name",
+                "requested_by__id",
+                "requested_by__username",
+                "approved_by__id",
+                "approved_by__username",
+            )
+        )
         attendance_records = list(AttendanceRecord.objects.select_related("student", "session").all())
-        invoices = list(Invoice.objects.select_related("site", "student", "guardian", "expense", "charge").all())
+        invoices = list(
+            Invoice.objects.only(
+                "id",
+                "uuid",
+                "kind",
+                "recipient_name",
+                "recipient_tax_id",
+                "concept",
+                "subtotal",
+                "tax",
+                "total",
+                "issued_at",
+            )
+        )
 
         confirmed_statuses = {"registered", "reconciled"}
         workbook = Workbook()
         workbook.remove(workbook.active)
 
+        charge_count_by_site = defaultdict(int)
+        charge_site_by_id = {}
+        open_balance_by_site = defaultdict(float)
+        for charge in charges:
+            charge_count_by_site[charge.site_id] += 1
+            charge_site_by_id[charge.id] = charge.site_id
+            if charge.status in {"pending", "partial"}:
+                open_balance_by_site[charge.site_id] += money_value(charge.amount)
+
+        income_by_site = defaultdict(float)
+        for payment in payments:
+            if payment.status in confirmed_statuses and payment.charge_id in charge_site_by_id:
+                income_by_site[charge_site_by_id[payment.charge_id]] += money_value(payment.amount)
+
+        approved_expenses_by_site = defaultdict(float)
+        pending_expenses_by_site = defaultdict(float)
+        for expense in expenses:
+            if expense.status == "approved":
+                approved_expenses_by_site[expense.site_id] += money_value(expense.amount)
+            elif expense.status == "pending":
+                pending_expenses_by_site[expense.site_id] += money_value(expense.amount)
+
         summary_rows = []
         for site in sites:
-            site_charges = [charge for charge in charges if charge.site_id == site.id]
-            site_charge_ids = {charge.id for charge in site_charges}
-            income = sum(money_value(payment.amount) for payment in payments if payment.status in confirmed_statuses and payment.charge_id in site_charge_ids)
-            approved_expenses = sum(money_value(expense.amount) for expense in expenses if expense.site_id == site.id and expense.status == "approved")
-            pending_expenses = sum(money_value(expense.amount) for expense in expenses if expense.site_id == site.id and expense.status == "pending")
-            open_balance = sum(money_value(charge.amount) for charge in site_charges if charge.status in {"pending", "partial"})
-            summary_rows.append([site.name, income, approved_expenses, income - approved_expenses, pending_expenses, open_balance, len(site_charges)])
+            income = income_by_site[site.id]
+            approved_expenses = approved_expenses_by_site[site.id]
+            pending_expenses = pending_expenses_by_site[site.id]
+            open_balance = open_balance_by_site[site.id]
+            summary_rows.append([site.name, income, approved_expenses, income - approved_expenses, pending_expenses, open_balance, charge_count_by_site[site.id]])
 
         write_sheet(workbook, "Resumen", ["Sede", "Ingresos", "Egresos aprobados", "Utilidad", "Egresos pendientes", "Cargos abiertos", "Cargos"], summary_rows)
         write_sheet(

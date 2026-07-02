@@ -2,6 +2,29 @@ from .common import *
 from .money import charge_balance, sync_charge_status
 
 class ChargeSerializer(serializers.ModelSerializer):
+    student = serializers.PrimaryKeyRelatedField(
+        queryset=Student.objects.select_related("guardian").only(
+            "id",
+            "site_id",
+            "guardian_id",
+            "full_name",
+            "guardian__id",
+            "guardian__full_name",
+            "guardian__phone",
+        ),
+        required=False,
+        allow_null=True,
+    )
+    tournament_registration = serializers.PrimaryKeyRelatedField(
+        queryset=StudentTournamentRegistration.objects.select_related("tournament").only(
+            "id",
+            "tournament_id",
+            "tournament__id",
+            "tournament__name",
+        ),
+        required=False,
+        allow_null=True,
+    )
     site_name = serializers.CharField(source="site.name", read_only=True)
     student_name = serializers.CharField(source="student.full_name", read_only=True)
     team_name = serializers.CharField(source="team.name", read_only=True)
@@ -22,17 +45,29 @@ class ChargeSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_by"]
 
     def _confirmed_payment_total(self, obj):
+        if hasattr(obj, "_futsi_confirmed_payment_total"):
+            return obj._futsi_confirmed_payment_total
         if hasattr(obj, "confirmed_payments"):
-            return sum((payment.amount for payment in obj.confirmed_payments), Decimal("0"))
-        return obj.payments.filter(status__in=["registered", "reconciled"]).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+            total = sum((payment.amount for payment in obj.confirmed_payments), Decimal("0"))
+        else:
+            total = obj.payments.filter(status__in=["registered", "reconciled"]).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        obj._futsi_confirmed_payment_total = total
+        return total
 
     def _approved_discount_total(self, obj):
+        if hasattr(obj, "_futsi_approved_discount_total"):
+            return obj._futsi_approved_discount_total
         if hasattr(obj, "approved_discounts"):
-            return sum((discount.amount for discount in obj.approved_discounts), Decimal("0"))
-        return obj.discounts.filter(status="approved").aggregate(total=Sum("amount"))["total"] or Decimal("0")
+            total = sum((discount.amount for discount in obj.approved_discounts), Decimal("0"))
+        else:
+            total = obj.discounts.filter(status="approved").aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        obj._futsi_approved_discount_total = total
+        return total
 
     def _balance(self, obj):
-        return max(obj.amount - self._confirmed_payment_total(obj) - self._approved_discount_total(obj), Decimal("0"))
+        if not hasattr(obj, "_futsi_charge_balance"):
+            obj._futsi_charge_balance = max(obj.amount - self._confirmed_payment_total(obj) - self._approved_discount_total(obj), Decimal("0"))
+        return obj._futsi_charge_balance
 
     def get_paid_amount(self, obj):
         return str(self._confirmed_payment_total(obj))
@@ -44,9 +79,13 @@ class ChargeSerializer(serializers.ModelSerializer):
         return str(self._balance(obj))
 
     def get_due_in_days(self, obj):
+        if hasattr(obj, "_futsi_due_in_days"):
+            return obj._futsi_due_in_days
         if not obj.due_date:
-            return None
-        return (obj.due_date - timezone.localdate()).days
+            obj._futsi_due_in_days = None
+        else:
+            obj._futsi_due_in_days = (obj.due_date - timezone.localdate()).days
+        return obj._futsi_due_in_days
 
     def get_due_bucket(self, obj):
         if obj.status in {"paid", "canceled"}:
@@ -106,6 +145,26 @@ class ChargeSerializer(serializers.ModelSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
+    charge = serializers.PrimaryKeyRelatedField(
+        queryset=Charge.objects.select_related("site", "student", "student__guardian", "team").only(
+            "id",
+            "site_id",
+            "student_id",
+            "team_id",
+            "concept",
+            "amount",
+            "status",
+            "site__id",
+            "site__name",
+            "student__id",
+            "student__full_name",
+            "student__guardian_id",
+            "student__guardian__id",
+            "student__guardian__virtual_clabe",
+            "team__id",
+            "team__name",
+        )
+    )
     site_name = serializers.CharField(source="site.name", read_only=True)
     student_name = serializers.CharField(source="student.full_name", read_only=True)
     team_name = serializers.CharField(source="team.name", read_only=True)
@@ -208,6 +267,23 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 
 class DiscountSerializer(serializers.ModelSerializer):
+    charge = serializers.PrimaryKeyRelatedField(
+        queryset=Charge.objects.select_related("site", "student", "team").only(
+            "id",
+            "site_id",
+            "student_id",
+            "team_id",
+            "concept",
+            "amount",
+            "status",
+            "site__id",
+            "site__name",
+            "student__id",
+            "student__full_name",
+            "team__id",
+            "team__name",
+        )
+    )
     site_name = serializers.CharField(source="site.name", read_only=True)
     student_name = serializers.CharField(source="student.full_name", read_only=True)
     team_name = serializers.CharField(source="team.name", read_only=True)
@@ -259,6 +335,7 @@ class DiscountSerializer(serializers.ModelSerializer):
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
+    site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id", "name"))
     site_name = serializers.CharField(source="site.name", read_only=True)
     captured_by_username = serializers.CharField(source="captured_by.username", read_only=True)
     approved_by_username = serializers.CharField(source="approved_by.username", read_only=True)
@@ -276,6 +353,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
 
 class StaffPaymentRequestSerializer(serializers.ModelSerializer):
+    site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id", "name"))
+    recipient = serializers.PrimaryKeyRelatedField(queryset=User.objects.only("id", "username", "first_name", "last_name"))
     site_name = serializers.CharField(source="site.name", read_only=True)
     recipient_username = serializers.CharField(source="recipient.username", read_only=True)
     recipient_name = serializers.SerializerMethodField()

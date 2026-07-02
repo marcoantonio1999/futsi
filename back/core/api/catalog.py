@@ -2,7 +2,7 @@ from .common import *
 from django.db.models import Prefetch
 
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.select_related("primary_site").all()
+    queryset = User.objects.select_related("primary_site", "guardian_profile").all()
     serializer_class = UserSerializer
     permission_classes = [IsAdminRole]
 
@@ -18,17 +18,17 @@ class SiteViewSet(viewsets.ModelViewSet):
             return queryset.filter(id=self.request.user.primary_site_id)
         if self.request.user.role == "guardian":
             return queryset.filter(students__guardian__user=self.request.user).distinct()
-        return queryset.distinct()
+        return queryset
 
 
 class CourtViewSet(viewsets.ModelViewSet):
-    queryset = Court.objects.select_related("site").all()
+    queryset = Court.objects.all()
     serializer_class = CourtSerializer
     permission_classes = [IsAdminForWrites]
 
 
 class GuardianViewSet(viewsets.ModelViewSet):
-    queryset = Guardian.objects.all()
+    queryset = Guardian.objects.select_related("user").all()
     serializer_class = GuardianSerializer
     permission_classes = [IsOperationsRole]
 
@@ -45,13 +45,21 @@ class StudentViewSet(viewsets.ModelViewSet):
         .prefetch_related(
             Prefetch(
                 "charges",
-                queryset=Charge.objects.filter(status__in=["pending", "partial"]).prefetch_related(
-                    Prefetch("payments", queryset=Payment.objects.filter(status__in=["registered", "reconciled"]), to_attr="confirmed_payments"),
-                    Prefetch("discounts", queryset=Discount.objects.filter(status="approved"), to_attr="approved_discounts"),
+                queryset=Charge.objects.filter(status__in=["pending", "partial"])
+                .only("id", "student_id", "amount")
+                .prefetch_related(
+                    Prefetch("payments", queryset=Payment.objects.filter(status__in=["registered", "reconciled"]).only("id", "charge_id", "amount"), to_attr="confirmed_payments"),
+                    Prefetch("discounts", queryset=Discount.objects.filter(status="approved").only("id", "charge_id", "amount"), to_attr="approved_discounts"),
                 ),
                 to_attr="open_charges",
             ),
-            Prefetch("discounts", queryset=Discount.objects.filter(status="approved").order_by("-approved_at", "-created_at"), to_attr="approved_student_discounts"),
+            Prefetch(
+                "discounts",
+                queryset=Discount.objects.filter(status="approved")
+                .only("id", "student_id", "charge_id", "reason", "amount", "approved_at", "created_at")
+                .order_by("-approved_at", "-created_at"),
+                to_attr="approved_student_discounts",
+            ),
         )
         .all()
     )
@@ -115,7 +123,7 @@ class TeamViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(players__user=self.request.user)
         if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
             queryset = queryset.filter(tournament__site=self.request.user.primary_site)
-        return queryset.distinct()
+        return queryset
 
 
 class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
@@ -147,9 +155,33 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
 
 
 class PlayerViewSet(viewsets.ModelViewSet):
-    queryset = Player.objects.select_related("team", "team__tournament", "team__tournament__site", "user").all()
+    queryset = Player.objects.select_related("team", "team__tournament", "team__tournament__site").all()
     serializer_class = PlayerSerializer
     permission_classes = [IsOperationsCashierCoachOrGuardianRole]
+    list_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "user_id",
+        "team_id",
+        "full_name",
+        "phone",
+        "email",
+        "jersey_number",
+        "photo",
+        "photo_url",
+        "identity_document",
+        "waiver_document",
+        "is_active",
+        "team__id",
+        "team__name",
+        "team__tournament_id",
+        "team__tournament__id",
+        "team__tournament__name",
+        "team__tournament__site_id",
+        "team__tournament__site__id",
+        "team__tournament__site__name",
+    )
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
@@ -170,6 +202,8 @@ class PlayerViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(team__representative_user=self.request.user)
         if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
             queryset = queryset.filter(team__tournament__site_id=self.request.user.primary_site_id)
+        if getattr(self, "action", None) == "list":
+            queryset = queryset.only(*self.list_only_fields)
         return queryset
 
 

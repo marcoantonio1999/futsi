@@ -30,6 +30,7 @@ def env_origin_list(name, default=""):
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
+FUTSI_ENV = os.getenv("FUTSI_ENV", "local" if DEBUG else "production").lower()
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.2.2,testserver")
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
 IS_RENDER = bool(os.getenv("RENDER_SERVICE_ID") or RENDER_EXTERNAL_HOSTNAME)
@@ -195,6 +196,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+RUNNING_PYTEST = "pytest" in sys.modules or any(Path(arg).name.startswith("pytest") for arg in sys.argv)
+if os.getenv("DJANGO_TEST_FAST_PASSWORD_HASHERS", "").lower() in {"1", "true", "yes", "si", "on"} or RUNNING_PYTEST:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 LANGUAGE_CODE = "es-mx"
 TIME_ZONE = "America/Mexico_City"

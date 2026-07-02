@@ -4,12 +4,23 @@ from .money import charge_balance
 from core.services.match_sessions import ensure_match_attendance_sessions
 
 class TournamentSerializer(serializers.ModelSerializer):
+    site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id"))
+
     class Meta:
         model = Tournament
         fields = "__all__"
 
 
 class TeamSerializer(serializers.ModelSerializer):
+    tournament = serializers.PrimaryKeyRelatedField(
+        queryset=Tournament.objects.select_related("site").only(
+            "id",
+            "site_id",
+            "name",
+            "site__id",
+            "site__name",
+        )
+    )
     tournament_name = serializers.CharField(source="tournament.name", read_only=True)
     site = serializers.IntegerField(source="tournament.site_id", read_only=True)
     site_name = serializers.CharField(source="tournament.site.name", read_only=True)
@@ -21,6 +32,20 @@ class TeamSerializer(serializers.ModelSerializer):
 
 
 class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):
+    tournament = serializers.PrimaryKeyRelatedField(
+        queryset=Tournament.objects.select_related("site").only(
+            "id",
+            "site_id",
+            "name",
+            "billing_type",
+            "starts_on",
+            "expected_weeks",
+            "site__id",
+            "site__name",
+        )
+    )
+    student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.only("id", "full_name", "category", "group_name"))
+    team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.only("id", "name"), required=False, allow_null=True)
     tournament_name = serializers.CharField(source="tournament.name", read_only=True)
     site = serializers.IntegerField(source="tournament.site_id", read_only=True)
     site_name = serializers.CharField(source="tournament.site.name", read_only=True)
@@ -147,6 +172,18 @@ class MatchSerializer(serializers.ModelSerializer):
 
 
 class StudentAssessmentSerializer(serializers.ModelSerializer):
+    student = serializers.PrimaryKeyRelatedField(
+        queryset=Student.objects.select_related("site").only(
+            "id",
+            "site_id",
+            "full_name",
+            "photo_url",
+            "category",
+            "group_name",
+            "site__id",
+            "site__name",
+        )
+    )
     student_name = serializers.CharField(source="student.full_name", read_only=True)
     student_photo_url = serializers.CharField(source="student.photo_url", read_only=True)
     category = serializers.CharField(source="student.category", read_only=True)
@@ -192,6 +229,18 @@ class StudentAssessmentSerializer(serializers.ModelSerializer):
 
 
 class StudentValueAssessmentSerializer(serializers.ModelSerializer):
+    student = serializers.PrimaryKeyRelatedField(
+        queryset=Student.objects.select_related("site").only(
+            "id",
+            "site_id",
+            "full_name",
+            "photo_url",
+            "category",
+            "group_name",
+            "site__id",
+            "site__name",
+        )
+    )
     student_name = serializers.CharField(source="student.full_name", read_only=True)
     student_photo_url = serializers.CharField(source="student.photo_url", read_only=True)
     category = serializers.CharField(source="student.category", read_only=True)

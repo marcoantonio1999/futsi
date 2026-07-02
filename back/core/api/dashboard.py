@@ -105,12 +105,20 @@ def _scoped_students(user, site_ids):
 
 def _scoped_charges(user, site_ids):
     queryset = (
-        Charge.objects.select_related("site", "student", "student__guardian", "team")
+        Charge.objects.filter(site_id__in=site_ids)
         .prefetch_related(
-            Prefetch("payments", queryset=Payment.objects.filter(status__in=CONFIRMED_PAYMENT_STATUSES), to_attr="confirmed_payments"),
-            Prefetch("discounts", queryset=Discount.objects.filter(status="approved"), to_attr="approved_discounts"),
+            Prefetch(
+                "payments",
+                queryset=Payment.objects.filter(status__in=CONFIRMED_PAYMENT_STATUSES).only("id", "charge", "amount"),
+                to_attr="confirmed_payments",
+            ),
+            Prefetch(
+                "discounts",
+                queryset=Discount.objects.filter(status="approved").only("id", "charge", "amount"),
+                to_attr="approved_discounts",
+            ),
         )
-        .filter(site_id__in=site_ids)
+        .only("id", "site", "student", "team", "amount", "status")
     )
     if user.role == "guardian":
         queryset = queryset.filter(student__guardian__user=user)
@@ -122,7 +130,28 @@ def _scoped_charges(user, site_ids):
 
 
 def _scoped_payments(user, site_ids):
-    queryset = Payment.objects.select_related("site", "charge", "student", "team").filter(site_id__in=site_ids)
+    queryset = (
+        Payment.objects.select_related("charge", "team")
+        .filter(site_id__in=site_ids)
+        .only(
+            "id",
+            "site",
+            "charge",
+            "student",
+            "team",
+            "method",
+            "status",
+            "amount",
+            "paid_at",
+            "confirmed_at",
+            "notes",
+            "charge__id",
+            "charge__site",
+            "charge__concept",
+            "team__id",
+            "team__name",
+        )
+    )
     if user.role == "guardian":
         queryset = queryset.filter(student__guardian__user=user)
     if user.role == "adult_representative":
@@ -133,7 +162,7 @@ def _scoped_payments(user, site_ids):
 
 
 def _scoped_expenses(user, site_ids):
-    queryset = Expense.objects.filter(site_id__in=site_ids)
+    queryset = Expense.objects.filter(site_id__in=site_ids).only("id", "site", "status", "amount", "expense_date", "category", "description")
     if user.role in {"cashier", "coach"} and user.primary_site_id:
         queryset = queryset.filter(site_id=user.primary_site_id)
     return queryset.distinct()

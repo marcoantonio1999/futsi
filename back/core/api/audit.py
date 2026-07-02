@@ -2,7 +2,7 @@ from .common import *
 from rest_framework import serializers
 
 class DailyClosureViewSet(viewsets.ModelViewSet):
-    queryset = DailyClosure.objects.select_related("site", "closed_by").all()
+    queryset = DailyClosure.objects.all()
     serializer_class = DailyClosureSerializer
     permission_classes = [IsOperationsOrCashierRole]
 
@@ -25,6 +25,6 @@ class DailyClosureViewSet(viewsets.ModelViewSet):
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AuditLog.objects.select_related("actor").all()
+    queryset = AuditLog.objects.all()
     serializer_class = AuditLogSerializer
     permission_classes = [IsAdminRole]

@@ -12,6 +12,28 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     queryset = Expense.objects.select_related("site", "captured_by", "approved_by").all()
     serializer_class = ExpenseSerializer
     permission_classes = [IsOperationsRole]
+    action_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "site_id",
+        "category",
+        "description",
+        "amount",
+        "expense_date",
+        "provider_name",
+        "evidence_file",
+        "status",
+        "captured_by_id",
+        "approved_by_id",
+        "approved_at",
+        "site__id",
+        "site__name",
+        "captured_by__id",
+        "captured_by__username",
+        "approved_by__id",
+        "approved_by__username",
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -24,6 +46,8 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status=status_value)
         if site and user.role in {"admin", "dev", "owner", "accounting"}:
             queryset = queryset.filter(site_id=site)
+        if getattr(self, "action", None) in {"approve", "reject"}:
+            queryset = queryset.only(*self.action_only_fields)
         return queryset
 
     @action(detail=True, methods=["post"])
@@ -49,6 +73,33 @@ class StaffPaymentRequestViewSet(viewsets.ModelViewSet):
     queryset = StaffPaymentRequest.objects.select_related("site", "recipient", "requested_by", "expense").all()
     serializer_class = StaffPaymentRequestSerializer
     permission_classes = [IsAuthenticated]
+    list_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "site_id",
+        "recipient_id",
+        "kind",
+        "amount",
+        "requested_payment_date",
+        "description",
+        "payment_method",
+        "status",
+        "requested_by_id",
+        "accepted_at",
+        "response_notes",
+        "expense_id",
+        "site__id",
+        "site__name",
+        "recipient__id",
+        "recipient__username",
+        "recipient__first_name",
+        "recipient__last_name",
+        "requested_by__id",
+        "requested_by__username",
+        "expense__id",
+        "expense__description",
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -66,6 +117,10 @@ class StaffPaymentRequestViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status=status_value)
         if mine:
             queryset = queryset.filter(recipient=user)
+        if getattr(self, "action", None) == "list":
+            queryset = queryset.only(*self.list_only_fields)
+        elif getattr(self, "action", None) in {"accept", "reject"}:
+            queryset = queryset.only(*self.list_only_fields)
         return queryset
 
     def perform_create(self, serializer):
@@ -122,6 +177,28 @@ class CashMovementViewSet(viewsets.ModelViewSet):
     queryset = CashMovement.objects.select_related("site", "responsible", "created_by", "staff_payment_request").all()
     serializer_class = CashMovementSerializer
     permission_classes = [IsOperationsOrCashierRole]
+    list_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "site_id",
+        "movement_type",
+        "amount",
+        "movement_date",
+        "reason",
+        "responsible_id",
+        "created_by_id",
+        "staff_payment_request_id",
+        "notes",
+        "site__id",
+        "site__name",
+        "responsible__id",
+        "responsible__username",
+        "responsible__first_name",
+        "responsible__last_name",
+        "created_by__id",
+        "created_by__username",
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -133,6 +210,8 @@ class CashMovementViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(site_id=site)
         if movement_type:
             queryset = queryset.filter(movement_type=movement_type)
+        if getattr(self, "action", None) == "list":
+            queryset = queryset.select_related(None).select_related("site", "responsible", "created_by").only(*self.list_only_fields)
         return queryset
 
     def perform_create(self, serializer):

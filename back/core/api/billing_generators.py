@@ -142,8 +142,11 @@ def generate_student_tournament_charges_for_user(user, today=None):
     elif user.role not in {"admin", "dev", "owner", "accounting", "site_coordinator"}:
         registrations = registrations.none()
 
+    registrations = list(registrations.distinct())
     weekly_due = _next_friday(today)
-    for registration in registrations.distinct():
+    weekly_targets = {}
+    full_registration_ids = []
+    for registration in registrations:
         billing_starts_on = registration.billing_starts_on or registration.tournament.starts_on or today
         if registration.billing_type == "weekly_match":
             expected_weeks = registration.tournament.expected_weeks or 12
@@ -152,12 +155,36 @@ def generate_student_tournament_charges_for_user(user, today=None):
             jornada_number = _tournament_week_number(registration.tournament, weekly_due)
             if jornada_number > expected_weeks:
                 continue
-            exists = Charge.objects.filter(
-                tournament_registration=registration,
-                jornada_number=jornada_number,
+            weekly_targets[registration.id] = jornada_number
+        elif registration.billing_type == "full_tournament":
+            full_registration_ids.append(registration.id)
+
+    existing_weekly_registrations = set()
+    if weekly_targets:
+        existing_weekly_registrations = set(
+            Charge.objects.filter(
+                tournament_registration_id__in=weekly_targets.keys(),
+                jornada_number__in=set(weekly_targets.values()),
                 concept="Jornada torneo alumno",
-            ).exclude(status="canceled").exists()
-            if exists:
+            )
+            .exclude(status="canceled")
+            .values_list("tournament_registration_id", "jornada_number")
+        )
+    existing_full_registration_ids = set()
+    if full_registration_ids:
+        existing_full_registration_ids = set(
+            Charge.objects.filter(
+                tournament_registration_id__in=full_registration_ids,
+                concept="Torneo completo alumno",
+            )
+            .exclude(status="canceled")
+            .values_list("tournament_registration_id", flat=True)
+        )
+
+    for registration in registrations:
+        if registration.billing_type == "weekly_match":
+            jornada_number = weekly_targets.get(registration.id)
+            if not jornada_number or (registration.id, jornada_number) in existing_weekly_registrations:
                 continue
             charge = Charge.objects.create(
                 site=registration.tournament.site,
@@ -172,11 +199,7 @@ def generate_student_tournament_charges_for_user(user, today=None):
             )
             created.append(charge)
         elif registration.billing_type == "full_tournament":
-            exists = Charge.objects.filter(
-                tournament_registration=registration,
-                concept="Torneo completo alumno",
-            ).exclude(status="canceled").exists()
-            if exists:
+            if registration.id in existing_full_registration_ids:
                 continue
             due_date = _third_round_due_date(registration.tournament, today)
             charge = Charge.objects.create(
@@ -218,21 +241,33 @@ def generate_scheduled_charges_for_user(user, today=None):
         students = students.none()
         teams = teams.none()
 
-    for student in students.distinct():
-        exists = Charge.objects.filter(
-            student=student,
-            concept="Mensualidad",
-            due_date__year=today.year,
-            due_date__month=today.month,
-        ).exclude(status="canceled").exists()
-        if exists:
+    students = list(students.distinct())
+    student_ids = [student.id for student in students]
+    existing_monthly_student_ids = set()
+    if student_ids:
+        existing_monthly_student_ids = set(
+            Charge.objects.filter(
+                student_id__in=student_ids,
+                concept="Mensualidad",
+                due_date__year=today.year,
+                due_date__month=today.month,
+            )
+            .exclude(status="canceled")
+            .values_list("student_id", flat=True)
+        )
+    academy_amount_by_site = {}
+
+    for student in students:
+        if student.id in existing_monthly_student_ids:
             continue
+        if student.site_id not in academy_amount_by_site:
+            academy_amount_by_site[student.site_id] = _academy_monthly_amount(student.site)
         charge = Charge.objects.create(
             site=student.site,
             student=student,
             concept="Mensualidad",
             description=f"Mensualidad {month_label} - generado automatico",
-            amount=_academy_monthly_amount(student.site),
+            amount=academy_amount_by_site[student.site_id],
             due_date=month_due,
             created_by=user,
         )
@@ -242,14 +277,39 @@ def generate_scheduled_charges_for_user(user, today=None):
     iso_year, iso_week, _ = weekly_due.isocalendar()
     weekly_description = f"Jornada semana {iso_week} {iso_year} - generado automatico"
 
-    for team in teams.distinct():
-        if team.tournament.billing_type == "weekly_match":
-            exists = Charge.objects.filter(
-                team=team,
+    teams = list(teams.distinct())
+    team_ids = [team.id for team in teams]
+    existing_weekly_team_ids = set()
+    if team_ids:
+        existing_weekly_team_ids = set(
+            Charge.objects.filter(
+                team_id__in=team_ids,
                 concept="Jornada torneo",
                 due_date=weekly_due,
-            ).exclude(status="canceled").exists()
-            if exists:
+            )
+            .exclude(status="canceled")
+            .values_list("team_id", flat=True)
+        )
+    full_description_by_team = {
+        team.id: f"Torneo completo {team.tournament.name} - generado automatico"
+        for team in teams
+        if team.tournament.billing_type == "full_tournament"
+    }
+    existing_full_teams = set()
+    if full_description_by_team:
+        existing_full_teams = set(
+            Charge.objects.filter(
+                team_id__in=full_description_by_team.keys(),
+                concept="Torneo completo",
+                description__in=full_description_by_team.values(),
+            )
+            .exclude(status="canceled")
+            .values_list("team_id", "description")
+        )
+
+    for team in teams:
+        if team.tournament.billing_type == "weekly_match":
+            if team.id in existing_weekly_team_ids:
                 continue
             charge = Charge.objects.create(
                 site=team.tournament.site,
@@ -262,13 +322,8 @@ def generate_scheduled_charges_for_user(user, today=None):
             )
             created.append(charge)
         elif team.tournament.billing_type == "full_tournament":
-            full_description = f"Torneo completo {team.tournament.name} - generado automatico"
-            exists = Charge.objects.filter(
-                team=team,
-                concept="Torneo completo",
-                description=full_description,
-            ).exclude(status="canceled").exists()
-            if exists:
+            full_description = full_description_by_team[team.id]
+            if (team.id, full_description) in existing_full_teams:
                 continue
             due_date = team.tournament.starts_on + timedelta(days=21) if team.tournament.starts_on else today + timedelta(days=7)
             charge = Charge.objects.create(

@@ -4,7 +4,15 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.models import User
+
 from .serializers import UserSerializer
+
+
+def user_for_response(user):
+    if user.role == "cashier" and user.primary_site_id:
+        return User.objects.select_related("primary_site", "guardian_profile").get(pk=user.pk)
+    return user
 
 
 class LoginView(APIView):
@@ -33,7 +41,7 @@ class LogoutView(APIView):
 
 class MeView(APIView):
     def get(self, request):
-        return Response(UserSerializer(request.user).data)
+        return Response(UserSerializer(user_for_response(request.user)).data)
 
     def patch(self, request):
         user = request.user
@@ -64,4 +72,4 @@ class MeView(APIView):
             if guardian_updates:
                 guardian.save(update_fields=[*guardian_updates.keys(), "updated_at"])
 
-        return Response(UserSerializer(user).data)
+        return Response(UserSerializer(user_for_response(user)).data)

@@ -4,6 +4,35 @@ class MatchViewSet(viewsets.ModelViewSet):
     queryset = Match.objects.select_related("tournament", "round", "site", "home_team", "away_team", "updated_by").all()
     serializer_class = MatchSerializer
     permission_classes = [IsOperationsCashierCoachOrGuardianRole]
+    list_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "tournament_id",
+        "round_id",
+        "site_id",
+        "home_team_id",
+        "away_team_id",
+        "played_on",
+        "starts_at",
+        "duration_minutes",
+        "home_goals",
+        "away_goals",
+        "status",
+        "updated_by_id",
+        "tournament__id",
+        "tournament__name",
+        "round__id",
+        "round__number",
+        "site__id",
+        "site__name",
+        "home_team__id",
+        "home_team__name",
+        "away_team__id",
+        "away_team__name",
+        "updated_by__id",
+        "updated_by__username",
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -18,6 +47,8 @@ class MatchViewSet(viewsets.ModelViewSet):
         if self.request.user.role == "guardian":
             student_sites = Site.objects.filter(students__guardian__user=self.request.user)
             queryset = queryset.filter(site__in=student_sites)
+        if getattr(self, "action", None) == "list":
+            queryset = queryset.only(*self.list_only_fields)
         return queryset.order_by("-played_on", "-starts_at", "-updated_at")
 
     def get_permissions(self):
@@ -51,25 +82,26 @@ class MatchViewSet(viewsets.ModelViewSet):
                 "points": 0,
                 "is_leader": False,
             }
-            for team in teams
+            for team in teams.only("id", "name", "tournament_id")
         }
 
-        for match in queryset:
-            if match.home_team_id not in table or match.away_team_id not in table:
+        match_rows = queryset.order_by().values_list("home_team_id", "away_team_id", "home_goals", "away_goals")
+        for home_team_id, away_team_id, home_goals, away_goals in match_rows:
+            if home_team_id not in table or away_team_id not in table:
                 continue
-            home = table[match.home_team_id]
-            away = table[match.away_team_id]
+            home = table[home_team_id]
+            away = table[away_team_id]
             home["played"] += 1
             away["played"] += 1
-            home["goals_for"] += match.home_goals
-            home["goals_against"] += match.away_goals
-            away["goals_for"] += match.away_goals
-            away["goals_against"] += match.home_goals
-            if match.home_goals > match.away_goals:
+            home["goals_for"] += home_goals
+            home["goals_against"] += away_goals
+            away["goals_for"] += away_goals
+            away["goals_against"] += home_goals
+            if home_goals > away_goals:
                 home["won"] += 1
                 away["lost"] += 1
                 home["points"] += 3
-            elif match.home_goals < match.away_goals:
+            elif home_goals < away_goals:
                 away["won"] += 1
                 home["lost"] += 1
                 away["points"] += 3
@@ -94,6 +126,34 @@ class StudentAssessmentViewSet(viewsets.ModelViewSet):
     queryset = StudentAssessment.objects.select_related("student", "coach", "site").all()
     serializer_class = StudentAssessmentSerializer
     permission_classes = [IsOperationsCoachOrGuardianRole]
+    list_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "student_id",
+        "coach_id",
+        "site_id",
+        "assessment_month",
+        "pace",
+        "shooting",
+        "passing",
+        "dribbling",
+        "defense",
+        "physical",
+        "attitude",
+        "notes",
+        "student__id",
+        "student__full_name",
+        "student__photo_url",
+        "student__category",
+        "student__group_name",
+        "coach__id",
+        "coach__username",
+        "coach__first_name",
+        "coach__last_name",
+        "site__id",
+        "site__name",
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -109,6 +169,8 @@ class StudentAssessmentViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(student__group_name=self.request.user.coach_group_name)
         if self.request.user.role == "guardian":
             queryset = queryset.filter(student__guardian__user=self.request.user)
+        if getattr(self, "action", None) == "list":
+            queryset = queryset.only(*self.list_only_fields)
         return queryset.order_by("-assessment_month", "student__full_name")
 
     def get_permissions(self):
@@ -121,6 +183,33 @@ class StudentValueAssessmentViewSet(viewsets.ModelViewSet):
     queryset = StudentValueAssessment.objects.select_related("student", "coach", "site").all()
     serializer_class = StudentValueAssessmentSerializer
     permission_classes = [IsOperationsCoachOrGuardianRole]
+    list_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "student_id",
+        "coach_id",
+        "site_id",
+        "assessment_month",
+        "respect",
+        "discipline",
+        "teamwork",
+        "responsibility",
+        "sportsmanship",
+        "minutes_recommendation",
+        "notes",
+        "student__id",
+        "student__full_name",
+        "student__photo_url",
+        "student__category",
+        "student__group_name",
+        "coach__id",
+        "coach__username",
+        "coach__first_name",
+        "coach__last_name",
+        "site__id",
+        "site__name",
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -136,6 +225,8 @@ class StudentValueAssessmentViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(student__group_name=self.request.user.coach_group_name)
         if self.request.user.role == "guardian":
             queryset = queryset.filter(student__guardian__user=self.request.user)
+        if getattr(self, "action", None) == "list":
+            queryset = queryset.only(*self.list_only_fields)
         return queryset.order_by("-assessment_month", "-updated_at", "student__full_name")
 
     def get_permissions(self):

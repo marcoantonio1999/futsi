@@ -65,6 +65,8 @@ class FaceRecognitionAttemptSerializer(serializers.ModelSerializer):
 
 
 class DailyClosureSerializer(serializers.ModelSerializer):
+    site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id"))
+
     class Meta:
         model = DailyClosure
         fields = "__all__"

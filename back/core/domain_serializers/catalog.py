@@ -61,12 +61,15 @@ class SiteSerializer(serializers.ModelSerializer):
 
 
 class CourtSerializer(serializers.ModelSerializer):
+    site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id"))
+
     class Meta:
         model = Court
         fields = "__all__"
 
 
 class GuardianSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.only("id", "username"), required=False, allow_null=True)
     username = serializers.CharField(source="user.username", read_only=True)
 
     class Meta:
@@ -75,6 +78,8 @@ class GuardianSerializer(serializers.ModelSerializer):
 
 
 class StudentSerializer(serializers.ModelSerializer):
+    site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id", "name"))
+    guardian = serializers.PrimaryKeyRelatedField(queryset=Guardian.objects.only("id", "full_name", "phone"))
     site_name = serializers.CharField(source="site.name", read_only=True)
     guardian_name = serializers.CharField(source="guardian.full_name", read_only=True)
     guardian_phone = serializers.CharField(source="guardian.phone", read_only=True)

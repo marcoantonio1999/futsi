@@ -62,15 +62,79 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Invoice.objects.select_related("site", "student", "guardian", "coach", "charge", "payment", "expense", "issued_by").all()
     serializer_class = InvoiceSerializer
     permission_classes = [IsAuthenticated]
+    list_only_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "uuid",
+        "kind",
+        "status",
+        "site_id",
+        "student_id",
+        "guardian_id",
+        "coach_id",
+        "charge_id",
+        "payment_id",
+        "expense_id",
+        "recipient_name",
+        "recipient_tax_id",
+        "recipient_email",
+        "concept",
+        "subtotal",
+        "tax",
+        "total",
+        "issued_at",
+        "xml_content",
+        "pdf_file",
+        "issued_by_id",
+        "site__id",
+        "site__name",
+        "student__id",
+        "student__full_name",
+        "guardian__id",
+        "guardian__full_name",
+        "coach__id",
+        "coach__username",
+        "coach__first_name",
+        "coach__last_name",
+        "charge__id",
+        "charge__concept",
+        "expense__id",
+        "expense__description",
+        "issued_by__id",
+        "issued_by__username",
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset().order_by("-issued_at")
         if self.request.user.role == "guardian":
-            return queryset.filter(guardian__user=self.request.user)
+            queryset = queryset.filter(guardian__user=self.request.user)
         if self.request.user.role == "coach":
-            return queryset.filter(coach=self.request.user)
+            queryset = queryset.filter(coach=self.request.user)
         if self.request.user.role == "cashier":
-            return queryset.filter(site=self.request.user.primary_site)
+            queryset = queryset.filter(site=self.request.user.primary_site)
+        action = getattr(self, "action", None)
+        if action == "list":
+            queryset = (
+                queryset.select_related(None)
+                .select_related("site", "student", "guardian", "coach", "charge", "expense", "issued_by")
+                .only(*self.list_only_fields)
+            )
+        elif action == "pdf":
+            queryset = queryset.select_related(None).only("id", "uuid", "pdf_file")
+        elif action == "xml":
+            queryset = queryset.select_related(None).only(
+                "id",
+                "uuid",
+                "xml_content",
+                "kind",
+                "issued_at",
+                "subtotal",
+                "total",
+                "recipient_tax_id",
+                "recipient_name",
+                "concept",
+            )
         return queryset
 
     @action(detail=False, methods=["post"], url_path="simulate")
