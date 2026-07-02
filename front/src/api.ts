@@ -12,6 +12,12 @@ export class ApiError extends Error {
   }
 }
 
+function notifyUnauthorizedSession() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("futsi_token");
+  window.dispatchEvent(new CustomEvent("futsi:session-expired"));
+}
+
 function formatApiError(detail: unknown, fallback: string) {
   if (!detail) return fallback;
   if (typeof detail === "string") return detail;
@@ -43,6 +49,7 @@ export async function apiRequest<T>(path: string, token: string, options: Reques
 
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
+    if (response.status === 401) notifyUnauthorizedSession();
     const fallback =
       response.status === 404
         ? "Esta ruta no existe en el backend desplegado. Render probablemente necesita redeploy con el backend mas reciente."
@@ -65,6 +72,7 @@ export async function apiFormRequest<T>(path: string, token: string, formData: F
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
+    if (response.status === 401) notifyUnauthorizedSession();
     throw new ApiError(`${formatApiError(detail, "No se pudo procesar el archivo.")} (${path})`, response.status, path);
   }
   return response.json();
@@ -93,6 +101,7 @@ export function apiFormRequestWithProgress<T>(
     request.onload = () => {
       const parsed = request.responseText ? JSON.parse(request.responseText) : null;
       if (request.status < 200 || request.status >= 300) {
+        if (request.status === 401) notifyUnauthorizedSession();
         reject(new ApiError(`${formatApiError(parsed, "No se pudo procesar el archivo.")} (${path})`, request.status, path));
         return;
       }
@@ -110,6 +119,7 @@ export async function downloadApiFile(path: string, token: string, fallbackName:
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
+    if (response.status === 401) notifyUnauthorizedSession();
     throw new ApiError(`${formatApiError(detail, "No se pudo descargar el archivo.")} (${path})`, response.status, path);
   }
   const disposition = response.headers.get("content-disposition") ?? "";

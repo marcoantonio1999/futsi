@@ -71,6 +71,22 @@ export function useFutsiData() {
     if (token) loadData(token);
   }, [token]);
 
+  useEffect(() => {
+    function expireSession() {
+      setToken("");
+      setCurrentUser(null);
+      setData(emptyData);
+      setLoadedSections([]);
+      setActiveSection("dashboard");
+      setHasLoadedData(false);
+      setLoading(false);
+      setError("La sesion expiro. Inicia sesion nuevamente.");
+    }
+
+    window.addEventListener("futsi:session-expired", expireSession);
+    return () => window.removeEventListener("futsi:session-expired", expireSession);
+  }, []);
+
   async function loadSection(section: TabKey, options: { force?: boolean; silent?: boolean } = {}) {
     if (!token || !currentUser) return;
     setActiveSection(section);

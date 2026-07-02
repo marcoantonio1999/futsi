@@ -44,9 +44,12 @@ POSTGRES_PORT=5432
 POSTGRES_SSLMODE=require
 DJANGO_SECURE_SSL_REDIRECT=true
 DJANGO_SECURE_HSTS_SECONDS=31536000
+API_TOKEN_TTL_MINUTES=720
 ```
 
 No usar `SUPABASE_DATABASE_URL` si el password tiene caracteres especiales y no esta URL encoded. La configuracion actual de Django prioriza `POSTGRES_*` cuando existen.
+
+`API_TOKEN_TTL_MINUTES` controla la duracion maxima de sesion de la API. El valor recomendado inicial es 720 minutos; al expirar, el token se borra en backend y el frontend obliga a iniciar sesion nuevamente.
 
 ## Render
 

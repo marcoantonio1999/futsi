@@ -1,4 +1,8 @@
+from datetime import timedelta
+
+from django.conf import settings
 from django.contrib.auth import authenticate
+from django.contrib.auth.models import update_last_login
 from rest_framework import permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -29,13 +33,27 @@ class LoginView(APIView):
         if not user.is_active:
             return Response({"detail": "Usuario inactivo."}, status=status.HTTP_403_FORBIDDEN)
 
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key, "user": UserSerializer(user).data})
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
+        update_last_login(None, user)
+        ttl_minutes = int(getattr(settings, "API_TOKEN_TTL_MINUTES", 720))
+        expires_at = token.created + timedelta(minutes=ttl_minutes)
+        return Response(
+            {
+                "token": token.key,
+                "expires_at": expires_at.isoformat(),
+                "token_ttl_seconds": ttl_minutes * 60,
+                "user": UserSerializer(user).data,
+            }
+        )
 
 
 class LogoutView(APIView):
     def post(self, request):
-        Token.objects.filter(user=request.user).delete()
+        if request.auth:
+            Token.objects.filter(key=request.auth.key).delete()
+        else:
+            Token.objects.filter(user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
