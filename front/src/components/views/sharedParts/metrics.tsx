@@ -99,7 +99,7 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement> & {
       <input
         {...inputProps}
         aria-required={inputProps.required || undefined}
-        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none invalid:border-red-500 invalid:bg-red-50 focus:border-emerald-700 invalid:focus:border-red-600"
+        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none transition focus:-translate-y-0.5 focus:border-emerald-700 focus:shadow-sm invalid:border-red-500 invalid:bg-red-50 invalid:focus:border-red-600"
       />
     </label>
   );
@@ -116,7 +116,7 @@ export function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>
       <select
         {...selectProps}
         aria-required={selectProps.required || undefined}
-        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none invalid:border-red-500 invalid:bg-red-50 focus:border-emerald-700 invalid:focus:border-red-600"
+        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none transition focus:-translate-y-0.5 focus:border-emerald-700 focus:shadow-sm invalid:border-red-500 invalid:bg-red-50 invalid:focus:border-red-600"
       >
         {children}
       </select>

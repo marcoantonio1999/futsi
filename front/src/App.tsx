@@ -1,19 +1,17 @@
 import { lazy, Suspense } from "react";
 import { LogOut, RefreshCw } from "lucide-react";
 import { roleLabels } from "./appState";
-import {
-  AccountingPortal,
-  AdultLeagueDashboardPanel,
-  GuardianPortal,
-  ThemeToggle,
-} from "./components/FutsiViews";
-import { AdminShell } from "./components/layout/AdminShell";
 import { AppSkeleton } from "./components/loading/AppSkeleton";
+import { ThemeToggle } from "./components/layout/ThemeToggle";
 import { useFutsiData } from "./hooks/useFutsiData";
 import { useThemeMode } from "./hooks/useThemeMode";
 import type { AttendanceRecord, AttendanceSession, FaceRecognitionResponse } from "./types";
 
 const FutsiLanding = lazy(() => import("./components/landing/FutsiLanding").then((module) => ({ default: module.FutsiLanding })));
+const GuardianPortal = lazy(() => import("./components/views/guardian").then((module) => ({ default: module.GuardianPortal })));
+const AccountingPortal = lazy(() => import("./components/views/accounting").then((module) => ({ default: module.AccountingPortal })));
+const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults").then((module) => ({ default: module.AdultLeagueDashboardPanel })));
+const AdminShell = lazy(() => import("./components/layout/AdminShell").then((module) => ({ default: module.AdminShell })));
 
 export default function App() {
   const { theme, toggleTheme } = useThemeMode();
@@ -73,16 +71,18 @@ export default function App() {
       <>
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
         <ActionLoadingOverlay message={actionLoadingMessage} />
-        <GuardianPortal
-          user={currentUser}
-          data={data}
-          onRefresh={() => loadData()}
-          onLogout={logout}
-          onPaymentAction={(paymentId, action) => postAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
-          onUpdateProfile={updateProfile}
-          onDownloadFile={downloadFile}
-          onSaveAssessment={saveStudentAssessment}
-        />
+        <Suspense fallback={<AppSkeleton />}>
+          <GuardianPortal
+            user={currentUser}
+            data={data}
+            onRefresh={() => loadData()}
+            onLogout={logout}
+            onPaymentAction={(paymentId, action) => postAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
+            onUpdateProfile={updateProfile}
+            onDownloadFile={downloadFile}
+            onSaveAssessment={saveStudentAssessment}
+          />
+        </Suspense>
       </>
     );
   }
@@ -111,14 +111,16 @@ export default function App() {
             </div>
           </header>
           <div className="mx-auto max-w-7xl px-5 py-6">
-            <AdultLeagueDashboardPanel
-              data={data}
-              readOnly
-              onCreateSession={async () => data.attendanceSessions[0]}
-              onMarkPlayer={async () => undefined}
-              onCreatePayment={() => undefined}
-              onPaymentAction={() => undefined}
-            />
+            <Suspense fallback={<AppSkeleton />}>
+              <AdultLeagueDashboardPanel
+                data={data}
+                readOnly
+                onCreateSession={async () => data.attendanceSessions[0]}
+                onMarkPlayer={async () => undefined}
+                onCreatePayment={() => undefined}
+                onPaymentAction={() => undefined}
+              />
+            </Suspense>
           </div>
         </main>
       </>
@@ -130,18 +132,20 @@ export default function App() {
       <>
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
         <ActionLoadingOverlay message={actionLoadingMessage} />
-        <AccountingPortal
-          user={currentUser}
-          data={data}
-          onRefresh={() => loadData()}
-          onLogout={logout}
-          onDownloadAccounting={() => downloadFile("/reports/accounting.xlsx", "reporte-contable-futsi.xlsx")}
-          onCreateInvoice={(payload) => createRecord("/invoices/simulate/", payload, "Factura simulada generada.")}
-          onDownloadFile={downloadFile}
-          onUploadHistoricalImport={uploadHistoricalImport}
-          onCommitHistoricalImport={commitHistoricalImport}
-          onUpdateMatch={updateMatchScore}
-        />
+        <Suspense fallback={<AppSkeleton />}>
+          <AccountingPortal
+            user={currentUser}
+            data={data}
+            onRefresh={() => loadData()}
+            onLogout={logout}
+            onDownloadAccounting={() => downloadFile("/reports/accounting.xlsx", "reporte-contable-futsi.xlsx")}
+            onCreateInvoice={(payload) => createRecord("/invoices/simulate/", payload, "Factura simulada generada.")}
+            onDownloadFile={downloadFile}
+            onUploadHistoricalImport={uploadHistoricalImport}
+            onCommitHistoricalImport={commitHistoricalImport}
+            onUpdateMatch={updateMatchScore}
+          />
+        </Suspense>
       </>
     );
   }
@@ -149,38 +153,40 @@ export default function App() {
   return (
     <>
       <ActionLoadingOverlay message={actionLoadingMessage} />
-      <AdminShell
-        token={token}
-        user={currentUser}
-        data={data}
-        theme={theme}
-        loading={loading}
-        sectionLoading={sectionLoading}
-        loadedSections={loadedSections}
-        message={message}
-        error={error}
-        onToggleTheme={toggleTheme}
-        onLoadSection={loadSection}
-        onLogout={logout}
-        onCreateRecord={createRecord}
-        onUpdateRecord={updateRecord}
-        onCreateAndReturn={createAndReturn}
-        onUploadHistoricalImport={uploadHistoricalImport}
-        onCommitHistoricalImport={commitHistoricalImport}
-        onCloseAttendanceSession={closeAttendanceSession}
-        onPostAction={postAction}
-        onDownloadFile={downloadFile}
-        onUpdateMatchScore={updateMatchScore}
-        onSaveStudentAssessment={saveStudentAssessment}
-        onMarkAdultPlayer={markAdultPlayer}
-      />
+      <Suspense fallback={<AppSkeleton />}>
+        <AdminShell
+          token={token}
+          user={currentUser}
+          data={data}
+          theme={theme}
+          loading={loading}
+          sectionLoading={sectionLoading}
+          loadedSections={loadedSections}
+          message={message}
+          error={error}
+          onToggleTheme={toggleTheme}
+          onLoadSection={loadSection}
+          onLogout={logout}
+          onCreateRecord={createRecord}
+          onUpdateRecord={updateRecord}
+          onCreateAndReturn={createAndReturn}
+          onUploadHistoricalImport={uploadHistoricalImport}
+          onCommitHistoricalImport={commitHistoricalImport}
+          onCloseAttendanceSession={closeAttendanceSession}
+          onPostAction={postAction}
+          onDownloadFile={downloadFile}
+          onUpdateMatchScore={updateMatchScore}
+          onSaveStudentAssessment={saveStudentAssessment}
+          onMarkAdultPlayer={markAdultPlayer}
+        />
+      </Suspense>
     </>
   );
 }
 
 function LandingFallback() {
   return (
-    <main className="grid min-h-screen place-items-center bg-zinc-950 px-4 text-white">
+    <main className="motion-page grid min-h-screen place-items-center bg-zinc-950 px-4 text-white">
       <div className="size-10 animate-spin rounded-full border-4 border-emerald-100/20 border-t-emerald-300" />
     </main>
   );
@@ -189,8 +195,8 @@ function LandingFallback() {
 function ActionLoadingOverlay({ message }: { message: string }) {
   if (!message) return null;
   return (
-    <div className="fixed inset-0 z-[1300] grid place-items-center bg-zinc-950/25 px-4 backdrop-blur-[1px]">
-      <div className="grid min-w-[240px] place-items-center rounded-md border border-zinc-200 bg-white px-6 py-5 text-center shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="motion-page fixed inset-0 z-[1300] grid place-items-center bg-zinc-950/25 px-4 backdrop-blur-[1px]">
+      <div className="motion-card grid min-w-[240px] place-items-center rounded-md border border-zinc-200 bg-white px-6 py-5 text-center shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
         <div className="size-9 animate-spin rounded-full border-4 border-zinc-200 border-t-emerald-700" />
         <p className="mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">{message}</p>
       </div>

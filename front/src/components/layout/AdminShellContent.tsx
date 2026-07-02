@@ -4,20 +4,23 @@ import type {
   AttendanceRecord,
   AttendanceSession,
   FaceRecognitionResponse,
+  HistoricalImport,
   TabKey,
   User,
 } from "../../types";
 import { fullWidthTabs } from "./adminNavigation";
 import type { AttendanceSubsection, BusinessScope } from "./adminShellModel";
+import { AutomaticAttendancePanel, VideoOccupancyPanel } from "../../features/automatic-attendance";
+import { BillingCollectionPanel, BillingPanel } from "../../features/billing";
+import { CoachDashboardPanel, CoachesConsolidatedPanel } from "../../features/coach";
+import { TournamentsPanel } from "../../features/tournaments";
+import { UnknownAttendanceDetailPanel, UnknownAttendancePanel } from "../../features/unknown-attendance";
+import { UnknownPeoplePanel } from "../../features/unknown-people";
 import {
   AdultLeagueDashboardPanel,
-  AutomaticAttendancePanel,
+  AttendanceGeneralPanel,
   AttendancePanel,
-  BillingPanel,
-  BillingCollectionPanel,
   CalendarPanel,
-  CoachDashboardPanel,
-  CoachesConsolidatedPanel,
   DailyOperationPanel,
   DashboardPanel,
   DebtsPanel,
@@ -32,12 +35,8 @@ import {
   SitesPanel,
   SportsPanel,
   StudentsPanel,
-  TournamentsPanel,
   UniformsPanel,
   UsersPanel,
-  UnknownAttendanceDetailPanel,
-  UnknownAttendancePanel,
-  VideoOccupancyPanel,
 } from "../FutsiViews";
 
 type AdminShellContentProps = {
@@ -63,8 +62,8 @@ type AdminShellContentProps = {
   onCreateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
   onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
   onCreateAndReturn: <T>(path: string, payload: unknown) => Promise<T>;
-  onUploadHistoricalImport: (formData: FormData) => Promise<unknown>;
-  onCommitHistoricalImport: (importId: number, payload: unknown) => Promise<unknown>;
+  onUploadHistoricalImport: (formData: FormData) => Promise<HistoricalImport>;
+  onCommitHistoricalImport: (importId: number, payload: unknown) => Promise<HistoricalImport>;
   onCloseAttendanceSession: (sessionId: number) => Promise<void>;
   onPostAction: (path: string, success: string) => Promise<void>;
   onDownloadFile: (path: string, filename: string) => Promise<void>;
@@ -81,7 +80,7 @@ export function AdminShellContent(props: AdminShellContentProps) {
       {message && <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p>}
       {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {(loading || (sectionLoading === effectiveActiveTab && !isFirstSectionLoad)) && <RefreshSkeletonBar />}
-      <section className={`${effectiveActiveTab !== "dashboard" && effectiveActiveTab !== "adult-dashboard" ? "mt-6" : "mt-0"} grid min-w-0 gap-5 pb-20 sm:pb-0 ${fullWidthTabs.has(effectiveActiveTab) ? "grid-cols-1" : "lg:grid-cols-[360px_1fr]"}`}>
+      <section key={effectiveActiveTab} className={`motion-page ${effectiveActiveTab !== "dashboard" && effectiveActiveTab !== "adult-dashboard" ? "mt-6" : "mt-0"} grid min-w-0 gap-5 pb-20 sm:pb-0 ${fullWidthTabs.has(effectiveActiveTab) ? "grid-cols-1" : "lg:grid-cols-[360px_1fr]"}`}>
         {isFirstSectionLoad ? <SectionSkeleton /> : <ActivePanel {...props} />}
       </section>
     </div>
@@ -185,6 +184,7 @@ function ActivePanel(props: AdminShellContentProps) {
           onMarkAdultPlayer={onMarkAdultPlayer}
         />
       )}
+      {effectiveActiveTab === "unknowns" && <UnknownPeoplePanel token={token} data={data} onRefreshData={onRefreshActiveSection} />}
       {effectiveActiveTab === "billing" && (
         businessScope === "adult" ? (
           <AdultLeagueDashboardPanel
@@ -273,6 +273,7 @@ function AttendanceContent({
   onMarkAdultPlayer,
 }: AttendanceContentProps) {
   const items: Array<{ key: AttendanceSubsection; label: string }> = [
+    { key: "general", label: "Asistencia general" },
     { key: "report", label: "Reporte automatico" },
     { key: "automatic", label: "Pase automatico" },
     { key: "unknown", label: "Desconocidos" },
@@ -284,7 +285,7 @@ function AttendanceContent({
   return (
     <div className="grid gap-5">
       <div className="rounded-md border border-zinc-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
           {items.map((item) => (
             <button
               key={item.key}
@@ -318,6 +319,7 @@ function AttendanceContent({
         )
       )}
       {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="process" />}
+      {attendanceSubsection === "general" && <AttendanceGeneralPanel data={scopedData} scope={businessScope} />}
       {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="report" />}
       {attendanceSubsection === "unknown" && <UnknownAttendancePanel token={token} data={data} onOpenDetail={onOpenUnknownDetail} />}
       {attendanceSubsection === "unknown-detail" && unknownDetailDate && (

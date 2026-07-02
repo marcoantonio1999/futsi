@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { AppData, TabKey, ThemeMode, User } from "../../types";
+import type { AppData, HistoricalImport, TabKey, ThemeMode, User } from "../../types";
 import { defaultSectionsByRole, tabItems } from "./adminNavigation";
 import { AdminShellContent } from "./AdminShellContent";
 import { AdminShellHeader } from "./AdminShellHeader";
@@ -7,6 +7,7 @@ import { AdminShellMobileMenu } from "./AdminShellMobileMenu";
 import { AdminShellSidebar } from "./AdminShellSidebar";
 import {
   academyDefaultTab,
+  academyData,
   academyMenuTabs,
   adultDefaultTab,
   adultLeagueData,
@@ -19,7 +20,7 @@ import {
   type AttendanceSubsection,
   type BusinessScope,
 } from "./adminShellModel";
-import { ThemeToggle } from "../FutsiViews";
+import { ThemeToggle } from "./ThemeToggle";
 
 type AdminShellProps = {
   token: string;
@@ -37,8 +38,8 @@ type AdminShellProps = {
   onCreateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
   onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
   onCreateAndReturn: <T>(path: string, payload: unknown) => Promise<T>;
-  onUploadHistoricalImport: (formData: FormData) => Promise<unknown>;
-  onCommitHistoricalImport: (importId: number, payload: unknown) => Promise<unknown>;
+  onUploadHistoricalImport: (formData: FormData) => Promise<HistoricalImport>;
+  onCommitHistoricalImport: (importId: number, payload: unknown) => Promise<HistoricalImport>;
   onCloseAttendanceSession: (sessionId: number) => Promise<void>;
   onPostAction: (path: string, success: string) => Promise<void>;
   onDownloadFile: (path: string, filename: string) => Promise<void>;
@@ -101,7 +102,7 @@ export function AdminShell({
   const fallbackTab = sidebarTabs[0]?.key ?? (businessScope === "adult" ? adultDefaultTab : academyDefaultTab);
   const effectiveActiveTab = activeTabMeta ? activeTab : fallbackTab;
   const effectiveActiveTabMeta = sidebarTabs.find((tab) => tab.key === effectiveActiveTab) ?? visibleTabs.find((tab) => tab.key === effectiveActiveTab);
-  const scopedData = businessScope === "adult" ? adultLeagueData(data) : data;
+  const scopedData = businessScope === "adult" ? adultLeagueData(data) : academyData(data);
   const canSeeAdultDashboard = visibleTabs.some((tab) => tab.key === "adult-dashboard");
   const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
   const isFirstSectionLoad = sectionLoading === effectiveActiveTab && !loadedSections.includes(effectiveActiveTab);
@@ -246,7 +247,7 @@ export function AdminShell({
 
   return (
     <main
-      className={`min-h-screen text-zinc-950 ${businessScope === "adult" ? "bg-blue-50/45" : "bg-stone-50"}`}
+      className={`app-motion min-h-screen text-zinc-950 ${businessScope === "adult" ? "bg-blue-50/45" : "bg-stone-50"}`}
       onTouchStart={handleMobileTouchStart}
       onTouchEnd={handleMobileTouchEnd}
       data-testid="admin-portal"

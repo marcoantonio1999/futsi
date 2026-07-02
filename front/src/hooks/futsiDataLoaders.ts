@@ -117,6 +117,15 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
     return { sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords };
   }
 
+  if (tab === "unknowns") {
+    const [sites, tournaments, teams] = await Promise.all([
+      apiRequest<Site[]>("/sites/", authToken),
+      apiRequest<Tournament[]>("/tournaments/", authToken),
+      apiRequest<Team[]>("/teams/", authToken),
+    ]);
+    return { sites, tournaments, teams };
+  }
+
   if (tab === "sports" || tab === "tournaments") {
     const [sites, students, tournaments, teams, studentTournamentRegistrations, players, matches, standings, attendanceSessions, attendanceRecords, playerAttendanceRecords, studentAssessments] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),

@@ -30,7 +30,7 @@ export function WaterfallChart({ income, operating, fixed, corporate, nonRecurre
         <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
         <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
         <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} tickFormatter={(value) => `$${Number(value) / 1000}k`} />
-        <Tooltip formatter={(value: number) => `$${money(Math.abs(value))}`} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
+        <Tooltip formatter={(value: unknown) => `$${money(Math.abs(Number(value || 0)))}`} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
         <Bar dataKey="value" radius={[6, 6, 0, 0]} isAnimationActive animationDuration={850}>
           {rows.map((row) => <Cell key={row.name} fill={row.fill} />)}
         </Bar>
@@ -51,9 +51,10 @@ export function ExpenseMixChart({ rows }: { rows: Array<{ label: string; group: 
               {chartRows.map((row) => <Cell key={row.label} fill={statementColors[row.group]} />)}
             </Pie>
             <Tooltip
-              formatter={(value: number, _name, item) => {
+              formatter={(value: unknown, _name: unknown, item: unknown) => {
                 const percent = total ? (Number(value) / total) * 100 : 0;
-                return [`$${money(value)} (${percent.toFixed(1)}%)`, item.payload.label];
+                const label = (item as { payload?: { label?: string } }).payload?.label || String(_name ?? "");
+                return [`$${money(Number(value || 0))} (${percent.toFixed(1)}%)`, label];
               }}
               contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }}
             />
@@ -92,7 +93,7 @@ export function TrendChart({ rows }: { rows: Array<{ month: string; ingresos: nu
         <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
         <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
         <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} tickFormatter={(value) => `$${Number(value) / 1000}k`} />
-        <Tooltip formatter={(value: number, name: string) => [`$${money(value)}`, name]} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
+        <Tooltip formatter={(value: unknown, name: unknown) => [`$${money(Number(value || 0))}`, String(name ?? "")]} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
         <Bar dataKey="ingresos" fill={statementColors.income} radius={[5, 5, 0, 0]} maxBarSize={22} isAnimationActive animationDuration={800} />
         <Bar dataKey="gastos" fill={statementColors.operating} radius={[5, 5, 0, 0]} maxBarSize={22} isAnimationActive animationDuration={800} />
         <Area type="monotone" dataKey="utilidad" stroke={statementColors.utility} fill="#18181b22" strokeWidth={2.5} dot={false} isAnimationActive animationDuration={950} />
@@ -114,7 +115,7 @@ export function SiteContributionChart({ rows }: { rows: SiteContribution[] }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" horizontal={false} />
         <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} tickFormatter={(value) => `$${Number(value) / 1000}k`} />
         <YAxis type="category" dataKey="label" width={112} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
-        <Tooltip formatter={(value: number, name: string) => [`$${money(Math.abs(value))}`, name]} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
+        <Tooltip formatter={(value: unknown, name: unknown) => [`$${money(Math.abs(Number(value || 0)))}`, String(name ?? "")]} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
         <Bar dataKey="income" name="Ingresos" fill={statementColors.income} radius={[0, 6, 6, 0]} maxBarSize={18} isAnimationActive animationDuration={800} />
         <Bar dataKey="gastos" name="Gastos" fill={statementColors.operating} radius={[0, 6, 6, 0]} maxBarSize={18} isAnimationActive animationDuration={850} />
         <Bar dataKey="net" name="Utilidad neta" fill="#2563eb" radius={[0, 6, 6, 0]} maxBarSize={18} isAnimationActive animationDuration={900}>

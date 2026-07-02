@@ -269,7 +269,7 @@ function UtilityTrendChart({ income, expense, utility }: { income: number[]; exp
             <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
             <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} tickFormatter={(value) => `$${Number(value) / 1000}k`} />
             <Tooltip
-              formatter={(value: number, name: string) => [`$${money(value)}`, name]}
+              formatter={(value: unknown, name: unknown) => [`$${money(Number(value || 0))}`, String(name ?? "")]}
               labelFormatter={(label) => `Dia ${label}`}
               contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }}
             />

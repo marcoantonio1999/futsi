@@ -70,8 +70,8 @@ import {
   staffPaymentStatusLabel,
   sumAccountingRows,
 } from "./shared";
-export { CashierPaymentPanel } from "./cashierPaymentPanel";
-import { BillingCollectionPanel } from "./billingCollection";
+export { CashierPaymentPanel } from "../../features/billing";
+import { BillingCollectionPanel } from "../../features/billing";
 
 export function CashierPortal({
   user,

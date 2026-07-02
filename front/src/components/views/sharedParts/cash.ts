@@ -20,9 +20,10 @@ export function calculateCashBySite(data: AppData, siteFilter?: number[]) {
   data.payments
     .filter((payment) => payment.method === "cash" && (payment.status === "registered" || payment.status === "reconciled"))
     .forEach((payment) => {
+      if (payment.charge === null) return;
       const charge = chargesById.get(payment.charge);
       const siteId = charge?.site;
-      const row = siteId ? rowsBySite.get(siteId) : null;
+      const row = siteId !== undefined ? rowsBySite.get(siteId) : null;
       if (row) row.cashPayments += Number(payment.amount || 0);
     });
 

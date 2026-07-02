@@ -66,7 +66,7 @@ export function AttendanceButton({
 }) {
   return (
     <button
-      className={`flex min-h-10 items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium disabled:opacity-50 ${
+      className={`flex min-h-10 items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium transition hover:-translate-y-0.5 hover:shadow-sm disabled:opacity-50 ${
         active ? "border-red-700 bg-red-700 text-white" : "border-zinc-300 bg-white text-zinc-700"
       }`}
       disabled={disabled}
@@ -79,15 +79,21 @@ export function AttendanceButton({
 }
 export function TableHeader({ title, count }: { title: string; count: number }) {
   return (
-    <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+    <div className="motion-header flex items-center justify-between border-b border-zinc-200 px-4 py-3">
       <h2 className="font-semibold">{title}</h2>
       <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">{count}</span>
     </div>
   );
 }
 
-export function StatusPill({ label }: { label: string }) {
-  return <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">{label}</span>;
+export function StatusPill({ label, tone = "ok" }: { label: string; tone?: "ok" | "warn" | "danger" | "neutral" }) {
+  const styles = {
+    ok: "bg-emerald-50 text-emerald-800",
+    warn: "bg-amber-50 text-amber-800",
+    danger: "bg-red-50 text-red-700",
+    neutral: "bg-zinc-100 text-zinc-600",
+  };
+  return <span className={`rounded-md px-2 py-1 text-xs font-medium transition-colors duration-200 ${styles[tone]}`}>{label}</span>;
 }
 
 export function InfoChip({ label, value, tone }: { label: string; value: string; tone: "ok" | "warn" | "danger" | "neutral" }) {
@@ -98,19 +104,19 @@ export function InfoChip({ label, value, tone }: { label: string; value: string;
     neutral: "bg-zinc-100 text-zinc-600",
   };
   return (
-    <div className={`rounded-md px-3 py-2 text-xs ${styles[tone]}`}>
+    <div className={`motion-card rounded-md px-3 py-2 text-xs ${styles[tone]}`}>
       <p className="font-medium">{label}</p>
       <p className="mt-0.5">{value}</p>
     </div>
   );
 }
-export function SimpleList({ title, count, rows }: { title: string; count: number; rows: Array<{ id: number; title: string; subtitle: string }> }) {
+export function SimpleList({ title, count, rows }: { title: string; count: number; rows: Array<{ id: number | string; title: string; subtitle: string }> }) {
   return (
-    <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
+    <div className="motion-card rounded-md border border-zinc-200 bg-white shadow-sm">
       <TableHeader title={title} count={count} />
-      <div className="divide-y divide-zinc-100">
+      <div className="motion-list divide-y divide-zinc-100">
         {rows.map((row) => (
-          <div key={row.id} className="px-4 py-3">
+          <div key={row.id} className="px-4 py-3 transition-colors hover:bg-zinc-50">
             <p className="font-medium">{row.title}</p>
             <p className="mt-1 text-sm text-zinc-500">{row.subtitle}</p>
           </div>

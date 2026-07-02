@@ -5,9 +5,9 @@ import type { AppData, Student, StudentValueAssessment } from "../../types";
 import { Avatar, SelectInput, TableHeader, TextInput } from "./shared";
 
 const valueFields = [
-  { key: "respect", label: "Respeto", fontClass: "font-serif", accent: "border-emerald-200 bg-emerald-50 text-emerald-900" },
-  { key: "discipline", label: "Disciplina", fontClass: "font-mono", accent: "border-zinc-200 bg-zinc-50 text-zinc-900" },
-  { key: "teamwork", label: "Trabajo en equipo", fontClass: "font-sans", accent: "border-sky-200 bg-sky-50 text-sky-950" },
+  { key: "respect", label: "Respeto", fontClass: "font-serif", accent: "border-emerald-200 bg-emerald-50 text-emerald-900", style: undefined },
+  { key: "discipline", label: "Disciplina", fontClass: "font-mono", accent: "border-zinc-200 bg-zinc-50 text-zinc-900", style: undefined },
+  { key: "teamwork", label: "Trabajo en equipo", fontClass: "font-sans", accent: "border-sky-200 bg-sky-50 text-sky-950", style: undefined },
   { key: "responsibility", label: "Responsabilidad", fontClass: "", accent: "border-amber-200 bg-amber-50 text-amber-950", style: { fontFamily: "Georgia, serif" } },
   { key: "sportsmanship", label: "Deportividad", fontClass: "", accent: "border-rose-200 bg-rose-50 text-rose-950", style: { fontFamily: "Trebuchet MS, Arial, sans-serif" } },
 ] as const;

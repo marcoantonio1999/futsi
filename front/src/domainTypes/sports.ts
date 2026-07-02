@@ -31,7 +31,7 @@ export type StudentTournamentRegistration = {
   site?: number;
   site_name?: string;
   student: number;
-  student_name?: string;
+  student_name: string;
   student_category?: string;
   student_group_name?: string;
   team: number | null;

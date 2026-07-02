@@ -14,6 +14,13 @@ body {
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+:root {
+  --motion-fast: 160ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .mirror-camera {
   transform: scaleX(-1);
 }
@@ -39,6 +46,126 @@ body {
   }
 }
 
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes soft-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.app-motion button,
+.app-motion a,
+.app-motion input,
+.app-motion select,
+.app-motion textarea {
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    transform var(--motion-fast) ease;
+}
+
+.app-motion button:not(:disabled):active,
+.app-motion a:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.motion-page {
+  animation: page-enter var(--motion-slow) var(--motion-ease) both;
+}
+
+.motion-section {
+  animation: item-enter var(--motion-slow) var(--motion-ease) both;
+}
+
+.motion-page > * {
+  animation: item-enter var(--motion-slow) var(--motion-ease) both;
+}
+
+.motion-page > *:nth-child(1) {
+  animation-delay: 20ms;
+}
+
+.motion-page > *:nth-child(2) {
+  animation-delay: 55ms;
+}
+
+.motion-page > *:nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.motion-page > *:nth-child(4) {
+  animation-delay: 125ms;
+}
+
+.motion-card {
+  animation: soft-pop var(--motion-slow) var(--motion-ease) both;
+  transition:
+    transform var(--motion-base) var(--motion-ease),
+    box-shadow var(--motion-base) var(--motion-ease),
+    border-color var(--motion-base) ease,
+    background-color var(--motion-base) ease;
+}
+
+.motion-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(24, 24, 27, 0.09);
+}
+
+.motion-list > * {
+  animation: item-enter var(--motion-slow) var(--motion-ease) both;
+}
+
+.motion-list > *:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.motion-list > *:nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.motion-list > *:nth-child(4) {
+  animation-delay: 105ms;
+}
+
+.motion-list > *:nth-child(n + 5) {
+  animation-delay: 135ms;
+}
+
+.motion-header {
+  animation: item-enter var(--motion-base) var(--motion-ease) both;
+}
+
 .progress-fill-active {
   position: relative;
   overflow: hidden;
@@ -53,6 +180,21 @@ body {
   animation:
     progress-stripes 0.9s linear infinite,
     progress-glow 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .motion-card:hover {
+    transform: none;
+  }
 }
 
 html,

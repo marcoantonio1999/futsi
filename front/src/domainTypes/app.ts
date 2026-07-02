@@ -1,5 +1,5 @@
-import type { User, Site, Guardian } from "./auth";
-import type { Student, AttendanceSession, AttendanceRecord } from "./academy";
+import type { User, Site } from "./auth";
+import type { Guardian, Student, AttendanceSession, AttendanceRecord } from "./academy";
 import type { Tournament, Team, StudentTournamentRegistration, Player, Match, StandingRow, StudentAssessment, StudentValueAssessment, PlayerAttendanceRecord } from "./sports";
 import type { Charge, Payment, Discount, Expense, StaffPaymentRequest, CashMovement, CoachWorkLog, Invoice } from "./finance";
 import type { HistoricalImport, HistoricalDiscrepancyReport } from "./historical";
@@ -74,10 +74,10 @@ export type DashboardSummary = {
   payment_status_rows: Array<{ label: string; value: number }>;
   monthly_rows: Array<{ site_id: string; site_name: string; month: string; label: string; ingresos: number; egresos: number; utilidad: number }>;
   category_rows: Array<{ site_id: string; month: string; type: "Ingreso" | "Egreso"; label: string; amount: number; count: number }>;
-  alerts: Array<{ id: string; title: string; subtitle: string }>;
+  alerts: Array<{ id: string | number; title: string; subtitle: string }>;
 };
 
-export type TabKey = "dashboard" | "adult-dashboard" | "calendar" | "sports" | "tournaments" | "coaches" | "referees" | "uniforms" | "debts" | "sales-estimate" | "income-statement" | "daily-operation" | "attendance" | "billing" | "expenses" | "students" | "guardians" | "sites" | "users" | "invoices" | "historical" | "discrepancies";
+export type TabKey = "dashboard" | "adult-dashboard" | "calendar" | "sports" | "tournaments" | "coaches" | "referees" | "uniforms" | "debts" | "sales-estimate" | "income-statement" | "daily-operation" | "attendance" | "unknowns" | "billing" | "expenses" | "students" | "guardians" | "sites" | "users" | "invoices" | "historical" | "discrepancies";
 
 export type AccountingSiteRow = {
   id: number;

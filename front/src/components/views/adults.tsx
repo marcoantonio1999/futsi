@@ -71,7 +71,7 @@ import {
   staffPaymentStatusLabel,
   sumAccountingRows,
 } from "./shared";
-import { AdultCollectionPanel, type AdultPaymentForm } from "./adultCollectionPanel";
+import { AdultCollectionPanel, type AdultPaymentForm } from "../../features/billing";
 
 export function AdultLeagueDashboardPanel({
   data,
@@ -94,9 +94,9 @@ export function AdultLeagueDashboardPanel({
   const adultTeams = data.teams.filter((team) => team.is_active);
   const adultTeamIds = new Set(adultTeams.map((team) => team.id));
   const adultPlayers = data.players.filter((player) => adultTeamIds.has(player.team) && player.is_active);
-  const adultCharges = data.charges.filter((charge) => charge.team && adultTeamIds.has(charge.team));
+  const adultCharges = data.charges.filter((charge) => charge.team !== null && adultTeamIds.has(charge.team));
   const adultChargeIds = new Set(adultCharges.map((charge) => charge.id));
-  const adultPayments = data.payments.filter((payment) => adultChargeIds.has(payment.charge));
+  const adultPayments = data.payments.filter((payment) => payment.charge !== null && adultChargeIds.has(payment.charge));
   const adultIncome = adultPayments
     .filter((payment) => payment.status === "registered" || payment.status === "reconciled")
     .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);

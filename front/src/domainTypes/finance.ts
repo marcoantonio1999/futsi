@@ -11,6 +11,7 @@ export type Charge = {
   student: number | null;
   student_name?: string;
   team: number | null;
+  team_name?: string;
   tournament_registration?: number | null;
   tournament_registration_name?: string;
   jornada_number?: number | null;

@@ -208,7 +208,7 @@ export function MonthlySiteFlowPanel({ data }: { data: AppData }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#71717a" }} tickFormatter={(value) => `$${Number(value) / 1000}k`} />
-                <Tooltip formatter={(value: number, name: string) => [`$${money(value)}`, name]} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
+                <Tooltip formatter={(value: unknown, name: unknown) => [`$${money(Number(value || 0))}`, String(name ?? "")]} contentStyle={{ borderRadius: 8, borderColor: "#e4e4e7" }} />
                 <Bar dataKey="ingresos" name="Ingresos" fill="#059669" radius={[5, 5, 0, 0]} maxBarSize={24} isAnimationActive animationDuration={800} />
                 <Bar dataKey="egresos" name="Egresos" fill="#dc2626" radius={[5, 5, 0, 0]} maxBarSize={24} isAnimationActive animationDuration={800} />
                 <Area type="monotone" dataKey="utilidad" name="Utilidad" stroke="#18181b" fill="#18181b22" strokeWidth={2.4} dot={false} isAnimationActive animationDuration={950} />

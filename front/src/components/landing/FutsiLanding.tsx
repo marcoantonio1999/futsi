@@ -175,7 +175,7 @@ function useLandingScene(mountRef: React.RefObject<HTMLDivElement | null>) {
       renderer.dispose();
       grassTexture?.dispose();
       (ball.userData.ballTexture as THREE.Texture | undefined)?.dispose();
-      scene.traverse((object) => {
+      scene.traverse((object: THREE.Object3D) => {
         if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments)) return;
         object.geometry.dispose();
         const material = object.material;

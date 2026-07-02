@@ -1,4 +1,6 @@
 
+import type { AttendanceRecord } from "./academy";
+
 export type FaceRecognitionResponse = {
   attempt: {
     id: number;

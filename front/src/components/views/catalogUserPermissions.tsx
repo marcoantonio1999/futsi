@@ -7,6 +7,7 @@ export const sectionPermissionOptions: Array<{ key: TabKey; label: string }> = [
   { key: "billing", label: "Cobranza" },
   { key: "debts", label: "Adeudos" },
   { key: "attendance", label: "Asistencia" },
+  { key: "unknowns", label: "Desconocidos" },
   { key: "sports", label: "Deportivo" },
   { key: "tournaments", label: "Torneos" },
   { key: "expenses", label: "Gastos" },

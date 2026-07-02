@@ -96,7 +96,8 @@ export function AttendancePanel({
   const [startsAt, setStartsAt] = useState("17:00");
   const [durationMinutes, setDurationMinutes] = useState("120");
   const [matchId, setMatchId] = useState("");
-  const [activeSessionId, setActiveSessionId] = useState<number | null>(isCoach ? null : data.attendanceSessions[0]?.id ?? null);
+  const academySessions = useMemo(() => data.attendanceSessions.filter((session) => session.session_type !== "tournament_match"), [data.attendanceSessions]);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(isCoach ? null : academySessions[0]?.id ?? null);
   const [savingStudentId, setSavingStudentId] = useState<number | null>(null);
   const numericSiteId = siteId ? Number(siteId) : null;
 
@@ -110,28 +111,28 @@ export function AttendancePanel({
 
   const coachTodaySessions = useMemo(() => {
     if (!isCoach) return [];
-    return data.attendanceSessions
+    return academySessions
       .filter((session) => {
         if (session.date !== todayKey()) return false;
         if (numericSiteId && session.site !== numericSiteId) return false;
-        if (user?.coach_group_name && session.session_type !== "tournament_match" && session.group_name && session.group_name !== user.coach_group_name) return false;
+        if (user?.coach_group_name && session.group_name && session.group_name !== user.coach_group_name) return false;
         return true;
       })
       .sort((a, b) => (a.starts_at || "99:99").localeCompare(b.starts_at || "99:99"));
-  }, [data.attendanceSessions, isCoach, numericSiteId, user?.coach_group_name]);
+  }, [academySessions, isCoach, numericSiteId, user?.coach_group_name]);
   const visibleTodaySessions = useMemo(() => {
     const sessions = isCoach
       ? coachTodaySessions
-      : data.attendanceSessions.filter((session) => session.date === todayKey() && (!numericSiteId || session.site === numericSiteId));
+      : academySessions.filter((session) => session.date === todayKey() && (!numericSiteId || session.site === numericSiteId));
     return sessions.slice(0, isCoach ? 12 : 6);
-  }, [coachTodaySessions, data.attendanceSessions, isCoach, numericSiteId]);
-  const currentSession = useMemo(() => findCurrentSession(isCoach ? coachTodaySessions : data.attendanceSessions, numericSiteId), [coachTodaySessions, data.attendanceSessions, isCoach, numericSiteId]);
+  }, [academySessions, coachTodaySessions, isCoach, numericSiteId]);
+  const currentSession = useMemo(() => findCurrentSession(isCoach ? coachTodaySessions : academySessions, numericSiteId), [academySessions, coachTodaySessions, isCoach, numericSiteId]);
   const currentMatch = useMemo(() => findCurrentMatch(data.matches, numericSiteId), [data.matches, numericSiteId]);
   const todayMatches = useMemo(
     () => data.matches.filter((match) => match.played_on === todayKey() && (!numericSiteId || match.site === numericSiteId) && match.status !== "finished" && match.status !== "canceled"),
     [data.matches, numericSiteId],
   );
-  const selectableSessions = isCoach ? coachTodaySessions : data.attendanceSessions;
+  const selectableSessions = isCoach ? coachTodaySessions : academySessions;
   const activeSession = selectableSessions.find((session) => session.id === activeSessionId) ?? null;
   const activeSessionCanMark = activeSession ? canMarkSession(activeSession) : false;
 

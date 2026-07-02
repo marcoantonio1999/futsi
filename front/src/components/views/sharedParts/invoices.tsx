@@ -35,6 +35,7 @@ import { roleLabels, statusLabels } from "../../../appState";
 import { money } from "../../../utils/format";
 import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../../types";
 import { SelectInput } from "./metrics";
+import { TableHeader } from "./ui";
 
 
 export function InvoiceRows({ invoices, onDownloadFile }: { invoices: Invoice[]; onDownloadFile: (path: string, filename: string) => void }) {

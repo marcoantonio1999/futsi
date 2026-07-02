@@ -247,7 +247,7 @@ export function AccountingPortal({
         </section>
 
         <section className="mt-6">
-          <SportsPanel data={data} canEditMatches onUpdateMatch={onUpdateMatch} onSaveAssessment={async () => undefined} />
+          <SportsPanel data={data} canEditMatches canEditAssessments={false} onUpdateMatch={onUpdateMatch} onSaveAssessment={async () => undefined} />
         </section>
 
         <section className="mt-6">
