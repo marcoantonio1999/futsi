@@ -23,3 +23,7 @@ front/.env.local
 Thumbs.db
 .idea/
 .vscode/
+
+# Codex/local tooling artifacts
+.codex/
+tools/cloudflared.exe
