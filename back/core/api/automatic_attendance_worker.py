@@ -161,6 +161,7 @@ def annotate_session_result_with_camera(session_result: dict, metadata: dict) ->
 
 
 def process_drive_video_with_proxy_pipeline(video_item: dict, user: User, job: dict, reference_cache: dict | None = None) -> tuple[dict, bool, list[Path]]:
+    raise_if_job_cancelled(job)
     failed = False
     materialized_paths: list[Path] = []
     source_metadata = dict(video_item.get("metadata") or {})
@@ -197,6 +198,7 @@ def process_drive_video_with_proxy_pipeline(video_item: dict, user: User, job: d
 
         original_thread, original_state = start_original_download(video_item)
         for session in sessions:
+            raise_if_job_cancelled(job)
             proxy_scan = scan_frame_proxy_candidate_windows(proxy_path, session, job, proxy_metadata)
             if proxy_scan.get("failed"):
                 failed = True
@@ -322,6 +324,7 @@ def process_pending_worker(job_id: str, user_id: int, target_path: str | None = 
         reference_cache: dict = {}
 
         for index, video_item in enumerate(videos, start=1):
+            raise_if_job_cancelled(job)
             clip_id = (video_item.get("metadata") or {}).get("video_clip_id")
             if clip_id:
                 mark_video_clip_processing(str(clip_id), job_id)
@@ -343,6 +346,7 @@ def process_pending_worker(job_id: str, user_id: int, target_path: str | None = 
                 elif video_item.get("source") == "drive":
                     update_job(job, current_video=f"Descargando {video_item['filename']}", current_video_started_at=timezone.now().isoformat(), processed=index - 1, percent=0)
                     video_path = materialize_remote_video(video_item, job)
+                    raise_if_job_cancelled(job)
                 else:
                     video_path = Path(video_item["path"])
                 if not video_path.exists():
@@ -382,6 +386,7 @@ def process_pending_worker(job_id: str, user_id: int, target_path: str | None = 
                     video_result["detail"] = "No se encontro sesion abierta para este video."
                 else:
                     for session in sessions:
+                        raise_if_job_cancelled(job)
                         session_result = process_video_for_session(video_path, session, user, job, metadata, reference_cache=reference_cache)
                         annotate_session_result_with_camera(session_result, metadata)
                         video_result["sessions"].append(session_result)
@@ -397,6 +402,8 @@ def process_pending_worker(job_id: str, user_id: int, target_path: str | None = 
             update_job(job, processed=index, percent=round((index / max(len(videos), 1)) * 100, 1), results=results)
 
         update_job(job, status="done", phase="done", phase_label="Procesamiento terminado", current_video=None, percent=100, completed_at=timezone.now().isoformat(), results=results)
+    except JobCancelled:
+        mark_job_canceled(job)
     except Exception as exc:
         detail = str(exc)
         reset_interrupted_video_clip(job, detail)

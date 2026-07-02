@@ -121,13 +121,27 @@ def resolve_sessions(video_path: Path, metadata: dict, user: User) -> list[Atten
         if sessions:
             metadata.setdefault("site_id", sessions[0].site_id)
             metadata.setdefault("recorded_date", sessions[0].date.isoformat())
-            overlapping_sessions = resolve_sessions_overlapping_recording(video_path, metadata, user, sessions)
-            if overlapping_sessions:
-                return overlapping_sessions
-        if len(sessions) == 1 and sessions[0].session_type == "tournament_match" and sessions[0].match_id:
-            match_sessions = [session for session in get_or_create_match_sessions(sessions[0].match, user) if not session.closed_at]
-            if match_sessions:
-                return sorted(match_sessions, key=lambda session: (session.starts_at or time.min, session.id))
+            selected_sessions = sessions
+            if len(sessions) == 1 and sessions[0].session_type == "tournament_match" and sessions[0].match_id:
+                match_sessions = [session for session in get_or_create_match_sessions(sessions[0].match, user) if not session.closed_at]
+                if match_sessions:
+                    selected_sessions = sorted(match_sessions, key=lambda session: (session.starts_at or time.min, session.id))
+
+            recording = recording_interval_from_metadata(metadata)
+            if recording:
+                recording_start, recording_end = recording
+                overrides = {}
+                windowed_sessions = []
+                for session in selected_sessions:
+                    window = session_window_for_recording(session, recording_start, recording_end)
+                    if not window:
+                        continue
+                    overrides[str(session.id)] = window
+                    windowed_sessions.append(session)
+                if windowed_sessions:
+                    metadata["_automatic_attendance_session_windows"] = overrides
+                    return windowed_sessions
+            return selected_sessions
         return sessions
 
     site_id = metadata.get("site_id")

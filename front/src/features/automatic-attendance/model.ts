@@ -41,7 +41,7 @@ export type FramePackageMetadata = {
 
 export type AutomaticAttendanceJob = {
   id: string;
-  status: "queued" | "processing" | "done" | "error";
+  status: "queued" | "processing" | "done" | "error" | "canceled";
   created_at?: string;
   updated_at?: string;
   completed_at?: string;
@@ -88,6 +88,8 @@ export type AutomaticAttendanceJob = {
   video_fps?: number | null;
   process_window_seconds?: number | null;
   detail?: string;
+  cancel_requested?: boolean;
+  cancel_requested_at?: string;
   local_cache?: LocalVideoCacheSummary;
   results?: Array<{
     video: string;
@@ -196,6 +198,7 @@ export function hasUsablePersonPhoto(person: { photo?: string; photo_url?: strin
 
 export function statusTone(status?: AutomaticAttendanceJob["status"]) {
   if (status === "done") return "text-emerald-700 bg-emerald-50 border-emerald-200";
+  if (status === "canceled") return "text-zinc-700 bg-zinc-50 border-zinc-200";
   if (status === "error") return "text-red-700 bg-red-50 border-red-200";
   return "text-amber-800 bg-amber-50 border-amber-200";
 }

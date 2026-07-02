@@ -1,11 +1,10 @@
-import { Cloud, FolderOpen, Gauge, HardDrive, Play, RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
+import { FolderOpen, HardDrive, Play, RefreshCw, Search } from "lucide-react";
 import type { AppData } from "../../../types";
 import {
   sessionTitle,
   videoClipStatusLabel,
   videoClipStatusTone,
-  cameraDisplayLabel,
-  type FramePackageMetadata,
   type AutomaticAttendanceJob,
   type PendingVideo,
   type SessionDisplaySource,
@@ -18,7 +17,6 @@ export function AutomaticAttendanceQueues({
   videoClips,
   reprocessableVideos,
   recentJobs,
-  pendingCount,
   hasLiveVideoClips,
   isProcessing,
   enabled,
@@ -32,7 +30,6 @@ export function AutomaticAttendanceQueues({
   videoClips: VideoClipMonitor[];
   reprocessableVideos: PendingVideo[];
   recentJobs: AutomaticAttendanceJob[];
-  pendingCount: number;
   hasLiveVideoClips: boolean;
   isProcessing: boolean;
   enabled?: boolean;
@@ -50,35 +47,9 @@ export function AutomaticAttendanceQueues({
 
   return (
     <section className="grid gap-4 xl:grid-cols-3">
-      <PendingVideosCard data={data} videos={pendingVideos} pendingCount={pendingCount} enabled={enabled} isProcessing={isProcessing} onProcess={onProcess} />
       <VideoClipsCard data={data} clips={videoClips} localPendingByClipId={localPendingByClipId} localReadyCount={localReadyCount} hasLiveVideoClips={hasLiveVideoClips} enabled={enabled} isProcessing={isProcessing} onProcess={onProcess} />
       <ProcessedVideosCard data={data} reprocessableVideos={reprocessableVideos} recentJobs={recentJobs} enabled={enabled} isProcessing={isProcessing} onOpenProcessed={onOpenProcessed} onReprocess={onReprocess} onOpenJob={onOpenJob} />
     </section>
-  );
-}
-
-function cameraCountEntries(items: Array<{ camera_id?: string | null; camera_label?: string | null }>) {
-  const counts = new Map<string, number>();
-  items.forEach((item) => {
-    const label = cameraDisplayLabel(item.camera_id, item.camera_label);
-    if (label === "Sin camara") return;
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  });
-  return Array.from(counts.entries())
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-}
-
-function CameraSummaryBadges({ counts }: { counts: Array<{ label: string; count: number }> }) {
-  if (!counts.length) return null;
-  return (
-    <div className="mt-2 flex flex-wrap gap-1">
-      {counts.map((item) => (
-        <span key={item.label} className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-800">
-          {item.label}: {item.count}
-        </span>
-      ))}
-    </div>
   );
 }
 
@@ -93,95 +64,6 @@ function pendingVideoTournamentLabel(video: PendingVideo, session?: SessionDispl
 
 function clipTournamentLabel(clip: VideoClipMonitor, session?: SessionDisplaySource | null) {
   return sessionTournamentLabel(session) || clip.tournament_name || "Sin torneo";
-}
-
-function PendingVideosCard({ data, videos, pendingCount, enabled, isProcessing, onProcess }: { data: AppData; videos: PendingVideo[]; pendingCount: number; enabled?: boolean; isProcessing: boolean; onProcess: (path?: string) => void }) {
-  const cameraCounts = cameraCountEntries(videos.map((video) => ({ camera_id: video.metadata.camera_id, camera_label: video.metadata.camera_label })));
-  return (
-    <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
-      <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div>
-          <h3 className="text-sm font-semibold">Videos pendientes</h3>
-          <p className="mt-1 text-xs text-zinc-500">Listos para procesar desde Drive o carpeta local.</p>
-          <CameraSummaryBadges counts={cameraCounts} />
-        </div>
-        <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">{pendingCount}</span>
-      </div>
-      <div className="max-h-[560px] divide-y divide-zinc-100 overflow-auto dark:divide-zinc-800">
-        {videos.map((video) => {
-          const session = data.attendanceSessions.find((item) => String(item.id) === String(video.metadata.session_id));
-          const linkedSessionLabel = session ? sessionTitle(session, data) : video.metadata.recorded_date ? `Fecha ${video.metadata.recorded_date}` : "Sin sesion ligada";
-          return (
-            <div key={video.path} className="m-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/55">
-              <div className="min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">{session ? sessionTitle(session, data) : "Video sin sesion ligada"}</p>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <CameraBadge cameraId={video.metadata.camera_id} cameraLabel={video.metadata.camera_label} />
-                    <SourceBadge source={video.source} />
-                    <FrameProxyBadge packageMetadata={video.metadata.frame_package} />
-                    <AnalysisVideoBadge packageMetadata={video.metadata.analysis_video} />
-                  </div>
-                </div>
-                <p className={`mt-1 line-clamp-2 text-xs ${session ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>{session ? pendingVideoTournamentLabel(video, session) : linkedSessionLabel}</p>
-              </div>
-              <button className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" disabled={!enabled || isProcessing} onClick={() => onProcess(video.path)} type="button">
-                <Play size={13} /> {video.metadata.video_clip_id ? "Procesar sesion/camaras" : "Procesar este video"}
-              </button>
-            </div>
-          );
-        })}
-        {videos.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay videos en pendientes.</p>}
-      </div>
-    </div>
-  );
-}
-
-function hasFrameProxy(packageMetadata?: FramePackageMetadata) {
-  return packageMetadata?.status === "uploaded" && packageMetadata.package_type === "video_proxy_1fps";
-}
-
-function hasAnalysisVideo(packageMetadata?: FramePackageMetadata) {
-  return packageMetadata?.status === "uploaded" && packageMetadata.package_type === "video_frame_index_mod8";
-}
-
-function CameraBadge({ cameraId, cameraLabel }: { cameraId?: string | null; cameraLabel?: string | null }) {
-  const label = cameraDisplayLabel(cameraId, cameraLabel);
-  if (label === "Sin camara") return null;
-  return <span className="inline-flex shrink-0 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-800">{label}</span>;
-}
-
-function FrameProxyBadge({ packageMetadata }: { packageMetadata?: FramePackageMetadata }) {
-  if (!hasFrameProxy(packageMetadata)) return null;
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-800">
-      <Gauge size={12} /> Proxy 1 FPS
-    </span>
-  );
-}
-
-function AnalysisVideoBadge({ packageMetadata }: { packageMetadata?: FramePackageMetadata }) {
-  if (!hasAnalysisVideo(packageMetadata)) return null;
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-800">
-      <Gauge size={12} /> Analisis
-    </span>
-  );
-}
-
-function SourceBadge({ source }: { source?: PendingVideo["source"] }) {
-  if (source === "local") {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
-        <HardDrive size={12} /> Local
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-      <Cloud size={12} /> Drive
-    </span>
-  );
 }
 
 function VideoClipsCard({
@@ -203,20 +85,19 @@ function VideoClipsCard({
   isProcessing: boolean;
   onProcess: (path?: string) => void;
 }) {
-  const cameraCounts = cameraCountEntries(clips.map((clip) => ({ camera_id: clip.camera_id, camera_label: clip.metadata?.camera_label as string | undefined })));
+  const visibleClips = clips.filter((clip) => clip.status !== "processed");
   return (
-    <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+    <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 xl:col-span-2">
       <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <div>
           <h3 className="text-sm font-semibold">Grabaciones y subida</h3>
           <p className="mt-1 text-xs text-zinc-500">{localReadyCount} videos ya estan en esta PC. Actualiza cada {hasLiveVideoClips ? "5" : "15"}s.</p>
-          <CameraSummaryBadges counts={cameraCounts} />
         </div>
-        <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">{clips.length}</span>
+        <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">{visibleClips.length}</span>
       </div>
       <div className="max-h-[560px] divide-y divide-zinc-100 overflow-auto dark:divide-zinc-800">
-        {clips.map((clip) => <VideoClipRow key={clip.id} clip={clip} data={data} localPendingVideo={localPendingByClipId.get(String(clip.id))} enabled={enabled} isProcessing={isProcessing} onProcess={onProcess} />)}
-        {clips.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay grabaciones registradas.</p>}
+        {visibleClips.map((clip) => <VideoClipRow key={clip.id} clip={clip} data={data} localPendingVideo={localPendingByClipId.get(String(clip.id))} enabled={enabled} isProcessing={isProcessing} onProcess={onProcess} />)}
+        {visibleClips.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay grabaciones pendientes de subida o pase de lista.</p>}
       </div>
     </div>
   );
@@ -229,30 +110,26 @@ function VideoClipRow({ clip, data, localPendingVideo, enabled, isProcessing, on
   const match = clip.match_id ? data.matches.find((item) => item.id === clip.match_id) : undefined;
   const clipTitle = session ? sessionTitle(session, data) : match?.home_team_name && match.away_team_name ? `${match.home_team_name} vs ${match.away_team_name}` : clip.session_label || "Grabacion sin sesion ligada";
   const clipMeta = clipTournamentLabel(clip, session);
-  const framePackage = clip.metadata?.frame_package;
-  const analysisVideo = clip.metadata?.analysis_video as FramePackageMetadata | undefined;
+  const uploadComplete = recordingPercent >= 100 && uploadPercent >= 100;
   return (
-    <div className="m-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/55">
+    <div className="mx-3 my-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/55">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">{clipTitle}</p>
-          <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{clipMeta}</p>
+          <p className="line-clamp-1 text-sm font-semibold text-zinc-950 dark:text-zinc-50">{clipTitle}</p>
+          <p className="mt-0.5 line-clamp-1 text-xs text-zinc-500">{clipMeta}</p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <CameraBadge cameraId={clip.camera_id} cameraLabel={clip.metadata?.camera_label as string | undefined} />
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
           {localPendingVideo ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
               <HardDrive size={12} /> En esta PC
             </span>
           ) : null}
-          <FrameProxyBadge packageMetadata={framePackage} />
-          <AnalysisVideoBadge packageMetadata={analysisVideo} />
           <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${videoClipStatusTone(clip.status)}`}>{videoClipStatusLabel(clip.status)}</span>
         </div>
       </div>
-      <ProgressPair recordingPercent={recordingPercent} uploadPercent={uploadPercent} status={clip.status} />
+      {!uploadComplete ? <ProgressPair recordingPercent={recordingPercent} uploadPercent={uploadPercent} status={clip.status} compact /> : null}
       {clip.processable ? (
-        <button className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" disabled={!enabled || isProcessing} onClick={() => onProcess(`video_clip:${clip.id}`)} type="button">
+        <button className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" disabled={!enabled || isProcessing} onClick={() => onProcess(`video_clip:${clip.id}`)} type="button">
           <Play size={13} /> Procesar sesion/camaras
         </button>
       ) : null}
@@ -261,15 +138,15 @@ function VideoClipRow({ clip, data, localPendingVideo, enabled, isProcessing, on
   );
 }
 
-function ProgressPair({ recordingPercent, uploadPercent, status }: { recordingPercent: number; uploadPercent: number; status: string }) {
+function ProgressPair({ compact = false, recordingPercent, uploadPercent, status }: { compact?: boolean; recordingPercent: number; uploadPercent: number; status: string }) {
   return (
-    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-zinc-600 dark:text-zinc-300">
+    <div className={`${compact ? "mt-1.5" : "mt-2"} grid gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-300`}>
       <div>
-        <div className="mb-1 flex justify-between"><span>Grabacion</span><span className="font-semibold">{recordingPercent.toFixed(0)}%</span></div>
+        <div className="mb-0.5 flex justify-between"><span>Grabacion</span><span className="font-semibold">{recordingPercent.toFixed(0)}%</span></div>
         <div className="h-1.5 overflow-hidden rounded-full bg-white dark:bg-zinc-800"><div className={`h-full rounded-full bg-amber-500 transition-all duration-700 ${status === "recording" ? "progress-fill-active" : ""}`} style={{ width: `${Math.max(recordingPercent, status === "recording" ? 3 : 0)}%` }} /></div>
       </div>
       <div>
-        <div className="mb-1 flex justify-between"><span>Drive</span><span className="font-semibold">{uploadPercent.toFixed(0)}%</span></div>
+        <div className="mb-0.5 flex justify-between"><span>Subida a Drive</span><span className="font-semibold">{uploadPercent.toFixed(0)}%</span></div>
         <div className="h-1.5 overflow-hidden rounded-full bg-white dark:bg-zinc-800"><div className={`h-full rounded-full bg-blue-600 transition-all duration-700 ${status === "uploading" ? "progress-fill-active" : ""}`} style={{ width: `${Math.max(uploadPercent, status === "uploading" ? 3 : 0)}%` }} /></div>
       </div>
     </div>
@@ -277,21 +154,65 @@ function ProgressPair({ recordingPercent, uploadPercent, status }: { recordingPe
 }
 
 function ProcessedVideosCard({ data, reprocessableVideos, recentJobs, enabled, isProcessing, onOpenProcessed, onReprocess, onOpenJob }: { data: AppData; reprocessableVideos: PendingVideo[]; recentJobs: AutomaticAttendanceJob[]; enabled?: boolean; isProcessing: boolean; onOpenProcessed: (video: PendingVideo) => void; onReprocess: (video: PendingVideo) => void; onOpenJob: (job: AutomaticAttendanceJob) => void }) {
+  const [query, setQuery] = useState("");
+  const normalizedQuery = normalizeSearchText(query);
+  const filteredReprocessableVideos = useMemo(
+    () => reprocessableVideos.filter((video) => !normalizedQuery || normalizeSearchText(processedVideoSearchText(video, data)).includes(normalizedQuery)),
+    [data, normalizedQuery, reprocessableVideos],
+  );
+  const filteredRecentJobs = useMemo(
+    () => recentJobs.filter((job) => !normalizedQuery || normalizeSearchText(recentJobSearchText(job, data)).includes(normalizedQuery)),
+    [data, normalizedQuery, recentJobs],
+  );
+  const filteredCount = filteredReprocessableVideos.length + filteredRecentJobs.length;
+
   return (
     <div className="rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
-      <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div><h3 className="text-sm font-semibold">Procesados recientes</h3><p className="mt-1 text-xs text-zinc-500">Reprocesa clips o abre resultados locales.</p></div>
-        <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">{reprocessableVideos.length + recentJobs.length}</span>
+      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <div className="flex items-start justify-between gap-3">
+          <div><h3 className="text-sm font-semibold">Procesados recientes</h3><p className="mt-1 text-xs text-zinc-500">Reprocesa clips o abre resultados locales.</p></div>
+          <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">{filteredCount}</span>
+        </div>
+        <label className="relative mt-3 block">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+          <input
+            className="h-9 w-full rounded-md border border-zinc-300 bg-white pl-8 pr-3 text-xs font-medium text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar por nombre o ID"
+            type="search"
+          />
+        </label>
       </div>
       <div className="max-h-[560px] overflow-auto">
         <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {reprocessableVideos.map((video) => <ReprocessableVideoRow key={`reprocess-${video.path}`} video={video} data={data} enabled={enabled} isProcessing={isProcessing} onOpenProcessed={onOpenProcessed} onReprocess={onReprocess} />)}
-          {recentJobs.map((job) => <RecentJobRow key={`history-${job.id}`} job={job} data={data} onOpenJob={onOpenJob} />)}
-          {reprocessableVideos.length + recentJobs.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay procesados recientes.</p>}
+          {filteredReprocessableVideos.map((video) => <ReprocessableVideoRow key={`reprocess-${video.path}`} video={video} data={data} enabled={enabled} isProcessing={isProcessing} onOpenProcessed={onOpenProcessed} onReprocess={onReprocess} />)}
+          {filteredRecentJobs.map((job) => <RecentJobRow key={`history-${job.id}`} job={job} data={data} onOpenJob={onOpenJob} />)}
+          {filteredCount === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay procesados recientes con ese filtro.</p>}
         </div>
       </div>
     </div>
   );
+}
+
+function normalizeSearchText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function processedVideoSearchText(video: PendingVideo, data: AppData) {
+  const session = data.attendanceSessions.find((item) => String(item.id) === String(video.metadata.session_id));
+  return [video.metadata.session_id, video.filename, session ? sessionTitle(session, data) : "", session ? pendingVideoTournamentLabel(video, session) : ""].filter(Boolean).join(" ");
+}
+
+function recentJobSearchText(job: AutomaticAttendanceJob, data: AppData) {
+  return job.results?.flatMap((result) => {
+    const sessions = result.sessions ?? [];
+    return sessions.map((sessionResult) => {
+      const fullSession = data.attendanceSessions.find((session) => session.id === sessionResult.session.id);
+      const session = fullSession ?? sessionResult.session;
+      return [session.id, sessionTitle(session as SessionDisplaySource, data), session.tournament_name, session.team_name, session.match_name].filter(Boolean).join(" ");
+    });
+  }).join(" ") ?? job.id;
 }
 
 function ReprocessableVideoRow({ video, data, enabled, isProcessing, onOpenProcessed, onReprocess }: { video: PendingVideo; data: AppData; enabled?: boolean; isProcessing: boolean; onOpenProcessed: (video: PendingVideo) => void; onReprocess: (video: PendingVideo) => void }) {
@@ -300,7 +221,6 @@ function ReprocessableVideoRow({ video, data, enabled, isProcessing, onOpenProce
     <div className="px-4 py-3">
       <div className="flex items-start justify-between gap-2">
         <p className="line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">{session ? sessionTitle(session, data) : "Video procesado sin sesion ligada"}</p>
-        <CameraBadge cameraId={video.metadata.camera_id} cameraLabel={video.metadata.camera_label} />
       </div>
       <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{pendingVideoTournamentLabel(video, session)}</p>
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -320,7 +240,6 @@ function RecentJobRow({ job, data, onOpenJob }: { job: AutomaticAttendanceJob; d
     <div className="px-4 py-3">
       <div className="flex items-start justify-between gap-2">
         <p className="line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">{fullSession ? sessionTitle(fullSession, data) : firstSessionResult ? sessionTitle(firstSessionResult as SessionDisplaySource, data) : "Trabajo procesado"}</p>
-        <CameraBadge cameraId={firstResult?.camera_id} cameraLabel={firstResult?.camera_label} />
       </div>
       <p className="mt-1 text-xs text-zinc-500">{timestamp ? new Date(timestamp).toLocaleString() : "Sin fecha"} - {job.status}</p>
       <button className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={() => onOpenJob(job)} type="button">Ver detalles</button>

@@ -286,6 +286,20 @@ class AutomaticAttendanceJobView(APIView):
         return Response(hydrate_job_evidence_urls(job, request))
 
 
+class AutomaticAttendanceCancelJobView(APIView):
+    permission_classes = [IsOperationsOrCoachRole]
+
+    def post(self, request, job_id: str):
+        if not is_local_enabled():
+            return Response({"detail": "El procesamiento local no esta habilitado en este entorno."}, status=status.HTTP_403_FORBIDDEN)
+        job = read_job(job_id)
+        if not job:
+            return Response({"detail": "El trabajo no existe."}, status=status.HTTP_404_NOT_FOUND)
+        if job.get("status") not in JOB_ACTIVE_STATUSES:
+            return Response(job, status=status.HTTP_200_OK)
+        return Response(request_job_cancel(job, request.user.id), status=status.HTTP_202_ACCEPTED)
+
+
 class AutomaticAttendanceConfirmReviewView(APIView):
     permission_classes = [IsOperationsOrCoachRole]
 

@@ -32,7 +32,7 @@ from core.services.face_insight import build_student_database, detect_embeddings
 from core.services.supabase_storage import download_private_file, parse_storage_uri, upload_private_file
 
 from .automatic_attendance_state import *
-from .automatic_attendance_jobs import update_job
+from .automatic_attendance_jobs import raise_if_job_cancelled, update_job
 from .automatic_attendance_local_cache import (
     copy_cached_video_to_target,
     find_or_import_cached_video,
@@ -258,6 +258,16 @@ def materialize_remote_video(item: dict, job: dict | None = None, source_kind: s
             last_downloaded = 0
             last_percent = -1.0
             while process.poll() is None:
+                if job:
+                    try:
+                        raise_if_job_cancelled(job)
+                    except Exception:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        raise
                 if time_module.monotonic() - started_at > 3600:
                     process.kill()
                     raise RuntimeError("La descarga con rclone excedio 60 minutos.")

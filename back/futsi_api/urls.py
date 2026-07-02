@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from core.api.automatic_attendance import (
+    AutomaticAttendanceCancelJobView,
     AutomaticAttendanceJobView,
     AutomaticAttendanceConfirmReviewView,
     AutomaticAttendanceDownloadPendingView,
@@ -50,6 +51,7 @@ urlpatterns = [
     path("api/automatic-attendance/process-pending/", AutomaticAttendanceProcessView.as_view()),
     path("api/automatic-attendance/reprocess-video-clip/", AutomaticAttendanceReprocessClipView.as_view()),
     path("api/automatic-attendance/jobs/<str:job_id>/", AutomaticAttendanceJobView.as_view()),
+    path("api/automatic-attendance/jobs/<str:job_id>/cancel/", AutomaticAttendanceCancelJobView.as_view()),
     path("api/automatic-attendance/jobs/<str:job_id>/confirm-review/", AutomaticAttendanceConfirmReviewView.as_view()),
     path("api/automatic-attendance/evidence/<str:job_id>/<path:evidence_path>", AutomaticAttendanceEvidenceView.as_view()),
     path("api/automatic-attendance/evidence-storage/<str:bucket>/<path:object_path>", AutomaticAttendanceStorageEvidenceView.as_view()),

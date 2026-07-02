@@ -76,7 +76,7 @@ export function AdminShellContent(props: AdminShellContentProps) {
   const { effectiveActiveTab, isFirstSectionLoad, loading, sectionLoading, message, error } = props;
 
   return (
-    <div className="px-1 py-5">
+    <div className="px-1">
       {message && <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p>}
       {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {(loading || (sectionLoading === effectiveActiveTab && !isFirstSectionLoad)) && <RefreshSkeletonBar />}
@@ -318,9 +318,9 @@ function AttendanceContent({
           />
         )
       )}
-      {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="process" />}
+      {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="process" scope={businessScope} />}
       {attendanceSubsection === "general" && <AttendanceGeneralPanel data={scopedData} scope={businessScope} />}
-      {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="report" />}
+      {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="report" scope={businessScope} />}
       {attendanceSubsection === "unknown" && <UnknownAttendancePanel token={token} data={data} onOpenDetail={onOpenUnknownDetail} />}
       {attendanceSubsection === "unknown-detail" && unknownDetailDate && (
         <UnknownAttendanceDetailPanel token={token} data={data} date={unknownDetailDate} initialReport={unknownDetailReport} onBack={onCloseUnknownDetail} />

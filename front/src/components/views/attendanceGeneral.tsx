@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { CalendarDays, CreditCard, Search, UserRoundCheck, UserRoundX, UsersRound } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, UsersRound } from "lucide-react";
 import type { AppData, AttendanceRecord, PlayerAttendanceRecord } from "../../types";
 import { money } from "../../utils/format";
 
@@ -162,73 +162,46 @@ export function AttendanceGeneralPanel({ data, scope }: { data: AppData; scope: 
       .sort((a, b) => b.balance - a.balance || b.presentDays - a.presentDays || a.name.localeCompare(b.name));
   }, [activityFilter, paymentFilter, query, rows]);
 
-  const totals = useMemo(() => ({
-    people: visibleRows.length,
-    present: visibleRows.reduce((sum, row) => sum + row.presentDays, 0),
-    absent: visibleRows.reduce((sum, row) => sum + row.absentDays, 0),
-    paid: visibleRows.filter((row) => row.paymentStatus === "paid").length,
-    pending: visibleRows.filter((row) => row.paymentStatus === "pending" || row.paymentStatus === "partial").length,
-    balance: visibleRows.reduce((sum, row) => sum + row.balance, 0),
-  }), [visibleRows]);
+  const titleColorClass = scope === "adult" ? "text-blue-700 dark:text-blue-300" : "text-emerald-700 dark:text-emerald-300";
 
   return (
     <div className="grid gap-5">
-      <section className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Asistencia general</p>
-            <h2 className="mt-1 flex items-center gap-2 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-              <UsersRound size={18} /> Resumen mensual por persona
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-              {scope === "adult" ? "Vista por jugador adulto; el pago se toma del estado de cobranza del equipo." : "Vista por alumno; el pago se toma de los cargos del alumno en el mes."}
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[420px]">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-              Mes
-              <input className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
-            </label>
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-              Buscar
-              <span className="mt-1 flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
-                <Search size={15} />
-                <input className="min-w-0 flex-1 bg-transparent text-sm outline-none" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre, equipo o sede" />
-              </span>
-            </label>
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-5">
-          <MetricCard icon={<UsersRound size={16} />} label="Personas" value={totals.people} />
-          <MetricCard icon={<UserRoundCheck size={16} />} label="Dias asistidos" value={totals.present} />
-          <MetricCard icon={<UserRoundX size={16} />} label="Dias faltados" value={totals.absent} />
-          <MetricCard icon={<CreditCard size={16} />} label="Con pago" value={totals.paid} helper={`${totals.pending} con saldo`} />
-          <MetricCard icon={<CalendarDays size={16} />} label="Saldo mensual" value={`$${money(totals.balance)}`} />
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <select className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}>
-            <option value="all">Todos los pagos</option>
-            <option value="paid">Pagado</option>
-            <option value="partial">Pago parcial</option>
-            <option value="pending">No pagado</option>
-            <option value="none">Sin cargos</option>
-          </select>
-          <select className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)}>
-            <option value="all">Todos</option>
-            <option value="with">Con asistencia capturada</option>
-            <option value="without">Sin asistencia capturada</option>
-          </select>
-        </div>
-      </section>
-
       <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Resumen de {monthLabel(month)}</h3>
-          <p className="mt-1 text-xs text-zinc-500">Los dias son unicos por fecha; si una persona tuvo mas de una sesion el mismo dia cuenta como un dia.</p>
+        <div className="border-b border-zinc-200 p-4 dark:border-zinc-800">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h2 className={`mt-1 flex items-center gap-2 text-lg font-semibold ${titleColorClass}`}>
+                <UsersRound size={18} /> Resumen mensual por persona
+              </h2>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end xl:w-auto">
+              <input aria-label="Mes" className="h-9 w-full rounded-md border border-zinc-300 bg-white px-2.5 text-xs font-medium text-zinc-800 outline-none transition focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:w-36" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+              <label className="relative block w-full sm:w-56">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+                <input
+                  aria-label="Buscar"
+                  className="h-9 w-full rounded-md border border-zinc-300 bg-white pl-8 pr-3 text-xs font-medium text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Buscar"
+                />
+              </label>
+              <select className="h-9 w-full rounded-md border border-zinc-300 bg-white px-2.5 text-xs font-medium text-zinc-800 outline-none transition focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:w-36" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}>
+                <option value="all">Todos los pagos</option>
+                <option value="paid">Pagado</option>
+                <option value="partial">Pago parcial</option>
+                <option value="pending">No pagado</option>
+                <option value="none">Sin cargos</option>
+              </select>
+              <select className="h-9 w-full rounded-md border border-zinc-300 bg-white px-2.5 text-xs font-medium text-zinc-800 outline-none transition focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:w-44" value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)}>
+                <option value="all">Todos</option>
+                <option value="with">Con asistencia</option>
+                <option value="without">Sin asistencia</option>
+              </select>
+            </div>
+          </div>
         </div>
-        <div className="max-h-[640px] overflow-auto">
+        <div className="max-h-[calc(100dvh-300px)] overflow-auto xl:max-h-[calc(100dvh-260px)]">
           <table className="min-w-full border-collapse text-left text-sm text-zinc-900 dark:text-zinc-100">
             <thead className="sticky top-0 z-10 bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
               <tr>
@@ -268,16 +241,6 @@ export function AttendanceGeneralPanel({ data, scope }: { data: AppData; scope: 
           </table>
         </div>
       </section>
-    </div>
-  );
-}
-
-function MetricCard({ icon, label, value, helper }: { icon: ReactNode; label: string; value: string | number; helper?: string }) {
-  return (
-    <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-      <p className="flex items-center gap-2 text-xs font-medium uppercase text-zinc-500">{icon} {label}</p>
-      <p className="mt-2 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">{value}</p>
-      {helper && <p className="mt-1 text-xs text-zinc-500">{helper}</p>}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Cloud, Download, FileVideo, FolderOpen, Play, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Cloud, Download, FileVideo, FolderOpen, Play, RefreshCw, Search, XCircle } from "lucide-react";
 import { formatBytes, formatDuration, formatSpeed } from "../format";
 import { statusTone, type AutomaticAttendanceJob, type AutomaticAttendanceStatus } from "../model";
 
@@ -19,7 +19,9 @@ export function AutomaticAttendanceStatusSection({
   onRefresh,
   onDownloadPending,
   onProcessAll,
+  onCancelJob,
   onOpenResults,
+  scope = "academy",
 }: {
   status: AutomaticAttendanceStatus | null;
   visibleJob: AutomaticAttendanceJob | null;
@@ -36,20 +38,24 @@ export function AutomaticAttendanceStatusSection({
   onRefresh: () => void;
   onDownloadPending: () => void;
   onProcessAll: () => void;
+  onCancelJob: () => void;
   onOpenResults: () => void;
+  scope?: "academy" | "adult";
 }) {
+  const processButtonClass =
+    scope === "adult"
+      ? "bg-blue-700 text-white hover:bg-blue-800"
+      : "bg-emerald-700 text-white hover:bg-emerald-800";
+
   return (
     <section className="overflow-hidden rounded-md border border-zinc-200 bg-white text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
       <div className="border-b border-zinc-200 bg-zinc-50/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/30">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Asistencia automatica</p>
+            
             <h2 className="mt-1 flex items-center gap-2 text-lg font-semibold">
               <FolderOpen size={18} /> Pase de lista automatico
             </h2>
-            <p className="mt-2 max-w-3xl break-all rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-              {status?.pending_dir ?? "Cargando carpeta local..."}
-            </p>
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
             <button className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800" onClick={onRefresh} type="button">
@@ -64,7 +70,7 @@ export function AutomaticAttendanceStatusSection({
               <Download size={15} /> Descargar pendientes a local
             </button>
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-400"
+              className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-400 ${processButtonClass}`}
               disabled={!canProcessPending}
               onClick={onProcessAll}
               type="button"
@@ -111,9 +117,19 @@ export function AutomaticAttendanceStatusSection({
                 <p className="text-xs font-semibold uppercase text-blue-700 dark:text-blue-300">Trabajo activo</p>
                 <p className="mt-1 break-words text-sm font-semibold text-zinc-950 dark:text-zinc-50">{currentJobLabel}</p>
               </div>
-              <button className="inline-flex items-center justify-center rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-50 dark:border-blue-900 dark:bg-zinc-950 dark:text-blue-200 dark:hover:bg-blue-950/30" onClick={onOpenResults} type="button">
-                Ver progreso y resultados
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button className="inline-flex items-center justify-center rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-50 dark:border-blue-900 dark:bg-zinc-950 dark:text-blue-200 dark:hover:bg-blue-950/30" onClick={onOpenResults} type="button">
+                  Ver progreso y resultados
+                </button>
+                <button
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:bg-zinc-950 dark:text-red-200 dark:hover:bg-red-950/30"
+                  disabled={Boolean(visibleJob.cancel_requested)}
+                  onClick={onCancelJob}
+                  type="button"
+                >
+                  <XCircle size={14} /> {visibleJob.cancel_requested ? "Cancelando..." : "Cancelar job"}
+                </button>
+              </div>
             </div>
             <div className="mt-4 h-3 overflow-hidden rounded-full bg-white dark:bg-zinc-900">
               <div className={`h-full rounded-full bg-blue-700 transition-all duration-700 ${isProcessing ? "progress-fill-active" : ""}`} style={{ width: `${Math.max(progress, isProcessing ? 3 : 0)}%` }} />

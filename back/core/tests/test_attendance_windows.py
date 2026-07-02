@@ -151,10 +151,11 @@ def test_match_updates_keep_generated_attendance_sessions_in_sync(auth_client):
 
     assert create_response.status_code == 201
     match_id = create_response.data["id"]
-    sessions = AttendanceSession.objects.filter(match_id=match_id).order_by("team_id")
-    assert sessions.count() == 2
-    assert {session.team_id for session in sessions} == {home.id, away.id}
-    assert all(session.ends_at == time(18, 45) for session in sessions)
+    sessions = AttendanceSession.objects.filter(match_id=match_id).order_by("id")
+    assert sessions.count() == 1
+    assert sessions[0].team_id is None
+    assert sessions[0].group_name == "Sync Local vs Sync Visita"
+    assert sessions[0].ends_at == time(18, 45)
 
     update_response = client.patch(
         f"/api/matches/{match_id}/",
@@ -164,10 +165,10 @@ def test_match_updates_keep_generated_attendance_sessions_in_sync(auth_client):
 
     assert update_response.status_code == 200
     sessions = AttendanceSession.objects.filter(match_id=match_id)
-    assert sessions.count() == 2
-    assert all(session.date == date(2026, 6, 16) for session in sessions)
-    assert all(session.starts_at == time(19, 10) for session in sessions)
-    assert all(session.ends_at == time(19, 30) for session in sessions)
+    assert sessions.count() == 1
+    assert sessions[0].date == date(2026, 6, 16)
+    assert sessions[0].starts_at == time(19, 10)
+    assert sessions[0].ends_at == time(19, 30)
 
     cancel_response = client.patch(f"/api/matches/{match_id}/", {"status": "canceled"}, format="json")
 

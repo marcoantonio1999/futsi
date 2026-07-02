@@ -49,6 +49,8 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
     import cv2
     import numpy as np
 
+    raise_if_job_cancelled(job)
+
     providers = os.getenv("AUTO_ATTENDANCE_PROVIDERS", os.getenv("FACE_PROVIDERS", "auto"))
     threshold = float(os.getenv("AUTO_ATTENDANCE_THRESHOLD", os.getenv("FACE_MATCH_THRESHOLD", "0.35")))
     min_margin = float(os.getenv("AUTO_ATTENDANCE_MIN_MARGIN", os.getenv("FACE_MATCH_MIN_MARGIN", "0.03")))
@@ -242,6 +244,7 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
         order = np.argsort(-similarities)
         grouped: dict[str, dict] = {}
         for index in order:
+            raise_if_job_cancelled(job)
             person = enrolled_people[int(index)]
             similarity = float(similarities[int(index)])
             key = candidate_identity_key(person)
@@ -483,6 +486,7 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
             current_second = None
             second_buffer: list[tuple[int, int, object]] = []
             while True:
+                raise_if_job_cancelled(job)
                 ok, frame = capture.read()
                 if not ok:
                     break
@@ -504,6 +508,7 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
             session_end_second = end_frame / max(fps, 1.0)
             normalized_windows = []
             for window_item in detail_candidate_windows:
+                raise_if_job_cancelled(job)
                 try:
                     window_start_second = max(session_start_second, float(window_item.get("start_second")))
                     window_end_second = min(session_end_second, float(window_item.get("end_second")))
@@ -538,10 +543,12 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
             )
 
             for window_number, window_item in enumerate(normalized_windows, start=1):
+                raise_if_job_cancelled(job)
                 capture.set(cv2.CAP_PROP_POS_FRAMES, window_item["start_frame"])
                 current_frame = window_item["start_frame"]
                 window_has_faces = False
                 while current_frame <= window_item["end_frame"]:
+                    raise_if_job_cancelled(job)
                     ok, frame = capture.read()
                     if not ok:
                         break
@@ -602,6 +609,7 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
             capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             frame_index = start_frame
             while True:
+                raise_if_job_cancelled(job)
                 ok, frame = capture.read()
                 if not ok:
                     break
@@ -774,6 +782,7 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
                 producer = threading.Thread(target=produce_windows, name=f"auto-attendance-reader-{job.get('id', '')[:8]}", daemon=True)
                 producer.start()
                 while True:
+                    raise_if_job_cancelled(job)
                     window_item = window_queue.get()
                     if window_item is sentinel:
                         break
@@ -785,6 +794,7 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
                 capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
                 current_frame = start_frame
                 while current_frame <= end_frame:
+                    raise_if_job_cancelled(job)
                     window_item, current_frame = read_probe_window(current_frame)
                     if window_item is None:
                         break
@@ -794,6 +804,7 @@ def process_video_for_session(video_path: Path, session: AttendanceSession, user
             capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             frame_index = start_frame
             while True:
+                raise_if_job_cancelled(job)
                 ok, frame = capture.read()
                 if not ok:
                     break

@@ -13,7 +13,6 @@ export function AutomaticAttendanceLoadingSkeleton() {
                 <AutomaticSkeletonBlock className="size-5 rounded-full" />
                 <AutomaticSkeletonBlock className="h-4 w-44" />
               </div>
-              <AutomaticSkeletonBlock className="mt-4 h-9 w-full max-w-3xl" />
               <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">Cargando videos locales y estado de procesamiento...</p>
             </div>
             <div className="grid gap-2 sm:flex sm:justify-end">
@@ -43,23 +42,49 @@ export function AutomaticAttendanceLoadingSkeleton() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-3">
-        {["Videos pendientes", "Grabaciones y subida", "Procesados recientes"].map((title) => (
-          <div key={title} className="rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <AutomaticSkeletonBlock className="h-4 w-40" />
-              <AutomaticSkeletonBlock className="mt-2 h-3 w-56 max-w-full" />
-            </div>
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="px-4 py-4">
-                  <AutomaticSkeletonBlock className="h-4 w-full" />
-                  <AutomaticSkeletonBlock className="mt-3 h-3 w-3/4" />
-                  <AutomaticSkeletonBlock className="mt-3 h-8 w-full" />
-                </div>
-              ))}
-            </div>
+        <div className="rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 xl:col-span-2">
+          <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <AutomaticSkeletonBlock className="h-4 w-40" />
+            <AutomaticSkeletonBlock className="mt-2 h-3 w-56 max-w-full" />
           </div>
-        ))}
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="mx-3 my-2 rounded-md border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <AutomaticSkeletonBlock className="h-4 w-full" />
+                    <AutomaticSkeletonBlock className="mt-2 h-3 w-2/3" />
+                  </div>
+                  <AutomaticSkeletonBlock className="h-6 w-20" />
+                </div>
+                <AutomaticSkeletonBlock className="mt-3 h-1.5 w-full rounded-full" />
+                <AutomaticSkeletonBlock className="mt-2 h-1.5 w-full rounded-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <AutomaticSkeletonBlock className="h-4 w-36" />
+                <AutomaticSkeletonBlock className="mt-2 h-3 w-44 max-w-full" />
+              </div>
+              <AutomaticSkeletonBlock className="h-6 w-8" />
+            </div>
+            <AutomaticSkeletonBlock className="mt-3 h-9 w-full" />
+          </div>
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="px-4 py-4">
+                <AutomaticSkeletonBlock className="h-4 w-full" />
+                <AutomaticSkeletonBlock className="mt-3 h-3 w-3/4" />
+                <AutomaticSkeletonBlock className="mt-3 h-8 w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
     </div>
   );

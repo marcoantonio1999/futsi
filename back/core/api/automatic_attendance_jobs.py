@@ -35,6 +35,10 @@ from .automatic_attendance_state import *
 from .automatic_attendance_clips import video_clips_table_exists
 
 
+class JobCancelled(Exception):
+    pass
+
+
 def read_job(job_id: str) -> dict | None:
     path = job_path(job_id)
     if not path.exists():
@@ -48,6 +52,34 @@ def update_job(job: dict, **updates) -> dict:
     job["worker_pid"] = PROCESS_ID
     if job.get("status") in JOB_ACTIVE_STATUSES:
         job["heartbeat_at"] = job["updated_at"]
+    write_json(job_path(job["id"]), job)
+    return job
+
+
+def job_cancel_requested(job: dict) -> bool:
+    current = read_job(str(job.get("id") or ""))
+    return bool((current or job).get("cancel_requested"))
+
+
+def raise_if_job_cancelled(job: dict) -> None:
+    if job_cancel_requested(job):
+        raise JobCancelled(JOB_CANCELED_DETAIL)
+
+
+def request_job_cancel(job: dict, user_id: int | None = None) -> dict:
+    now = timezone.now().isoformat()
+    job.update(
+        {
+            "cancel_requested": True,
+            "cancel_requested_at": now,
+            "cancel_requested_by": user_id,
+            "phase_label": "Cancelando procesamiento",
+            "detail": "Cancelacion solicitada. El worker se detendra en el siguiente punto seguro.",
+            "updated_at": now,
+            "heartbeat_at": now,
+            "worker_pid": PROCESS_ID,
+        }
+    )
     write_json(job_path(job["id"]), job)
     return job
 
@@ -126,6 +158,27 @@ def reset_interrupted_video_clip(job: dict, detail: str) -> None:
         )
 
 
+def reset_job_processing_video_clips(job: dict, detail: str) -> None:
+    if not video_clips_table_exists():
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            update public.video_clips
+               set status = 'uploaded',
+                   processed_at = null,
+                   error_message = %s,
+                   last_error_at = now(),
+                   updated_at = now()
+             where deleted_at is null
+               and processed_at is null
+               and status in ('queued', 'processing')
+               and metadata->>'automatic_attendance_processing_job_id' = %s
+            """,
+            [detail, str(job.get("id") or "")],
+        )
+
+
 def mark_job_interrupted(job: dict, detail: str = JOB_INTERRUPTED_DETAIL) -> dict:
     reset_interrupted_video_clip(job, detail)
     now = timezone.now().isoformat()
@@ -138,6 +191,26 @@ def mark_job_interrupted(job: dict, detail: str = JOB_INTERRUPTED_DETAIL) -> dic
             "interrupted_at": now,
             "completed_at": now,
             "updated_at": now,
+        }
+    )
+    write_json(job_path(job["id"]), job)
+    return job
+
+
+def mark_job_canceled(job: dict, detail: str = JOB_CANCELED_DETAIL) -> dict:
+    reset_interrupted_video_clip(job, detail)
+    reset_job_processing_video_clips(job, detail)
+    now = timezone.now().isoformat()
+    job.update(
+        {
+            "status": "canceled",
+            "phase": "canceled",
+            "phase_label": "Procesamiento cancelado",
+            "detail": detail,
+            "canceled_at": now,
+            "completed_at": now,
+            "updated_at": now,
+            "heartbeat_at": now,
         }
     )
     write_json(job_path(job["id"]), job)

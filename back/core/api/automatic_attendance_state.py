@@ -60,6 +60,9 @@ JOB_STALE_AFTER_SECONDS = int(os.getenv("AUTO_ATTENDANCE_JOB_STALE_SECONDS", "60
 JOB_INTERRUPTED_DETAIL = "Procesamiento interrumpido: el backend se reinicio o el worker dejo de enviar heartbeat."
 
 
+JOB_CANCELED_DETAIL = "Procesamiento cancelado por el usuario."
+
+
 def automatic_root() -> Path:
     return Path(settings.MEDIA_ROOT) / "automatic_attendance"
 

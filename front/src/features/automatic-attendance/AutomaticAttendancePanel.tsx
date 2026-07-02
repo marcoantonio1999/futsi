@@ -15,14 +15,17 @@ export function AutomaticAttendancePanel({
   data,
   onRefreshData,
   mode = "process",
+  scope = "academy",
 }: {
   token: string;
   data: AppData;
   onRefreshData: () => Promise<void> | void;
   mode?: "process" | "report";
+  scope?: "academy" | "adult";
 }) {
   const [status, setStatus] = useState<AutomaticAttendanceStatus | null>(null);
   const [job, setJob] = useState<AutomaticAttendanceJob | null>(null);
+  const [selectedJob, setSelectedJob] = useState<AutomaticAttendanceJob | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loadingStatus, setLoadingStatus] = useState(false);
@@ -31,16 +34,16 @@ export function AutomaticAttendancePanel({
 
   const jobIsActive = (candidate?: AutomaticAttendanceJob | null) => candidate?.status === "queued" || candidate?.status === "processing";
   const activeJob = jobIsActive(job) ? job : jobIsActive(status?.active_job) ? status?.active_job ?? null : null;
-  const visibleJob = resultsModalOpen ? job ?? activeJob ?? status?.jobs?.[0] ?? null : activeJob;
+  const visibleJob = resultsModalOpen ? selectedJob ?? activeJob ?? status?.jobs?.[0] ?? null : activeJob;
   const recentJobs = useMemo(() => {
     const seen = new Set<string>();
-    return [job, status?.active_job, ...(status?.jobs ?? [])].filter(Boolean).filter((candidate) => {
+    return [job, selectedJob, status?.active_job, ...(status?.jobs ?? [])].filter(Boolean).filter((candidate) => {
       const current = candidate as AutomaticAttendanceJob;
       if (seen.has(current.id)) return false;
       seen.add(current.id);
       return true;
     }) as AutomaticAttendanceJob[];
-  }, [job, status?.active_job, status?.jobs]);
+  }, [job, selectedJob, status?.active_job, status?.jobs]);
   const isProcessing = Boolean(activeJob);
   const videoClips = status?.video_clips ?? [];
   const hasLiveVideoClips = videoClips.some(isLiveVideoClip);
@@ -79,10 +82,10 @@ export function AutomaticAttendancePanel({
   }, [hasLiveVideoClips, mode, token]);
 
   useEffect(() => {
-    if (!visibleJob?.id || !isProcessing) return;
+    if (!activeJob?.id || !isProcessing) return;
     const interval = window.setInterval(async () => {
       try {
-        const nextJob = await apiRequest<AutomaticAttendanceJob>(`/automatic-attendance/jobs/${visibleJob.id}/`, token);
+        const nextJob = await apiRequest<AutomaticAttendanceJob>(`/automatic-attendance/jobs/${activeJob.id}/`, token);
         setJob(nextJob);
         if (nextJob.status === "done") {
           await onRefreshData();
@@ -100,7 +103,7 @@ export function AutomaticAttendancePanel({
       }
     }, 2000);
     return () => window.clearInterval(interval);
-  }, [isProcessing, onRefreshData, token, visibleJob?.id]);
+  }, [activeJob?.id, isProcessing, onRefreshData, token]);
 
   useEffect(() => {
     if (!visibleJob && resultsModalOpen) setResultsModalOpen(false);
@@ -115,6 +118,7 @@ export function AutomaticAttendancePanel({
         body: path ? JSON.stringify({ path }) : undefined,
       });
       setJob(nextJob);
+      setSelectedJob(nextJob);
       setResultsModalOpen(true);
       setMessage(path ? "Procesamiento del video seleccionado iniciado." : "Procesamiento local iniciado.");
       await loadStatus(true);
@@ -131,6 +135,7 @@ export function AutomaticAttendancePanel({
         method: "POST",
       });
       setJob(nextJob);
+      setSelectedJob(nextJob);
       setResultsModalOpen(true);
       setMessage("Descarga a cache local iniciada.");
       await loadStatus(true);
@@ -153,11 +158,29 @@ export function AutomaticAttendancePanel({
         body: JSON.stringify({ video_clip_id: clipId }),
       });
       setJob(nextJob);
+      setSelectedJob(nextJob);
       setResultsModalOpen(true);
       setMessage(`Reprocesamiento iniciado para ${video.filename}.`);
       await loadStatus(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo iniciar el reprocesamiento.");
+    }
+  }
+
+  async function cancelActiveJob() {
+    if (!activeJob?.id) return;
+    setMessage("");
+    setError("");
+    try {
+      const nextJob = await apiRequest<AutomaticAttendanceJob>(`/automatic-attendance/jobs/${activeJob.id}/cancel/`, token, {
+        method: "POST",
+      });
+      setJob(nextJob);
+      setSelectedJob(nextJob);
+      setMessage("Cancelacion solicitada. El procesamiento se detendra en el siguiente punto seguro.");
+      await loadStatus(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cancelar el trabajo.");
     }
   }
 
@@ -170,7 +193,7 @@ export function AutomaticAttendancePanel({
   const elapsedSeconds = visibleJob
     ? elapsedSecondsSince(
         visibleJob.current_video_started_at ?? visibleJob.created_at ?? visibleJob.updated_at,
-        visibleJob.status === "done" || visibleJob.status === "error" ? visibleJob.completed_at : null,
+        visibleJob.status === "done" || visibleJob.status === "error" || visibleJob.status === "canceled" ? visibleJob.completed_at : null,
         clockTick,
       )
     : null;
@@ -192,14 +215,14 @@ export function AutomaticAttendancePanel({
     }
     setMessage("");
     setError("");
-    setJob(matchingJob);
+    setSelectedJob(matchingJob);
     setResultsModalOpen(true);
   }
 
   if (mode === "report") {
     return (
       <div className="grid gap-5">
-        <AutomaticAttendanceReportPanel token={token} data={data} resultsBySession={automaticResultsBySession} onRefresh={() => loadStatus()} />
+        <AutomaticAttendanceReportPanel token={token} data={data} resultsBySession={automaticResultsBySession} onRefresh={() => loadStatus()} scope={scope} />
       </div>
     );
   }
@@ -224,7 +247,9 @@ export function AutomaticAttendancePanel({
         onRefresh={() => loadStatus()}
         onDownloadPending={downloadPendingToLocal}
         onProcessAll={() => processPending()}
+        onCancelJob={cancelActiveJob}
         onOpenResults={() => setResultsModalOpen(true)}
+        scope={scope}
       />
       <AutomaticAttendanceQueues
         data={data}
@@ -232,7 +257,6 @@ export function AutomaticAttendancePanel({
         videoClips={videoClips}
         reprocessableVideos={reprocessableVideos}
         recentJobs={recentJobs}
-        pendingCount={pendingCount}
         hasLiveVideoClips={hasLiveVideoClips}
         isProcessing={isProcessing}
         enabled={status?.enabled}
@@ -240,7 +264,7 @@ export function AutomaticAttendancePanel({
         onOpenProcessed={openProcessedDetails}
         onReprocess={reprocessVideoClip}
         onOpenJob={(nextJob) => {
-          setJob(nextJob);
+          setSelectedJob(nextJob);
           setResultsModalOpen(true);
         }}
       />

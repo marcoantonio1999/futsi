@@ -202,8 +202,16 @@ export function AdminShell({
   }
 
   function switchBusinessScope(nextScope: BusinessScope) {
+    const targetMenuOrder = nextScope === "adult" ? adultMenuTabs : academyMenuTabs;
+    const targetDefaultTab = nextScope === "adult" ? adultDefaultTab : academyDefaultTab;
+    const canKeepCurrentTab = targetMenuOrder.includes(effectiveActiveTab) && visibleTabs.some((tab) => tab.key === effectiveActiveTab);
+    const nextTab = canKeepCurrentTab ? effectiveActiveTab : targetDefaultTab;
+
     setBusinessScope(nextScope);
-    setActiveTab(nextScope === "adult" ? adultDefaultTab : academyDefaultTab);
+    setActiveTab(nextTab);
+    if (nextTab === "attendance" && nextScope === "adult" && attendanceSubsection === "occupancy") {
+      setAttendanceSubsection("report");
+    }
     setMobileMenuOpen(false);
     scrollToTop();
   }
