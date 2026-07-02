@@ -1,6 +1,6 @@
 import pytest
 
-from core.models import Charge
+from core.tests.factories import make_charge, make_site, make_student, make_user
 
 
 pytestmark = [pytest.mark.api, pytest.mark.security, pytest.mark.django_db]
@@ -15,7 +15,7 @@ MALICIOUS_STRINGS = [
 
 
 @pytest.mark.parametrize("payload", MALICIOUS_STRINGS)
-def test_login_rejects_sql_like_payloads(api_client, seeded_db, payload):
+def test_login_rejects_sql_like_payloads(api_client, payload):
     response = api_client.post(
         "/api/auth/login/",
         {"username": payload, "password": payload},
@@ -26,12 +26,14 @@ def test_login_rejects_sql_like_payloads(api_client, seeded_db, payload):
 
 
 @pytest.mark.parametrize("payload", MALICIOUS_STRINGS)
-def test_student_profile_fields_accept_text_without_server_error(admin_client, payload):
-    students = admin_client.get("/api/students/").json()
-    student = students[0]
+def test_student_profile_fields_accept_text_without_server_error(auth_client, payload):
+    site = make_site()
+    admin = make_user(role="admin", primary_site=site)
+    student = make_student(site=site)
+    client, _payload, _user = auth_client(user=admin)
 
-    response = admin_client.patch(
-        f"/api/students/{student['id']}/",
+    response = client.patch(
+        f"/api/students/{student.id}/",
         {"medical_notes": payload, "emergency_contact": payload[:80]},
         format="json",
     )
@@ -40,9 +42,12 @@ def test_student_profile_fields_accept_text_without_server_error(admin_client, p
     assert response.json()["medical_notes"] == payload
 
 
-def test_negative_payment_amount_is_rejected(login_client):
-    client, _user = login_client("caja.roma", "demo12345")
-    charge = Charge.objects.get(student__full_name="Carlos Ruiz")
+def test_negative_payment_amount_is_rejected(auth_client):
+    site = make_site()
+    cashier = make_user(role="cashier", primary_site=site)
+    student = make_student(site=site, full_name="Carlos Ruiz")
+    charge = make_charge(student=student, created_by=cashier)
+    client, _payload, _user = auth_client(user=cashier)
 
     response = client.post(
         "/api/payments/",
@@ -53,8 +58,10 @@ def test_negative_payment_amount_is_rejected(login_client):
     assert response.status_code == 400
 
 
-def test_invalid_charge_id_does_not_create_payment(login_client):
-    client, _user = login_client("caja.roma", "demo12345")
+def test_invalid_charge_id_does_not_create_payment(auth_client):
+    site = make_site()
+    cashier = make_user(role="cashier", primary_site=site)
+    client, _payload, _user = auth_client(user=cashier)
 
     response = client.post(
         "/api/payments/",
@@ -65,8 +72,9 @@ def test_invalid_charge_id_does_not_create_payment(login_client):
     assert response.status_code == 400
 
 
-def test_guardian_cannot_access_accounting_export(login_client):
-    client, _user = login_client("padre.laura", "familia12345")
+def test_guardian_cannot_access_accounting_export(auth_client):
+    guardian = make_user(role="guardian")
+    client, _payload, _user = auth_client(user=guardian)
 
     response = client.get("/api/reports/accounting.xlsx")
 

@@ -303,8 +303,8 @@ def test_audit_logs_are_admin_only(auth_client):
     coach_client, _payload, _coach = auth_client(role="coach", primary_site=make_site())
     assert coach_client.get("/api/audit-logs/").status_code == 403
 
-    admin_client, _payload, _admin = auth_client(role="admin")
-    response = admin_client.get("/api/audit-logs/")
+    admin_api, _payload, _admin = auth_client(role="admin")
+    response = admin_api.get("/api/audit-logs/")
     assert response.status_code == 200
     assert any(item["action"] == "security_probe" for item in response.json())
 

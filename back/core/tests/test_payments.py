@@ -26,9 +26,9 @@ def test_demo_flow_crosses_attendance_billing_discounts_and_expenses(auth_client
     site = make_site(code="qa-demo-flow")
     admin_user = make_user(role="admin", primary_site=site)
     luis, charge, _guardian = _student_with_charge(site, "Luis Gomez")
-    admin_client, _payload, admin = auth_client(user=admin_user)
+    admin_api, _payload, admin = auth_client(user=admin_user)
 
-    session_response = admin_client.post(
+    session_response = admin_api.post(
         "/api/attendance-sessions/",
         {
             "site": site.id,
@@ -43,7 +43,7 @@ def test_demo_flow_crosses_attendance_billing_discounts_and_expenses(auth_client
 
     inside_window = timezone.make_aware(datetime(2026, 5, 26, 16, 30))
     with patch("core.domain_serializers.attendance.timezone.now", return_value=inside_window):
-        attendance_response = admin_client.post(
+        attendance_response = admin_api.post(
             "/api/attendance-records/",
             {"session": session_response.json()["id"], "student": luis.id, "status": "present"},
             format="json",
@@ -51,7 +51,7 @@ def test_demo_flow_crosses_attendance_billing_discounts_and_expenses(auth_client
     assert attendance_response.status_code == 201
     assert attendance_response.json()["had_debt_at_capture"] is True
 
-    payment_response = admin_client.post(
+    payment_response = admin_api.post(
         "/api/payments/",
         {"charge": charge.id, "method": "card", "amount": "500.00"},
         format="json",
@@ -60,19 +60,19 @@ def test_demo_flow_crosses_attendance_billing_discounts_and_expenses(auth_client
     charge.refresh_from_db()
     assert charge.status == "partial"
 
-    discount_response = admin_client.post(
+    discount_response = admin_api.post(
         "/api/discounts/",
         {"charge": charge.id, "reason": "Autorizacion especial", "amount": "1000.00"},
         format="json",
     )
     assert discount_response.status_code == 201
 
-    approve_discount_response = admin_client.post(f"/api/discounts/{discount_response.json()['id']}/approve/")
+    approve_discount_response = admin_api.post(f"/api/discounts/{discount_response.json()['id']}/approve/")
     assert approve_discount_response.status_code == 200
     charge.refresh_from_db()
     assert charge.status == "paid"
 
-    expense_response = admin_client.post(
+    expense_response = admin_api.post(
         "/api/expenses/",
         {
             "site": site.id,
@@ -86,7 +86,7 @@ def test_demo_flow_crosses_attendance_billing_discounts_and_expenses(auth_client
     )
     assert expense_response.status_code == 201
 
-    approve_expense_response = admin_client.post(f"/api/expenses/{expense_response.json()['id']}/approve/")
+    approve_expense_response = admin_api.post(f"/api/expenses/{expense_response.json()['id']}/approve/")
     assert approve_expense_response.status_code == 200
     assert Expense.objects.get(id=expense_response.json()["id"]).approved_by == admin
 

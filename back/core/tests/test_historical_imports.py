@@ -4,7 +4,8 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import Workbook
 
-from core.models import HistoricalImport, Payment, Expense
+from core.models import HistoricalImport, Payment, Expense, Site
+from core.tests.factories import make_site, make_user
 
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
@@ -70,14 +71,25 @@ def build_discrepancy_excel():
     return buffer.getvalue()
 
 
-def test_admin_can_preview_and_commit_historical_excel(admin_client):
+def _historical_admin_api(auth_client):
+    site, _created = Site.objects.get_or_create(
+        name="Roma",
+        defaults={"code": "roma", "address": "QA historical site"},
+    )
+    admin = make_user(role="admin", primary_site=site)
+    client, _payload, _user = auth_client(user=admin)
+    return client, site
+
+
+def test_admin_can_preview_and_commit_historical_excel(auth_client):
+    client, _site = _historical_admin_api(auth_client)
     upload = SimpleUploadedFile(
         "historico-test.xlsx",
         build_historical_excel(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    preview_response = admin_client.post(
+    preview_response = client.post(
         "/api/historical-imports/preview/",
         {"file": upload, "notes": "QA Sprint 4"},
         format="multipart",
@@ -89,7 +101,7 @@ def test_admin_can_preview_and_commit_historical_excel(admin_client):
     assert body["row_count"] == 2
     assert {row["row_type"] for row in body["rows"]} == {"income", "expense"}
 
-    commit_response = admin_client.post(
+    commit_response = client.post(
         f"/api/historical-imports/{body['id']}/commit/",
         {
             "signature_name": "QA Admin",
@@ -116,8 +128,10 @@ def test_admin_can_preview_and_commit_historical_excel(admin_client):
     assert Expense.objects.filter(description__contains="Arbitraje historico").exists()
 
 
-def test_cashier_cannot_upload_historical_excel(login_client):
-    client, _user = login_client("caja.roma", "demo12345")
+def test_cashier_cannot_upload_historical_excel(auth_client):
+    site = make_site()
+    cashier = make_user(role="cashier", primary_site=site)
+    client, _payload, _user = auth_client(user=cashier)
     upload = SimpleUploadedFile(
         "historico-test.xlsx",
         build_historical_excel(),
@@ -130,15 +144,16 @@ def test_cashier_cannot_upload_historical_excel(login_client):
     assert HistoricalImport.objects.count() == 0
 
 
-def test_commit_requires_signature(admin_client):
+def test_commit_requires_signature(auth_client):
+    client, _site = _historical_admin_api(auth_client)
     upload = SimpleUploadedFile(
         "historico-test.xlsx",
         build_historical_excel(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    preview_response = admin_client.post("/api/historical-imports/preview/", {"file": upload}, format="multipart")
+    preview_response = client.post("/api/historical-imports/preview/", {"file": upload}, format="multipart")
 
-    response = admin_client.post(
+    response = client.post(
         f"/api/historical-imports/{preview_response.json()['id']}/commit/",
         {"signature_name": "", "rows": []},
         format="json",
@@ -147,14 +162,15 @@ def test_commit_requires_signature(admin_client):
     assert response.status_code == 400
 
 
-def test_historical_discrepancies_are_detected_by_site(admin_client):
+def test_historical_discrepancies_are_detected_by_site(auth_client):
+    client, site = _historical_admin_api(auth_client)
     upload = SimpleUploadedFile(
         "adeudos-historicos.xlsx",
         build_discrepancy_excel(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    preview_response = admin_client.post(
+    preview_response = client.post(
         "/api/historical-imports/preview/",
         {"file": upload, "notes": "Adeudos historicos"},
         format="multipart",
@@ -165,7 +181,7 @@ def test_historical_discrepancies_are_detected_by_site(admin_client):
     assert body["summary"]["discrepancies"] == 2
     assert {row["row_type"] for row in body["rows"]} == {"discrepancy"}
 
-    commit_response = admin_client.post(
+    commit_response = client.post(
         f"/api/historical-imports/{body['id']}/commit/",
         {
             "signature_name": "QA Admin",
@@ -188,7 +204,7 @@ def test_historical_discrepancies_are_detected_by_site(admin_client):
 
     assert commit_response.status_code == 200, commit_response.content
 
-    report_response = admin_client.get("/api/historical-imports/discrepancies/")
+    report_response = client.get(f"/api/historical-imports/discrepancies/?site={site.id}")
     assert report_response.status_code == 200, report_response.content
     report = report_response.json()
     assert report["totals"]["historical_cases"] == 2
