@@ -200,6 +200,29 @@ export type UnknownAttendanceStatus = {
   };
 };
 
+export type UnknownRejectedFaceDebug = {
+  capture_id: string;
+  camera_id: string;
+  site_id?: number | null;
+  captured_at?: string | null;
+  local_file_name: string;
+  status: string;
+  error_message?: string;
+  quality_rejection?: string;
+  face_index: number;
+  quality?: UnknownFaceQuality;
+  image_url?: string;
+  capture_image_url?: string;
+};
+
+export type UnknownRejectedFacesResponse = {
+  count: number;
+  limit: number;
+  offset: number;
+  next_offset?: number | null;
+  results: UnknownRejectedFaceDebug[];
+};
+
 export type RegisteredUnknownPerson = {
   subject_id: string;
   person_type: "player" | "student";

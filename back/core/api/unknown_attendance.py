@@ -239,6 +239,35 @@ def fetch_pending_capture_count(captured_date: str | None = None) -> int:
         return int(cursor.fetchone()[0] or 0)
 
 
+def reset_failed_captures_for_reprocess(captured_date: str | None = None) -> int:
+    if not table_exists(CAPTURE_TABLE):
+        return 0
+    filters = [
+        "deleted_at is null",
+        "status = 'failed'",
+        "(drive_remote_path is not null or drive_file_id is not null)",
+    ]
+    params: list[object] = []
+    bounds = captured_date_bounds(captured_date)
+    if bounds:
+        filters.append("captured_at >= %s and captured_at < %s")
+        params.extend(bounds)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            update public.{CAPTURE_TABLE}
+               set status = 'uploaded',
+                   processed_at = null,
+                   error_message = null,
+                   metadata = coalesce(metadata, '{{}}'::jsonb) || %s::jsonb,
+                   updated_at = now()
+             where {" and ".join(filters)}
+            """,
+            [json.dumps({"reprocess_reason": "known_detection_quality_split"}), *params],
+        )
+        return cursor.rowcount
+
+
 def fetch_pending_capture_stats(captured_date: str | None = None) -> dict:
     cache_key = f"unknown_attendance:pending_stats:{captured_date or 'all'}"
     cached = cache.get(cache_key)
@@ -369,6 +398,76 @@ def fetch_recent_captures(limit: int = 80, captured_date: str | None = None) -> 
             rows.append(item)
     cache.set(cache_key, rows, STATUS_CACHE_SECONDS)
     return rows
+
+
+def fetch_rejected_face_debug(captured_date: str | None = None, limit: int = 120, offset: int = 0) -> dict:
+    if not table_exists(CAPTURE_TABLE):
+        return {"count": 0, "results": []}
+    filters = [
+        "c.deleted_at is null",
+        "c.status = 'failed'",
+        "jsonb_typeof(c.metadata->'rejected_faces') = 'array'",
+        "jsonb_array_length(c.metadata->'rejected_faces') > 0",
+    ]
+    params: list[object] = []
+    bounds = captured_date_bounds(captured_date)
+    if bounds:
+        filters.append("c.captured_at >= %s and c.captured_at < %s")
+        params.extend(bounds)
+    where_clause = " and ".join(filters)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            select count(*)
+              from public.{CAPTURE_TABLE} c
+              join lateral jsonb_array_elements(c.metadata->'rejected_faces') with ordinality as rejected(face, ordinality) on true
+             where {where_clause}
+            """,
+            params,
+        )
+        total = int(cursor.fetchone()[0] or 0)
+        cursor.execute(
+            f"""
+            select c.id,
+                   c.camera_id,
+                   c.site_id,
+                   c.captured_at,
+                   c.local_file_name,
+                   c.status,
+                   c.error_message,
+                   c.metadata->>'quality_rejection' as quality_rejection,
+                   rejected.face,
+                   rejected.ordinality
+              from public.{CAPTURE_TABLE} c
+              join lateral jsonb_array_elements(c.metadata->'rejected_faces') with ordinality as rejected(face, ordinality) on true
+             where {where_clause}
+             order by c.captured_at asc, rejected.ordinality asc
+             limit %s offset %s
+            """,
+            [*params, limit, offset],
+        )
+        columns = [column[0] for column in cursor.description]
+        results = []
+        for row in cursor.fetchall():
+            item = dict(zip(columns, row))
+            rejected_face = normalize_metadata(item.pop("face", {}))
+            quality = normalize_metadata(rejected_face.get("quality"))
+            face_index = rejected_face.get("face_index")
+            results.append(
+                {
+                    "capture_id": str(item.get("id") or ""),
+                    "camera_id": item.get("camera_id") or "",
+                    "site_id": item.get("site_id"),
+                    "captured_at": item["captured_at"].isoformat() if item.get("captured_at") else None,
+                    "local_file_name": item.get("local_file_name") or "",
+                    "status": item.get("status") or "",
+                    "error_message": item.get("error_message") or "",
+                    "quality_rejection": item.get("quality_rejection") or "",
+                    "face_index": int(face_index if face_index is not None else int(item.get("ordinality") or 1) - 1),
+                    "quality": quality,
+                }
+            )
+    return {"count": total, "results": results}
 
 
 def fetch_capture(capture_id: str) -> dict | None:
@@ -511,6 +610,7 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
         step_minutes,
         window_minutes,
         window_minutes,
+        window_minutes,
         grace_minutes,
         grace_minutes,
         raw_limit,
@@ -555,10 +655,6 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
                            where c.status = 'unknown_confirmed'
                              and c.subject_id is not null
                        ) as unknown_people,
-                       count(distinct coalesce(c.metadata #>> '{{known_match,type}}', '') || ':' || coalesce(c.metadata #>> '{{known_match,id}}', '')) filter (
-                           where c.status = 'matched_known'
-                             and c.metadata ? 'known_match'
-                       ) as known_people,
                        min(c.captured_at) as first_capture,
                        max(c.captured_at) as last_capture,
                        extract(epoch from max(c.captured_at) - min(c.captured_at)) / 60.0 as active_minutes
@@ -567,6 +663,28 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
                     on c.local_ts >= w.window_start
                    and c.local_ts < w.window_start + (%s::int * interval '1 minute')
                  group by 1, 2, 3, 4
+            ),
+            known_people_by_window as (
+                select w.window_start,
+                       c.site_id,
+                       c.camera_id,
+                       count(distinct known.key) as known_people
+                  from windows w
+                  join capture_rows c
+                    on c.local_ts >= w.window_start
+                   and c.local_ts < w.window_start + (%s::int * interval '1 minute')
+                  join lateral jsonb_array_elements_text(
+                    case
+                      when jsonb_typeof(c.metadata->'known_match_keys') = 'array' then c.metadata->'known_match_keys'
+                      when c.metadata ? 'known_match' then jsonb_build_array(
+                        coalesce(c.metadata #>> '{{known_match,type}}', '') || ':' || coalesce(c.metadata #>> '{{known_match,id}}', '')
+                      )
+                      else '[]'::jsonb
+                    end
+                  ) as known(key) on true
+                 where known.key <> ''
+                   and known.key <> ':'
+                 group by 1, 2, 3
             )
             select wc.window_start,
                    wc.window_end,
@@ -575,8 +693,8 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
                    wc.motion_captures,
                    wc.processed_captures,
                    wc.unknown_people,
-                   wc.known_people,
-                   (wc.unknown_people + wc.known_people) as unique_people,
+                   coalesce(kp.known_people, 0) as known_people,
+                   (wc.unknown_people + coalesce(kp.known_people, 0)) as unique_people,
                    wc.first_capture,
                    wc.last_capture,
                    wc.active_minutes,
@@ -587,6 +705,10 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
                    scheduled.home_team_name,
                    scheduled.away_team_name
               from window_counts wc
+              left join known_people_by_window kp
+                on kp.window_start = wc.window_start
+               and kp.site_id is not distinct from wc.site_id
+               and kp.camera_id is not distinct from wc.camera_id
               left join lateral (
                     select m.id,
                            m.played_on,
@@ -612,7 +734,7 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
                      limit 1
                   ) scheduled on true
              where wc.motion_captures >= %s
-                or (wc.unknown_people + wc.known_people) >= %s
+                or (wc.unknown_people + coalesce(kp.known_people, 0)) >= %s
              order by wc.window_start desc, unique_people desc, wc.motion_captures desc
              limit %s
             """,
@@ -757,7 +879,7 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
                          else 2
                        end,
                        c.captured_at asc
-                     limit 8
+                     limit 80
                     """,
                     [
                         row.get("site_id"),
@@ -770,25 +892,74 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
                 )
                 evidence_columns = [column[0] for column in cursor.description]
                 evidence = []
+                evidence_keys = set()
+
+                def append_evidence(item: dict) -> None:
+                    person_key = item.pop("_person_key", "") or f"capture:{item.get('capture_id')}"
+                    if person_key in evidence_keys or len(evidence) >= 24:
+                        return
+                    evidence_keys.add(person_key)
+                    evidence.append(item)
+
                 for evidence_row in cursor.fetchall():
                     evidence_item = dict(zip(evidence_columns, evidence_row))
-                    metadata = compact_metadata(normalize_metadata(evidence_item.get("metadata")))
-                    known_match = metadata.get("known_match")
-                    if not isinstance(known_match, dict):
-                        known_matches = metadata.get("known_matches")
-                        known_match = known_matches[0] if isinstance(known_matches, list) and known_matches else {}
-                    evidence.append(
-                        {
-                            "capture_id": str(evidence_item.get("id") or ""),
-                            "captured_at": evidence_item["captured_at"].isoformat() if evidence_item.get("captured_at") else None,
-                            "status": evidence_item.get("status") or "",
-                            "subject_id": str(evidence_item.get("subject_id") or "") or None,
-                            "subject_name": evidence_item.get("subject_name") or "",
-                            "known_name": known_match.get("name") or known_match.get("full_name") or "",
-                            "face_crop_uri": metadata.get("face_crop_uri") or known_match.get("face_crop_uri") or "",
-                            "quality": metadata.get("quality") or {},
-                        }
-                    )
+                    metadata = normalize_metadata(evidence_item.get("metadata"))
+                    capture_id = str(evidence_item.get("id") or "")
+                    captured_at = evidence_item["captured_at"].isoformat() if evidence_item.get("captured_at") else None
+                    status_value = evidence_item.get("status") or ""
+                    base_item = {
+                        "capture_id": capture_id,
+                        "captured_at": captured_at,
+                        "status": status_value,
+                        "subject_id": str(evidence_item.get("subject_id") or "") or None,
+                        "subject_name": evidence_item.get("subject_name") or "",
+                        "known_name": "",
+                        "face_crop_uri": metadata.get("face_crop_uri") or "",
+                        "quality": metadata.get("quality") or {},
+                    }
+
+                    known_matches = metadata.get("known_matches")
+                    if not isinstance(known_matches, list) or not known_matches:
+                        known_match = metadata.get("known_match")
+                        known_matches = [known_match] if isinstance(known_match, dict) and known_match else []
+                    for known_match in known_matches:
+                        if not isinstance(known_match, dict):
+                            continue
+                        person_key = known_match_key(known_match)
+                        append_evidence(
+                            {
+                                **base_item,
+                                "_person_key": f"known:{person_key}" if person_key != ":" else f"capture:{capture_id}",
+                                "known_name": known_match.get("name") or known_match.get("full_name") or "",
+                                "face_crop_uri": known_match.get("face_crop_uri") or base_item["face_crop_uri"],
+                                "quality": known_match.get("quality") or base_item["quality"],
+                            }
+                        )
+
+                    unknown_subjects = metadata.get("unknown_subjects")
+                    if not isinstance(unknown_subjects, list) or not unknown_subjects:
+                        unknown_subject = metadata.get("unknown_subject")
+                        unknown_subjects = [{"unknown_subject": unknown_subject, "face_crop_uri": metadata.get("face_crop_uri"), "quality": metadata.get("quality")}] if isinstance(unknown_subject, dict) and unknown_subject else []
+                    for unknown_item in unknown_subjects:
+                        if not isinstance(unknown_item, dict):
+                            continue
+                        subject = unknown_item.get("unknown_subject")
+                        if not isinstance(subject, dict):
+                            continue
+                        subject_id = str(subject.get("id") or "")
+                        append_evidence(
+                            {
+                                **base_item,
+                                "_person_key": f"unknown:{subject_id}" if subject_id else f"capture:{capture_id}",
+                                "subject_id": subject_id or base_item["subject_id"],
+                                "subject_name": subject.get("temporary_name") or base_item["subject_name"],
+                                "face_crop_uri": unknown_item.get("face_crop_uri") or base_item["face_crop_uri"],
+                                "quality": unknown_item.get("quality") or base_item["quality"],
+                            }
+                        )
+
+                    if not known_matches and not unknown_subjects:
+                        append_evidence({**base_item, "_person_key": f"capture:{capture_id}"})
                 row["evidence"] = evidence
     for row in rows:
         row.pop("_window_start_raw", None)
@@ -841,7 +1012,11 @@ def fetch_daily_reports(limit: int = 45) -> list[dict]:
                        count(*) filter (where status = 'uploaded' and processed_at is null) as pending_count,
                        count(*) filter (where status = 'pending_upload') as pending_upload_count,
                        count(*) filter (where processed_at is not null or status in ('failed', 'matched_known', 'unknown_confirmed')) as processed_count,
-                       count(*) filter (where status = 'matched_known') as matched_known_count,
+                       count(*) filter (
+                           where status = 'matched_known'
+                              or metadata ? 'known_match'
+                              or metadata ? 'known_match_keys'
+                       ) as matched_known_count,
                        count(*) filter (where status = 'unknown_confirmed') as unknown_confirmed_count,
                        count(*) filter (where status = 'failed') as failed_count
                   from capture_rows cr
@@ -974,7 +1149,8 @@ def local_face_uri_from_path(path: Path) -> str:
 def hydrate_urls(payload: dict, request) -> dict:
     for key in ["pending", "recent", "subjects"]:
         for item in payload.get(key, []) or []:
-            item["image_url"] = face_image_url(request, item.get("face_crop_uri") or normalize_metadata(item.get("metadata")).get("face_crop_uri", ""))
+            face_url = face_image_url(request, item.get("face_crop_uri") or normalize_metadata(item.get("metadata")).get("face_crop_uri", ""))
+            item["image_url"] = face_url or (capture_image_url(request, item.get("id", "")) if key in {"pending", "recent"} else "")
     for result in payload.get("results", []) or []:
         for item in result.get("processed", []) or []:
             item["image_url"] = face_image_url(request, item.get("face_crop_uri", "")) or capture_image_url(request, item.get("capture_id", ""))
@@ -1000,6 +1176,13 @@ def capture_image_url(request, capture_id: str) -> str:
     if not capture_id:
         return ""
     path = f"/api/unknown-attendance/captures/{quote(str(capture_id))}/image/"
+    return request.build_absolute_uri(path) if request else path
+
+
+def rejected_face_image_url(request, capture_id: str, face_index: int) -> str:
+    if not capture_id:
+        return ""
+    path = f"/api/unknown-attendance/rejected-faces/{quote(str(capture_id))}/{int(face_index)}/image/"
     return request.build_absolute_uri(path) if request else path
 
 
@@ -1037,6 +1220,56 @@ def materialize_capture(capture: dict, target_dir: Path | None = None) -> Path:
     else:
         raise RuntimeError("La captura no tiene drive_remote_path ni drive_file_id.")
     return target
+
+
+def rejected_face_crop_path(capture_id: str, face_index: int) -> Path:
+    import cv2
+
+    capture = fetch_capture(capture_id)
+    if not capture:
+        raise LookupError("Captura no encontrada.")
+    face_index = max(0, int(face_index))
+    metadata = normalize_metadata(capture.get("metadata"))
+    rejected_faces = metadata.get("rejected_faces")
+    rejected_face = {}
+    if isinstance(rejected_faces, list):
+        for candidate in rejected_faces:
+            if isinstance(candidate, dict) and int(candidate.get("face_index") or 0) == face_index:
+                rejected_face = candidate
+                break
+        if not rejected_face and face_index < len(rejected_faces) and isinstance(rejected_faces[face_index], dict):
+            rejected_face = rejected_faces[face_index]
+    quality = normalize_metadata(rejected_face.get("quality"))
+    bbox = quality.get("bbox")
+
+    source_path = materialize_capture(capture)
+    image = cv2.imread(str(source_path))
+    if image is None:
+        raise RuntimeError("No se pudo leer la captura.")
+
+    if not (isinstance(bbox, list) and len(bbox) == 4):
+        faces = detect_embeddings(image, providers_key=os.getenv("UNKNOWN_ATTENDANCE_PROVIDERS", os.getenv("AUTO_ATTENDANCE_PROVIDERS", "auto")))
+        if face_index >= len(faces):
+            raise RuntimeError("No se pudo reconstruir el recorte rechazado.")
+        bbox = [int(value) for value in faces[face_index].bbox]
+
+    height, width = image.shape[:2]
+    x1, y1, x2, y2 = [int(round(float(value))) for value in bbox]
+    x1, y1, x2, y2 = max(0, x1), max(0, y1), min(width, x2), min(height, y2)
+    if x2 <= x1 or y2 <= y1:
+        raise RuntimeError("El recorte rechazado no tiene coordenadas validas.")
+
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        raise RuntimeError("El recorte rechazado esta vacio.")
+    output_dir = temp_dir() / "rejected_faces"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{capture_id}-{face_index}.jpg"
+    crop_size = int(os.getenv("UNKNOWN_ATTENDANCE_DEBUG_FACE_CROP_SIZE", "360"))
+    resized = cv2.resize(crop, (crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+    if not cv2.imwrite(str(output_path), resized, [int(cv2.IMWRITE_JPEG_QUALITY), int(os.getenv("UNKNOWN_ATTENDANCE_FACE_JPEG_QUALITY", "95"))]):
+        raise RuntimeError("No se pudo guardar el recorte rechazado.")
+    return output_path
 
 
 def split_drive_remote_path(remote_path: str) -> tuple[str, str] | None:
@@ -1243,6 +1476,24 @@ def ranked_known(embedding, people: list[object], matrix):
     return people[best_idx], best, best - second
 
 
+def known_match_payload(person: object, similarity: float, margin: float, quality: dict, face_index: int, quality_ok: bool) -> dict:
+    return {
+        "face_index": face_index,
+        "type": "player" if isinstance(person, Player) else "student",
+        "id": person.id,
+        "name": person_label(person),
+        "similarity": round(similarity, 4),
+        "margin": round(margin, 4),
+        "quality": quality,
+        "quality_ok_for_evidence": quality_ok,
+        "quality_rejection_reasons": quality.get("rejection_reasons", []),
+    }
+
+
+def known_match_key(match: dict) -> str:
+    return f"{match.get('type') or ''}:{match.get('id') or ''}"
+
+
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -1413,6 +1664,7 @@ def face_quality(image, face) -> tuple[bool, dict, object]:
     is_underexposed = mean_luma < min_mean_luma or median_luma < min_median_luma or dark_ratio > max_dark_ratio
     quality = {
         "det_score": round(float(face.det_score), 4),
+        "bbox": [int(x1), int(y1), int(x2), int(y2)],
         "face_width": face_width,
         "face_height": face_height,
         "blur": round(blur, 2),
@@ -2048,21 +2300,13 @@ def process_capture(capture: dict, people: list[object], matrix, local_path: Pat
 
         for face_index, face in enumerate(faces):
             quality_ok, quality, crop = face_quality(image, face)
-            if not quality_ok or crop is None or crop.size == 0:
-                rejected_faces.append({"face_index": face_index, "quality": quality})
-                continue
-
             known_person, known_similarity, known_margin = ranked_known(face.embedding, people, matrix)
             if known_person and known_similarity >= known_threshold and known_margin >= known_margin_threshold:
-                known_matches.append({
-                    "face_index": face_index,
-                    "type": "player" if isinstance(known_person, Player) else "student",
-                    "id": known_person.id,
-                    "name": person_label(known_person),
-                    "similarity": round(known_similarity, 4),
-                    "margin": round(known_margin, 4),
-                    "quality": quality,
-                })
+                known_matches.append(known_match_payload(known_person, known_similarity, known_margin, quality, face_index, quality_ok))
+                continue
+
+            if not quality_ok or crop is None or crop.size == 0:
+                rejected_faces.append({"face_index": face_index, "quality": quality})
                 continue
 
             existing = find_unknown_subject(face.embedding)
@@ -2103,6 +2347,7 @@ def process_capture(capture: dict, people: list[object], matrix, local_path: Pat
                     "unknown_subject": first_unknown["unknown_subject"],
                     "unknown_subjects": unknown_matches,
                     "known_matches": known_matches,
+                    "known_match_keys": list(dict.fromkeys(known_match_key(match) for match in known_matches if known_match_key(match) != ":")),
                     "rejected_faces": rejected_faces,
                 },
                 subject_id=first_unknown["unknown_subject"]["id"],
@@ -2126,6 +2371,7 @@ def process_capture(capture: dict, people: list[object], matrix, local_path: Pat
                 "quality": best_known["quality"],
                 "known_match": best_known,
                 "known_matches": known_matches,
+                "known_match_keys": list(dict.fromkeys(known_match_key(match) for match in known_matches if known_match_key(match) != ":")),
                 "rejected_faces": rejected_faces,
             }
             update_capture(capture["id"], "matched_known", metadata)
@@ -2274,8 +2520,13 @@ class UnknownAttendanceProcessView(APIView):
         ensure_dirs()
         capture_id = request.data.get("capture_id") or None
         captured_date = request.data.get("captured_date") or None
+        reprocess_failed = bool(request.data.get("reprocess_failed"))
         if captured_date and not parse_date(str(captured_date)):
             return Response({"detail": "captured_date debe tener formato YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        if reprocess_failed:
+            if capture_id:
+                return Response({"detail": "reprocess_failed solo aplica por fecha, no por captura individual."}, status=status.HTTP_400_BAD_REQUEST)
+            reset_failed_captures_for_reprocess(str(captured_date) if captured_date else None)
         pending = fetch_pending_captures(limit=None, captured_date=str(captured_date) if captured_date else None)
         if capture_id:
             pending = [item for item in pending if str(item["id"]) == str(capture_id)]
@@ -2324,6 +2575,52 @@ class UnknownAttendanceCaptureImageView(APIView):
             return Response({"detail": exc.detail}, status=exc.status_code)
         except Exception as exc:
             return Response({"detail": f"No se pudo preparar la evidencia: {exc}"}, status=status.HTTP_404_NOT_FOUND)
+
+
+class UnknownAttendanceRejectedFacesView(APIView):
+    permission_classes = [IsOperationsCashierOrCoachRole]
+
+    def get(self, request):
+        captured_date = request.query_params.get("captured_date") or None
+        if captured_date and not parse_date(str(captured_date)):
+            return Response({"detail": "captured_date debe tener formato YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            limit = max(1, min(500, int(request.query_params.get("limit", "120"))))
+        except (TypeError, ValueError):
+            limit = 120
+        try:
+            offset = max(0, int(request.query_params.get("offset", "0")))
+        except (TypeError, ValueError):
+            offset = 0
+        payload = fetch_rejected_face_debug(captured_date=str(captured_date) if captured_date else None, limit=limit, offset=offset)
+        for item in payload["results"]:
+            item["image_url"] = rejected_face_image_url(request, item.get("capture_id", ""), int(item.get("face_index") or 0))
+            item["capture_image_url"] = capture_image_url(request, item.get("capture_id", ""))
+        payload["limit"] = limit
+        payload["offset"] = offset
+        payload["next_offset"] = offset + len(payload["results"]) if offset + len(payload["results"]) < payload["count"] else None
+        return Response(payload)
+
+
+class UnknownAttendanceRejectedFaceImageView(APIView):
+    permission_classes = [IsOperationsCashierOrCoachRole]
+
+    def get(self, request, capture_id: str, face_index: int):
+        try:
+            local_path = rejected_face_crop_path(capture_id, face_index)
+            return secure_file_response(
+                local_path,
+                allowed_extensions=IMAGE_EXTENSIONS,
+                max_bytes=settings.FILE_EVIDENCE_MAX_IMAGE_BYTES,
+                content_type="image/jpeg",
+                retention_days=settings.FILE_EVIDENCE_RETENTION_DAYS,
+            )
+        except FileSecurityError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+        except LookupError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as exc:
+            return Response({"detail": f"No se pudo preparar el recorte rechazado: {exc}"}, status=status.HTTP_404_NOT_FOUND)
 
 
 class UnknownAttendanceLocalFaceImageView(APIView):

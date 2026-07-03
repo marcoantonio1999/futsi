@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock3, RefreshCw, Search } from "lucide-react";
 import { apiRequest } from "../../api";
 import type { AppData } from "../../types";
@@ -6,6 +6,7 @@ import {
   UnknownActivityWindowsSection,
   UnknownPendingSessionSection,
   UnknownProcessedResultsSection,
+  UnknownRejectedFacesDebugSection,
   UnknownSubjectsSection,
 } from "./UnknownAttendanceDetailSections";
 import { getUnknownJobProgress, UnknownActiveJobBanner, UnknownJobProgressCard } from "./UnknownAttendanceProgress";
@@ -18,6 +19,8 @@ import {
   type UnknownAttendanceJob,
   type UnknownAttendanceStatus,
   type UnknownDailyReport,
+  type UnknownRejectedFaceDebug,
+  type UnknownRejectedFacesResponse,
 } from "./model";
 
 export function UnknownAttendanceDetailPanel({ token, data, date, initialReport, onBack }: { token: string; data: AppData; date: string; initialReport?: unknown; onBack: () => void }) {
@@ -27,6 +30,13 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
   const [error, setError] = useState("");
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [acceptingSubjectId, setAcceptingSubjectId] = useState("");
+  const [rejectedDebugOpen, setRejectedDebugOpen] = useState(false);
+  const [rejectedDebugLoading, setRejectedDebugLoading] = useState(false);
+  const [rejectedDebugError, setRejectedDebugError] = useState("");
+  const [rejectedDebugItems, setRejectedDebugItems] = useState<UnknownRejectedFaceDebug[]>([]);
+  const [rejectedDebugCount, setRejectedDebugCount] = useState(0);
+  const [rejectedDebugNextOffset, setRejectedDebugNextOffset] = useState<number | null>(null);
+  const rejectedDebugLoadingRef = useRef(false);
 
   const visibleJob = job ?? status?.active_job ?? null;
   const isProcessing = visibleJob?.status === "queued" || visibleJob?.status === "processing";
@@ -137,13 +147,21 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
     return () => window.clearInterval(interval);
   }, [detailDate, isProcessing, token]);
 
-  async function processUnknown() {
+  useEffect(() => {
+    setRejectedDebugOpen(false);
+    setRejectedDebugItems([]);
+    setRejectedDebugCount(0);
+    setRejectedDebugNextOffset(null);
+    setRejectedDebugError("");
+  }, [detailDate]);
+
+  async function processUnknown(reprocessFailed = false) {
     setMessage("");
     setError("");
     try {
       const nextJob = await apiRequest<UnknownAttendanceJob>("/unknown-attendance/process-pending/", token, {
         method: "POST",
-        body: JSON.stringify({ captured_date: detailDate }),
+        body: JSON.stringify({ captured_date: detailDate, reprocess_failed: reprocessFailed }),
       });
       setJob(nextJob);
       setMessage("Procesamiento de desconocidos iniciado.");
@@ -167,6 +185,36 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
     } finally {
       setAcceptingSubjectId("");
     }
+  }
+
+  async function loadRejectedDebug(offset = 0) {
+    if (rejectedDebugLoadingRef.current) return;
+    rejectedDebugLoadingRef.current = true;
+    setRejectedDebugLoading(true);
+    setRejectedDebugError("");
+    try {
+      const response = await apiRequest<UnknownRejectedFacesResponse>(
+        `/unknown-attendance/rejected-faces/?captured_date=${encodeURIComponent(detailDate)}&limit=32&offset=${offset}`,
+        token,
+      );
+      setRejectedDebugItems((current) => (offset ? [...current, ...response.results] : response.results));
+      setRejectedDebugCount(response.count);
+      setRejectedDebugNextOffset(response.next_offset ?? null);
+    } catch (err) {
+      setRejectedDebugError(err instanceof Error ? err.message : "No se pudieron cargar las caras rechazadas.");
+    } finally {
+      rejectedDebugLoadingRef.current = false;
+      setRejectedDebugLoading(false);
+    }
+  }
+
+  function toggleRejectedDebug() {
+    if (rejectedDebugOpen) {
+      setRejectedDebugOpen(false);
+      return;
+    }
+    setRejectedDebugOpen(true);
+    if (!rejectedDebugItems.length) void loadRejectedDebug(0);
   }
 
   const processedResults = (visibleJob?.results?.flatMap((result) => result.processed ?? []) ?? []).filter((item) => !item.detail?.includes("se detectaron 0 caras"));
@@ -233,6 +281,7 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
         detailDateLabel={detailDateLabel}
         isProcessing={isProcessing}
         onProcess={() => void processUnknown()}
+        onReprocessFailed={() => void processUnknown(true)}
         pendingCount={pendingCount}
         pendingSession={pendingSession}
         pendingUploadCount={pendingUploadCount}
@@ -241,6 +290,22 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
         unknownProcessingEnabled={unknownProcessingEnabled}
       />
       <UnknownActivityWindowsSection activityWindows={activityWindows} data={data} token={token} />
+      <UnknownRejectedFacesDebugSection
+        count={rejectedDebugCount}
+        error={rejectedDebugError}
+        items={rejectedDebugItems}
+        loading={rejectedDebugLoading}
+        nextOffset={rejectedDebugNextOffset}
+        onLoad={toggleRejectedDebug}
+        onScroll={(event) => {
+          if (rejectedDebugLoading || rejectedDebugNextOffset == null) return;
+          const target = event.currentTarget;
+          const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+          if (distanceToBottom < 300) void loadRejectedDebug(rejectedDebugNextOffset);
+        }}
+        open={rejectedDebugOpen}
+        token={token}
+      />
       <UnknownProcessedResultsSection processedResults={processedResults} token={token} />
       <UnknownSubjectsSection acceptingSubjectId={acceptingSubjectId} data={data} onAccept={(subjectId) => void acceptUnknownSubject(subjectId)} token={token} visibleSubjects={visibleSubjects} />
     </div>

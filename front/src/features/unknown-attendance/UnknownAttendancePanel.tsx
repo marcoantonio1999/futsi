@@ -97,13 +97,13 @@ export function UnknownAttendancePanel({ token, data, onOpenDetail }: { token: s
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [token]);
 
-  async function processUnknown(dateValue?: string | null) {
+  async function processUnknown(dateValue?: string | null, reprocessFailed = false) {
     setMessage("");
     setError("");
     try {
       const nextJob = await apiRequest<UnknownAttendanceJob>("/unknown-attendance/process-pending/", token, {
         method: "POST",
-        body: dateValue ? JSON.stringify({ captured_date: dateValue }) : undefined,
+        body: dateValue || reprocessFailed ? JSON.stringify({ captured_date: dateValue, reprocess_failed: reprocessFailed }) : undefined,
       });
       setJob(nextJob);
       setMessage("Procesamiento de desconocidos iniciado.");
@@ -203,7 +203,7 @@ export function UnknownAttendancePanel({ token, data, onOpenDetail }: { token: s
         dailyReports={dailyReports}
         isProcessing={isProcessing}
         onOpenDetail={onOpenDetail}
-        onProcess={(date) => void processUnknown(date)}
+        onProcess={(date, reprocessFailed) => void processUnknown(date, reprocessFailed)}
         progress={progress}
         selectedUnknownDate={selectedUnknownDate}
         statusEnabled={status.enabled}
