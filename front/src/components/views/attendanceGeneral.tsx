@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, Search, UsersRound } from "lucide-react";
-import type { AppData, AttendanceRecord, PlayerAttendanceRecord } from "../../types";
+import type { AppData, AttendanceRecord, Payment, PlayerAttendanceRecord } from "../../types";
 import { money } from "../../utils/format";
 import { EvidenceImage } from "../../features/automatic-attendance";
 
@@ -55,25 +55,32 @@ function dateTimeLabel(value?: string | null) {
   return date.toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+function paymentMonth(payment: Payment) {
+  return dateMonth(payment.confirmed_at || payment.paid_at);
+}
+
+function isConfirmedPayment(payment: Payment) {
+  return payment.status === "registered" || payment.status === "reconciled";
+}
+
 function addStatusDay(days: Record<AttendanceStatus, Set<string>>, status: AttendanceStatus, date?: string) {
   if (!date) return;
   days[status].add(date);
 }
 
-function paymentStatus(charges: Array<{ amount: string; paid_amount: string; balance: string; status: string }>) {
-  if (!charges.length) {
+function paymentStatus(charges: Array<{ amount: string; balance: string; status: string }>, paidInMonth: number) {
+  if (!charges.length && paidInMonth <= 0) {
     return { paymentStatus: "none" as const, paymentLabel: "Sin cargos del mes", billed: 0, paid: 0, balance: 0 };
   }
   const billed = charges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0);
-  const paid = charges.reduce((sum, charge) => sum + Number(charge.paid_amount || 0), 0);
   const balance = charges.reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
-  if (balance <= 0 || charges.every((charge) => charge.status === "paid")) {
-    return { paymentStatus: "paid" as const, paymentLabel: "Pagado", billed, paid, balance: 0 };
+  if (balance <= 0 && (charges.length > 0 || paidInMonth > 0)) {
+    return { paymentStatus: "paid" as const, paymentLabel: "Pagado", billed, paid: paidInMonth, balance: 0 };
   }
-  if (paid > 0) {
-    return { paymentStatus: "partial" as const, paymentLabel: "Pago parcial", billed, paid, balance };
+  if (paidInMonth > 0) {
+    return { paymentStatus: "partial" as const, paymentLabel: "Pago parcial", billed, paid: paidInMonth, balance };
   }
-  return { paymentStatus: "pending" as const, paymentLabel: "No pagado", billed, paid, balance };
+  return { paymentStatus: "pending" as const, paymentLabel: "No pagado", billed, paid: 0, balance };
 }
 
 function statusClass(status: SummaryRow["paymentStatus"]) {
@@ -92,6 +99,13 @@ function buildAcademyRows(data: AppData, month: string): SummaryRow[] {
       const studentId = charge.student as number;
       chargesByStudent.set(studentId, [...(chargesByStudent.get(studentId) ?? []), charge]);
     });
+  const paidByStudent = new Map<number, number>();
+  data.payments
+    .filter((payment) => payment.student && isConfirmedPayment(payment) && paymentMonth(payment) === month)
+    .forEach((payment) => {
+      const studentId = payment.student as number;
+      paidByStudent.set(studentId, (paidByStudent.get(studentId) ?? 0) + Number(payment.amount || 0));
+    });
 
   const daysByStudent = new Map<number, Record<AttendanceStatus, Set<string>>>();
   data.attendanceRecords.forEach((record) => {
@@ -106,7 +120,7 @@ function buildAcademyRows(data: AppData, month: string): SummaryRow[] {
   return data.students.map((student) => {
     const site = data.sites.find((item) => item.id === student.site);
     const days = daysByStudent.get(student.id) ?? { present: new Set<string>(), absent: new Set<string>(), justified: new Set<string>() };
-    const payment = paymentStatus(chargesByStudent.get(student.id) ?? []);
+    const payment = paymentStatus(chargesByStudent.get(student.id) ?? [], paidByStudent.get(student.id) ?? 0);
     return {
       id: `student-${student.id}`,
       kind: "known",
@@ -131,6 +145,13 @@ function buildAdultRows(data: AppData, month: string): SummaryRow[] {
       const teamId = charge.team as number;
       chargesByTeam.set(teamId, [...(chargesByTeam.get(teamId) ?? []), charge]);
     });
+  const paidByTeam = new Map<number, number>();
+  data.payments
+    .filter((payment) => payment.team && isConfirmedPayment(payment) && paymentMonth(payment) === month)
+    .forEach((payment) => {
+      const teamId = payment.team as number;
+      paidByTeam.set(teamId, (paidByTeam.get(teamId) ?? 0) + Number(payment.amount || 0));
+    });
 
   const daysByPlayer = new Map<number, Record<AttendanceStatus, Set<string>>>();
   data.playerAttendanceRecords.forEach((record) => {
@@ -145,7 +166,7 @@ function buildAdultRows(data: AppData, month: string): SummaryRow[] {
     const team = data.teams.find((item) => item.id === player.team);
     const site = data.sites.find((item) => item.id === player.site);
     const days = daysByPlayer.get(player.id) ?? { present: new Set<string>(), absent: new Set<string>(), justified: new Set<string>() };
-    const payment = paymentStatus(chargesByTeam.get(player.team) ?? []);
+    const payment = paymentStatus(chargesByTeam.get(player.team) ?? [], paidByTeam.get(player.team) ?? 0);
     return {
       id: `player-${player.id}`,
       kind: "known",
@@ -315,7 +336,7 @@ export function AttendanceGeneralPanel({ data, scope, token }: { data: AppData; 
                   <td className="px-4 py-3 font-semibold text-zinc-600">{row.justifiedDays}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${statusClass(row.paymentStatus)}`}>{row.paymentLabel}</span>
-                    <p className="mt-1 text-xs text-zinc-500">Facturado ${money(row.billed)} - pagado ${money(row.paid)}</p>
+                    <p className="mt-1 text-xs text-zinc-500">Cargos del mes ${money(row.billed)} - pagado en el mes ${money(row.paid)}</p>
                   </td>
                   <td className="px-4 py-3 font-semibold">${money(row.balance)}</td>
                 </tr>

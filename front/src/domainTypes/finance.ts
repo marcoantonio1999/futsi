@@ -38,6 +38,7 @@ export type Payment = {
   charge: number | null;
   student: number | null;
   student_name?: string;
+  team: number | null;
   team_name?: string;
   charge_concept?: string;
   method: PaymentMethod;
