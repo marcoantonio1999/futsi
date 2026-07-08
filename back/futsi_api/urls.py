@@ -26,8 +26,10 @@ from core.api.unknown_attendance import (
     UnknownAttendanceProcessView,
     UnknownAttendanceRejectedFaceImageView,
     UnknownAttendanceRejectedFacesView,
+    UnknownAttendanceRecordsView,
     UnknownAttendanceStatusView,
     UnknownAttendanceSubjectAcceptView,
+    UnknownAttendanceSubjectDiscardView,
     UnknownAttendanceSubjectRegisterPersonView,
 )
 from core.api.dashboard import DashboardSummaryView
@@ -63,8 +65,10 @@ urlpatterns = [
     path("api/video-occupancy/jobs/<str:job_id>/", VideoOccupancyJobView.as_view()),
     path("api/video-occupancy/evidence/<str:job_id>/<path:evidence_path>", VideoOccupancyEvidenceView.as_view()),
     path("api/unknown-attendance/status/", UnknownAttendanceStatusView.as_view()),
+    path("api/unknown-attendance/records/", UnknownAttendanceRecordsView.as_view()),
     path("api/unknown-attendance/process-pending/", UnknownAttendanceProcessView.as_view()),
     path("api/unknown-attendance/subjects/<str:subject_id>/accept/", UnknownAttendanceSubjectAcceptView.as_view()),
+    path("api/unknown-attendance/subjects/<str:subject_id>/discard/", UnknownAttendanceSubjectDiscardView.as_view()),
     path("api/unknown-attendance/subjects/<str:subject_id>/register-person/", UnknownAttendanceSubjectRegisterPersonView.as_view()),
     path("api/unknown-attendance/rejected-faces/", UnknownAttendanceRejectedFacesView.as_view()),
     path("api/unknown-attendance/rejected-faces/<str:capture_id>/<int:face_index>/image/", UnknownAttendanceRejectedFaceImageView.as_view()),

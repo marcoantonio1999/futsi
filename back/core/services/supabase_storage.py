@@ -91,3 +91,16 @@ def download_private_file(bucket: str, object_path: str, suffix: str = ".jpg") -
     ref_file.write(payload)
     ref_file.close()
     return ref_file.name
+
+
+def delete_private_file(bucket: str, object_path: str) -> bool:
+    encoded_path = "/".join(quote(part) for part in object_path.replace("\\", "/").split("/"))
+    endpoint = f"{supabase_url()}/storage/v1/object/{bucket}/{encoded_path}"
+    request = Request(endpoint, method="DELETE", headers=storage_headers())
+    try:
+        with urlopen(request, timeout=60) as response:
+            return response.status < 400
+    except HTTPError as exc:
+        if exc.code == 404:
+            return False
+        raise RuntimeError(f"Supabase Storage delete fallo con HTTP {exc.code}: {exc.read().decode('utf-8', errors='ignore')}") from exc

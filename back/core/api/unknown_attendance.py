@@ -29,12 +29,13 @@ from .common import Guardian, IsOperationsCashierOrCoachRole, IsOperationsOrCoac
 from core.api.automatic_attendance import download_drive_file, rclone_executable
 from core.file_security import FileSecurityError, IMAGE_EXTENSIONS, secure_file_response
 from core.services.face_insight import build_student_database, detect_embeddings
-from core.services.supabase_storage import download_private_file, parse_storage_uri, upload_private_file
+from core.services.supabase_storage import delete_private_file, download_private_file, parse_storage_uri, upload_private_file
 
 
 ACTIVE_STUDENT_STATUSES = ["trial", "active", "paused", "injured"]
 CAPTURE_TABLE = "unknown_attendance_captures"
 SUBJECT_TABLE = "unknown_attendance_subjects"
+RECORD_TABLE = "unknown_attendance_records"
 FACE_BUCKET = os.getenv("UNKNOWN_ATTENDANCE_FACE_BUCKET", "unknown-attendance-faces")
 LOCAL_FACE_URI_PREFIX = "local://"
 JOB_LOCK = threading.RLock()
@@ -575,7 +576,7 @@ def fetch_activity_windows(captured_date: str | None = None, limit: int = 30, in
         return []
     window_minutes = max(15, env_int("UNKNOWN_ATTENDANCE_ACTIVITY_WINDOW_MINUTES", 60))
     step_minutes = max(5, env_int("UNKNOWN_ATTENDANCE_ACTIVITY_STEP_MINUTES", 15))
-    min_people = max(1, env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PEOPLE", 6))
+    min_people = max(1, env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PEOPLE", 10))
     min_processed = max(1, env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PROCESSED_CAPTURES", 8))
     min_active_minutes = max(1, env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_ACTIVE_MINUTES", 20))
     min_motion = max(1, env_int("UNKNOWN_ATTENDANCE_PRELIMINARY_MIN_MOTION_CAPTURES", 24))
@@ -1086,32 +1087,182 @@ def fetch_daily_reports(limit: int = 45) -> list[dict]:
                 }
             )
     if rows:
-        report_dates = {row["date"] for row in rows if row.get("date")}
-        activity_counts = {
-            date: {
-                "activity_window_count": 0,
-                "unscheduled_activity_count": 0,
-                "preliminary_activity_count": 0,
-                "scheduled_activity_count": 0,
-            }
-            for date in report_dates
-        }
-        for window in fetch_activity_windows(limit=300, include_evidence=False):
-            date = window.get("date")
-            if date not in activity_counts:
-                continue
-            if window.get("status") in {"unscheduled_candidate", "scheduled_overlap", "preliminary"}:
-                activity_counts[date]["activity_window_count"] += 1
-            if window.get("status") == "unscheduled_candidate":
-                activity_counts[date]["unscheduled_activity_count"] += 1
-            elif window.get("status") == "preliminary":
-                activity_counts[date]["preliminary_activity_count"] += 1
-            elif window.get("status") == "scheduled_overlap":
-                activity_counts[date]["scheduled_activity_count"] += 1
+        activity_counts = fetch_daily_activity_counts([row["date"] for row in rows if row.get("date")])
         for row in rows:
             row.update(activity_counts.get(row["date"], {}))
     cache.set(cache_key, rows, STATUS_CACHE_SECONDS)
     return rows
+
+
+def fetch_daily_activity_counts(report_dates: list[str]) -> dict[str, dict]:
+    dates = sorted({value for value in report_dates if value})
+    if not dates:
+        return {}
+    placeholders = ", ".join(["%s"] * len(dates))
+    tz_name = timezone.get_current_timezone_name()
+    window_minutes = max(15, env_int("UNKNOWN_ATTENDANCE_ACTIVITY_WINDOW_MINUTES", 60))
+    min_people = max(1, env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PEOPLE", 10))
+    min_processed = max(1, env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PROCESSED_CAPTURES", 8))
+    min_active_minutes = max(1, env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_ACTIVE_MINUTES", 20))
+    min_motion = max(1, env_int("UNKNOWN_ATTENDANCE_PRELIMINARY_MIN_MOTION_CAPTURES", 24))
+    grace_minutes = max(0, env_int("UNKNOWN_ATTENDANCE_SCHEDULE_GRACE_MINUTES", 15))
+    counts = {
+        date: {
+            "activity_window_count": 0,
+            "unscheduled_activity_count": 0,
+            "preliminary_activity_count": 0,
+            "scheduled_activity_count": 0,
+        }
+        for date in dates
+    }
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            with capture_rows as (
+                select c.id,
+                       c.subject_id,
+                       c.camera_id,
+                       c.site_id,
+                       c.captured_at,
+                       c.status,
+                       c.processed_at,
+                       c.metadata,
+                       (c.captured_at at time zone %s) as local_ts,
+                       (c.captured_at at time zone %s)::date as captured_date
+                  from public.{CAPTURE_TABLE} c
+                 where c.deleted_at is null
+                   and (c.captured_at at time zone %s)::date in ({placeholders})
+            ),
+            bucket_counts as (
+                select captured_date,
+                       date_trunc('hour', local_ts) as bucket_start,
+                       date_trunc('hour', local_ts) + (%s::int * interval '1 minute') as bucket_end,
+                       site_id,
+                       camera_id,
+                       count(*) as motion_captures,
+                       count(*) filter (
+                           where processed_at is not null
+                              or status in ('failed', 'matched_known', 'unknown_confirmed')
+                       ) as processed_captures,
+                       count(distinct subject_id) filter (
+                           where status = 'unknown_confirmed'
+                             and subject_id is not null
+                       ) as unknown_people,
+                       extract(epoch from max(captured_at) - min(captured_at)) / 60.0 as active_minutes
+                  from capture_rows
+                 group by 1, 2, 3, 4, 5
+            ),
+            known_people_by_bucket as (
+                select c.captured_date,
+                       date_trunc('hour', c.local_ts) as bucket_start,
+                       c.site_id,
+                       c.camera_id,
+                       count(distinct known.key) as known_people
+                  from capture_rows c
+                  join lateral jsonb_array_elements_text(
+                    case
+                      when jsonb_typeof(c.metadata->'known_match_keys') = 'array' then c.metadata->'known_match_keys'
+                      when c.metadata ? 'known_match' then jsonb_build_array(
+                        coalesce(c.metadata #>> '{{known_match,type}}', '') || ':' || coalesce(c.metadata #>> '{{known_match,id}}', '')
+                      )
+                      else '[]'::jsonb
+                    end
+                  ) as known(key) on true
+                 where known.key <> ''
+                   and known.key <> ':'
+                 group by 1, 2, 3, 4
+            ),
+            classified as (
+                select b.captured_date,
+                       b.motion_captures,
+                       b.processed_captures,
+                       b.unknown_people + coalesce(k.known_people, 0) as unique_people,
+                       b.active_minutes,
+                       scheduled.id as scheduled_match_id
+                  from bucket_counts b
+                  left join known_people_by_bucket k
+                    on k.captured_date = b.captured_date
+                   and k.bucket_start = b.bucket_start
+                   and k.site_id is not distinct from b.site_id
+                   and k.camera_id is not distinct from b.camera_id
+                  left join lateral (
+                    select m.id
+                      from public.matches m
+                     where b.site_id is not null
+                       and m.site_id = b.site_id
+                       and m.status <> 'canceled'
+                       and m.starts_at is not null
+                       and (m.played_on::timestamp + m.starts_at - (%s::int * interval '1 minute')) < b.bucket_end
+                       and (
+                           m.played_on::timestamp
+                           + m.starts_at
+                           + (coalesce(m.duration_minutes, 60)::int * interval '1 minute')
+                           + (%s::int * interval '1 minute')
+                       ) > b.bucket_start
+                     limit 1
+                  ) scheduled on true
+                 where b.motion_captures >= %s
+                    or (b.unknown_people + coalesce(k.known_people, 0)) >= %s
+            )
+            select captured_date,
+                   count(*) filter (
+                       where unique_people >= %s
+                         and processed_captures >= %s
+                         and active_minutes >= %s
+                         and scheduled_match_id is null
+                   ) as unscheduled_activity_count,
+                   count(*) filter (
+                       where unique_people >= %s
+                         and processed_captures >= %s
+                         and active_minutes >= %s
+                         and scheduled_match_id is not null
+                   ) as scheduled_activity_count,
+                   count(*) filter (
+                       where not (
+                           unique_people >= %s
+                           and processed_captures >= %s
+                           and active_minutes >= %s
+                       )
+                         and motion_captures >= %s
+                         and active_minutes >= %s
+                         and processed_captures < %s
+                   ) as preliminary_activity_count
+              from classified
+             group by 1
+            """,
+            [
+                tz_name,
+                tz_name,
+                tz_name,
+                *dates,
+                window_minutes,
+                grace_minutes,
+                grace_minutes,
+                min_motion,
+                min_people,
+                min_people,
+                min_processed,
+                min_active_minutes,
+                min_people,
+                min_processed,
+                min_active_minutes,
+                min_people,
+                min_processed,
+                min_active_minutes,
+                min_motion,
+                min_active_minutes,
+                min_processed,
+            ],
+        )
+        for captured_date, unscheduled_count, scheduled_count, preliminary_count in cursor.fetchall():
+            key = captured_date.isoformat() if hasattr(captured_date, "isoformat") else str(captured_date)
+            counts[key] = {
+                "activity_window_count": int((unscheduled_count or 0) + (scheduled_count or 0) + (preliminary_count or 0)),
+                "unscheduled_activity_count": int(unscheduled_count or 0),
+                "preliminary_activity_count": int(preliminary_count or 0),
+                "scheduled_activity_count": int(scheduled_count or 0),
+            }
+    return counts
 
 
 def face_image_url(request, uri: str) -> str:
@@ -1793,6 +1944,25 @@ def upload_consolidated_face(subject_id: str, face_crop_uri: str) -> str:
         raise RuntimeError("El recorte local del desconocido ya no existe.")
 
 
+def maybe_upload_subject_profile(subject_id, face_crop_uri: str) -> tuple[str, dict]:
+    if not env_bool("UNKNOWN_ATTENDANCE_AUTO_UPLOAD_SUBJECTS", False):
+        return face_crop_uri, {}
+    parsed = parse_storage_uri(face_crop_uri or "")
+    if parsed:
+        return face_crop_uri, {"storage_face_uri": face_crop_uri}
+    try:
+        storage_uri = upload_consolidated_face(str(subject_id), face_crop_uri)
+    except Exception as exc:
+        return face_crop_uri, {"storage_upload_error": str(exc)[:500]}
+    local_path = local_face_uri_to_path(face_crop_uri or "")
+    if local_path:
+        try:
+            local_path.unlink()
+        except OSError:
+            pass
+    return storage_uri, {"storage_face_uri": storage_uri, "storage_uploaded_at": timezone.now().isoformat()}
+
+
 def update_capture(capture_id, status_value: str, metadata: dict, subject_id=None, error_message: str | None = None) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
@@ -1848,7 +2018,7 @@ def update_subject(
     quality: dict,
     best_similarity: float | None = None,
     current_metadata: dict | None = None,
-) -> None:
+) -> str:
     current_metadata = current_metadata or {}
     accepted_face_uri = current_metadata.get("face_crop_uri") if current_metadata.get("accepted_at") else ""
     current_quality = current_metadata.get("quality") if isinstance(current_metadata.get("quality"), dict) else {}
@@ -1866,13 +2036,15 @@ def update_subject(
         metadata_patch["last_local_face_crop_uri"] = face_crop_uri
         metadata_patch["best_replacement_skipped"] = "accepted_storage_face"
     elif should_replace_best:
+        stored_face_uri, storage_metadata = maybe_upload_subject_profile(subject_id, face_crop_uri)
         metadata_patch.update(
             {
                 "embedding": [round(float(value), 6) for value in embedding.tolist()],
                 "quality": quality,
                 "quality_score": next_score,
                 "best_capture_id": str(capture["id"]),
-                "face_crop_uri": face_crop_uri,
+                "face_crop_uri": stored_face_uri,
+                **storage_metadata,
             }
         )
     else:
@@ -1897,6 +2069,315 @@ def update_subject(
             [capture.get("captured_at") or timezone.now(), json.dumps(metadata_patch), subject_id],
         )
     cache.clear()
+    return str(metadata_patch.get("face_crop_uri") or face_crop_uri or "")
+
+
+def aware_datetime(value) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = parse_datetime(str(value or "")) or timezone.now()
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def attendance_window_for_capture(captured_at) -> tuple[datetime, datetime, datetime]:
+    captured_at_dt = aware_datetime(captured_at)
+    local_capture = timezone.localtime(captured_at_dt)
+    window_start = local_capture.replace(minute=0, second=0, microsecond=0)
+    window_end = window_start + timedelta(hours=1)
+    return captured_at_dt, window_start, window_end
+
+
+def attendance_day_window(captured_at) -> tuple[datetime, datetime]:
+    captured_at_dt = aware_datetime(captured_at)
+    local_capture = timezone.localtime(captured_at_dt)
+    day_start = local_capture.replace(hour=0, minute=0, second=0, microsecond=0)
+    return day_start, day_start + timedelta(days=1)
+
+
+def scheduled_context_for_window(site_id, window_start: datetime, window_end: datetime) -> tuple[int | None, int | None]:
+    if not site_id:
+        return None, None
+    tz = timezone.get_current_timezone()
+    window_start_local = timezone.make_naive(timezone.localtime(window_start), tz)
+    window_end_local = timezone.make_naive(timezone.localtime(window_end), tz)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            select s.id, s.match_id
+              from public.attendance_sessions s
+             where s.site_id = %s
+               and s.starts_at is not null
+               and (s.date::timestamp + s.starts_at) < %s
+               and (
+                   s.date::timestamp
+                   + s.starts_at
+                   + (coalesce(s.duration_minutes, 60)::int * interval '1 minute')
+               ) > %s
+             order by abs(extract(epoch from ((s.date::timestamp + s.starts_at) - %s)))
+             limit 1
+            """,
+            [site_id, window_end_local, window_start_local, window_start_local],
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None, None
+    return row[0], row[1]
+
+
+def upsert_unknown_attendance_record(subject_id, capture: dict, quality: dict | None) -> None:
+    if not table_exists(RECORD_TABLE):
+        return
+    captured_at_dt, window_start, window_end = attendance_window_for_capture(capture.get("captured_at"))
+    day_start, day_end = attendance_day_window(captured_at_dt)
+    site_id = capture.get("site_id")
+    camera_id = capture.get("camera_id") or "dahua_cancha_1"
+    scheduled_session_id, scheduled_match_id = scheduled_context_for_window(site_id, window_start, window_end)
+    quality_score = None
+    if isinstance(quality, dict) and quality.get("quality_score") is not None:
+        try:
+            quality_score = float(quality.get("quality_score"))
+        except (TypeError, ValueError):
+            quality_score = None
+    metadata_patch = {
+        "last_capture_id": str(capture.get("id") or ""),
+        "last_quality": quality or {},
+    }
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            insert into public.{RECORD_TABLE}
+                (
+                    subject_id,
+                    attendance_date,
+                    site_id,
+                    camera_id,
+                    first_seen_at,
+                    last_seen_at,
+                    capture_count,
+                    evidence_capture_id,
+                    quality_score,
+                    activity_window_start,
+                    activity_window_end,
+                    scheduled_session_id,
+                    scheduled_match_id,
+                    is_unscheduled,
+                    metadata
+                )
+            values (%s, %s, %s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            on conflict (subject_id, attendance_date)
+            do update set
+                first_seen_at = least(public.{RECORD_TABLE}.first_seen_at, excluded.first_seen_at),
+                last_seen_at = greatest(public.{RECORD_TABLE}.last_seen_at, excluded.last_seen_at),
+                capture_count = public.{RECORD_TABLE}.capture_count + 1,
+                site_id = coalesce(public.{RECORD_TABLE}.site_id, excluded.site_id),
+                camera_id = case
+                    when public.{RECORD_TABLE}.camera_id = '' then excluded.camera_id
+                    else public.{RECORD_TABLE}.camera_id
+                end,
+                evidence_capture_id = case
+                    when excluded.quality_score is not null
+                     and (public.{RECORD_TABLE}.quality_score is null or excluded.quality_score >= public.{RECORD_TABLE}.quality_score)
+                    then excluded.evidence_capture_id
+                    else public.{RECORD_TABLE}.evidence_capture_id
+                end,
+                quality_score = greatest(coalesce(public.{RECORD_TABLE}.quality_score, 0), coalesce(excluded.quality_score, 0)),
+                scheduled_session_id = coalesce(public.{RECORD_TABLE}.scheduled_session_id, excluded.scheduled_session_id),
+                scheduled_match_id = coalesce(public.{RECORD_TABLE}.scheduled_match_id, excluded.scheduled_match_id),
+                is_unscheduled = coalesce(public.{RECORD_TABLE}.scheduled_session_id, excluded.scheduled_session_id) is null
+                    and coalesce(public.{RECORD_TABLE}.scheduled_match_id, excluded.scheduled_match_id) is null,
+                status = 'observed',
+                metadata = coalesce(public.{RECORD_TABLE}.metadata, '{{}}'::jsonb)
+                    || excluded.metadata
+                    || jsonb_build_object(
+                        'attendance_scope', 'day',
+                        'last_activity_window_start', excluded.metadata->>'activity_window_start',
+                        'last_activity_window_end', excluded.metadata->>'activity_window_end'
+                    ),
+                updated_at = now()
+            """,
+            [
+                subject_id,
+                timezone.localtime(captured_at_dt).date(),
+                site_id,
+                camera_id,
+                captured_at_dt,
+                captured_at_dt,
+                capture.get("id"),
+                quality_score,
+                day_start,
+                day_end,
+                scheduled_session_id,
+                scheduled_match_id,
+                not bool(scheduled_session_id or scheduled_match_id),
+                json.dumps(
+                    {
+                        **metadata_patch,
+                        "attendance_scope": "day",
+                        "activity_window_start": window_start.isoformat(),
+                        "activity_window_end": window_end.isoformat(),
+                    }
+                ),
+            ],
+        )
+    cache.clear()
+
+
+def upsert_accepted_subject_attendance_record(subject_id) -> None:
+    if not table_exists(RECORD_TABLE):
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            insert into public.{RECORD_TABLE}
+                (
+                    subject_id,
+                    attendance_date,
+                    site_id,
+                    camera_id,
+                    first_seen_at,
+                    last_seen_at,
+                    capture_count,
+                    evidence_capture_id,
+                    quality_score,
+                    activity_window_start,
+                    activity_window_end,
+                    scheduled_session_id,
+                    scheduled_match_id,
+                    is_unscheduled,
+                    metadata,
+                    updated_at
+                )
+            select s.id,
+                   (coalesce(s.last_seen_at, s.first_seen_at, s.created_at) at time zone 'America/Mexico_City')::date,
+                   s.site_id,
+                   coalesce(s.camera_id, ''),
+                   coalesce(s.first_seen_at, s.last_seen_at, s.created_at),
+                   coalesce(s.last_seen_at, s.first_seen_at, s.created_at),
+                   greatest(coalesce(s.capture_count, 1), 1),
+                   case
+                     when coalesce(s.metadata->>'best_capture_id', s.metadata->>'first_capture_id', '') ~* '^[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}$'
+                     then coalesce(s.metadata->>'best_capture_id', s.metadata->>'first_capture_id')::uuid
+                     else null
+                   end,
+                   nullif(coalesce(s.metadata->>'quality_score', s.metadata #>> '{{quality,quality_score}}'), '')::double precision,
+                   date_trunc('day', coalesce(s.last_seen_at, s.first_seen_at, s.created_at) at time zone 'America/Mexico_City') at time zone 'America/Mexico_City',
+                   (date_trunc('day', coalesce(s.last_seen_at, s.first_seen_at, s.created_at) at time zone 'America/Mexico_City') + interval '1 day') at time zone 'America/Mexico_City',
+                   null,
+                   null,
+                   true,
+                   jsonb_build_object('source', 'accepted_subject', 'accepted_at', s.metadata->>'accepted_at', 'attendance_scope', 'day'),
+                   now()
+              from public.{SUBJECT_TABLE} s
+             where s.id = %s
+               and s.status <> 'deleted'
+               and coalesce(s.metadata->>'accepted_at', '') <> ''
+            on conflict (subject_id, attendance_date)
+            do update set
+                first_seen_at = least(public.{RECORD_TABLE}.first_seen_at, excluded.first_seen_at),
+                last_seen_at = greatest(public.{RECORD_TABLE}.last_seen_at, excluded.last_seen_at),
+                capture_count = greatest(public.{RECORD_TABLE}.capture_count, excluded.capture_count),
+                site_id = coalesce(public.{RECORD_TABLE}.site_id, excluded.site_id),
+                camera_id = case
+                    when public.{RECORD_TABLE}.camera_id = '' then excluded.camera_id
+                    else public.{RECORD_TABLE}.camera_id
+                end,
+                evidence_capture_id = coalesce(public.{RECORD_TABLE}.evidence_capture_id, excluded.evidence_capture_id),
+                quality_score = greatest(coalesce(public.{RECORD_TABLE}.quality_score, 0), coalesce(excluded.quality_score, 0)),
+                status = 'observed',
+                metadata = coalesce(public.{RECORD_TABLE}.metadata, '{{}}'::jsonb) || excluded.metadata,
+                updated_at = now()
+            """,
+            [subject_id],
+        )
+    cache.clear()
+
+
+def fetch_unknown_attendance_records(request=None, limit: int = 5000) -> list[dict]:
+    if not table_exists(RECORD_TABLE):
+        return []
+    limit = max(1, min(20000, int(limit or 5000)))
+    filters = [
+        "r.status <> 'deleted'",
+        "s.status <> 'deleted'",
+        "coalesce(s.matched_person_type, '') = ''",
+        "coalesce(s.metadata->>'accepted_at', '') <> ''",
+        "coalesce(s.metadata->>'face_crop_uri', c.metadata->>'face_crop_uri', '') <> ''",
+    ]
+    params: list[object] = []
+    user = getattr(request, "user", None)
+    if user and getattr(user, "role", "") in {"cashier", "coach"} and getattr(user, "primary_site_id", None):
+        filters.append("r.site_id = %s")
+        params.append(user.primary_site_id)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            select r.id,
+                   r.subject_id,
+                   r.attendance_date,
+                   r.site_id,
+                   site.name as site_name,
+                   r.camera_id,
+                   r.first_seen_at,
+                   r.last_seen_at,
+                   r.capture_count,
+                   r.evidence_capture_id,
+                   r.quality_score,
+                   r.activity_window_start,
+                   r.activity_window_end,
+                   r.scheduled_session_id,
+                   r.scheduled_match_id,
+                   r.is_unscheduled,
+                   r.status,
+                   s.temporary_name,
+                   s.status as subject_status,
+                   s.metadata,
+                   c.metadata as evidence_metadata
+              from public.{RECORD_TABLE} r
+              join public.{SUBJECT_TABLE} s on s.id = r.subject_id
+              left join public.{CAPTURE_TABLE} c on c.id = r.evidence_capture_id
+              left join public.sites site on site.id = r.site_id
+             where {" and ".join(filters)}
+             order by r.attendance_date desc, r.last_seen_at desc
+             limit %s
+            """,
+            [*params, limit],
+        )
+        columns = [column[0] for column in cursor.description]
+        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    results = []
+    for row in rows:
+        metadata = normalize_metadata(row.pop("metadata", {}))
+        evidence_metadata = normalize_metadata(row.pop("evidence_metadata", {}))
+        face_uri = metadata.get("face_crop_uri") or evidence_metadata.get("face_crop_uri") or ""
+        evidence_capture_id = str(row.get("evidence_capture_id") or "")
+        results.append(
+            {
+                "id": str(row.get("id")),
+                "subject_id": str(row.get("subject_id")),
+                "attendance_date": row["attendance_date"].isoformat() if row.get("attendance_date") else "",
+                "site_id": row.get("site_id"),
+                "site_name": row.get("site_name") or "",
+                "camera_id": row.get("camera_id") or "",
+                "first_seen_at": row["first_seen_at"].isoformat() if row.get("first_seen_at") else None,
+                "last_seen_at": row["last_seen_at"].isoformat() if row.get("last_seen_at") else None,
+                "capture_count": int(row.get("capture_count") or 0),
+                "evidence_capture_id": evidence_capture_id or None,
+                "quality_score": float(row["quality_score"]) if row.get("quality_score") is not None else None,
+                "activity_window_start": row["activity_window_start"].isoformat() if row.get("activity_window_start") else None,
+                "activity_window_end": row["activity_window_end"].isoformat() if row.get("activity_window_end") else None,
+                "scheduled_session_id": row.get("scheduled_session_id"),
+                "scheduled_match_id": row.get("scheduled_match_id"),
+                "is_unscheduled": bool(row.get("is_unscheduled")),
+                "status": row.get("status") or "",
+                "temporary_name": row.get("temporary_name") or "Desconocido",
+                "subject_status": row.get("subject_status") or "",
+                "image_url": face_image_url(request, face_uri),
+            }
+        )
+    return results
 
 
 def fetch_subject(subject_id: str) -> dict | None:
@@ -1964,6 +2445,7 @@ def accept_subject(subject_id: str) -> dict:
             """,
             [json.dumps({"face_crop_uri": storage_uri}), subject_id, f"{LOCAL_FACE_URI_PREFIX}%"],
         )
+    upsert_accepted_subject_attendance_record(subject_id)
     cleanup_subject_local_faces(str(subject_id))
     cache.clear()
     return {
@@ -1973,6 +2455,99 @@ def accept_subject(subject_id: str) -> dict:
         "face_crop_uri": storage_uri,
         "accepted_at": accepted_at,
         "image_url": face_image_url(None, storage_uri),
+    }
+
+
+def discard_subject(subject_id: str, user_id: int | None = None) -> dict:
+    subject = fetch_subject(subject_id)
+    if not subject:
+        raise LookupError("Desconocido no encontrado.")
+    metadata = normalize_metadata(subject.get("metadata"))
+    face_crop_uri = metadata.get("face_crop_uri") or ""
+    storage_deleted = False
+    parsed = parse_storage_uri(face_crop_uri)
+    if parsed:
+        bucket, object_path = parsed
+        storage_deleted = delete_private_file(bucket, object_path)
+
+    discarded_at = timezone.now().isoformat()
+    metadata_patch = {
+        "discarded_at": discarded_at,
+        "discarded_by": user_id,
+        "discard_reason": "manual_review",
+        "deleted_storage_face": bool(parsed),
+        "storage_deleted": storage_deleted,
+    }
+    subject_id_text = str(subject_id)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            update public.{SUBJECT_TABLE}
+               set status = 'deleted',
+                   metadata = coalesce(metadata, '{{}}'::jsonb) || %s::jsonb,
+                   updated_at = now()
+             where id = %s
+            """,
+            [json.dumps(metadata_patch), subject_id],
+        )
+        cursor.execute(
+            f"""
+            update public.{CAPTURE_TABLE}
+               set subject_id = null,
+                   status = 'uploaded',
+                   processed_at = null,
+                   error_message = null,
+                   metadata = (
+                       coalesce(metadata, '{{}}'::jsonb)
+                       - 'unknown_subject'
+                       - 'unknown_subjects'
+                       - 'face_crop_uri'
+                       - 'quality'
+                   ) || %s::jsonb,
+                   updated_at = now()
+             where deleted_at is null
+               and (
+                    subject_id = %s
+                    or metadata #>> '{{unknown_subject,id}}' = %s
+                    or exists (
+                        select 1
+                          from jsonb_array_elements(
+                              case
+                                when jsonb_typeof(metadata->'unknown_subjects') = 'array' then metadata->'unknown_subjects'
+                                else '[]'::jsonb
+                              end
+                          ) as item(value)
+                         where item.value #>> '{{unknown_subject,id}}' = %s
+                    )
+               )
+            """,
+            [
+                json.dumps({"discarded_unknown_subject_id": subject_id_text, "discarded_unknown_at": discarded_at}),
+                subject_id,
+                subject_id_text,
+                subject_id_text,
+            ],
+        )
+        reset_captures = cursor.rowcount
+        if table_exists(RECORD_TABLE):
+            cursor.execute(
+                f"""
+                update public.{RECORD_TABLE}
+                   set status = 'deleted',
+                       metadata = coalesce(metadata, '{{}}'::jsonb) || %s::jsonb,
+                       updated_at = now()
+                 where subject_id = %s
+                """,
+                [json.dumps({"discarded_unknown_subject_id": subject_id_text, "discarded_unknown_at": discarded_at}), subject_id],
+            )
+    cleanup_subject_local_faces(str(subject_id))
+    cache.clear()
+    return {
+        "id": subject_id_text,
+        "status": "deleted",
+        "discarded_at": discarded_at,
+        "storage_deleted": storage_deleted,
+        "reset_captures": reset_captures,
     }
 
 
@@ -2324,7 +2899,8 @@ def process_capture(capture: dict, people: list[object], matrix, local_path: Pat
                 face_crop_uri = accepted_face_uri
             else:
                 face_crop_uri = save_face_crop_local(crop, capture, subject_id, face_index)
-            update_subject(subject_id, capture, face_crop_uri, face.embedding, quality, duplicate_similarity, subject_metadata)
+            face_crop_uri = update_subject(subject_id, capture, face_crop_uri, face.embedding, quality, duplicate_similarity, subject_metadata)
+            upsert_unknown_attendance_record(subject_id, capture, quality)
             unknown_matches.append({
                 "face_index": face_index,
                 "face_crop_uri": face_crop_uri,
@@ -2453,6 +3029,7 @@ class UnknownAttendanceStatusView(APIView):
 
     def get(self, request):
         ensure_dirs()
+        job_only = str(request.query_params.get("job_only") or "").lower() in {"1", "true", "yes", "si", "on"}
         captured_date = request.query_params.get("captured_date") or None
         if captured_date and not parse_date(str(captured_date)):
             return Response({"detail": "captured_date debe tener formato YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
@@ -2479,6 +3056,22 @@ class UnknownAttendanceStatusView(APIView):
         captured_date_text = str(captured_date) if captured_date else None
         current_job = active_job()
         latest_jobs = [compact_job(read_json(path, {})) for path in sorted(jobs_dir().glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:10]]
+        if job_only:
+            return Response(
+                {
+                    "enabled": not getattr(settings, "IS_RENDER", False),
+                    "daily_reports": [],
+                    "pending_count": 0,
+                    "pending_summary": None,
+                    "pending": [],
+                    "recent": [],
+                    "subjects": [],
+                    "activity_windows": [],
+                    "active_job": compact_job(current_job),
+                    "jobs": latest_jobs,
+                    "thresholds": {},
+                }
+            )
         pending_stats = fetch_pending_capture_stats(captured_date_text)
         payload = {
             "enabled": not getattr(settings, "IS_RENDER", False),
@@ -2503,7 +3096,7 @@ class UnknownAttendanceStatusView(APIView):
                 "duplicate_similarity": float(os.getenv("UNKNOWN_ATTENDANCE_DUPLICATE_THRESHOLD", "0.55")),
                 "activity_window_minutes": env_int("UNKNOWN_ATTENDANCE_ACTIVITY_WINDOW_MINUTES", 60),
                 "activity_step_minutes": env_int("UNKNOWN_ATTENDANCE_ACTIVITY_STEP_MINUTES", 15),
-                "unscheduled_min_people": env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PEOPLE", 6),
+                "unscheduled_min_people": env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PEOPLE", 10),
                 "unscheduled_min_processed_captures": env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_PROCESSED_CAPTURES", 8),
                 "unscheduled_min_active_minutes": env_int("UNKNOWN_ATTENDANCE_UNSCHEDULED_MIN_ACTIVE_MINUTES", 20),
                 "preliminary_min_motion_captures": env_int("UNKNOWN_ATTENDANCE_PRELIMINARY_MIN_MOTION_CAPTURES", 24),
@@ -2511,6 +3104,17 @@ class UnknownAttendanceStatusView(APIView):
             },
         }
         return Response(hydrate_urls(payload, request))
+
+
+class UnknownAttendanceRecordsView(APIView):
+    permission_classes = [IsOperationsCashierOrCoachRole]
+
+    def get(self, request):
+        try:
+            limit = max(1, min(20000, int(request.query_params.get("limit", "5000"))))
+        except (TypeError, ValueError):
+            limit = 5000
+        return Response(fetch_unknown_attendance_records(request, limit=limit))
 
 
 class UnknownAttendanceProcessView(APIView):
@@ -2649,6 +3253,19 @@ class UnknownAttendanceSubjectAcceptView(APIView):
     def post(self, request, subject_id: str):
         try:
             result = accept_subject(subject_id)
+        except LookupError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class UnknownAttendanceSubjectDiscardView(APIView):
+    permission_classes = [IsOperationsCashierOrCoachRole]
+
+    def post(self, request, subject_id: str):
+        try:
+            result = discard_subject(subject_id, request.user.id)
         except LookupError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as exc:
