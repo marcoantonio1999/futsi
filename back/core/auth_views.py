@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import update_last_login
+from django.core.cache import cache
 from rest_framework import permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -51,6 +52,7 @@ class LoginView(APIView):
 class LogoutView(APIView):
     def post(self, request):
         if request.auth:
+            cache.delete(f"auth:token:{request.auth.key}")
             Token.objects.filter(key=request.auth.key).delete()
         else:
             Token.objects.filter(user=request.user).delete()

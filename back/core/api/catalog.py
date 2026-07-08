@@ -205,6 +205,8 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def _validate_cashier_scope(self, data, instance=None):
+        if self.request.user.role != "cashier":
+            return
         tournament = data.get("tournament") or getattr(instance, "tournament", None)
         student = data.get("student") or getattr(instance, "student", None)
         team = data.get("team") if "team" in data else getattr(instance, "team", None)

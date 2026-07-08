@@ -67,6 +67,8 @@ class MatchViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def _validate_cashier_scope(self, data, instance=None):
+        if self.request.user.role != "cashier":
+            return
         tournament = data.get("tournament") or getattr(instance, "tournament", None)
         site = data.get("site") or getattr(instance, "site", None)
         home_team = data.get("home_team") or getattr(instance, "home_team", None)
