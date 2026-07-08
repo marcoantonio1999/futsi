@@ -165,6 +165,7 @@ export function BillingPanel({
                 <div>
                   <p className="font-medium">{discount.student_name} - ${money(discount.amount)}</p>
                   <p className="mt-1 text-sm text-zinc-500">{discount.charge_concept} - {discount.reason}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Firmo {discount.signed_by_username || discount.requested_by_username || "sistema"}</p>
                 </div>
                 <div className="flex gap-2">
                   <button className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white" onClick={() => onApproveDiscount(discount.id)}>

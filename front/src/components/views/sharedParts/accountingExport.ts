@@ -117,7 +117,7 @@ export function exportAccountingWorkbook(data: AppData) {
     expense.captured_by_username || "",
     expense.approved_by_username || "",
   ]), [0, 5])}
-  ${sheet("Descuentos", ["ID", "Cliente", "Cargo", "Motivo", "Monto", "Estado", "Solicito", "Aprobo"], data.discounts.map((discount) => [
+  ${sheet("Descuentos", ["ID", "Cliente", "Cargo", "Motivo", "Monto", "Estado", "Solicito", "Firmo", "Aprobo"], data.discounts.map((discount) => [
     discount.id,
     discount.student_name || "",
     discount.charge_concept || "",
@@ -125,6 +125,7 @@ export function exportAccountingWorkbook(data: AppData) {
     Number(discount.amount || 0),
     discount.status,
     discount.requested_by_username || "",
+    discount.signed_by_username || "",
     discount.approved_by_username || "",
   ]), [0, 4])}
   ${sheet("Asistencia con adeudo", ["ID", "Alumno", "Estado", "Adeudo al capturar", "Motivo"], data.attendanceRecords.filter((record) => record.had_debt_at_capture).map((record) => [

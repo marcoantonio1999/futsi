@@ -120,6 +120,36 @@ def test_cashier_can_process_own_site_payments_but_not_cross_site(auth_client):
     assert cross_site_response.status_code == 400
 
 
+def test_cashier_discount_signature_is_audited_and_site_scoped(auth_client):
+    roma = make_site(name="QA Discount Roma", code="qa-discount-roma")
+    coyoacan = make_site(name="QA Discount Coyoacan", code="qa-discount-coyoacan")
+    cashier = make_user(role="cashier", username="qa-discount-cashier", primary_site=roma)
+    _roma_student, roma_charge, _guardian = _student_with_charge(roma, "Alumno Descuento Roma")
+    _other_student, coyoacan_charge, _other_guardian = _student_with_charge(coyoacan, "Alumno Descuento Coyoacan")
+    client, _payload, _user = auth_client(user=cashier)
+
+    response = client.post(
+        "/api/discounts/",
+        {"charge": roma_charge.id, "reason": "Firma ventanilla QA", "amount": "50.00"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.json()["requested_by_username"] == cashier.username
+    assert response.json()["signed_by_username"] == cashier.username
+    assert response.json()["signed_at"]
+    discount = Discount.objects.get(id=response.json()["id"])
+    assert discount.signed_by == cashier
+    assert discount.signed_at is not None
+
+    cross_site_response = client.post(
+        "/api/discounts/",
+        {"charge": coyoacan_charge.id, "reason": "No permitido", "amount": "50.00"},
+        format="json",
+    )
+    assert cross_site_response.status_code == 400
+
+
 def test_multiple_partial_card_payments_recalculate_balance(auth_client):
     site = make_site(name="QA Partial Payments", code="qa-partial-payments")
     cashier = make_user(role="cashier", primary_site=site)

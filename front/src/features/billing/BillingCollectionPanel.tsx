@@ -280,8 +280,8 @@ export function BillingCollectionPanel({
                   <div className="min-w-0">
                     <p className="font-medium">{discount.reason}</p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      {discountDate ? discountDate.slice(0, 16).replace("T", " ") : "Sin fecha"} · {discount.requested_by_username || "sistema"}
-                      {discount.approved_by_username ? ` · aprobo ${discount.approved_by_username}` : ""}
+                      {discountDate ? discountDate.slice(0, 16).replace("T", " ") : "Sin fecha"} - firmo {discount.signed_by_username || discount.requested_by_username || "sistema"}
+                      {discount.approved_by_username ? ` - aprobo ${discount.approved_by_username}` : ""}
                     </p>
                   </div>
                   <StatusPill label={label} />

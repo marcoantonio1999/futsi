@@ -289,12 +289,13 @@ class DiscountSerializer(serializers.ModelSerializer):
     team_name = serializers.CharField(source="team.name", read_only=True)
     charge_concept = serializers.CharField(source="charge.concept", read_only=True)
     requested_by_username = serializers.CharField(source="requested_by.username", read_only=True)
+    signed_by_username = serializers.CharField(source="signed_by.username", read_only=True)
     approved_by_username = serializers.CharField(source="approved_by.username", read_only=True)
 
     class Meta:
         model = Discount
         fields = "__all__"
-        read_only_fields = ["requested_by", "approved_by", "approved_at", "site", "student", "team", "status"]
+        read_only_fields = ["requested_by", "signed_by", "signed_at", "approved_by", "approved_at", "site", "student", "team", "status"]
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -324,6 +325,8 @@ class DiscountSerializer(serializers.ModelSerializer):
             validated_data["team"] = charge.team
         if request and request.user.is_authenticated:
             validated_data["requested_by"] = request.user
+            validated_data["signed_by"] = request.user
+            validated_data["signed_at"] = timezone.now()
             if request.user.role in {"admin", "owner", "dev", "accounting"}:
                 validated_data["status"] = "approved"
                 validated_data["approved_by"] = request.user

@@ -566,6 +566,14 @@ class Discount(TimestampedModel):
     status = models.CharField(max_length=20, choices=DiscountStatus.choices, default=DiscountStatus.REQUESTED)
     evidence_file = models.FileField(upload_to="discounts/evidence/", blank=True)
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="requested_discounts")
+    signed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="signed_discounts",
+    )
+    signed_at = models.DateTimeField(null=True, blank=True)
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

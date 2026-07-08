@@ -263,7 +263,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
 
 class DiscountViewSet(viewsets.ModelViewSet):
-    queryset = Discount.objects.select_related("site", "charge", "student", "team", "requested_by", "approved_by").all()
+    queryset = Discount.objects.select_related("site", "charge", "student", "team", "requested_by", "signed_by", "approved_by").all()
     serializer_class = DiscountSerializer
     permission_classes = [IsOperationsCashierOrGuardianRole]
     list_only_fields = (
@@ -279,6 +279,8 @@ class DiscountViewSet(viewsets.ModelViewSet):
         "status",
         "evidence_file",
         "requested_by_id",
+        "signed_by_id",
+        "signed_at",
         "approved_by_id",
         "approved_at",
         "site__id",
@@ -291,6 +293,8 @@ class DiscountViewSet(viewsets.ModelViewSet):
         "team__name",
         "requested_by__id",
         "requested_by__username",
+        "signed_by__id",
+        "signed_by__username",
         "approved_by__id",
         "approved_by__username",
     )

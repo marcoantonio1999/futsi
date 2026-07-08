@@ -64,6 +64,8 @@ export type Discount = {
   amount: string;
   status: DiscountStatus;
   requested_by_username?: string;
+  signed_by_username?: string;
+  signed_at?: string | null;
   approved_by_username?: string;
   created_at?: string;
   approved_at?: string | null;
