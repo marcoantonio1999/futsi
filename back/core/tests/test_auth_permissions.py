@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from core.models import AuditLog, CoachWorkLog, Expense, Site, StaffPaymentRequest
+from core.models import AuditLog, CoachWorkLog, Expense, Match, Site, StaffPaymentRequest, StudentTournamentRegistration, Team, Tournament
 from core.tests.factories import (
     make_guardian,
     make_site,
@@ -72,7 +72,7 @@ def test_guardian_can_update_profile_contact_data(auth_client):
     assert profile_response.json()["avatar_url"] == "https://example.com/avatar.jpg"
 
 
-def test_cashier_only_sees_site_scope_and_cannot_create_operational_records(auth_client):
+def test_cashier_only_sees_site_scope_and_can_create_students(auth_client):
     roma = make_site(name="Roma QA", code="qa-roma")
     coyoacan = make_site(name="Coyoacan QA", code="qa-coyoacan")
     cashier = make_user(role="cashier", username="qa-cashier-roma", primary_site=roma)
@@ -93,12 +93,25 @@ def test_cashier_only_sees_site_scope_and_cannot_create_operational_records(auth
     assert len(students_response.json()) == 3
     assert all(student["site_name"] == "Roma QA" for student in students_response.json())
 
-    forbidden_student_response = client.post(
+    created_student_response = client.post(
         "/api/students/",
         {
             "site": students_response.json()[0]["site"],
             "guardian": students_response.json()[0]["guardian"],
-            "full_name": "Alumno no permitido",
+            "full_name": "Alumno ventanilla",
+            "status": "trial",
+        },
+        format="json",
+    )
+    assert created_student_response.status_code == 201
+    assert created_student_response.json()["site_name"] == "Roma QA"
+
+    forbidden_student_response = client.post(
+        "/api/students/",
+        {
+            "site": coyoacan.id,
+            "guardian": students_response.json()[0]["guardian"],
+            "full_name": "Alumno fuera de sede",
             "status": "trial",
         },
         format="json",
@@ -116,6 +129,84 @@ def test_cashier_only_sees_site_scope_and_cannot_create_operational_records(auth
         format="json",
     )
     assert forbidden_charge_response.status_code == 403
+
+
+def test_cashier_can_administer_tournaments_for_primary_site_only(auth_client):
+    roma = make_site(name="Roma QA", code="qa-cashier-tournaments-roma")
+    coyoacan = make_site(name="Coyoacan QA", code="qa-cashier-tournaments-coyoacan")
+    cashier = make_user(role="cashier", username="qa-cashier-tournaments", primary_site=roma)
+    student = make_student(site=roma, full_name="Alumno Torneo Roma")
+    other_tournament = make_tournament(site=coyoacan, name="Torneo Coyoacan")
+
+    client, user, _ = auth_client(user=cashier)
+    assert user["role"] == "cashier"
+
+    tournament_response = client.post(
+        "/api/tournaments/",
+        {
+            "site": roma.id,
+            "name": "Torneo ventanilla",
+            "billing_type": "weekly_match",
+            "starts_on": "2026-06-01",
+            "expected_weeks": 12,
+            "is_active": True,
+        },
+        format="json",
+    )
+    assert tournament_response.status_code == 201
+    tournament = Tournament.objects.get(id=tournament_response.json()["id"])
+
+    team_payload = {
+        "tournament": tournament.id,
+        "representative_name": "Representante",
+        "representative_phone": "5500000000",
+        "is_active": True,
+    }
+    home_response = client.post("/api/teams/", {**team_payload, "name": "Local"}, format="json")
+    away_response = client.post("/api/teams/", {**team_payload, "name": "Visitante"}, format="json")
+    assert home_response.status_code == 201
+    assert away_response.status_code == 201
+    teams = list(Team.objects.filter(tournament=tournament).order_by("id"))
+
+    registration_response = client.post(
+        "/api/student-tournament-registrations/",
+        {
+            "tournament": tournament.id,
+            "student": student.id,
+            "team": teams[0].id,
+            "billing_type": "weekly_match",
+            "weekly_amount": "650.00",
+            "full_amount": "7800.00",
+            "status": "registered",
+        },
+        format="json",
+    )
+    assert registration_response.status_code == 201
+    assert StudentTournamentRegistration.objects.filter(tournament=tournament, student=student).exists()
+
+    match_response = client.post(
+        "/api/matches/",
+        {
+            "tournament": tournament.id,
+            "site": roma.id,
+            "home_team": teams[0].id,
+            "away_team": teams[1].id,
+            "played_on": "2026-06-01",
+            "starts_at": "18:00",
+            "duration_minutes": 50,
+            "status": "scheduled",
+        },
+        format="json",
+    )
+    assert match_response.status_code == 201
+    assert Match.objects.filter(tournament=tournament, site=roma).exists()
+
+    forbidden_response = client.post(
+        "/api/teams/",
+        {**team_payload, "tournament": other_tournament.id, "name": "Fuera de sede"},
+        format="json",
+    )
+    assert forbidden_response.status_code == 403
 
 
 def test_dev_user_has_admin_scope_for_qa_and_developer_diagnostics(auth_client):

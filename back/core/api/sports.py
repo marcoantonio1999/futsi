@@ -54,7 +54,27 @@ class MatchViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsCashierCoachOrGuardianRole()]
+        if self.request.user.is_authenticated and self.request.user.role == "cashier":
+            return [IsOperationsOrCashierRole()]
         return [IsAdminOrSiteCoordinatorRole()]
+
+    def perform_create(self, serializer):
+        self._validate_cashier_scope(serializer.validated_data)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._validate_cashier_scope(serializer.validated_data, serializer.instance)
+        serializer.save()
+
+    def _validate_cashier_scope(self, data, instance=None):
+        tournament = data.get("tournament") or getattr(instance, "tournament", None)
+        site = data.get("site") or getattr(instance, "site", None)
+        home_team = data.get("home_team") or getattr(instance, "home_team", None)
+        away_team = data.get("away_team") or getattr(instance, "away_team", None)
+        ensure_cashier_primary_site(self.request.user, tournament.site_id if tournament else None)
+        ensure_cashier_primary_site(self.request.user, site.id if site else None)
+        ensure_cashier_primary_site(self.request.user, home_team.tournament.site_id if home_team else None)
+        ensure_cashier_primary_site(self.request.user, away_team.tournament.site_id if away_team else None)
 
     @action(detail=False, methods=["get"], url_path="standings")
     def standings(self, request):

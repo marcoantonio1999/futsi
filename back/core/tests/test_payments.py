@@ -454,6 +454,7 @@ def test_cashier_can_request_discount_from_billing_flow(auth_client):
     assert discount.status == "requested"
     assert discount.requested_by.username == cashier.username
     assert discount.site == roma_charge.site
+    assert response.json()["requested_by_username"] == cashier.username
 
     cross_site_response = client.post(
         "/api/discounts/",
@@ -492,12 +493,10 @@ def test_payment_automation_simulation_flows(auth_client):
         format="json",
     )
     assert cash_response.status_code == 201
-    assert cash_response.json()["status"] == "awaiting_confirmation"
-
-    guardian, _payload, _user = auth_client(user=guardian_user)
-    confirm_response = guardian.post(f"/api/payments/{cash_response.json()['id']}/confirm-cash/")
-    assert confirm_response.status_code == 200
-    assert confirm_response.json()["status"] == "registered"
+    assert cash_response.json()["status"] == "registered"
+    assert cash_response.json()["confirmed_at"]
+    roma_charge.refresh_from_db()
+    assert roma_charge.status == "partial"
 
 
 def test_confirm_cash_prefetches_guardian_without_extra_profile_query(api_client):

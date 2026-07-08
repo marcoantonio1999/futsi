@@ -30,11 +30,11 @@ class CourtViewSet(viewsets.ModelViewSet):
 class GuardianViewSet(viewsets.ModelViewSet):
     queryset = Guardian.objects.select_related("user").all()
     serializer_class = GuardianSerializer
-    permission_classes = [IsOperationsRole]
+    permission_classes = [IsOperationsOrCashierRole]
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.request.user.role == "site_coordinator" and self.request.user.primary_site_id:
+        if self.request.user.role in {"site_coordinator", "cashier"} and self.request.user.primary_site_id:
             queryset = queryset.filter(students__site_id=self.request.user.primary_site_id)
         return queryset.distinct()
 
@@ -67,8 +67,10 @@ class StudentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOperationsCashierCoachOrGuardianRole]
 
     def get_permissions(self):
-        if self.request.user.is_authenticated and self.request.user.role in {"guardian", "cashier", "coach"} and self.request.method not in ("GET", "HEAD", "OPTIONS"):
+        if self.request.user.is_authenticated and self.request.user.role in {"guardian", "coach"} and self.request.method not in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsRole()]
+        if self.request.user.is_authenticated and self.request.user.role == "cashier" and self.request.method not in ("GET", "HEAD", "OPTIONS"):
+            return [IsOperationsOrCashierRole()]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -84,6 +86,23 @@ class StudentViewSet(viewsets.ModelViewSet):
             return queryset
         return queryset.distinct()
 
+    def perform_create(self, serializer):
+        self._validate_cashier_scope(serializer.validated_data)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._validate_cashier_scope(serializer.validated_data, serializer.instance)
+        serializer.save()
+
+    def _validate_cashier_scope(self, data, instance=None):
+        if self.request.user.role != "cashier":
+            return
+        site = data.get("site") or getattr(instance, "site", None)
+        guardian = data.get("guardian") or getattr(instance, "guardian", None)
+        ensure_cashier_primary_site(self.request.user, site.id if site else None)
+        if guardian and guardian.students.exists() and not guardian.students.filter(site_id=self.request.user.primary_site_id).exists():
+            raise PermissionDenied("El cajero solo puede usar representantes vinculados a su sede.")
+
 
 class TournamentViewSet(viewsets.ModelViewSet):
     queryset = Tournament.objects.select_related("site").all()
@@ -93,6 +112,8 @@ class TournamentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsCashierCoachOrGuardianRole()]
+        if self.request.user.is_authenticated and self.request.user.role == "cashier":
+            return [IsOperationsOrCashierRole()]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -104,6 +125,15 @@ class TournamentViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(site_id=self.request.user.primary_site_id)
         return queryset.distinct()
 
+    def perform_create(self, serializer):
+        ensure_cashier_primary_site(self.request.user, serializer.validated_data["site"].id)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        site = serializer.validated_data.get("site") or serializer.instance.site
+        ensure_cashier_primary_site(self.request.user, site.id)
+        serializer.save()
+
 
 class TeamViewSet(viewsets.ModelViewSet):
     queryset = Team.objects.select_related("tournament", "tournament__site").annotate(player_count=Count("players")).all()
@@ -113,6 +143,8 @@ class TeamViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsCashierCoachOrGuardianRole()]
+        if self.request.user.is_authenticated and self.request.user.role == "cashier":
+            return [IsOperationsOrCashierRole()]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -125,6 +157,15 @@ class TeamViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(tournament__site=self.request.user.primary_site)
         return queryset
 
+    def perform_create(self, serializer):
+        ensure_cashier_primary_site(self.request.user, serializer.validated_data["tournament"].site_id)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        tournament = serializer.validated_data.get("tournament") or serializer.instance.tournament
+        ensure_cashier_primary_site(self.request.user, tournament.site_id)
+        serializer.save()
+
 
 class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
     queryset = StudentTournamentRegistration.objects.select_related("tournament", "tournament__site", "student", "team", "registered_by").all()
@@ -133,6 +174,8 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method not in ("GET", "HEAD", "OPTIONS"):
+            if self.request.user.is_authenticated and self.request.user.role == "cashier":
+                return [IsOperationsOrCashierRole()]
             return [IsAdminOrSiteCoordinatorRole()]
         return super().get_permissions()
 
@@ -152,6 +195,24 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
         if self.request.user.role in {"coach", "cashier"} and self.request.user.primary_site_id:
             queryset = queryset.filter(tournament__site=self.request.user.primary_site)
         return queryset.distinct()
+
+    def perform_create(self, serializer):
+        self._validate_cashier_scope(serializer.validated_data)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._validate_cashier_scope(serializer.validated_data, serializer.instance)
+        serializer.save()
+
+    def _validate_cashier_scope(self, data, instance=None):
+        tournament = data.get("tournament") or getattr(instance, "tournament", None)
+        student = data.get("student") or getattr(instance, "student", None)
+        team = data.get("team") if "team" in data else getattr(instance, "team", None)
+        ensure_cashier_primary_site(self.request.user, tournament.site_id if tournament else None)
+        if student:
+            ensure_cashier_primary_site(self.request.user, student.site_id)
+        if team:
+            ensure_cashier_primary_site(self.request.user, team.tournament.site_id)
 
 
 class PlayerViewSet(viewsets.ModelViewSet):

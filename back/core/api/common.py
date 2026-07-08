@@ -15,6 +15,7 @@ from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -101,3 +102,10 @@ from core.serializers import (
     charge_balance,
     sync_charge_status,
 )
+
+
+def ensure_cashier_primary_site(user, site_id):
+    if getattr(user, "role", None) != "cashier":
+        return
+    if not getattr(user, "primary_site_id", None) or int(site_id or 0) != user.primary_site_id:
+        raise PermissionDenied("Ventanilla solo puede operar torneos de su sede.")

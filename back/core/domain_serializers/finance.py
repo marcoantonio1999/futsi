@@ -240,10 +240,10 @@ class PaymentSerializer(serializers.ModelSerializer):
             validated_data["expires_at"] = timezone.now() + timedelta(hours=72)
             validated_data["notes"] = "Simulacion: esperando webhook SPEI. Si no llega en 72 horas, vuelve a adeudo."
         elif method == "cash":
-            validated_data["status"] = "awaiting_confirmation"
+            validated_data["status"] = "registered"
             validated_data["reference"] = f"EFECTIVO-{token}"
-            validated_data["expires_at"] = timezone.now() + timedelta(hours=24)
-            validated_data["notes"] = "Simulacion: esperando aceptacion del representante."
+            validated_data["confirmed_at"] = timezone.now()
+            validated_data["notes"] = "Pago en efectivo registrado por caja."
         elif method == "card" and channel == "card_link":
             validated_data["status"] = "processing"
             validated_data["reference"] = f"LINK-{token}"
