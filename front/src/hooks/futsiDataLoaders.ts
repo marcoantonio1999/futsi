@@ -27,6 +27,7 @@ import type {
   TabKey,
   Team,
   Tournament,
+  UnknownAttendanceRecord,
   User,
 } from "../types";
 
@@ -92,7 +93,7 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
   }
 
   if (tab === "attendance") {
-    const [sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords] = await Promise.all([
+    const [sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, unknownAttendanceRecords] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<Student[]>("/students/", authToken),
       apiRequest<AttendanceSession[]>("/attendance-sessions/", authToken),
@@ -106,21 +107,36 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
       apiRequest<Match[]>("/matches/", authToken),
       apiRequest<StandingRow[]>("/matches/standings/", authToken),
       apiRequest<PlayerAttendanceRecord[]>("/player-attendance-records/", authToken),
+      optionalApi<UnknownAttendanceRecord[]>("/unknown-attendance/records/", authToken, []),
     ]);
-    return { sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords };
+    return { sites, students, attendanceSessions, attendanceRecords, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, unknownAttendanceRecords };
   }
 
   if (tab === "unknowns") {
-    const [sites, tournaments, teams] = await Promise.all([
+    const [sites, tournaments, teams, unknownAttendanceRecords] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<Tournament[]>("/tournaments/", authToken),
       apiRequest<Team[]>("/teams/", authToken),
+      optionalApi<UnknownAttendanceRecord[]>("/unknown-attendance/records/", authToken, []),
     ]);
-    return { sites, tournaments, teams };
+    return { sites, tournaments, teams, unknownAttendanceRecords };
   }
 
-  if (tab === "sports" || tab === "tournaments") {
-    const [sites, students, tournaments, teams, studentTournamentRegistrations, players, matches, standings, attendanceSessions, attendanceRecords, playerAttendanceRecords, studentAssessments] = await Promise.all([
+  if (tab === "sports") {
+    const [sites, students, tournaments, teams, matches, standings, studentAssessments] = await Promise.all([
+      apiRequest<Site[]>("/sites/", authToken),
+      apiRequest<Student[]>("/students/", authToken),
+      apiRequest<Tournament[]>("/tournaments/", authToken),
+      apiRequest<Team[]>("/teams/", authToken),
+      apiRequest<Match[]>("/matches/", authToken),
+      apiRequest<StandingRow[]>("/matches/standings/", authToken),
+      apiRequest<StudentAssessment[]>("/student-assessments/", authToken),
+    ]);
+    return { sites, students, tournaments, teams, matches, standings, studentAssessments };
+  }
+
+  if (tab === "tournaments") {
+    const [sites, students, tournaments, teams, studentTournamentRegistrations, players, matches, standings, attendanceSessions, attendanceRecords, playerAttendanceRecords, unknownAttendanceRecords, studentAssessments] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<Student[]>("/students/", authToken),
       apiRequest<Tournament[]>("/tournaments/", authToken),
@@ -132,9 +148,10 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
       apiRequest<AttendanceSession[]>("/attendance-sessions/", authToken),
       apiRequest<AttendanceRecord[]>("/attendance-records/", authToken),
       apiRequest<PlayerAttendanceRecord[]>("/player-attendance-records/", authToken),
+      optionalApi<UnknownAttendanceRecord[]>("/unknown-attendance/records/", authToken, []),
       apiRequest<StudentAssessment[]>("/student-assessments/", authToken),
     ]);
-    return { sites, students, tournaments, teams, studentTournamentRegistrations, players, matches, standings, attendanceSessions, attendanceRecords, playerAttendanceRecords, studentAssessments };
+    return { sites, students, tournaments, teams, studentTournamentRegistrations, players, matches, standings, attendanceSessions, attendanceRecords, playerAttendanceRecords, unknownAttendanceRecords, studentAssessments };
   }
 
   if (tab === "billing" || tab === "debts") {

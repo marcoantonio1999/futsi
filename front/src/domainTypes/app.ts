@@ -27,11 +27,35 @@ export type AppData = {
   matches: Match[];
   standings: StandingRow[];
   playerAttendanceRecords: PlayerAttendanceRecord[];
+  unknownAttendanceRecords: UnknownAttendanceRecord[];
   studentAssessments: StudentAssessment[];
   studentValueAssessments: StudentValueAssessment[];
   invoices: Invoice[];
   historicalImports: HistoricalImport[];
   historicalDiscrepancies: HistoricalDiscrepancyReport | null;
+};
+
+export type UnknownAttendanceRecord = {
+  id: string;
+  subject_id: string;
+  attendance_date: string;
+  site_id?: number | null;
+  site_name?: string;
+  camera_id: string;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  capture_count: number;
+  evidence_capture_id?: string | null;
+  quality_score?: number | null;
+  activity_window_start?: string | null;
+  activity_window_end?: string | null;
+  scheduled_session_id?: number | null;
+  scheduled_match_id?: number | null;
+  is_unscheduled: boolean;
+  status: string;
+  temporary_name: string;
+  subject_status: string;
+  image_url?: string;
 };
 
 export type DashboardSummary = {

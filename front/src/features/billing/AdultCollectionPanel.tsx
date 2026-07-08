@@ -179,7 +179,7 @@ export function AdultCollectionPanel({
             <option value="card">Tarjeta</option>
           </SelectInput>
           <TextInput label="Monto" type="number" min="0" step="0.01" value={paymentForm.amount} onChange={(event) => onPaymentFormChange({ ...paymentForm, amount: event.target.value })} required />
-          <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white" type="submit">Crear solicitud de cobro</button>
+          <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white" type="submit">Registrar pago</button>
         </form>
       </div>
     </div>

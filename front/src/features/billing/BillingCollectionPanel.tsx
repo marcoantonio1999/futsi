@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Metric } from "../../components/cards/Metric";
 import type { AppData, Charge } from "../../types";
 import { money } from "../../utils/format";
-import { SelectInput, TextInput, TableHeader, StatusPill, normalizeText, paymentMethodLabel, paymentStatusLabel } from "../../components/views/shared";
+import { SelectInput, TextInput, StatusPill, normalizeText, paymentMethodLabel, paymentStatusLabel } from "../../components/views/shared";
 import { BillingCollectionRow, BillingDueNotices, billingHeaderGridClass, chargeSubject, getChargeDueBucket } from "./BillingCollectionRow";
 export function BillingCollectionPanel({
   data,
@@ -17,7 +17,6 @@ export function BillingCollectionPanel({
   onCreateDiscount?: (payload: unknown) => void;
   discountActionLabel?: string;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
   const [filters, setFilters] = useState({
     query: "",
     status: "open",
@@ -113,10 +112,9 @@ export function BillingCollectionPanel({
       partialCount: open.filter((charge) => charge.status === "partial").length,
       overdueBalance: overdue.reduce((sum, charge) => sum + Number(charge.balance || 0), 0),
       dueSoonBalance: dueSoon.reduce((sum, charge) => sum + Number(charge.balance || 0), 0),
-      paidThisMonth: data.charges.filter((charge) => charge.status === "paid" && (charge.due_date || "").slice(0, 7) === today.slice(0, 7)).length,
       dueSoon,
     };
-  }, [data.charges, today]);
+  }, [data.charges]);
 
   const metricGridClass = compact ? "mt-4 grid gap-3 sm:grid-cols-2" : "mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4";
   const filterGridClass = compact
@@ -167,13 +165,17 @@ export function BillingCollectionPanel({
       .reduce((sum, discount) => sum + Number(discount.amount || 0), 0);
     return (
       <div onClick={(event) => event.stopPropagation()} className="rounded-md border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
-            Cobro seleccionado <span className="font-normal text-emerald-700 dark:text-emerald-300">- saldo ${money(selectedCharge.balance)}</span>
-          </p>
-          <p className="mt-1 hidden truncate text-xs text-emerald-800/80 dark:text-emerald-200/80 sm:block">
-            {chargeSubject(selectedCharge)} - {selectedCharge.concept}
-          </p>
+        <div className="grid gap-3 rounded-md border border-emerald-200 bg-white p-3 dark:border-emerald-900 dark:bg-zinc-950/70 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-300">Cobro seleccionado</p>
+            <p className="mt-1 truncate text-sm font-semibold text-emerald-950 dark:text-emerald-50">
+              {chargeSubject(selectedCharge)} - {selectedCharge.concept}
+            </p>
+          </div>
+          <div className="rounded-md bg-emerald-700 px-4 py-3 text-white shadow-sm sm:min-w-56 sm:text-right">
+            <p className="text-xs font-semibold uppercase text-emerald-100">Saldo pendiente</p>
+            <p className="mt-1 text-3xl font-black leading-none">${money(selectedCharge.balance)}</p>
+          </div>
         </div>
 
         <div className="mt-3 grid gap-3 xl:grid-cols-2">
@@ -187,10 +189,10 @@ export function BillingCollectionPanel({
                 </SelectInput>
                 <TextInput label="Monto" type="number" min="0" step="0.01" required value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} />
                 <button data-testid="cashier-create-payment" className="col-span-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white lg:col-span-1 lg:self-end" type="submit">
-                  Crear solicitud
+                  Registrar pago
                 </button>
               </div>
-              <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-200">Efectivo requiere confirmacion. Tarjeta usa terminal fisica simulada.</p>
+              <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-200">Efectivo se registra al momento. Tarjeta usa terminal fisica simulada.</p>
             </form>
           )}
 
@@ -392,9 +394,7 @@ export function BillingCollectionPanel({
         </div>
       </div>
 
-      {!compact && (
-        <BillingDueNotices charges={billingSummary.dueSoon} />
-      )}
+      {!compact && <BillingDueNotices charges={billingSummary.dueSoon} />}
     </div>
   );
 }

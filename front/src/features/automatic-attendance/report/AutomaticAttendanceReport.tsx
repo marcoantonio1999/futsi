@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { RefreshCw, Search, X } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import type { AppData } from "../../../types";
 import { AutomaticAttendanceReportDetail } from "./AutomaticAttendanceReportDetail";
 import { attendanceSummary, buildReportGroups, cameraLabelsForResults, detailCountsForGroup, resultForSession, type AutomaticSessionResult, type ReportType } from "./model";
@@ -37,46 +37,43 @@ export function AutomaticAttendanceReportPanel({
   return (
     <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <div className="border-b border-zinc-200 p-4 dark:border-zinc-800">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${titleColorClass}`}>Reporte automatico</p>
             <h2 className={`mt-1 text-lg font-semibold ${titleColorClass}`}>Sesiones procesadas y pase de lista</h2>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Revisa el resumen por renglon y abre el detalle completo cuando lo necesites.</p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end xl:w-auto">
-            <select
-              aria-label="Tipo de sesion"
-              className="h-9 w-full rounded-md border border-zinc-300 bg-white px-2.5 text-xs font-medium text-zinc-800 outline-none transition focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:w-36"
-              value={reportType}
-              onChange={(event) => setReportType(event.target.value as ReportType)}
-            >
+          <button className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800" onClick={onRefresh} type="button">
+            <RefreshCw size={15} /> Actualizar
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[220px_220px_minmax(0,1fr)]">
+          <label className="block text-sm">
+            <span className="font-medium text-zinc-700 dark:text-zinc-200">Tipo de sesion</span>
+            <select className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 outline-none focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value={reportType} onChange={(event) => setReportType(event.target.value as ReportType)}>
               <option value="all">Todos</option>
               <option value="tournament_match">Partidos</option>
               <option value="academy_class">Entrenamientos</option>
             </select>
-            <div className="flex h-9 w-full items-center overflow-hidden rounded-md border border-zinc-300 bg-white transition focus-within:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 sm:w-40">
-              <input aria-label="Fecha" className="h-full min-w-0 flex-1 bg-transparent px-2.5 text-xs font-medium text-zinc-800 outline-none dark:text-zinc-100" type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-zinc-700 dark:text-zinc-200">Fecha</span>
+            <div className="mt-1 flex gap-2">
+              <input className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 outline-none focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} />
               {reportDate && (
-                <button className="grid size-8 shrink-0 place-items-center text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100" onClick={() => setReportDate("")} title="Limpiar fecha" type="button">
-                  <X size={13} />
+                <button className="shrink-0 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800" onClick={() => setReportDate("")} type="button">
+                  Limpiar
                 </button>
               )}
             </div>
-            <label className="relative block w-full sm:w-56">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
-              <input
-                aria-label="Buscar en la tabla"
-                className="h-9 w-full rounded-md border border-zinc-300 bg-white pl-8 pr-3 text-xs font-medium text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-                value={reportSearch}
-                onChange={(event) => setReportSearch(event.target.value)}
-                placeholder="Buscar"
-              />
-            </label>
-            <button className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-800 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800" onClick={onRefresh} type="button">
-              <RefreshCw size={14} /> Actualizar
-            </button>
-          </div>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-zinc-700 dark:text-zinc-200">Buscar en la tabla</span>
+            <input className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 outline-none focus:border-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value={reportSearch} onChange={(event) => setReportSearch(event.target.value)} placeholder="Fecha, sede, equipo, torneo o grupo" />
+          </label>
         </div>
       </div>
-      <div className="max-h-[calc(100dvh-300px)] overflow-auto xl:max-h-[calc(100dvh-260px)]">
+      <div className="max-h-[70vh] overflow-auto">
         <table className="min-w-full border-collapse text-left text-sm text-zinc-900 dark:text-zinc-100">
           <thead className="sticky top-0 z-10 bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900/60 dark:text-zinc-400">
             <tr>

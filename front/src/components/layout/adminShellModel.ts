@@ -2,6 +2,8 @@ import type { AppData, TabKey } from "../../types";
 import { tabItems } from "./adminNavigation";
 
 export type AttendanceSubsection = "general" | "manual" | "automatic" | "report" | "occupancy" | "unknown" | "unknown-detail";
+export type BillingSubsection = "program" | "scheduled";
+export type StudentsSubsection = "create" | "registered";
 export type BusinessScope = "academy" | "adult";
 export type SidebarTab = ReturnType<typeof tabItems>[number];
 
@@ -97,9 +99,10 @@ export function shellToneForScope(scope: BusinessScope): ShellTone {
 
 export function adultLeagueData(data: AppData): AppData {
   const preferredTournament = data.tournaments.find((tournament) => tournament.name.trim().toLocaleLowerCase("es-MX") === "brasileÃ±a") ?? null;
+  const playerTeamIds = new Set(data.players.map((player) => player.team));
   const adultTournamentIds = preferredTournament
     ? new Set([preferredTournament.id])
-    : new Set(data.teams.filter((team) => data.players.some((player) => player.team === team.id)).map((team) => team.tournament));
+    : new Set(data.teams.filter((team) => playerTeamIds.has(team.id)).map((team) => team.tournament));
   const adultTeamIds = new Set(data.teams.filter((team) => adultTournamentIds.has(team.tournament)).map((team) => team.id));
   const adultChargeIds = new Set(data.charges.filter((charge) => charge.team && adultTeamIds.has(charge.team)).map((charge) => charge.id));
   const adultPaymentIds = new Set(data.payments.filter((payment) => payment.charge && adultChargeIds.has(payment.charge)).map((payment) => payment.id));
@@ -143,9 +146,10 @@ export function adultLeagueData(data: AppData): AppData {
 
 export function academyData(data: AppData): AppData {
   const preferredTournament = data.tournaments.find((tournament) => tournament.name.trim().toLocaleLowerCase("es-MX").includes("brasile")) ?? null;
+  const playerTeamIds = new Set(data.players.map((player) => player.team));
   const adultTournamentIds = preferredTournament
     ? new Set([preferredTournament.id])
-    : new Set(data.teams.filter((team) => data.players.some((player) => player.team === team.id)).map((team) => team.tournament));
+    : new Set(data.teams.filter((team) => playerTeamIds.has(team.id)).map((team) => team.tournament));
   const adultTeamIds = new Set(data.teams.filter((team) => adultTournamentIds.has(team.tournament)).map((team) => team.id));
   const adultMatchIds = new Set(data.matches.filter((match) => adultTournamentIds.has(match.tournament)).map((match) => match.id));
   const adultChargeIds = new Set(data.charges.filter((charge) => charge.team && adultTeamIds.has(charge.team)).map((charge) => charge.id));

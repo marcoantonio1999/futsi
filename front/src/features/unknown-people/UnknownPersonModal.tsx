@@ -1,6 +1,7 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Check, Trash2, X } from "lucide-react";
 import { apiRequest } from "../../api";
 import type { AppData } from "../../types";
 import { EvidenceImage } from "../automatic-attendance";
@@ -8,8 +9,25 @@ import { qualityText, type RegisteredUnknownPerson, type UnknownSubject } from "
 
 type PersonType = "player" | "student";
 
-export function UnknownPersonModal({ subject, token, data, onClose, onRegistered }: { subject: UnknownSubject; token: string; data: AppData; onClose: () => void; onRegistered: (result: RegisteredUnknownPerson) => void }) {
+export function UnknownPersonModal({
+  subject,
+  token,
+  data,
+  onAccept,
+  onClose,
+  onDiscard,
+  onRegistered,
+}: {
+  subject: UnknownSubject;
+  token: string;
+  data: AppData;
+  onAccept?: (subjectId: string) => Promise<void>;
+  onClose: () => void;
+  onDiscard?: (subjectId: string) => Promise<void>;
+  onRegistered: (result: RegisteredUnknownPerson) => void;
+}) {
   const activeTeams = useMemo(() => data.teams.filter((team) => team.is_active !== false), [data.teams]);
+  const isAccepted = Boolean(subject.metadata?.accepted_at);
   const [personType, setPersonType] = useState<PersonType>("player");
   const [form, setForm] = useState({
     full_name: "",
@@ -23,7 +41,17 @@ export function UnknownPersonModal({ subject, token, data, onClose, onRegistered
     group_name: "",
   });
   const [saving, setSaving] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -42,10 +70,36 @@ export function UnknownPersonModal({ subject, token, data, onClose, onRegistered
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[1200] flex items-start justify-center overflow-y-auto bg-zinc-950/55 px-3 py-6">
-      <form onSubmit={submit} className="motion-card w-full max-w-3xl rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+  async function acceptSubject() {
+    if (!onAccept) return;
+    setAccepting(true);
+    setError("");
+    try {
+      await onAccept(subject.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo aceptar el desconocido.");
+    } finally {
+      setAccepting(false);
+    }
+  }
+
+  async function discardSubject() {
+    if (!onDiscard) return;
+    setDiscarding(true);
+    setError("");
+    try {
+      await onDiscard(subject.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo rechazar el desconocido.");
+    } finally {
+      setDiscarding(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[1200] flex items-start justify-center bg-zinc-950/55 px-3 py-4">
+      <form onSubmit={submit} className="motion-card flex max-h-[calc(100svh-3rem)] w-full max-w-3xl flex-col overflow-hidden rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="shrink-0 flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Registrar desconocido</p>
             <h3 className="mt-1 break-words text-lg font-semibold text-zinc-950 dark:text-zinc-50">{subject.temporary_name}</h3>
@@ -54,10 +108,26 @@ export function UnknownPersonModal({ subject, token, data, onClose, onRegistered
             <X size={16} />
           </button>
         </div>
-        <div className="grid gap-4 p-4 md:grid-cols-[260px_1fr]">
+        <div className="grid min-h-0 gap-4 overflow-y-auto p-4 md:grid-cols-[260px_1fr]">
           <div>
             <EvidenceImage url={subject.image_url} token={token} fit="contain" ratio="square" />
             <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{qualityText(subject.metadata?.quality)}</p>
+            <button
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100"
+              disabled={isAccepted || accepting || discarding || !onAccept}
+              onClick={() => void acceptSubject()}
+              type="button"
+            >
+              <Check size={15} /> {isAccepted ? "Aceptado como desconocido" : accepting ? "Aceptando..." : "Aceptar desconocido"}
+            </button>
+            <button
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
+              disabled={accepting || discarding || !onDiscard}
+              onClick={() => void discardSubject()}
+              type="button"
+            >
+              <Trash2 size={15} /> {discarding ? "Rechazando..." : "Rechazar"}
+            </button>
           </div>
           <div className="grid gap-3">
             <Field label="Nombre completo" required value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} />
@@ -97,7 +167,8 @@ export function UnknownPersonModal({ subject, token, data, onClose, onRegistered
           </div>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -110,6 +110,11 @@ function VideoClipRow({ clip, data, localPendingVideo, enabled, isProcessing, on
   const match = clip.match_id ? data.matches.find((item) => item.id === clip.match_id) : undefined;
   const clipTitle = session ? sessionTitle(session, data) : match?.home_team_name && match.away_team_name ? `${match.home_team_name} vs ${match.away_team_name}` : clip.session_label || "Grabacion sin sesion ligada";
   const clipMeta = clipTournamentLabel(clip, session);
+  const clipDateTime = session
+    ? `${session.date} ${session.starts_at ?? "--:--"}`
+    : clip.recorded_at || clip.recording_started_at
+      ? new Date((clip.recorded_at ?? clip.recording_started_at) as string).toLocaleString()
+      : "Sin fecha";
   const uploadComplete = recordingPercent >= 100 && uploadPercent >= 100;
   return (
     <div className="mx-3 my-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/55">
@@ -117,6 +122,7 @@ function VideoClipRow({ clip, data, localPendingVideo, enabled, isProcessing, on
         <div className="min-w-0">
           <p className="line-clamp-1 text-sm font-semibold text-zinc-950 dark:text-zinc-50">{clipTitle}</p>
           <p className="mt-0.5 line-clamp-1 text-xs text-zinc-500">{clipMeta}</p>
+          <p className="mt-0.5 line-clamp-1 text-[11px] font-medium text-zinc-500">{clipDateTime}</p>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1">
           {localPendingVideo ? (

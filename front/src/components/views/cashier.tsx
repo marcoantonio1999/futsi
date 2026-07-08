@@ -346,7 +346,7 @@ export function CashierPortal({
                   </p>
                 )}
                 <button className="flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white" data-testid="cashier-create-payment">
-                  <CreditCard size={16} /> Crear solicitud
+                  <CreditCard size={16} /> Registrar pago
                 </button>
               </div>
             </form>

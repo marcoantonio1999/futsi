@@ -9,11 +9,11 @@ import type {
   User,
 } from "../../types";
 import { fullWidthTabs } from "./adminNavigation";
-import type { AttendanceSubsection, BusinessScope } from "./adminShellModel";
+import type { AttendanceSubsection, BillingSubsection, BusinessScope, StudentsSubsection } from "./adminShellModel";
 import { AutomaticAttendancePanel, VideoOccupancyPanel } from "../../features/automatic-attendance";
 import { BillingCollectionPanel, BillingPanel } from "../../features/billing";
 import { CoachDashboardPanel, CoachesConsolidatedPanel } from "../../features/coach";
-import { TournamentsPanel } from "../../features/tournaments";
+import { TournamentsPanel, type TournamentSection } from "../../features/tournaments";
 import { UnknownAttendanceDetailPanel, UnknownAttendancePanel } from "../../features/unknown-attendance";
 import { UnknownPeoplePanel } from "../../features/unknown-people";
 import {
@@ -53,11 +53,16 @@ type AdminShellContentProps = {
   message: string;
   error: string;
   attendanceSubsection: AttendanceSubsection;
+  billingSection: BillingSubsection;
+  studentsSection: StudentsSubsection;
+  tournamentSection: TournamentSection;
   unknownDetailDate: string;
   unknownDetailReport: unknown;
+  unknownSubjectToRegister: string;
   onSelectAttendanceSubsection: (section: AttendanceSubsection) => void;
   onOpenUnknownDetail: (date: string, report: unknown) => void;
   onCloseUnknownDetail: () => void;
+  onUnknownSubjectRegistrationOpened: () => void;
   onRefreshActiveSection: () => void;
   onCreateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
   onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
@@ -97,11 +102,16 @@ function ActivePanel(props: AdminShellContentProps) {
     isAdmin,
     effectiveActiveTab,
     attendanceSubsection,
+    billingSection,
+    studentsSection,
+    tournamentSection,
     unknownDetailDate,
     unknownDetailReport,
+    unknownSubjectToRegister,
     onSelectAttendanceSubsection,
     onOpenUnknownDetail,
     onCloseUnknownDetail,
+    onUnknownSubjectRegistrationOpened,
     onRefreshActiveSection,
     onCreateRecord,
     onUpdateRecord,
@@ -142,12 +152,14 @@ function ActivePanel(props: AdminShellContentProps) {
           onPaymentAction={(paymentId, action) => onPostAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
         />
       )}
-      {effectiveActiveTab === "calendar" && <CalendarPanel data={scopedData} />}
+      {effectiveActiveTab === "calendar" && <CalendarPanel data={scopedData} scope={businessScope} />}
       {effectiveActiveTab === "sports" && <SportsPanel data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />}
       {effectiveActiveTab === "tournaments" && (
         <TournamentsPanel
           data={scopedData}
           user={user}
+          scope={businessScope}
+          section={tournamentSection}
           readOnly={user.role === "coach"}
           onCreateTournament={(payload) => onCreateAndReturn("/tournaments/", payload)}
           onCreateTeam={(payload) => onCreateAndReturn("/teams/", payload)}
@@ -184,7 +196,7 @@ function ActivePanel(props: AdminShellContentProps) {
           onMarkAdultPlayer={onMarkAdultPlayer}
         />
       )}
-      {effectiveActiveTab === "unknowns" && <UnknownPeoplePanel token={token} data={data} onRefreshData={onRefreshActiveSection} />}
+      {effectiveActiveTab === "unknowns" && <UnknownPeoplePanel token={token} data={data} subjectToOpen={unknownSubjectToRegister} onSubjectOpened={onUnknownSubjectRegistrationOpened} onRefreshData={onRefreshActiveSection} />}
       {effectiveActiveTab === "billing" && (
         businessScope === "adult" ? (
           <AdultLeagueDashboardPanel
@@ -196,10 +208,11 @@ function ActivePanel(props: AdminShellContentProps) {
             onPaymentAction={(paymentId, action) => onPostAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
           />
         ) : user.role === "cashier" ? (
-          <BillingCollectionPanel data={scopedData} compact onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Solicitud de pago creada.")} onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento registrado.")} discountActionLabel="Solicitar descuento" />
+          <BillingCollectionPanel data={scopedData} compact onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago registrado con exito.")} onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento registrado.")} discountActionLabel="Solicitar descuento" />
         ) : (
           <BillingPanel
             data={scopedData}
+            section={billingSection}
             onCreateCharge={(payload) => onCreateRecord("/charges/", payload, "Cargo creado.")}
             onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago registrado.")}
             onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento solicitado.")}
@@ -221,7 +234,7 @@ function ActivePanel(props: AdminShellContentProps) {
           onCreateCashMovement={(payload) => onCreateRecord("/cash-movements/", payload, "Movimiento de caja registrado.")}
         />
       )}
-      {effectiveActiveTab === "students" && <StudentsPanel data={scopedData} onCreate={(payload) => onCreateRecord("/students/", payload, "Alumno creado.")} onUpdate={(studentId, payload) => onUpdateRecord(`/students/${studentId}/`, payload, "Alumno actualizado.")} />}
+      {effectiveActiveTab === "students" && <StudentsPanel data={scopedData} section={studentsSection} onCreate={(payload) => onCreateRecord("/students/", payload, "Alumno creado.")} onUpdate={(studentId, payload) => onUpdateRecord(`/students/${studentId}/`, payload, "Alumno actualizado.")} />}
       {effectiveActiveTab === "guardians" && <GuardiansPanel guardians={scopedData.guardians} onCreate={(payload) => onCreateRecord("/guardians/", payload, "Representante creado.")} />}
       {effectiveActiveTab === "sites" && <SitesPanel sites={data.sites} onCreate={(payload) => onCreateRecord("/sites/", payload, "Sede creada.")} />}
       {effectiveActiveTab === "users" && isAdmin && <UsersPanel data={scopedData} onCreate={(payload) => onCreateRecord("/users/", payload, "Usuario creado.")} onUpdate={(userId, payload) => onUpdateRecord(`/users/${userId}/`, payload, "Permisos actualizados.")} />}
@@ -319,7 +332,7 @@ function AttendanceContent({
         )
       )}
       {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="process" scope={businessScope} />}
-      {attendanceSubsection === "general" && <AttendanceGeneralPanel data={scopedData} scope={businessScope} />}
+      {attendanceSubsection === "general" && <AttendanceGeneralPanel token={token} data={scopedData} scope={businessScope} />}
       {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="report" scope={businessScope} />}
       {attendanceSubsection === "unknown" && <UnknownAttendancePanel token={token} data={data} onOpenDetail={onOpenUnknownDetail} />}
       {attendanceSubsection === "unknown-detail" && unknownDetailDate && (

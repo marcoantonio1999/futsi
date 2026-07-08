@@ -58,21 +58,49 @@ export function UnknownAttendancePanel({ token, data, onOpenDetail }: { token: s
     }
   }
 
+  async function loadDailyReports() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    try {
+      const reportsStatus = await apiRequest<UnknownAttendanceStatus>(
+        `/unknown-attendance/status/?captured_date=${encodeURIComponent(detailDate)}&pending_limit=0&recent_limit=0&subject_limit=0&report_limit=45&activity_window_limit=0`,
+        token,
+      );
+      setStatus((current) => ({
+        ...(current ?? reportsStatus),
+        daily_reports: reportsStatus.daily_reports,
+        jobs: reportsStatus.jobs?.length ? reportsStatus.jobs : current?.jobs ?? [],
+        active_job: reportsStatus.active_job ?? current?.active_job ?? null,
+        thresholds: reportsStatus.thresholds,
+      }));
+    } catch {
+      // Daily reports are secondary; keep the active job and detail summary usable.
+    }
+  }
+
   async function loadStatus(silent = false) {
     if (silent && typeof document !== "undefined" && document.hidden) return;
     if (!silent) setLoadingStatus(true);
     try {
+      const jobOnly = silent && isProcessing;
       const nextStatus = await apiRequest<UnknownAttendanceStatus>(
-        `/unknown-attendance/status/?captured_date=${encodeURIComponent(detailDate)}&pending_limit=0&recent_limit=0&subject_limit=12&report_limit=45&activity_window_limit=8`,
+        jobOnly
+          ? `/unknown-attendance/status/?job_only=1`
+          : `/unknown-attendance/status/?captured_date=${encodeURIComponent(detailDate)}&pending_limit=0&recent_limit=0&subject_limit=12&report_limit=0&activity_window_limit=8`,
         token,
       );
       setStatus((current) => ({
-        ...nextStatus,
+        ...(jobOnly && current ? current : nextStatus),
+        active_job: nextStatus.active_job,
+        jobs: nextStatus.jobs?.length ? nextStatus.jobs : current?.jobs ?? [],
+        thresholds: nextStatus.thresholds && Object.keys(nextStatus.thresholds).length ? nextStatus.thresholds : current?.thresholds ?? nextStatus.thresholds,
         recent: nextStatus.recent.length ? nextStatus.recent : current?.recent ?? [],
         subjects: nextStatus.subjects.length ? nextStatus.subjects : current?.subjects ?? [],
       }));
-      if (!silent || !(status?.recent?.length || status?.subjects?.length)) {
+      if (!jobOnly && (!silent || !(status?.recent?.length || status?.subjects?.length))) {
         void loadDetailLists();
+      }
+      if (!jobOnly && !nextStatus.active_job && !isProcessing) {
+        void loadDailyReports();
       }
       setJob((current) => resolveVisibleJob(nextStatus, current));
       setError("");

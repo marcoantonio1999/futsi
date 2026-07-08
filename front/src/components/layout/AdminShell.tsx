@@ -1,10 +1,14 @@
-import React, { useEffect, useRef, useState } from "react";
-import type { AppData, HistoricalImport, TabKey, ThemeMode, User } from "../../types";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import type { TabKey } from "../../types";
 import { defaultSectionsByRole, tabItems } from "./adminNavigation";
 import { AdminShellContent } from "./AdminShellContent";
 import { AdminShellHeader } from "./AdminShellHeader";
 import { AdminShellMobileMenu } from "./AdminShellMobileMenu";
+import type { AdminShellProps } from "./AdminShellProps";
 import { AdminShellSidebar } from "./AdminShellSidebar";
+import { UnknownSubjectNotification } from "./UnknownSubjectNotification";
+import { useUnknownSubjectAlert } from "./useUnknownSubjectAlert";
+import type { TournamentSection } from "../../features/tournaments";
 import {
   academyDefaultTab,
   academyData,
@@ -18,35 +22,11 @@ import {
   desktopSidebarOpenEdgePx,
   shellToneForScope,
   type AttendanceSubsection,
+  type BillingSubsection,
   type BusinessScope,
+  type StudentsSubsection,
 } from "./adminShellModel";
 import { ThemeToggle } from "./ThemeToggle";
-
-type AdminShellProps = {
-  token: string;
-  user: User;
-  data: AppData;
-  theme: ThemeMode;
-  loading: boolean;
-  sectionLoading: TabKey | null;
-  loadedSections: TabKey[];
-  message: string;
-  error: string;
-  onToggleTheme: () => void;
-  onLoadSection: (section: TabKey, options?: { force?: boolean; silent?: boolean }) => Promise<void>;
-  onLogout: () => void;
-  onCreateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
-  onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
-  onCreateAndReturn: <T>(path: string, payload: unknown) => Promise<T>;
-  onUploadHistoricalImport: (formData: FormData) => Promise<HistoricalImport>;
-  onCommitHistoricalImport: (importId: number, payload: unknown) => Promise<HistoricalImport>;
-  onCloseAttendanceSession: (sessionId: number) => Promise<void>;
-  onPostAction: (path: string, success: string) => Promise<void>;
-  onDownloadFile: (path: string, filename: string) => Promise<void>;
-  onUpdateMatchScore: (matchId: number, payload: unknown) => Promise<void>;
-  onSaveStudentAssessment: (payload: unknown) => Promise<void>;
-  onMarkAdultPlayer: (payload: unknown) => Promise<void>;
-};
 
 export function AdminShell({
   token,
@@ -75,8 +55,12 @@ export function AdminShell({
 }: AdminShellProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
+  const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
+  const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("registered");
+  const [tournamentSection, setTournamentSection] = useState<TournamentSection>("overview");
   const [unknownDetailDate, setUnknownDetailDate] = useState("");
   const [unknownDetailReport, setUnknownDetailReport] = useState<unknown>(null);
+  const [unknownSubjectToRegister, setUnknownSubjectToRegister] = useState("");
   const [businessScope, setBusinessScope] = useState<BusinessScope>("academy");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
@@ -102,11 +86,14 @@ export function AdminShell({
   const fallbackTab = sidebarTabs[0]?.key ?? (businessScope === "adult" ? adultDefaultTab : academyDefaultTab);
   const effectiveActiveTab = activeTabMeta ? activeTab : fallbackTab;
   const effectiveActiveTabMeta = sidebarTabs.find((tab) => tab.key === effectiveActiveTab) ?? visibleTabs.find((tab) => tab.key === effectiveActiveTab);
-  const scopedData = businessScope === "adult" ? adultLeagueData(data) : academyData(data);
+  const scopedData = useMemo(() => (businessScope === "adult" ? adultLeagueData(data) : academyData(data)), [businessScope, data]);
   const canSeeAdultDashboard = visibleTabs.some((tab) => tab.key === "adult-dashboard");
   const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
   const isFirstSectionLoad = sectionLoading === effectiveActiveTab && !loadedSections.includes(effectiveActiveTab);
   const shellTone = shellToneForScope(businessScope);
+  const unknownSubjectAlert = useUnknownSubjectAlert(token);
+  const showBillingSubsections = businessScope === "academy";
+  const canProgramBilling = showBillingSubsections && user.role !== "cashier";
 
   useEffect(() => {
     onLoadSection(effectiveActiveTab);
@@ -127,6 +114,12 @@ export function AdminShell({
     setActiveTab(user.role === "cashier" ? "billing" : academyDefaultTab);
     setBusinessScope("academy");
   }, [user.id, user.role]);
+
+  useEffect(() => {
+    if ((!showBillingSubsections || !canProgramBilling) && billingSection === "program") {
+      setBillingSection("scheduled");
+    }
+  }, [billingSection, canProgramBilling, showBillingSubsections]);
 
   useEffect(() => {
     const updateHeaderState = () => setHeaderScrolled(window.scrollY > 12);
@@ -186,6 +179,12 @@ export function AdminShell({
     return window.innerWidth >= 1024;
   }
 
+  function openDesktopSidebarFromHover() {
+    if (!isDesktopSidebarViewport()) return;
+    setSidebarExpanded(true);
+    clearDesktopSidebarCollapse();
+  }
+
   function isPointerNearDesktopSidebar(x: number, y: number) {
     const rect = desktopSidebarRef.current?.getBoundingClientRect();
     if (!rect) return x <= desktopSidebarOpenEdgePx;
@@ -198,6 +197,27 @@ export function AdminShell({
 
   function selectTab(tab: TabKey) {
     setActiveTab(tab);
+    scrollToTop();
+  }
+
+  function selectTournamentSection(section: TournamentSection) {
+    setTournamentSection(section);
+    setActiveTab("tournaments");
+    setMobileMenuOpen(false);
+    scrollToTop();
+  }
+
+  function selectBillingSection(section: BillingSubsection) {
+    setBillingSection(section);
+    setActiveTab("billing");
+    setMobileMenuOpen(false);
+    scrollToTop();
+  }
+
+  function selectStudentsSection(section: StudentsSubsection) {
+    setStudentsSection(section);
+    setActiveTab("students");
+    setMobileMenuOpen(false);
     scrollToTop();
   }
 
@@ -239,6 +259,13 @@ export function AdminShell({
     scrollToTop();
   }
 
+  function openUnknownSubjectRegistration(subjectId: string) {
+    setUnknownSubjectToRegister(subjectId);
+    setActiveTab("unknowns");
+    setMobileMenuOpen(false);
+    scrollToTop();
+  }
+
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
     mobileSwipeStartX.current = event.touches[0]?.clientX ?? null;
   }
@@ -261,10 +288,16 @@ export function AdminShell({
       data-testid="admin-portal"
     >
       <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+      <UnknownSubjectNotification subject={unknownSubjectAlert.primarySubject} onOpenSubject={openUnknownSubjectRegistration} />
       <AdminShellMobileMenu
         isOpen={mobileMenuOpen}
         sidebarTabs={sidebarTabs}
         effectiveActiveTab={effectiveActiveTab}
+        billingSection={billingSection}
+        studentsSection={studentsSection}
+        canProgramBilling={canProgramBilling}
+        showBillingSubsections={showBillingSubsections}
+        tournamentSection={tournamentSection}
         shellTone={shellTone}
         onClose={() => setMobileMenuOpen(false)}
         onLogout={onLogout}
@@ -272,6 +305,9 @@ export function AdminShell({
           selectTab(tab);
           setMobileMenuOpen(false);
         }}
+        onSelectBillingSection={selectBillingSection}
+        onSelectStudentsSection={selectStudentsSection}
+        onSelectTournamentSection={selectTournamentSection}
       />
       <div className="mx-auto flex min-h-screen max-w-[1540px] gap-5 p-4">
         <AdminShellSidebar
@@ -281,13 +317,21 @@ export function AdminShell({
           businessScope={businessScope}
           sidebarTabs={sidebarTabs}
           effectiveActiveTab={effectiveActiveTab}
+          billingSection={billingSection}
+          studentsSection={studentsSection}
+          canProgramBilling={canProgramBilling}
+          showBillingSubsections={showBillingSubsections}
+          tournamentSection={tournamentSection}
           shellTone={shellTone}
           onToggleExpanded={() => setSidebarExpanded((value) => !value)}
           onSwitchScope={switchBusinessScope}
           onSelectTab={selectTab}
+          onSelectBillingSection={selectBillingSection}
+          onSelectStudentsSection={selectStudentsSection}
+          onSelectTournamentSection={selectTournamentSection}
           onRefresh={refreshActiveSection}
           onLogout={onLogout}
-          onMouseEnter={clearDesktopSidebarCollapse}
+          onMouseEnter={openDesktopSidebarFromHover}
           onMouseLeave={startDesktopSidebarCollapse}
         />
         <div className={`min-w-0 flex-1 pt-[76px] transition-[margin] duration-200 sm:pt-20 lg:pt-0 ${sidebarExpanded ? "lg:ml-[17rem]" : "lg:ml-[5.75rem]"}`}>
@@ -297,9 +341,12 @@ export function AdminShell({
             canToggleAdultDashboard={canToggleAdultDashboard}
             headerScrolled={headerScrolled}
             effectiveActiveTabMeta={effectiveActiveTabMeta}
+            unknownSubjectCount={unknownSubjectAlert.count}
+            primaryUnknownSubject={unknownSubjectAlert.primarySubject}
             onOpenMobileMenu={() => setMobileMenuOpen(true)}
             onRefresh={refreshActiveSection}
             onSwitchScope={switchBusinessScope}
+            onOpenUnknownSubject={openUnknownSubjectRegistration}
             onLogout={onLogout}
           />
           <AdminShellContent
@@ -316,11 +363,16 @@ export function AdminShell({
             message={message}
             error={error}
             attendanceSubsection={attendanceSubsection}
+            billingSection={billingSection}
+            studentsSection={studentsSection}
+            tournamentSection={tournamentSection}
             unknownDetailDate={unknownDetailDate}
             unknownDetailReport={unknownDetailReport}
+            unknownSubjectToRegister={unknownSubjectToRegister}
             onSelectAttendanceSubsection={selectAttendanceSubsection}
             onOpenUnknownDetail={openUnknownDetail}
             onCloseUnknownDetail={closeUnknownDetail}
+            onUnknownSubjectRegistrationOpened={() => setUnknownSubjectToRegister("")}
             onRefreshActiveSection={refreshActiveSection}
             onCreateRecord={onCreateRecord}
             onUpdateRecord={onUpdateRecord}

@@ -1,83 +1,20 @@
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import L from "leaflet";
-import {
-  AlertTriangle,
-  BarChart3,
-  Building2,
-  Camera,
-  Check,
-  ClipboardCheck,
-  CreditCard,
-  Download,
-  FileText,
-  Lock,
-  LogOut,
-  Menu,
-  Moon,
-  Plus,
-  RefreshCw,
-  Upload,
-  Shield,
-  Sun,
-  UserRound,
-  UsersRound,
-  X,
-} from "lucide-react";
+import { Plus } from "lucide-react";
 import { Metric } from "../cards/Metric";
-import { CollectionFunnel } from "../charts/CollectionFunnel";
-import { FinancialAxisChart } from "../charts/FinancialAxisChart";
-import { FinancialComboChart } from "../charts/FinancialComboChart";
-import { PaymentMethodDonut } from "../charts/PaymentMethodDonut";
-import { PendingBySiteChart } from "../charts/PendingBySiteChart";
-import { StudentStatusDonut } from "../charts/StudentStatusDonut";
-import { API_URL } from "../../api";
-import { roleLabels, statusLabels } from "../../appState";
-import { money } from "../../utils/format";
-import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../types";
-
-import {
-  Avatar,
-  AttendanceButton,
-  FaceAttendanceCard,
-  InfoChip,
-  InvoiceGenerator,
-  InvoiceRows,
-  SelectInput,
-  SimpleList,
-  StaffPaymentInbox,
-  StatusPill,
-  TableHeader,
-  TextInput,
-  average,
-  calculateCashBySite,
-  calculateMonthlyTicketAverage,
-  chargeLabel,
-  chargeStatusLabel,
-  collectionProgress,
-  dateDay,
-  dateMonthKey,
-  expenseStatusLabel,
-  exportAccountingWorkbook,
-  cashMovementLabel,
-  methodLabel,
-  monthLabelFromKey,
-  normalizeText,
-  paymentMethodLabel,
-  paymentMonthKey,
-  paymentPayerKey,
-  paymentStatusLabel,
-  staffPaymentKindLabel,
-  staffPaymentStatusLabel,
-  sumAccountingRows,
-} from "./shared";
+import { statusLabels } from "../../appState";
+import type { AppData, Student } from "../../types";
+import { SelectInput, TextInput } from "./shared";
 import { StudentCard } from "./studentCard";
+import type { StudentsSubsection } from "../layout/adminShellModel";
 
 export function StudentsPanel({
   data,
+  section = "registered",
   onCreate,
   onUpdate,
 }: {
   data: AppData;
+  section?: StudentsSubsection;
   onCreate: (payload: unknown) => void;
   onUpdate: (studentId: number, payload: unknown) => void;
 }) {
@@ -209,6 +146,7 @@ export function StudentsPanel({
 
   return (
     <>
+      {section === "create" && (
       <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
         <h2 className="flex items-center gap-2 text-base font-semibold">
           <Plus size={16} /> Nuevo alumno
@@ -270,6 +208,8 @@ export function StudentsPanel({
           </button>
         </div>
       </form>
+      )}
+      {section === "registered" && (
       <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-col gap-2 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -360,7 +300,8 @@ export function StudentsPanel({
           {filteredStudents.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay alumnos con estos filtros.</p>}
         </div>
       </section>
-      {editingStudent && (
+      )}
+      {section === "registered" && editingStudent && (
         <form onSubmit={submitEdit} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-base font-semibold">Editar control de {editingStudent.full_name}</h2>
           <div className="mt-4 grid gap-3">

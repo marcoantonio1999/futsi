@@ -6,9 +6,9 @@ import {
   UnknownActivityWindowsSection,
   UnknownPendingSessionSection,
   UnknownProcessedResultsSection,
-  UnknownRejectedFacesDebugSection,
   UnknownSubjectsSection,
 } from "./UnknownAttendanceDetailSections";
+import { UnknownRejectedFacesDebugSection } from "./UnknownRejectedFacesDebugSection";
 import { getUnknownJobProgress, UnknownActiveJobBanner, UnknownJobProgressCard } from "./UnknownAttendanceProgress";
 import { UnknownAttendanceDetailSkeleton } from "./UnknownAttendanceSkeletons";
 import {
@@ -30,6 +30,7 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
   const [error, setError] = useState("");
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [acceptingSubjectId, setAcceptingSubjectId] = useState("");
+  const [discardingSubjectId, setDiscardingSubjectId] = useState("");
   const [rejectedDebugOpen, setRejectedDebugOpen] = useState(false);
   const [rejectedDebugLoading, setRejectedDebugLoading] = useState(false);
   const [rejectedDebugError, setRejectedDebugError] = useState("");
@@ -120,16 +121,22 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
     if (silent && typeof document !== "undefined" && document.hidden) return;
     if (!silent) setLoadingStatus(true);
     try {
+      const jobOnly = silent && isProcessing;
       const nextStatus = await apiRequest<UnknownAttendanceStatus>(
-        `/unknown-attendance/status/?captured_date=${encodeURIComponent(detailDate)}&pending_limit=0&recent_limit=0&subject_limit=24&report_limit=45&activity_window_limit=50`,
+        jobOnly
+          ? `/unknown-attendance/status/?job_only=1`
+          : `/unknown-attendance/status/?captured_date=${encodeURIComponent(detailDate)}&pending_limit=0&recent_limit=0&subject_limit=24&report_limit=0&activity_window_limit=12`,
         token,
       );
       setStatus((current) => ({
-        ...nextStatus,
+        ...(jobOnly && current ? current : nextStatus),
+        active_job: nextStatus.active_job,
+        jobs: nextStatus.jobs?.length ? nextStatus.jobs : current?.jobs ?? [],
+        thresholds: nextStatus.thresholds && Object.keys(nextStatus.thresholds).length ? nextStatus.thresholds : current?.thresholds ?? nextStatus.thresholds,
         recent: nextStatus.recent.length ? nextStatus.recent : current?.recent ?? [],
         subjects: nextStatus.subjects.length ? nextStatus.subjects : current?.subjects ?? [],
       }));
-      if (!silent || !(status?.recent?.length || status?.subjects?.length)) {
+      if (!jobOnly && (!silent || !(status?.recent?.length || status?.subjects?.length))) {
         void loadDetailLists();
       }
       setJob((current) => resolveVisibleJob(nextStatus, current));
@@ -184,6 +191,24 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
       setError(err instanceof Error ? err.message : "No se pudo aceptar el desconocido.");
     } finally {
       setAcceptingSubjectId("");
+    }
+  }
+
+  async function discardUnknownSubject(subjectId: string) {
+    const confirmed = window.confirm("Descartar este desconocido consolidado lo quitara del reporte, borrara su foto aceptada de Storage si existe y dejara sus capturas listas para reprocesar. Deseas continuar?");
+    if (!confirmed) return;
+    setDiscardingSubjectId(subjectId);
+    setMessage("");
+    setError("");
+    try {
+      const result = await apiRequest<{ reset_captures?: number }>(`/unknown-attendance/subjects/${encodeURIComponent(subjectId)}/discard/`, token, { method: "POST" });
+      setMessage(`Desconocido descartado. ${result.reset_captures ?? 0} captura(s) quedaron listas para reprocesar.`);
+      await loadStatus(true);
+      await loadDetailLists();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo descartar el desconocido.");
+    } finally {
+      setDiscardingSubjectId("");
     }
   }
 
@@ -307,7 +332,15 @@ export function UnknownAttendanceDetailPanel({ token, data, date, initialReport,
         token={token}
       />
       <UnknownProcessedResultsSection processedResults={processedResults} token={token} />
-      <UnknownSubjectsSection acceptingSubjectId={acceptingSubjectId} data={data} onAccept={(subjectId) => void acceptUnknownSubject(subjectId)} token={token} visibleSubjects={visibleSubjects} />
+      <UnknownSubjectsSection
+        acceptingSubjectId={acceptingSubjectId}
+        data={data}
+        discardingSubjectId={discardingSubjectId}
+        onAccept={(subjectId) => void acceptUnknownSubject(subjectId)}
+        onDiscard={(subjectId) => void discardUnknownSubject(subjectId)}
+        token={token}
+        visibleSubjects={visibleSubjects}
+      />
     </div>
   );
 }

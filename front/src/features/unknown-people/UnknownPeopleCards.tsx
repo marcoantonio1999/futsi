@@ -1,11 +1,29 @@
-import { CalendarClock, UserPlus } from "lucide-react";
+import { CalendarClock, Check, Trash2, UserPlus } from "lucide-react";
+import { API_URL } from "../../api";
 import { EvidenceImage } from "../automatic-attendance";
 import { captureStatusClass, captureStatusLabel, qualityRejectText, qualityText, subjectAppearanceTimes, type UnknownCapture, type UnknownSubject } from "../unknown-attendance/model";
 
-export function UnknownSubjectCard({ subject, token, onOpen }: { subject: UnknownSubject; token: string; onOpen: (subject: UnknownSubject) => void }) {
-  const registered = Boolean(subject.matched_player_id || subject.matched_student_id || subject.metadata?.accepted_at);
+export function UnknownSubjectCard({
+  accepting,
+  discarding,
+  subject,
+  token,
+  onAccept,
+  onDiscard,
+  onOpen,
+}: {
+  accepting: boolean;
+  discarding: boolean;
+  subject: UnknownSubject;
+  token: string;
+  onAccept: (subjectId: string) => void;
+  onDiscard: (subjectId: string) => void;
+  onOpen: (subject: UnknownSubject) => void;
+}) {
+  const isAccepted = Boolean(subject.metadata?.accepted_at);
+  const registered = Boolean(subject.matched_player_id || subject.matched_student_id || isAccepted);
   return (
-    <button className="motion-card rounded-md border border-zinc-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-950" onClick={() => onOpen(subject)} type="button">
+    <article className="motion-card rounded-md border border-zinc-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-950">
       <EvidenceImage url={subject.image_url} token={token} fit="contain" ratio="square" />
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -17,18 +35,42 @@ export function UnknownSubjectCard({ subject, token, onOpen }: { subject: Unknow
           {registered ? "Registrado" : "Consolidado"}
         </span>
       </div>
-      <p className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-300">
-        <UserPlus size={13} /> Registrar persona
-      </p>
-    </button>
+      <div className="mt-3 grid gap-2">
+        <button
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100"
+          disabled={isAccepted || accepting || discarding}
+          onClick={() => onAccept(subject.id)}
+          type="button"
+        >
+          <Check size={13} /> {isAccepted ? "Aceptado como desconocido" : accepting ? "Aceptando..." : "Aceptar desconocido"}
+        </button>
+        <button
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-blue-300"
+          disabled={accepting || discarding}
+          onClick={() => onOpen(subject)}
+          type="button"
+        >
+          <UserPlus size={13} /> Registrar persona
+        </button>
+        <button
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
+          disabled={accepting || discarding}
+          onClick={() => onDiscard(subject.id)}
+          type="button"
+        >
+          <Trash2 size={13} /> {discarding ? "Rechazando..." : "Rechazar"}
+        </button>
+      </div>
+    </article>
   );
 }
 
 export function UnknownCaptureCard({ capture, token, onOpenSubject }: { capture: UnknownCapture; token: string; onOpenSubject: (subjectId: string) => void }) {
   const subjectId = capture.subject_id ?? capture.metadata?.unknown_subject?.id ?? capture.metadata?.unknown_subjects?.[0]?.unknown_subject.id ?? "";
+  const imageUrl = capture.image_url || `${API_URL}/unknown-attendance/captures/${encodeURIComponent(capture.id)}/image/`;
   return (
     <article className="motion-card rounded-md border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-      <EvidenceImage url={capture.image_url} token={token} fit="contain" ratio="square" />
+      <EvidenceImage url={imageUrl} token={token} fit="contain" ratio="square" />
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="break-words font-semibold text-zinc-950 dark:text-zinc-50">{capture.temporary_name || capture.local_file_name || "Captura desconocida"}</p>

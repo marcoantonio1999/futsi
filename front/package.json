@@ -17,6 +17,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.16.0",
+    "motion": "^12.42.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.8.1",

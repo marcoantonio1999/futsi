@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Trophy, UsersRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import type { AppData, AttendanceSession, Match } from "../../types";
 
 type CalendarEvent = {
@@ -36,18 +36,48 @@ function eventTime(value: string | null | undefined) {
   return value?.slice(0, 5) || "Sin hora";
 }
 
-function eventRange(value: string | null | undefined, durationMinutes: number) {
-  if (!value) return "Sin hora";
+function eventStartMinute(value: string | null | undefined) {
+  if (!value) return 9 * 60;
   const [hours, minutes] = value.slice(0, 5).split(":").map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return eventTime(value);
-  const start = hours * 60 + minutes;
-  const end = Math.min(1439, start + Math.max(1, Number(durationMinutes || 120)));
-  const format = (total: number) => `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-  return `${format(start)}-${format(end)}`;
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return 9 * 60;
+  return hours * 60 + minutes;
 }
 
 function addMonths(date: Date, delta: number) {
   return new Date(date.getFullYear(), date.getMonth() + delta, 1);
+}
+
+function addDays(date: Date, delta: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + delta);
+  return next;
+}
+
+function startOfWeek(dateValue: string) {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  date.setDate(date.getDate() - date.getDay());
+  return date;
+}
+
+function weekNumber(date: Date) {
+  const firstDay = new Date(date.getFullYear(), 0, 1);
+  const pastDays = Math.floor((date.getTime() - firstDay.getTime()) / 86400000);
+  return Math.ceil((pastDays + firstDay.getDay() + 1) / 7);
+}
+
+function dayLongLabel(dateValue: string) {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  return date.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short", year: "numeric" });
+}
+
+function eventEndMinute(event: CalendarEvent) {
+  return Math.min(1439, eventStartMinute((event.raw as AttendanceSession | Match).starts_at) + Math.max(1, event.durationMinutes || 120));
+}
+
+function formatHour(hour: number) {
+  return `${String(hour % 24).padStart(2, "0")}:00`;
 }
 
 function buildCalendarDays(month: Date) {
@@ -68,11 +98,8 @@ function eventTone(type: CalendarEvent["type"]) {
   return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200";
 }
 
-function eventTypeLabel(type: CalendarEvent["type"]) {
-  if (type === "match") return "Partido";
-  if (type === "session_match") return "Sesion de partido";
-  return "Entrenamiento";
-}
+const weekHourHeight = 36;
+const mobileHourHeight = 76;
 
 function buildEvents(data: AppData): CalendarEvent[] {
   const matchIds = new Set(data.matches.map((match) => match.id));
@@ -112,7 +139,7 @@ function buildEvents(data: AppData): CalendarEvent[] {
   return [...matchEvents, ...sessionEvents].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 }
 
-export function CalendarPanel({ data }: { data: AppData }) {
+export function CalendarPanel({ data, scope = "academy" }: { data: AppData; scope?: "academy" | "adult" }) {
   const initialMonth = useMemo(() => {
     const firstEventDate = [...data.attendanceSessions.map((session) => session.date), ...data.matches.map((match) => match.played_on)].sort().find(Boolean);
     const base = firstEventDate || todayKey();
@@ -144,55 +171,132 @@ export function CalendarPanel({ data }: { data: AppData }) {
     return map;
   }, [filteredEvents]);
 
-  const selectedEvents = eventsByDate.get(selectedDate) ?? [];
   const monthDays = buildCalendarDays(visibleMonth);
   const currentMonthKey = monthKey(visibleMonth);
+  const titleColorClass = scope === "adult" ? "text-blue-700 dark:text-blue-300" : "text-emerald-700 dark:text-emerald-300";
+  const selectedWeekStart = startOfWeek(selectedDate);
+  const weekDays = Array.from({ length: 7 }, (_, index) => addDays(selectedWeekStart, index));
+  const weekTitle = `Semana ${weekNumber(selectedWeekStart)}, ${monthLabel(selectedWeekStart)}`;
+  const hourRows = Array.from({ length: 18 }, (_, index) => index + 7);
+  const mobileHourRows = Array.from({ length: 18 }, (_, index) => index + 7);
+  const selectedEvents = eventsByDate.get(selectedDate) ?? [];
+  const selectedDayLabel = dayLongLabel(selectedDate);
+  const isSelectedToday = selectedDate === todayKey();
+  const currentMinute = new Date().getHours() * 60 + new Date().getMinutes();
+  const currentTop = Math.max(0, ((currentMinute - 7 * 60) / 60) * mobileHourHeight);
+  const mobileTimelineRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const timeline = mobileTimelineRef.current;
+    if (!timeline) return;
+    const nextTop = isSelectedToday ? Math.max(0, currentTop - 260) : 0;
+    timeline.scrollTo({ top: nextTop });
+  }, [currentTop, isSelectedToday, selectedDate]);
 
   return (
     <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 p-3 dark:border-zinc-800 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Agenda operativa</p>
-            <h2 className="mt-1 flex items-center gap-2 text-xl font-semibold text-zinc-950 dark:text-zinc-50">
-              <CalendarDays size={20} /> Calendario
+            <h2 className={`mt-1 flex items-center gap-2 text-lg font-semibold ${titleColorClass}`}>
+              <CalendarDays size={18} /> Calendario
             </h2>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-              Entrenamientos desde <span className="font-semibold">attendance_sessions</span>; partidos programados desde <span className="font-semibold">matches</span>.
-            </p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-sm">
-              <span className="font-medium text-zinc-700 dark:text-zinc-200">Sede</span>
-              <select className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
-                <option value="all">Todas</option>
-                {data.sites.map((site) => (
-                  <option key={site.id} value={site.id}>{site.name}</option>
+          <div className="grid grid-cols-[auto_auto_auto_minmax(0,1fr)] gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+            <button className="h-9 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={() => {
+              const now = new Date();
+              setVisibleMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+              setSelectedDate(todayKey());
+            }} type="button">
+              Hoy
+            </button>
+            <button className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={() => setSelectedDate(dateKey(addDays(selectedWeekStart, -7)))} type="button" aria-label="Semana anterior">
+              <ChevronLeft size={17} />
+            </button>
+            <button className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={() => setSelectedDate(dateKey(addDays(selectedWeekStart, 7)))} type="button" aria-label="Semana siguiente">
+              <ChevronRight size={17} />
+            </button>
+            <h3 className="min-w-0 self-center truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50 sm:min-w-[220px] sm:text-base">{weekTitle}</h3>
+            <select className="col-span-4 h-9 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 sm:col-span-1" value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+              <option value="all">Todas las sedes</option>
+              {data.sites.map((site) => (
+                <option key={site.id} value={site.id}>{site.name}</option>
+              ))}
+            </select>
+            <select className="col-span-4 h-9 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 sm:col-span-1" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}>
+              <option value="all">Todos</option>
+              <option value="training">Entrenamientos</option>
+              <option value="match">Partidos</option>
+              <option value="session_match">Sesiones de partido</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="lg:hidden">
+          <div className="border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays.map((day) => {
+                const key = dateKey(day);
+                const selected = key === selectedDate;
+                const dayEvents = eventsByDate.get(key) ?? [];
+                return (
+                  <button
+                    key={key}
+                    className={`relative grid min-h-[62px] place-items-center rounded-md px-1 py-1 text-center transition ${selected ? "bg-blue-700 text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"}`}
+                    onClick={() => setSelectedDate(key)}
+                    type="button"
+                  >
+                    <span className="text-[11px] font-semibold uppercase">{day.toLocaleDateString("es-MX", { weekday: "narrow" })}</span>
+                    <span className="text-xl font-semibold leading-none">{day.getDate()}</span>
+                    {dayEvents.length ? <span className={`absolute bottom-1 size-1.5 rounded-full ${selected ? "bg-white" : "bg-emerald-600"}`} /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="border-b border-zinc-200 px-4 py-3 text-center dark:border-zinc-800">
+            <h3 className="text-base font-semibold text-zinc-950 dark:text-zinc-50">{selectedDayLabel}</h3>
+            <p className="mt-1 text-xs text-zinc-500">{selectedEvents.length} evento(s)</p>
+          </div>
+          <div ref={mobileTimelineRef} className="max-h-[calc(100svh-260px)] min-h-[520px] overflow-y-auto">
+            <div className="relative grid grid-cols-[54px_minmax(0,1fr)]">
+              <div className="border-r border-zinc-100 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+                {mobileHourRows.map((hour) => (
+                  <div key={hour} className="border-b border-zinc-100 pr-2 pt-2 text-right text-xs text-zinc-500 dark:border-zinc-800" style={{ height: mobileHourHeight }}>
+                    {formatHour(hour)}
+                  </div>
                 ))}
-              </select>
-            </label>
-            <label className="text-sm">
-              <span className="font-medium text-zinc-700 dark:text-zinc-200">Tipo</span>
-              <select className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}>
-                <option value="all">Todos</option>
-                <option value="training">Entrenamientos</option>
-                <option value="match">Partidos</option>
-                <option value="session_match">Sesiones de partido</option>
-              </select>
-            </label>
+              </div>
+              <div className="relative bg-white dark:bg-zinc-950">
+                {mobileHourRows.map((hour) => <div key={hour} className="border-b border-zinc-100 dark:border-zinc-800" style={{ height: mobileHourHeight }} />)}
+                {isSelectedToday && currentMinute >= 7 * 60 && currentMinute <= 24 * 60 ? (
+                  <div className="pointer-events-none absolute left-0 right-0 z-20" style={{ top: currentTop }}>
+                    <span className="absolute -left-[50px] -top-3 rounded-full bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">{String(Math.floor(currentMinute / 60)).padStart(2, "0")}:{String(currentMinute % 60).padStart(2, "0")}</span>
+                    <div className="h-0.5 bg-red-600" />
+                  </div>
+                ) : null}
+                {selectedEvents.map((event, index) => {
+                  const start = Math.max(7 * 60, eventStartMinute((event.raw as AttendanceSession | Match).starts_at));
+                  const end = Math.max(start + 20, eventEndMinute(event));
+                  const top = ((start - 7 * 60) / 60) * mobileHourHeight;
+                  const height = Math.max(44, ((end - start) / 60) * mobileHourHeight);
+                  return (
+                    <article key={event.id} className={`absolute left-3 right-3 overflow-hidden rounded-md border px-3 py-2 text-xs shadow-sm ${eventTone(event.type)}`} style={{ top: top + index * 5, height }}>
+                      <p className="font-semibold">{event.time}</p>
+                      <p className="mt-0.5 line-clamp-2 font-semibold">{event.title}</p>
+                      <p className="mt-1 line-clamp-1 opacity-80"><MapPin size={11} className="mr-1 inline" />{event.siteName}</p>
+                    </article>
+                  );
+                })}
+                {!selectedEvents.length ? <p className="px-4 py-8 text-sm text-zinc-500">No hay eventos para este dia con los filtros actuales.</p> : null}
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 md:grid-cols-3">
-          <p><span className="font-semibold">Supabase tabla:</span> public.attendance_sessions</p>
-          <p><span className="font-semibold">Supabase tabla:</span> public.matches</p>
-          <p><span className="font-semibold">Relacion:</span> matches genera sesiones tipo tournament_match cuando se pasa lista.</p>
-        </div>
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="min-w-0 rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+        <div className="hidden lg:grid lg:h-[calc(100svh-156px)] lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="border-b border-zinc-200 p-3 dark:border-zinc-800 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-2">
               <button className="grid size-9 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={() => setVisibleMonth((month) => addMonths(month, -1))} type="button" aria-label="Mes anterior">
                 <ChevronLeft size={17} />
@@ -202,77 +306,76 @@ export function CalendarPanel({ data }: { data: AppData }) {
               </button>
               <h3 className="min-w-[190px] text-lg font-semibold capitalize text-zinc-950 dark:text-zinc-50">{monthLabel(visibleMonth)}</h3>
             </div>
-            <button className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" onClick={() => {
-              const now = new Date();
-              setVisibleMonth(new Date(now.getFullYear(), now.getMonth(), 1));
-              setSelectedDate(todayKey());
-            }} type="button">
-              Hoy
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 border-b border-zinc-200 bg-zinc-50 text-center text-xs font-semibold uppercase text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-            {["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"].map((day) => (
-              <div key={day} className="px-2 py-2">{day}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
+            <div className="mt-4 grid grid-cols-7 text-center text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">
+              {["D", "L", "M", "M", "J", "V", "S"].map((day, index) => <div key={`${day}-${index}`} className="py-1.5">{day}</div>)}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
             {monthDays.map((day) => {
               const key = dateKey(day);
               const dayEvents = eventsByDate.get(key) ?? [];
               const inMonth = monthKey(day) === currentMonthKey;
               const selected = key === selectedDate;
-              const isToday = key === todayKey();
+              const inSelectedWeek = weekDays.some((weekDay) => dateKey(weekDay) === key);
               return (
                 <button
                   key={key}
-                  className={`min-h-28 border-b border-r border-zinc-100 p-2 text-left transition dark:border-zinc-800 ${selected ? "bg-emerald-50 ring-2 ring-inset ring-emerald-700 dark:bg-emerald-950/40" : "bg-white hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900"} ${inMonth ? "" : "opacity-45"}`}
+                  className={`relative grid aspect-square place-items-center rounded-md text-sm font-semibold transition ${selected ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-100" : inSelectedWeek ? "bg-blue-50 text-zinc-800 dark:bg-blue-950/30 dark:text-zinc-100" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"} ${inMonth ? "" : "opacity-40"}`}
                   onClick={() => setSelectedDate(key)}
                   type="button"
                 >
-                  <span className={`inline-grid size-7 place-items-center rounded-full text-sm font-semibold ${isToday ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950" : "text-zinc-700 dark:text-zinc-200"}`}>{day.getDate()}</span>
-                  <div className="mt-2 grid gap-1">
-                    {dayEvents.slice(0, 3).map((event) => (
-                      <span key={event.id} className={`truncate rounded-md border px-2 py-1 text-[11px] font-semibold ${eventTone(event.type)}`}>
-                        {event.time} {event.title}
-                      </span>
-                    ))}
-                    {dayEvents.length > 3 && <span className="text-xs font-medium text-zinc-500">+{dayEvents.length - 3} mas</span>}
-                  </div>
+                  {day.getDate()}
+                  {dayEvents.length ? <span className="absolute bottom-1 size-1 rounded-full bg-emerald-600" /> : null}
                 </button>
               );
             })}
+            </div>
+          </aside>
+
+          <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+            <div className="grid min-w-[920px] grid-cols-[72px_repeat(7,minmax(120px,1fr))] border-b border-zinc-200 dark:border-zinc-800">
+              <div />
+              {weekDays.map((day) => {
+                const key = dateKey(day);
+                const selected = key === selectedDate;
+                return (
+                  <button key={key} className={`border-l border-zinc-100 px-3 py-2.5 text-center transition dark:border-zinc-800 ${selected ? "bg-blue-50 dark:bg-blue-950/30" : ""}`} onClick={() => setSelectedDate(key)} type="button">
+                    <p className={`text-sm font-semibold ${day.getDay() === 0 || day.getDay() === 6 ? "text-red-500" : "text-zinc-600 dark:text-zinc-300"}`}>{day.toLocaleDateString("es-MX", { weekday: "short" })}</p>
+                    <p className={`mt-1 text-2xl font-semibold ${selected ? "text-blue-700 dark:text-blue-200" : "text-zinc-950 dark:text-zinc-50"}`}>{day.getDate()}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="relative grid min-w-[920px] grid-cols-[72px_repeat(7,minmax(120px,1fr))]">
+              <div className="border-r border-zinc-100 dark:border-zinc-800">
+                {hourRows.map((hour) => (
+                  <div key={hour} className="h-9 border-b border-zinc-100 pr-2 pt-1 text-right text-xs text-zinc-500 dark:border-zinc-800">
+                    {formatHour(hour)}
+                  </div>
+                ))}
+              </div>
+              {weekDays.map((day) => {
+                const key = dateKey(day);
+                const dayEvents = eventsByDate.get(key) ?? [];
+                return (
+                  <div key={key} className="relative border-r border-zinc-100 dark:border-zinc-800">
+                    {hourRows.map((hour) => <div key={hour} className="h-9 border-b border-zinc-100 dark:border-zinc-800" />)}
+                    {dayEvents.map((event, index) => {
+                      const top = Math.max(0, ((eventStartMinute((event.raw as AttendanceSession | Match).starts_at) - 7 * 60) / 60) * weekHourHeight);
+                      const height = Math.max(34, (event.durationMinutes / 60) * weekHourHeight);
+                      return (
+                        <article key={event.id} className={`absolute left-1 right-1 overflow-hidden rounded-md border px-2 py-1 text-xs shadow-sm ${eventTone(event.type)}`} style={{ top: top + index * 4, height }}>
+                          <p className="font-semibold">{event.time}</p>
+                          <p className="line-clamp-2 font-semibold">{event.title}</p>
+                          <p className="mt-1 line-clamp-1 opacity-80"><MapPin size={11} className="mr-1 inline" />{event.siteName}</p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-
-        <aside className="rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Detalle del dia</p>
-            <h3 className="mt-1 font-semibold text-zinc-950 dark:text-zinc-50">{selectedDate}</h3>
-            <p className="mt-1 text-sm text-zinc-500">{selectedEvents.length} evento(s)</p>
-          </div>
-          <div className="max-h-[720px] divide-y divide-zinc-100 overflow-auto dark:divide-zinc-800">
-            {selectedEvents.map((event) => (
-              <article key={event.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${eventTone(event.type)}`}>{eventTypeLabel(event.type)}</span>
-                  <span className="text-xs font-medium text-zinc-500">{event.source}</span>
-                </div>
-                <h4 className="mt-3 font-semibold text-zinc-950 dark:text-zinc-50">{event.title}</h4>
-                <p className="mt-1 text-sm text-zinc-500">{event.subtitle}</p>
-                <div className="mt-3 grid gap-2 text-sm text-zinc-700 dark:text-zinc-200">
-                  <p className="flex items-center gap-2"><Clock3 size={15} /> {eventRange((event.raw as AttendanceSession | Match).starts_at, event.durationMinutes)} ({event.durationMinutes} min)</p>
-                  <p className="flex items-center gap-2"><MapPin size={15} /> {event.siteName}</p>
-                  {event.type !== "training" && <p className="flex items-center gap-2"><Trophy size={15} /> Partido programado</p>}
-                  {event.type === "training" && <p className="flex items-center gap-2"><UsersRound size={15} /> Entrenamiento / sesion academia</p>}
-                </div>
-              </article>
-            ))}
-            {selectedEvents.length === 0 && (
-              <p className="px-4 py-8 text-sm text-zinc-500">No hay partidos ni entrenamientos para este dia con los filtros actuales.</p>
-            )}
-          </div>
-        </aside>
       </section>
     </div>
   );

@@ -74,7 +74,7 @@ export function defaultSectionsByRole(tabs: Array<{ key: TabKey }>): Record<Role
     owner: tabs.map((tab) => tab.key),
     accounting: ["dashboard", "billing", "debts", "expenses", "sales-estimate", "income-statement", "daily-operation", "invoices", "historical", "discrepancies"],
     site_coordinator: ["dashboard", "calendar", "sports", "tournaments", "attendance", "unknowns", "billing", "debts", "expenses", "students", "guardians", "uniforms"],
-    cashier: ["billing", "unknowns", "adult-dashboard"],
+    cashier: ["billing", "students", "tournaments", "unknowns", "adult-dashboard"],
     coach: ["dashboard", "calendar", "attendance", "sports", "tournaments"],
     guardian: ["sports"],
     adult_representative: ["adult-dashboard"],
