@@ -13,6 +13,9 @@ from .models import (
     Discount,
     Expense,
     FaceRecognitionAttempt,
+    FaceStationDevice,
+    FaceStationEvent,
+    FaceStationUnknownLink,
     Guardian,
     HistoricalImport,
     HistoricalImportRow,
@@ -69,5 +72,8 @@ admin.site.register(Invoice)
 admin.site.register(HistoricalImport)
 admin.site.register(HistoricalImportRow)
 admin.site.register(FaceRecognitionAttempt)
+admin.site.register(FaceStationDevice)
+admin.site.register(FaceStationEvent)
+admin.site.register(FaceStationUnknownLink)
 admin.site.register(DailyClosure)
 admin.site.register(AuditLog)

@@ -6,6 +6,10 @@ Proyecto base para un mini ERP operativo-financiero de academias y torneos de fu
 
 - `back/`: API REST con Python, Django y Django REST Framework.
 - `front/`: frontend React con Vite y Tailwind CSS.
+- `face_station/`: estacion Windows con InsightFace, panel local, modo offline e instalador para la camara de cancha.
+
+La guia de despliegue y operacion de reconocimiento facial esta en
+[`face_station/README.md`](face_station/README.md).
 
 ## Sprint 1 / Dia 1
 

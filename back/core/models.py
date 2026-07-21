@@ -828,6 +828,98 @@ class FaceRecognitionAttempt(TimestampedModel):
         ]
 
 
+class FaceStationDevice(TimestampedModel):
+    public_id = models.UUIDField(default=uuid4, unique=True, editable=False)
+    name = models.CharField(max_length=120)
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="face_station_devices")
+    service_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="face_station_devices",
+    )
+    camera_id = models.CharField(max_length=80, default="cancha_1")
+    secret_hash = models.CharField(max_length=256)
+    is_active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    settings = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "face_station_devices"
+        indexes = [
+            models.Index(fields=["site", "is_active"], name="ix_face_station_site_active"),
+            models.Index(fields=["last_seen_at"], name="ix_face_station_last_seen"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} - {self.site.name}"
+
+
+class FaceStationEventStatus(models.TextChoices):
+    SYNCED = "synced", "Sincronizado"
+    NO_SESSION = "no_session", "Sin sesion"
+    REJECTED = "rejected", "Rechazado"
+
+
+class FaceStationEvent(TimestampedModel):
+    event_id = models.UUIDField(unique=True)
+    device = models.ForeignKey(FaceStationDevice, on_delete=models.PROTECT, related_name="events")
+    person_type = models.CharField(max_length=20)
+    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_events")
+    player = models.ForeignKey(Player, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_events")
+    session = models.ForeignKey(AttendanceSession, null=True, blank=True, on_delete=models.SET_NULL, related_name="face_station_events")
+    occurred_at = models.DateTimeField()
+    detection_count = models.PositiveIntegerField(default=1)
+    similarity = models.FloatField(default=0)
+    source_subject_id = models.CharField(max_length=80, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=FaceStationEventStatus.choices,
+        default=FaceStationEventStatus.SYNCED,
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "face_station_events"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(student__isnull=False, player__isnull=True, person_type="student")
+                    | Q(student__isnull=True, player__isnull=False, person_type="player")
+                ),
+                name="ck_face_station_event_person",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["device", "occurred_at"], name="ix_face_station_device_time"),
+            models.Index(fields=["student", "occurred_at"], name="ix_face_station_student_time"),
+            models.Index(fields=["player", "occurred_at"], name="ix_face_station_player_time"),
+        ]
+
+
+class FaceStationUnknownLink(TimestampedModel):
+    device = models.ForeignKey(FaceStationDevice, on_delete=models.PROTECT, related_name="unknown_links")
+    local_subject_id = models.CharField(max_length=80)
+    person_type = models.CharField(max_length=20)
+    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_unknown_links")
+    player = models.ForeignKey(Player, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_unknown_links")
+    remote_subject_id = models.UUIDField(null=True, blank=True)
+    evidence_uri = models.CharField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "face_station_unknown_links"
+        constraints = [
+            models.UniqueConstraint(fields=["device", "local_subject_id"], name="uq_face_station_unknown_local"),
+            models.CheckConstraint(
+                condition=(
+                    Q(student__isnull=False, player__isnull=True, person_type="student")
+                    | Q(student__isnull=True, player__isnull=False, person_type="player")
+                ),
+                name="ck_face_station_unknown_person",
+            ),
+        ]
+
+
 class CoachWorkLog(TimestampedModel):
     coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="coach_work_logs")
     site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="coach_work_logs")

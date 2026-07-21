@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07502b" />
+    <title>Futsi Face Station</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-block">
+        <img class="brand-logo" src="/static/logo-futsi.png" alt="Futsi" />
+        <div>
+          <strong>Face Station</strong>
+          <span id="site-name">Sin sincronizar</span>
+        </div>
+      </div>
+      <div class="header-status" aria-live="polite">
+        <span class="status-chip" id="camera-chip"><i></i> Camara</span>
+        <span class="status-chip" id="network-chip"><i></i> Sincronizacion</span>
+        <button class="button secondary compact" id="settings-button" type="button">Configuracion</button>
+      </div>
+    </header>
+
+    <nav class="primary-tabs" aria-label="Secciones">
+      <button class="tab-button active" type="button" data-tab="live" data-testid="tab-live">Camara en vivo</button>
+      <button class="tab-button" type="button" data-tab="attendance" data-testid="tab-attendance">Asistencia del dia</button>
+    </nav>
+
+    <main class="app-main">
+      <div class="offline-banner hidden" id="offline-banner">
+        Sin internet. Las detecciones siguen guardandose en esta PC y se sincronizaran automaticamente.
+      </div>
+
+      <section class="tab-panel active" id="panel-live">
+        <div class="metric-grid" aria-label="Estado de la estacion">
+          <article class="metric"><span>Motor</span><strong id="metric-engine">Iniciando</strong><small id="metric-provider">Sin cargar</small></article>
+          <article class="metric"><span>Procesamiento</span><strong id="metric-fps">0 FPS</strong><small id="metric-target">Objetivo 0 FPS</small></article>
+          <article class="metric"><span>Rostros procesados</span><strong id="metric-faces">0</strong><small id="metric-frames">0 frames</small></article>
+          <article class="metric"><span>Sincronizacion</span><strong id="metric-pending">0 pendientes</strong><small id="metric-synced">0 enviados</small></article>
+        </div>
+
+        <div class="live-layout">
+          <section class="panel camera-panel">
+            <div class="panel-heading">
+              <div>
+                <h1>Camara en vivo</h1>
+                <p>Vista de baja latencia. El video completo no se sube a internet.</p>
+              </div>
+              <span class="live-badge"><i></i> EN VIVO</span>
+            </div>
+            <div class="camera-frame">
+              <img src="/api/stream.mjpg" alt="Vista en vivo de la cancha" data-testid="camera-stream" />
+              <div class="camera-legend" aria-label="Leyenda de deteccion">
+                <span><i class="legend-known"></i> Registrado</span>
+                <span><i class="legend-consolidated"></i> Desconocido consolidado</span>
+                <span><i class="legend-candidate"></i> Candidato</span>
+              </div>
+            </div>
+            <div class="engine-actions">
+              <button class="button primary" id="start-button" type="button" data-testid="engine-start">Iniciar motor</button>
+              <button class="button secondary" id="stop-button" type="button" data-testid="engine-stop">Detener</button>
+              <button class="button secondary" id="benchmark-button" type="button" data-testid="engine-benchmark">Medir rendimiento</button>
+            </div>
+            <div class="benchmark-result" id="benchmark-result">La primera ejecucion calcula automaticamente los FPS recomendados.</div>
+          </section>
+
+          <aside class="panel detection-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Detecciones recientes</h2>
+                <p>Una persona puede aparecer varias veces, pero pasa lista una sola vez.</p>
+              </div>
+              <span class="count-badge" id="recent-count">0</span>
+            </div>
+            <div class="detection-list" id="recent-list">
+              <div class="empty-state">Esperando la primera deteccion.</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="panel-attendance">
+        <div class="attendance-toolbar">
+          <div>
+            <h1>Asistencia y desconocidos</h1>
+            <p>Consolidado diario local, aun cuando la conexion a internet falle.</p>
+          </div>
+          <label class="date-control">Fecha <input type="date" id="attendance-date" /></label>
+        </div>
+
+        <div class="metric-grid attendance-metrics">
+          <article class="metric"><span>Personas registradas</span><strong id="known-count">0</strong><small>Una asistencia por sesion</small></article>
+          <article class="metric"><span>Desconocidos</span><strong id="unknown-count">0</strong><small id="unknown-hits">0 apariciones</small></article>
+          <article class="metric"><span>Pendientes de revision</span><strong id="review-count">0</strong><small>Se conservan solo en local</small></article>
+          <article class="metric"><span>Cola offline</span><strong id="queue-count">0</strong><small>Reintento automatico</small></article>
+        </div>
+
+        <section class="panel attendance-panel">
+          <div class="panel-heading">
+            <div><h2>Personas identificadas</h2><p>Foto de referencia, primera aparicion y detecciones acumuladas.</p></div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Persona</th><th>Grupo / equipo</th><th>Sesion</th><th>Primera vez</th><th>Ultima vez</th><th>Detecciones</th><th>Estado</th></tr></thead>
+              <tbody id="known-table"><tr><td colspan="7" class="empty-cell">Sin asistencias para esta fecha.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="unknown-section">
+          <div class="section-heading">
+            <div><h2>Rostros desconocidos</h2><p>Vincula solo cuando confirmes la identidad. Hasta entonces, la evidencia permanece en esta PC.</p></div>
+          </div>
+          <div class="unknown-grid" id="unknown-grid"><div class="panel empty-state">Sin desconocidos para esta fecha.</div></div>
+        </section>
+      </section>
+    </main>
+
+    <div class="modal-backdrop hidden" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <form class="settings-dialog" id="settings-form">
+        <div class="dialog-heading">
+          <div><h2 id="settings-title">Configuracion de la estacion</h2><p>Los cambios del motor reinician el procesamiento sin borrar datos locales.</p></div>
+          <button class="icon-button" type="button" id="settings-close" aria-label="Cerrar" title="Cerrar">X</button>
+        </div>
+        <div class="form-grid">
+          <label class="full">URL de Futsi API<input name="api_url" type="url" required /></label>
+          <label class="full">Token de estacion<input name="station_token" type="password" autocomplete="off" placeholder="Dejar vacio para conservar el actual" /></label>
+          <label class="full">Camara MJPEG, RTSP o indice local<input name="camera_url" required /></label>
+          <label>Procesador<select name="processing_device"><option value="auto">Automatico</option><option value="gpu">GPU NVIDIA</option><option value="cpu">CPU</option></select></label>
+          <label>FPS objetivo<input name="target_fps" type="number" min="0" max="30" step="0.5" /><small>0 = automatico</small></label>
+          <label>Resolucion del detector<select name="detector_size"><option value="320">320</option><option value="480">480</option><option value="640">640</option><option value="960">960</option><option value="1280">1280</option></select></label>
+          <label>Ancho de procesamiento<input name="processing_width" type="number" min="640" max="3840" step="160" /></label>
+          <label>Umbral de registrados<input name="known_threshold" type="number" min="-1" max="1" step="0.01" /></label>
+          <label>Umbral de desconocidos<input name="unknown_threshold" type="number" min="-1" max="1" step="0.01" /></label>
+        </div>
+        <div class="dialog-actions">
+          <button class="button secondary" type="button" id="settings-cancel">Cancelar</button>
+          <button class="button primary" type="submit" data-testid="settings-save">Guardar y reiniciar</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="toast hidden" id="toast" role="status"></div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

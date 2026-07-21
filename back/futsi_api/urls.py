@@ -32,6 +32,13 @@ from core.api.unknown_attendance import (
     UnknownAttendanceSubjectDiscardView,
     UnknownAttendanceSubjectRegisterPersonView,
 )
+from core.api.face_station import (
+    FaceStationBootstrapView,
+    FaceStationEventBatchView,
+    FaceStationHeartbeatView,
+    FaceStationPersonPhotoView,
+    FaceStationUnknownRegisterView,
+)
 from core.api.dashboard import DashboardSummaryView
 from core.api.router import AccountingExportView, FaceAttendanceView, router
 from core.auth_views import LoginView, LogoutView, MeView
@@ -74,5 +81,10 @@ urlpatterns = [
     path("api/unknown-attendance/rejected-faces/<str:capture_id>/<int:face_index>/image/", UnknownAttendanceRejectedFaceImageView.as_view()),
     path("api/unknown-attendance/captures/<str:capture_id>/image/", UnknownAttendanceCaptureImageView.as_view()),
     path("api/unknown-attendance/faces/<path:object_path>", UnknownAttendanceLocalFaceImageView.as_view()),
+    path("api/face-station/bootstrap/", FaceStationBootstrapView.as_view()),
+    path("api/face-station/heartbeat/", FaceStationHeartbeatView.as_view()),
+    path("api/face-station/events/batch/", FaceStationEventBatchView.as_view()),
+    path("api/face-station/unknowns/register/", FaceStationUnknownRegisterView.as_view()),
+    path("api/face-station/people/<str:person_type>/<int:person_id>/photo/", FaceStationPersonPhotoView.as_view()),
     path("api/", include(router.urls)),
 ]
