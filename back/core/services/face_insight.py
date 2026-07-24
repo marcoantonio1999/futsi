@@ -204,7 +204,7 @@ def student_reference_path(student) -> str | None:
                 return student.photo.path
         except Exception:
             pass
-    photo_url = getattr(student, "photo_url", "")
+    photo_url = getattr(student, "photo_url", "") or getattr(student, "avatar_url", "")
     if photo_url:
         parsed_storage_uri = parse_storage_uri(photo_url)
         if parsed_storage_uri:
@@ -228,7 +228,7 @@ def reference_cache_source(student) -> str | None:
                 return f"{student.__class__.__name__}:{student.id}:photo:{student.photo.name}:{stat.st_mtime_ns}:{stat.st_size}:{updated_value}"
         except Exception:
             pass
-    photo_url = getattr(student, "photo_url", "") or ""
+    photo_url = getattr(student, "photo_url", "") or getattr(student, "avatar_url", "") or ""
     if photo_url:
         return f"{student.__class__.__name__}:{student.id}:url:{photo_url}:{updated_value}"
     return None

@@ -22,6 +22,8 @@ from core.models import (
     PlayerAttendanceRecord,
     Student,
     StudentTournamentRegistration,
+    User,
+    UserRole,
 )
 from core.services.face_insight import student_reference_path
 
@@ -29,10 +31,73 @@ from core.services.face_insight import student_reference_path
 ACTIVE_STUDENT_STATUSES = ["trial", "active", "paused", "injured"]
 SESSION_GRACE_MINUTES = int(getattr(settings, "FACE_STATION_SESSION_GRACE_MINUTES", 60))
 MATCH_SESSION_TYPES = {AttendanceSessionType.TOURNAMENT_MATCH, "league_match"}
+FACE_STATION_COLLABORATOR_ROLES = {
+    UserRole.ADMIN,
+    UserRole.DEV,
+    UserRole.ACCOUNTING,
+    UserRole.OWNER,
+    UserRole.SITE_COORDINATOR,
+    UserRole.CASHIER,
+    UserRole.COACH,
+    UserRole.COLLABORATOR,
+}
 
 
 def person_key(person_type: str, person_id: int) -> str:
     return f"{person_type}:{person_id}"
+
+
+def person_display_name(person) -> str:
+    configured = str(getattr(person, "full_name", "") or "").strip()
+    if configured:
+        return configured
+    get_full_name = getattr(person, "get_full_name", None)
+    if callable(get_full_name):
+        configured = str(get_full_name() or "").strip()
+    return configured or str(getattr(person, "username", "") or "").strip()
+
+
+def serialize_station_person(request, device, person_type: str, person) -> dict:
+    configured_photo_url = str(
+        getattr(person, "photo_url", "")
+        or getattr(person, "avatar_url", "")
+        or ""
+    ).strip()
+    configured_photo = getattr(person, "photo", None)
+    configured_photo_name = str(getattr(configured_photo, "name", "") or "").strip()
+    reference_source = configured_photo_url or configured_photo_name
+    reference_available = bool(reference_source)
+    reference_timestamp = (
+        getattr(person, "updated_at", None)
+        or getattr(person, "date_joined", None)
+    )
+    reference_timestamp_value = (
+        reference_timestamp.isoformat()
+        if reference_timestamp
+        else ""
+    )
+    return {
+        "key": person_key(person_type, person.id),
+        "type": person_type,
+        "id": person.id,
+        "name": person_display_name(person),
+        "site_id": device.site_id,
+        "group_name": (
+            person.get_role_display()
+            if person_type == "collaborator" and hasattr(person, "get_role_display")
+            else getattr(person, "group_name", "") or ""
+        ),
+        "team_name": getattr(getattr(person, "team", None), "name", "") or "",
+        "reference_version": f"{reference_timestamp_value}:{reference_source}",
+        "reference_available": reference_available,
+        "photo_url": (
+            request.build_absolute_uri(
+                f"/api/face-station/people/{person_type}/{person.id}/photo/"
+            )
+            if reference_available
+            else ""
+        ),
+    }
 
 
 def registration_matches_session(registration: dict, session: AttendanceSession) -> bool:
@@ -106,6 +171,15 @@ def bootstrap_payload(request, device) -> dict:
         .select_related("team", "team__tournament")
         .order_by("full_name")
     )
+    collaborators = list(
+        User.objects.filter(
+            primary_site=device.site,
+            is_active=True,
+            role__in=FACE_STATION_COLLABORATOR_ROLES,
+        )
+        .exclude(pk=device.service_user_id)
+        .order_by("first_name", "last_name", "username")
+    )
     sessions = list(
         AttendanceSession.objects.filter(
             site=device.site,
@@ -123,21 +197,6 @@ def bootstrap_payload(request, device) -> dict:
     for registration in registrations:
         registrations_by_student.setdefault(registration["student_id"], []).append(registration)
 
-    def serialized_person(person_type, person):
-        return {
-            "key": person_key(person_type, person.id),
-            "type": person_type,
-            "id": person.id,
-            "name": person.full_name,
-            "site_id": device.site_id,
-            "group_name": getattr(person, "group_name", "") or "",
-            "team_name": getattr(getattr(person, "team", None), "name", "") or "",
-            "reference_version": f"{person.updated_at.isoformat()}:{getattr(person, 'photo_url', '')}",
-            "photo_url": request.build_absolute_uri(
-                f"/api/face-station/people/{person_type}/{person.id}/photo/"
-            ),
-        }
-
     return {
         "device": {
             "id": str(device.public_id),
@@ -149,8 +208,18 @@ def bootstrap_payload(request, device) -> dict:
         },
         "server_time": timezone.now().isoformat(),
         "people": [
-            *[serialized_person("student", student) for student in students],
-            *[serialized_person("player", player) for player in players],
+            *[
+                serialize_station_person(request, device, "student", student)
+                for student in students
+            ],
+            *[
+                serialize_station_person(request, device, "player", player)
+                for player in players
+            ],
+            *[
+                serialize_station_person(request, device, "collaborator", collaborator)
+                for collaborator in collaborators
+            ],
         ],
         "sessions": [
             {
@@ -180,10 +249,19 @@ def person_for_device(device, person_type: str, person_id: int):
         return Student.objects.filter(pk=person_id, site=device.site, status__in=ACTIVE_STUDENT_STATUSES).first()
     if person_type == "player":
         return Player.objects.filter(pk=person_id, team__tournament__site=device.site, is_active=True).first()
+    if person_type == "collaborator":
+        return User.objects.filter(
+            pk=person_id,
+            primary_site=device.site,
+            is_active=True,
+            role__in=FACE_STATION_COLLABORATOR_ROLES,
+        ).exclude(pk=device.service_user_id).first()
     return None
 
 
 def person_in_session(person_type: str, person, session: AttendanceSession) -> bool:
+    if person_type == "collaborator":
+        return False
     if person_type == "student":
         return student_is_in_session_roster(person, session)
     if session.session_type not in MATCH_SESSION_TYPES:
@@ -206,6 +284,8 @@ def timestamp_in_session(occurred_at, session: AttendanceSession) -> bool:
 
 
 def resolve_session(device, person_type: str, person, occurred_at, requested_id=None):
+    if person_type == "collaborator":
+        return None
     queryset = AttendanceSession.objects.filter(site=device.site).select_related(
         "match", "match__home_team", "match__away_team", "team", "tournament"
     )
@@ -267,7 +347,11 @@ def sync_detection_event(device, raw_event: dict) -> dict:
         event["occurred_at"],
         requested_id=event["session_id"],
     )
-    event_status = FaceStationEventStatus.SYNCED if session else FaceStationEventStatus.NO_SESSION
+    event_status = (
+        FaceStationEventStatus.SYNCED
+        if session or event["person_type"] == "collaborator"
+        else FaceStationEventStatus.NO_SESSION
+    )
     create_values = {
         "event_id": event["event_id"],
         "device": device,

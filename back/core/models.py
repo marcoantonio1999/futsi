@@ -27,6 +27,7 @@ class UserRole(models.TextChoices):
     SITE_COORDINATOR = "site_coordinator", "Coordinador de sede"
     CASHIER = "cashier", "Cajero"
     COACH = "coach", "Coach"
+    COLLABORATOR = "collaborator", "Colaborador"
     GUARDIAN = "guardian", "Representante"
     ADULT_REPRESENTATIVE = "adult_representative", "Representante adulto"
     ADULT_PLAYER = "adult_player", "Jugador adulto"
@@ -407,210 +408,7 @@ class AttendanceStatus(models.TextChoices):
 
 
 class AttendanceRecord(TimestampedModel):
-    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE, related_name="records")
-    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="attendance_records")
-    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="attendance_records")
-    status = models.CharField(max_length=20, choices=AttendanceStatus.choices)
-    had_debt_at_capture = models.BooleanField(default=False)
-    override_reason = models.TextField(blank=True)
-    captured_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="captured_attendance")
-
-    class Meta:
-        db_table = "attendance_records"
-        constraints = [
-            models.CheckConstraint(
-                condition=(
-                    Q(student__isnull=False, team__isnull=True)
-                    | Q(student__isnull=True, team__isnull=False)
-                ),
-                name="ck_attendance_record_subject",
-            ),
-            models.UniqueConstraint(fields=["session", "student"], condition=Q(student__isnull=False), name="uq_att_record_session_student"),
-            models.UniqueConstraint(fields=["session", "team"], condition=Q(team__isnull=False), name="uq_att_record_session_team"),
-        ]
-        indexes = [
-            models.Index(fields=["session", "status"], name="ix_att_record_session_status"),
-            models.Index(fields=["student"], name="ix_att_record_student"),
-            models.Index(fields=["team"], name="ix_att_record_team"),
-        ]
-
-
-class PlayerAttendanceRecord(TimestampedModel):
-    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE, related_name="player_records")
-    player = models.ForeignKey(Player, on_delete=models.PROTECT, related_name="attendance_records")
-    status = models.CharField(max_length=20, choices=AttendanceStatus.choices)
-    had_team_debt_at_capture = models.BooleanField(default=False)
-    override_reason = models.TextField(blank=True)
-    captured_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="captured_player_attendance")
-
-    class Meta:
-        db_table = "player_attendance_records"
-        constraints = [
-            models.UniqueConstraint(fields=["session", "player"], name="uq_player_att_session_player"),
-        ]
-        indexes = [
-            models.Index(fields=["session", "status"], name="ix_player_att_session_status"),
-            models.Index(fields=["player"], name="ix_player_att_player"),
-        ]
-
-
-class ChargeStatus(models.TextChoices):
-    PENDING = "pending", "Pendiente"
-    PARTIAL = "partial", "Parcial"
-    PAID = "paid", "Pagado"
-    CANCELED = "canceled", "Cancelado"
-
-
-class Charge(TimestampedModel):
-    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="charges")
-    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
-    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
-    tournament_registration = models.ForeignKey(StudentTournamentRegistration, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
-    jornada_number = models.PositiveSmallIntegerField(null=True, blank=True)
-    concept = models.CharField(max_length=80)
-    description = models.CharField(max_length=180, blank=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    due_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=ChargeStatus.choices, default=ChargeStatus.PENDING)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_charges")
-
-    class Meta:
-        db_table = "charges"
-        constraints = [
-            models.CheckConstraint(condition=Q(amount__gte=0), name="ck_charge_amount"),
-            models.CheckConstraint(
-                condition=(
-                    Q(student__isnull=False, team__isnull=True)
-                    | Q(student__isnull=True, team__isnull=False)
-                ),
-                name="ck_charge_subject",
-            ),
-        ]
-        indexes = [
-            models.Index(fields=["site", "status"], name="ix_charge_site_status"),
-            models.Index(fields=["student", "status"], name="ix_charge_student_status"),
-            models.Index(fields=["team", "status"], name="ix_charge_team_status"),
-            models.Index(fields=["tournament_registration", "status"], name="ix_charge_tourn_reg_status"),
-        ]
-
-
-class PaymentMethod(models.TextChoices):
-    CASH = "cash", "Efectivo"
-    TRANSFER = "transfer", "Transferencia"
-    CARD = "card", "Tarjeta"
-    COURTESY = "courtesy", "Cortesia"
-
-
-class PaymentStatus(models.TextChoices):
-    PROCESSING = "processing", "En proceso"
-    AWAITING_CONFIRMATION = "awaiting_confirmation", "Pendiente de aceptacion"
-    REGISTERED = "registered", "Registrado"
-    RECONCILED = "reconciled", "Conciliado"
-    CANCELED = "canceled", "Cancelado"
-    EXPIRED = "expired", "Expirado"
-
-
-class PaymentChannel(models.TextChoices):
-    CASH_CONFIRMATION = "cash_confirmation", "Efectivo con aceptacion"
-    TRANSFER_CLABE = "transfer_clabe", "Transferencia CLABE"
-    CARD_TERMINAL = "card_terminal", "Terminal"
-    CARD_LINK = "card_link", "Link de pago"
-    COURTESY = "courtesy", "Cortesia"
-
-
-class Payment(TimestampedModel):
-    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="payments")
-    charge = models.ForeignKey(Charge, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
-    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
-    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
-    method = models.CharField(max_length=20, choices=PaymentMethod.choices)
-    channel = models.CharField(max_length=40, choices=PaymentChannel.choices, blank=True)
-    status = models.CharField(max_length=32, choices=PaymentStatus.choices, default=PaymentStatus.REGISTERED)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    paid_at = models.DateTimeField(default=timezone.now)
-    confirmed_at = models.DateTimeField(null=True, blank=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    reference = models.CharField(max_length=120, blank=True)
-    tracking_key = models.CharField(max_length=120, blank=True)
-    payment_url = models.URLField(blank=True)
-    receipt_file = models.FileField(upload_to="payments/receipts/", blank=True)
-    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="received_payments")
-    notes = models.TextField(blank=True)
-
-    class Meta:
-        db_table = "payments"
-        constraints = [
-            models.CheckConstraint(condition=Q(amount__gte=0), name="ck_payment_amount"),
-        ]
-        indexes = [
-            models.Index(fields=["site", "paid_at"], name="ix_payment_site_paid_at"),
-            models.Index(fields=["method", "status"], name="ix_payment_method_status"),
-            models.Index(fields=["tracking_key"], name="ix_payment_tracking_key"),
-        ]
-
-
-class DiscountStatus(models.TextChoices):
-    REQUESTED = "requested", "Solicitado"
-    APPROVED = "approved", "Aprobado"
-    REJECTED = "rejected", "Rechazado"
-    CANCELED = "canceled", "Cancelado"
-
-
-class Discount(TimestampedModel):
-    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="discounts")
-    charge = models.ForeignKey(Charge, null=True, blank=True, on_delete=models.PROTECT, related_name="discounts")
-    student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="discounts")
-    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="discounts")
-    reason = models.CharField(max_length=80)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    status = models.CharField(max_length=20, choices=DiscountStatus.choices, default=DiscountStatus.REQUESTED)
-    evidence_file = models.FileField(upload_to="discounts/evidence/", blank=True)
-    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="requested_discounts")
-    signed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="signed_discounts",
-    )
-    signed_at = models.DateTimeField(null=True, blank=True)
-    approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="approved_discounts",
-    )
-    approved_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table = "discounts"
-        constraints = [
-            models.CheckConstraint(condition=Q(amount__gte=0), name="ck_discount_amount"),
-        ]
-        indexes = [
-            models.Index(fields=["site", "status"], name="ix_discount_site_status"),
-            models.Index(fields=["student", "status"], name="ix_discount_student_status"),
-            models.Index(fields=["team", "status"], name="ix_discount_team_status"),
-        ]
-
-
-class ExpenseStatus(models.TextChoices):
-    PENDING = "pending", "Pendiente"
-    APPROVED = "approved", "Aprobado"
-    REJECTED = "rejected", "Rechazado"
-    CANCELED = "canceled", "Cancelado"
-
-
-class Expense(TimestampedModel):
-    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="expenses")
-    category = models.CharField(max_length=80)
-    description = models.CharField(max_length=180)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    expense_date = models.DateField(default=timezone.localdate)
-    provider_name = models.CharField(max_length=160, blank=True)
-    evidence_file = models.FileField(upload_to="expenses/evidence/", blank=True)
-    status = models.CharField(max_length=20, choices=ExpenseStatus.choices, default=ExpenseStatus.PENDING)
+    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE, rel…2732 tokens truncated…us.PENDING)
     captured_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="captured_expenses")
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -866,6 +664,13 @@ class FaceStationEvent(TimestampedModel):
     person_type = models.CharField(max_length=20)
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_events")
     player = models.ForeignKey(Player, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_events")
+    collaborator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="face_station_attendance_events",
+    )
     session = models.ForeignKey(AttendanceSession, null=True, blank=True, on_delete=models.SET_NULL, related_name="face_station_events")
     occurred_at = models.DateTimeField()
     detection_count = models.PositiveIntegerField(default=1)
@@ -883,8 +688,9 @@ class FaceStationEvent(TimestampedModel):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    Q(student__isnull=False, player__isnull=True, person_type="student")
-                    | Q(student__isnull=True, player__isnull=False, person_type="player")
+                    Q(student__isnull=False, player__isnull=True, collaborator__isnull=True, person_type="student")
+                    | Q(student__isnull=True, player__isnull=False, collaborator__isnull=True, person_type="player")
+                    | Q(student__isnull=True, player__isnull=True, collaborator__isnull=False, person_type="collaborator")
                 ),
                 name="ck_face_station_event_person",
             ),
@@ -893,6 +699,7 @@ class FaceStationEvent(TimestampedModel):
             models.Index(fields=["device", "occurred_at"], name="ix_face_station_device_time"),
             models.Index(fields=["student", "occurred_at"], name="ix_face_station_student_time"),
             models.Index(fields=["player", "occurred_at"], name="ix_face_station_player_time"),
+            models.Index(fields=["collaborator", "occurred_at"], name="ix_face_station_collab_time"),
         ]
 
 
@@ -902,6 +709,13 @@ class FaceStationUnknownLink(TimestampedModel):
     person_type = models.CharField(max_length=20)
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_unknown_links")
     player = models.ForeignKey(Player, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_unknown_links")
+    collaborator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="face_station_unknown_links",
+    )
     remote_subject_id = models.UUIDField(null=True, blank=True)
     evidence_uri = models.CharField(max_length=500, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
@@ -912,8 +726,9 @@ class FaceStationUnknownLink(TimestampedModel):
             models.UniqueConstraint(fields=["device", "local_subject_id"], name="uq_face_station_unknown_local"),
             models.CheckConstraint(
                 condition=(
-                    Q(student__isnull=False, player__isnull=True, person_type="student")
-                    | Q(student__isnull=True, player__isnull=False, person_type="player")
+                    Q(student__isnull=False, player__isnull=True, collaborator__isnull=True, person_type="student")
+                    | Q(student__isnull=True, player__isnull=False, collaborator__isnull=True, person_type="player")
+                    | Q(student__isnull=True, player__isnull=True, collaborator__isnull=False, person_type="collaborator")
                 ),
                 name="ck_face_station_unknown_person",
             ),

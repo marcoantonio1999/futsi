@@ -14,9 +14,14 @@ from .face_station_service import (
     bootstrap_payload,
     person_for_device,
     person_photo_response,
+    serialize_station_person,
     sync_detection_event,
 )
-from .face_station_unknowns import register_linked_unknown
+from .face_station_unknowns import (
+    create_station_collaborator,
+    create_station_student,
+    register_linked_unknown,
+)
 
 
 class FaceStationAPIView(APIView):
@@ -82,6 +87,34 @@ class FaceStationEventBatchView(FaceStationAPIView):
         return Response({"accepted": accepted, "rejected": len(results) - accepted, "results": results})
 
 
+def sync_unknown_events(
+    device,
+    person_type: str,
+    person,
+    local_subject_id: str,
+    events: list[dict],
+) -> list[dict]:
+    sync_results = []
+    for raw_event in events:
+        event = {
+            **raw_event,
+            "person_type": person_type,
+            "person_id": person.id,
+            "source_subject_id": local_subject_id,
+        }
+        try:
+            sync_results.append(sync_detection_event(device, event))
+        except Exception as exc:
+            sync_results.append(
+                {
+                    "event_id": str(raw_event.get("event_id", "")),
+                    "status": "rejected",
+                    "detail": str(exc),
+                }
+            )
+    return sync_results
+
+
 class FaceStationUnknownRegisterView(FaceStationAPIView):
     @transaction.atomic
     def post(self, request):
@@ -107,18 +140,13 @@ class FaceStationUnknownRegisterView(FaceStationAPIView):
             device=self.device,
             local_subject_id=local_subject_id,
         ).first()
-        sync_results = []
-        for raw_event in events:
-            event = {
-                **raw_event,
-                "person_type": person_type,
-                "person_id": person_id,
-                "source_subject_id": local_subject_id,
-            }
-            try:
-                sync_results.append(sync_detection_event(self.device, event))
-            except Exception as exc:
-                sync_results.append({"event_id": str(raw_event.get("event_id", "")), "status": "rejected", "detail": str(exc)})
+        sync_results = sync_unknown_events(
+            self.device,
+            person_type,
+            person,
+            local_subject_id,
+            events,
+        )
 
         if existing:
             return Response(
@@ -137,6 +165,7 @@ class FaceStationUnknownRegisterView(FaceStationAPIView):
             person_type=person_type,
             student=person if person_type == "student" else None,
             player=person if person_type == "player" else None,
+            collaborator=person if person_type == "collaborator" else None,
             remote_subject_id=registration.get("subject_id") or None,
             evidence_uri=registration.get("face_uri", ""),
             metadata={"storage_warning": registration.get("storage_warning", "")},
@@ -149,6 +178,196 @@ class FaceStationUnknownRegisterView(FaceStationAPIView):
                 "remote_subject_id": registration.get("subject_id"),
                 "temporary_name": registration.get("temporary_name"),
                 "storage_warning": registration.get("storage_warning", ""),
+                "events": sync_results,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class FaceStationStudentQuickCreateView(FaceStationAPIView):
+    @transaction.atomic
+    def post(self, request):
+        local_subject_id = str(request.data.get("local_subject_id", "")).strip()[:80]
+        events = request.data.get("events", [])
+        if not local_subject_id:
+            return Response(
+                {"detail": "local_subject_id es obligatorio."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(events, list) or not events:
+            return Response(
+                {"detail": "Incluye al menos una aparicion consolidada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(events) > 100:
+            return Response(
+                {"detail": "Se admiten hasta 100 apariciones por registro."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing = (
+            FaceStationUnknownLink.objects.select_related("student")
+            .filter(device=self.device, local_subject_id=local_subject_id)
+            .first()
+        )
+        if existing:
+            if not existing.student:
+                return Response(
+                    {"detail": "El rostro ya esta vinculado a otra clase de persona."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            sync_results = sync_unknown_events(
+                self.device,
+                "student",
+                existing.student,
+                local_subject_id,
+                events,
+            )
+            return Response(
+                {
+                    "created": False,
+                    "duplicate": True,
+                    "person": serialize_station_person(
+                        request,
+                        self.device,
+                        "student",
+                        existing.student,
+                    ),
+                    "remote_subject_id": (
+                        str(existing.remote_subject_id)
+                        if existing.remote_subject_id
+                        else None
+                    ),
+                    "events": sync_results,
+                }
+            )
+
+        try:
+            student, link = create_station_student(self.device, request.data, events)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {"detail": f"No se pudo guardar la fotografia privada: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        sync_results = sync_unknown_events(
+            self.device,
+            "student",
+            student,
+            local_subject_id,
+            events,
+        )
+        return Response(
+            {
+                "created": True,
+                "duplicate": False,
+                "person": serialize_station_person(
+                    request,
+                    self.device,
+                    "student",
+                    student,
+                ),
+                "remote_subject_id": (
+                    str(link.remote_subject_id) if link.remote_subject_id else None
+                ),
+                "events": sync_results,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class FaceStationCollaboratorQuickCreateView(FaceStationAPIView):
+    @transaction.atomic
+    def post(self, request):
+        local_subject_id = str(request.data.get("local_subject_id", "")).strip()[:80]
+        events = request.data.get("events", [])
+        if not local_subject_id:
+            return Response(
+                {"detail": "local_subject_id es obligatorio."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(events, list) or not events:
+            return Response(
+                {"detail": "Incluye al menos una aparicion consolidada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(events) > 100:
+            return Response(
+                {"detail": "Se admiten hasta 100 apariciones por registro."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing = (
+            FaceStationUnknownLink.objects.select_related("collaborator")
+            .filter(device=self.device, local_subject_id=local_subject_id)
+            .first()
+        )
+        if existing:
+            if not existing.collaborator:
+                return Response(
+                    {"detail": "El rostro ya esta vinculado a otra clase de persona."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            sync_results = sync_unknown_events(
+                self.device,
+                "collaborator",
+                existing.collaborator,
+                local_subject_id,
+                events,
+            )
+            return Response(
+                {
+                    "created": False,
+                    "duplicate": True,
+                    "person": serialize_station_person(
+                        request,
+                        self.device,
+                        "collaborator",
+                        existing.collaborator,
+                    ),
+                    "remote_subject_id": (
+                        str(existing.remote_subject_id)
+                        if existing.remote_subject_id
+                        else None
+                    ),
+                    "events": sync_results,
+                }
+            )
+
+        try:
+            collaborator, link = create_station_collaborator(
+                self.device,
+                request.data,
+                events,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {"detail": f"No se pudo guardar la fotografia privada: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        sync_results = sync_unknown_events(
+            self.device,
+            "collaborator",
+            collaborator,
+            local_subject_id,
+            events,
+        )
+        return Response(
+            {
+                "created": True,
+                "duplicate": False,
+                "person": serialize_station_person(
+                    request,
+                    self.device,
+                    "collaborator",
+                    collaborator,
+                ),
+                "remote_subject_id": (
+                    str(link.remote_subject_id) if link.remote_subject_id else None
+                ),
                 "events": sync_results,
             },
             status=status.HTTP_201_CREATED,
