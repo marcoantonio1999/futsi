@@ -243,7 +243,12 @@ class FaceStationStudentQuickCreateView(FaceStationAPIView):
             )
 
         try:
-            student, link = create_station_student(self.device, request.data, events)
+            student, link = create_station_student(
+                self.device,
+                request.data,
+                events,
+                request.headers.get("X-Futsi-Station-Key", ""),
+            )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except RuntimeError as exc:
@@ -340,6 +345,7 @@ class FaceStationCollaboratorQuickCreateView(FaceStationAPIView):
                 self.device,
                 request.data,
                 events,
+                request.headers.get("X-Futsi-Station-Key", ""),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

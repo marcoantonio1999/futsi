@@ -11,7 +11,10 @@ from django.db import connection
 from django.utils import timezone
 
 from core.models import FaceStationUnknownLink, Guardian, Student, User, UserRole
-from core.services.supabase_storage import upload_private_file
+from core.services.supabase_storage import (
+    upload_face_station_reference,
+    upload_private_file,
+)
 
 from .face_station_service import parse_event
 
@@ -41,11 +44,21 @@ def table_exists(table_name: str) -> bool:
     return table_name in connection.introspection.table_names()
 
 
-def register_linked_unknown(device, payload: dict, person, events: list[dict]) -> dict:
+def register_linked_unknown(
+    device,
+    payload: dict,
+    person,
+    events: list[dict],
+    existing_face_uri: str = "",
+) -> dict:
     if not table_exists("unknown_attendance_subjects"):
         return {"subject_id": None, "storage_warning": "La tabla de desconocidos no existe en esta base."}
-    crop_path = decode_face_crop(str(payload.get("best_crop", "")))
-    face_uri = ""
+    crop_path = (
+        None
+        if existing_face_uri
+        else decode_face_crop(str(payload.get("best_crop", "")))
+    )
+    face_uri = existing_face_uri
     storage_warning = ""
     if crop_path:
         object_path = f"face-stations/{device.site.code}/{device.public_id}/{payload.get('local_subject_id')}.jpg"
@@ -103,6 +116,7 @@ def create_station_student(
     device,
     payload: dict,
     events: list[dict],
+    station_token: str,
 ) -> tuple[Student, FaceStationUnknownLink]:
     full_name = " ".join(str(payload.get("full_name") or "").split())
     local_subject_id = str(payload.get("local_subject_id") or "").strip()[:80]
@@ -116,16 +130,12 @@ def create_station_student(
     crop_path = decode_face_crop(str(payload.get("best_crop") or ""))
     if not crop_path:
         raise ValueError("Selecciona un recorte para usarlo como foto del alumno.")
-    object_path = (
-        f"students/{device.site_id}/face-station/{device.public_id}/"
-        f"{local_subject_id}.jpg"
-    )
     try:
-        photo_uri = upload_private_file(
-            STUDENT_PHOTO_BUCKET,
-            object_path,
-            crop_path,
-            upsert=True,
+        photo_uri = upload_face_station_reference(
+            person_type="student",
+            local_subject_id=local_subject_id,
+            local_path=crop_path,
+            station_token=station_token,
         )
     finally:
         crop_path.unlink(missing_ok=True)
@@ -152,6 +162,7 @@ def create_station_student(
         {**payload, "person_type": "student"},
         student,
         events,
+        existing_face_uri=photo_uri,
     )
     link = FaceStationUnknownLink.objects.create(
         device=device,
@@ -172,6 +183,7 @@ def create_station_collaborator(
     device,
     payload: dict,
     events: list[dict],
+    station_token: str,
 ) -> tuple[User, FaceStationUnknownLink]:
     full_name = " ".join(str(payload.get("full_name") or "").split())
     local_subject_id = str(payload.get("local_subject_id") or "").strip()[:80]
@@ -185,16 +197,12 @@ def create_station_collaborator(
     crop_path = decode_face_crop(str(payload.get("best_crop") or ""))
     if not crop_path:
         raise ValueError("Selecciona un recorte para usarlo como foto del colaborador.")
-    object_path = (
-        f"collaborators/{device.site_id}/face-station/{device.public_id}/"
-        f"{local_subject_id}.jpg"
-    )
     try:
-        photo_uri = upload_private_file(
-            COLLABORATOR_PHOTO_BUCKET,
-            object_path,
-            crop_path,
-            upsert=True,
+        photo_uri = upload_face_station_reference(
+            person_type="collaborator",
+            local_subject_id=local_subject_id,
+            local_path=crop_path,
+            station_token=station_token,
         )
     finally:
         crop_path.unlink(missing_ok=True)
@@ -215,6 +223,7 @@ def create_station_collaborator(
         {**payload, "person_type": "collaborator"},
         collaborator,
         events,
+        existing_face_uri=photo_uri,
     )
     link = FaceStationUnknownLink.objects.create(
         device=device,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 from uuid import UUID
 
 from django.conf import settings
@@ -65,7 +66,15 @@ def serialize_station_person(request, device, person_type: str, person) -> dict:
     ).strip()
     configured_photo = getattr(person, "photo", None)
     configured_photo_name = str(getattr(configured_photo, "name", "") or "").strip()
-    reference_source = configured_photo_url or configured_photo_name
+    parsed_photo_url = urlparse(configured_photo_url)
+    is_placeholder_photo = (
+        parsed_photo_url.scheme in {"http", "https"}
+        and parsed_photo_url.hostname in {"images.unsplash.com", "unsplash.com"}
+    )
+    reference_source = (
+        configured_photo_name
+        or (configured_photo_url if not is_placeholder_photo else "")
+    )
     reference_available = bool(reference_source)
     reference_timestamp = (
         getattr(person, "updated_at", None)

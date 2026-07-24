@@ -274,12 +274,16 @@ def test_station_quick_creates_student_with_selected_crop_and_is_idempotent(
     local_subject_id = str(uuid4())
     upload_calls = []
 
-    def fake_upload(bucket, object_path, local_path, upsert=True):
-        upload_calls.append((bucket, object_path, local_path.read_bytes(), upsert))
-        return f"supabase://{bucket}/{object_path}"
+    def fake_upload(*, person_type, local_subject_id, local_path, station_token):
+        upload_calls.append((person_type, local_subject_id, local_path.read_bytes(), station_token))
+        return (
+            "supabase://student-private-photos/"
+            f"students/{station_context['site'].id}/face-station/"
+            f"{station_context['device'].public_id}/{local_subject_id}.jpg"
+        )
 
     monkeypatch.setattr(
-        "core.api.face_station_unknowns.upload_private_file",
+        "core.api.face_station_unknowns.upload_face_station_reference",
         fake_upload,
     )
     payload = {
@@ -318,8 +322,9 @@ def test_station_quick_creates_student_with_selected_crop_and_is_idempotent(
     assert Guardian.objects.filter(pk=student.guardian_id).count() == 1
     assert Student.objects.filter(full_name="Alumna Nueva FaceGuard").count() == 1
     assert len(upload_calls) == 1
-    assert upload_calls[0][0] == "student-private-photos"
+    assert upload_calls[0][0] == "student"
     assert upload_calls[0][2] == b"selected-face-crop"
+    assert upload_calls[0][3] == station_context["token"]
     assert FaceStationUnknownLink.objects.filter(
         device=station_context["device"],
         local_subject_id=local_subject_id,
@@ -340,12 +345,16 @@ def test_station_quick_creates_collaborator_with_selected_crop_and_is_idempotent
     local_subject_id = str(uuid4())
     upload_calls = []
 
-    def fake_upload(bucket, object_path, local_path, upsert=True):
-        upload_calls.append((bucket, object_path, local_path.read_bytes(), upsert))
-        return f"supabase://{bucket}/{object_path}"
+    def fake_upload(*, person_type, local_subject_id, local_path, station_token):
+        upload_calls.append((person_type, local_subject_id, local_path.read_bytes(), station_token))
+        return (
+            "supabase://adult-private-photos/"
+            f"collaborators/{station_context['site'].id}/face-station/"
+            f"{station_context['device'].public_id}/{local_subject_id}.jpg"
+        )
 
     monkeypatch.setattr(
-        "core.api.face_station_unknowns.upload_private_file",
+        "core.api.face_station_unknowns.upload_face_station_reference",
         fake_upload,
     )
     payload = {
@@ -383,8 +392,9 @@ def test_station_quick_creates_collaborator_with_selected_crop_and_is_idempotent
     assert collaborator.has_usable_password() is False
     assert collaborator.avatar_url.startswith("supabase://adult-private-photos/")
     assert len(upload_calls) == 1
-    assert upload_calls[0][0] == "adult-private-photos"
+    assert upload_calls[0][0] == "collaborator"
     assert upload_calls[0][2] == b"collaborator-face-crop"
+    assert upload_calls[0][3] == station_context["token"]
     assert FaceStationUnknownLink.objects.filter(
         device=station_context["device"],
         local_subject_id=local_subject_id,
