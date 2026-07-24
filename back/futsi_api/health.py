@@ -4,7 +4,7 @@ from django.db import connection
 from django.http import JsonResponse
 
 
-RELEASE_MARKER = "faceguard-collaborator-20260724-v3"
+RELEASE_MARKER = "faceguard-collaborator-20260724-v4"
 
 
 def index(request):

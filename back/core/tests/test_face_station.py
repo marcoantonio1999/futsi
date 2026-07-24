@@ -293,7 +293,13 @@ def test_station_quick_creates_student_with_selected_crop_and_is_idempotent(
             "data:image/jpeg;base64,"
             + base64.b64encode(b"selected-face-crop").decode("ascii")
         ),
-        "events": [event_payload("student", 0, session.id)],
+        "events": [
+            {
+                key: value
+                for key, value in event_payload("student", 0, session.id).items()
+                if key not in {"person_type", "person_id"}
+            }
+        ],
     }
 
     first = api_client.post(
@@ -364,7 +370,13 @@ def test_station_quick_creates_collaborator_with_selected_crop_and_is_idempotent
             "data:image/jpeg;base64,"
             + base64.b64encode(b"collaborator-face-crop").decode("ascii")
         ),
-        "events": [event_payload("collaborator", 0)],
+        "events": [
+            {
+                key: value
+                for key, value in event_payload("collaborator", 0).items()
+                if key not in {"person_type", "person_id"}
+            }
+        ],
     }
 
     first = api_client.post(

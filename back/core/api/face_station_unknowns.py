@@ -51,6 +51,24 @@ def register_linked_unknown(
     events: list[dict],
     existing_face_uri: str = "",
 ) -> dict:
+    parsed_events = [
+        parse_event(
+            {
+                **item,
+                "person_type": str(payload.get("person_type") or ""),
+                "person_id": person.id,
+            }
+        )
+        for item in events
+    ]
+    first_seen = min(
+        (item["occurred_at"] for item in parsed_events),
+        default=timezone.now(),
+    )
+    last_seen = max(
+        (item["occurred_at"] for item in parsed_events),
+        default=first_seen,
+    )
     if not table_exists("unknown_attendance_subjects"):
         return {"subject_id": None, "storage_warning": "La tabla de desconocidos no existe en esta base."}
     crop_path = (
@@ -69,8 +87,6 @@ def register_linked_unknown(
         finally:
             crop_path.unlink(missing_ok=True)
 
-    first_seen = min((parse_event(item)["occurred_at"] for item in events), default=timezone.now())
-    last_seen = max((parse_event(item)["occurred_at"] for item in events), default=first_seen)
     metadata = {
         "source": "face_station",
         "local_subject_id": str(payload.get("local_subject_id", "")),
@@ -100,7 +116,7 @@ def register_linked_unknown(
                 device.site_id,
                 first_seen,
                 last_seen,
-                sum(max(1, int(item.get("detection_count", 1))) for item in events),
+                sum(item["detection_count"] for item in parsed_events),
                 matched_person_type,
                 student_id,
                 player_id,
