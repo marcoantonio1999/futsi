@@ -81,6 +81,11 @@ def register_linked_unknown(
         metadata["matched_collaborator_id"] = int(person.id)
     student_id = person.id if payload.get("person_type") == "student" else None
     player_id = person.id if payload.get("person_type") == "player" else None
+    matched_person_type = (
+        payload.get("person_type")
+        if payload.get("person_type") in {"student", "player"}
+        else None
+    )
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -96,7 +101,7 @@ def register_linked_unknown(
                 first_seen,
                 last_seen,
                 sum(max(1, int(item.get("detection_count", 1))) for item in events),
-                payload.get("person_type"),
+                matched_person_type,
                 student_id,
                 player_id,
                 f"Vinculado desde {device.name}.",
