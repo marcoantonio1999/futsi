@@ -41,6 +41,10 @@ from core.api.face_station import (
     FaceStationStudentQuickCreateView,
     FaceStationUnknownRegisterView,
 )
+from core.api.face_station_reports import (
+    FaceStationDailyReportSyncView,
+    FaceStationMonthlyReportView,
+)
 from core.api.dashboard import DashboardSummaryView
 from core.api.router import AccountingExportView, FaceAttendanceView, router
 from core.auth_views import LoginView, LogoutView, MeView
@@ -94,6 +98,14 @@ urlpatterns = [
     path(
         "api/face-station/collaborators/quick-create/",
         FaceStationCollaboratorQuickCreateView.as_view(),
+    ),
+    path(
+        "api/face-station/reports/daily/",
+        FaceStationDailyReportSyncView.as_view(),
+    ),
+    path(
+        "api/face-station/reports/monthly/",
+        FaceStationMonthlyReportView.as_view(),
     ),
     path("api/face-station/people/<str:person_type>/<int:person_id>/photo/", FaceStationPersonPhotoView.as_view()),
     path("api/", include(router.urls)),
