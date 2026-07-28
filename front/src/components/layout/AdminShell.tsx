@@ -229,7 +229,11 @@ export function AdminShell({
 
     setBusinessScope(nextScope);
     setActiveTab(nextTab);
-    if (nextTab === "attendance" && nextScope === "adult" && attendanceSubsection === "occupancy") {
+    if (
+      nextTab === "attendance"
+      && nextScope === "adult"
+      && (attendanceSubsection === "occupancy" || attendanceSubsection === "faceguard-monthly")
+    ) {
       setAttendanceSubsection("report");
     }
     setMobileMenuOpen(false);

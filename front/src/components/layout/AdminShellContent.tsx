@@ -13,6 +13,7 @@ import type { AttendanceSubsection, BillingSubsection, BusinessScope, StudentsSu
 import { AutomaticAttendancePanel, VideoOccupancyPanel } from "../../features/automatic-attendance";
 import { BillingCollectionPanel, BillingPanel } from "../../features/billing";
 import { CoachDashboardPanel, CoachesConsolidatedPanel } from "../../features/coach";
+import { FaceGuardMonthlyReport } from "../../features/faceguard-monthly";
 import { TournamentsPanel, type TournamentSection } from "../../features/tournaments";
 import { UnknownAttendanceDetailPanel, UnknownAttendancePanel } from "../../features/unknown-attendance";
 import { UnknownPeoplePanel } from "../../features/unknown-people";
@@ -285,8 +286,12 @@ function AttendanceContent({
   onPostAction,
   onMarkAdultPlayer,
 }: AttendanceContentProps) {
+  const canViewFaceGuardMonthly = ["admin", "dev", "owner", "site_coordinator"].includes(user.role);
   const items: Array<{ key: AttendanceSubsection; label: string }> = [
     { key: "general", label: "Asistencia general" },
+    ...(businessScope === "academy" && canViewFaceGuardMonthly
+      ? [{ key: "faceguard-monthly" as const, label: "Resumen mensual" }]
+      : []),
     { key: "report", label: "Reporte automatico" },
     { key: "automatic", label: "Pase automatico" },
     { key: "unknown", label: "Desconocidos" },
@@ -298,7 +303,7 @@ function AttendanceContent({
   return (
     <div className="grid gap-5">
       <div className="rounded-md border border-zinc-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
           {items.map((item) => (
             <button
               key={item.key}
@@ -333,6 +338,9 @@ function AttendanceContent({
       )}
       {attendanceSubsection === "automatic" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="process" scope={businessScope} />}
       {attendanceSubsection === "general" && <AttendanceGeneralPanel token={token} data={scopedData} scope={businessScope} />}
+      {attendanceSubsection === "faceguard-monthly" && businessScope === "academy" && canViewFaceGuardMonthly && (
+        <FaceGuardMonthlyReport token={token} sites={scopedData.sites} preferredSiteId={user.primary_site} />
+      )}
       {attendanceSubsection === "report" && <AutomaticAttendancePanel token={token} data={scopedData} onRefreshData={onRefreshActiveSection} mode="report" scope={businessScope} />}
       {attendanceSubsection === "unknown" && <UnknownAttendancePanel token={token} data={data} onOpenDetail={onOpenUnknownDetail} />}
       {attendanceSubsection === "unknown-detail" && unknownDetailDate && (

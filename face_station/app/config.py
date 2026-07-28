@@ -38,6 +38,7 @@ class StationConfig:
     min_face_size: int = 70
     unknown_min_hits: int = 3
     detection_debounce_seconds: float = 2.0
+    monthly_fee_amount: float = 1000.0
     bootstrap_interval_seconds: int = 300
     sync_interval_seconds: int = 10
     retention_days: int = 90
@@ -71,6 +72,11 @@ class StationConfig:
         for name in ("known_threshold", "unknown_threshold", "min_det_score"):
             if not -1 <= float(getattr(self, name)) <= 1:
                 raise ValueError(f"{name} debe estar entre -1 y 1.")
+        if not 0 <= float(self.monthly_fee_amount) <= 1_000_000:
+            raise ValueError(
+                "monthly_fee_amount debe estar entre 0 y 1000000."
+            )
+        self.monthly_fee_amount = round(float(self.monthly_fee_amount), 2)
 
     def public_dict(self) -> dict:
         payload = asdict(self)

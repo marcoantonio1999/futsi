@@ -16,6 +16,7 @@ from .preview import AMBER, BLUE, GREEN, draw_face, draw_overlay, encode_preview
 from .recognition import DetectedFace, FaceEngine, match_matrix
 from .store import LocalStore
 from .synchronizer import StationSynchronizer
+from .time_utils import business_time
 from .unknown_links import link_unknown_subject
 
 
@@ -200,7 +201,12 @@ class StationRuntime:
     def _process_frame(self, source_frame, captured_at: float) -> None:
         config = self.config_manager.config
         frame = resize_for_processing(source_frame, config.processing_width)
-        observed_at = datetime.fromtimestamp(captured_at or time.time(), timezone.utc).astimezone()
+        observed_at = business_time(
+            datetime.fromtimestamp(
+                captured_at or time.time(),
+                timezone.utc,
+            )
+        )
         detections = self._engine.detect(frame) if self._engine else []
         with self._state_lock:
             self._detected_faces += len(detections)

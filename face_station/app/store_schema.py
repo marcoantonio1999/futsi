@@ -45,6 +45,12 @@ create table if not exists unknown_subjects (
     updated_at text not null
 );
 
+create table if not exists runtime_state (
+    state_key text primary key,
+    state_value text not null default '',
+    updated_at text not null
+);
+
 create table if not exists daily_presence (
     subject_key text not null,
     presence_date text not null,

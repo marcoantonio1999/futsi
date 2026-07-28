@@ -11,6 +11,7 @@ from uuid import uuid4
 import numpy as np
 
 from .store_schema import SCHEMA_SQL
+from .time_utils import BUSINESS_TIME_ZONE, business_time
 
 
 def utc_now() -> str:
@@ -63,6 +64,107 @@ class LocalStore:
     def initialize(self) -> None:
         with self.connection() as db:
             db.executescript(SCHEMA_SQL)
+
+    def runtime_state(self, key: str, default: str = "") -> str:
+        with self.connection() as db:
+            row = db.execute(
+                "select state_value from runtime_state where state_key=?",
+                (str(key),),
+            ).fetchone()
+        return str(row["state_value"]) if row else default
+
+    def set_runtime_state(self, key: str, value: str) -> None:
+        with self.connection() as db:
+            db.execute(
+                """
+                insert into runtime_state(state_key,state_value,updated_at)
+                values (?,?,?)
+                on conflict(state_key) do update set
+                    state_value=excluded.state_value,
+                    updated_at=excluded.updated_at
+                """,
+                (str(key), str(value), utc_now()),
+            )
+
+    def attendance_report_dates(self) -> list[str]:
+        with self.connection() as db:
+            return [
+                str(row["presence_date"])
+                for row in db.execute(
+                    """
+                    select presence_date
+                    from (
+                        select distinct presence_date
+                        from daily_presence
+                        where length(presence_date)=10
+                        union
+                        select substr(
+                            state_key,
+                            length('daily_report_sync:') + 1
+                        ) as presence_date
+                        from runtime_state
+                        where state_key like 'daily_report_sync:%'
+                    )
+                    where length(presence_date)=10
+                    order by presence_date
+                    """
+                )
+            ]
+
+    def daily_attendance_report(self, report_date: str) -> list[dict]:
+        with self.connection() as db:
+            rows = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    select presence.subject_kind,
+                           presence.subject_key,
+                           case
+                               when presence.subject_kind='known'
+                               then presence.subject_key
+                               else coalesce(unknown_subject.linked_person_key,'')
+                           end as canonical_person_key,
+                           case
+                               when presence.subject_kind='known'
+                               then coalesce(person.name,presence.subject_key)
+                               when unknown_subject.linked_person_key is not null
+                               then coalesce(linked_person.name,unknown_subject.temporary_name,presence.subject_key)
+                               else coalesce(unknown_subject.temporary_name,presence.subject_key)
+                           end as name,
+                           coalesce(person.person_type,linked_person.person_type,'unknown') as person_type,
+                           coalesce(person.group_name,linked_person.group_name,'') as group_name,
+                           coalesce(person.team_name,linked_person.team_name,'') as team_name,
+                           coalesce(
+                               unknown_subject.status,
+                               case when presence.subject_kind='known' then 'known' else '' end
+                           ) as status,
+                           count(*) as session_count,
+                           sum(presence.detection_count) as detection_count,
+                           min(presence.first_seen_at) as first_seen_at,
+                           max(presence.last_seen_at) as last_seen_at,
+                           max(presence.best_similarity) as best_similarity,
+                           0 as evidence_count
+                    from daily_presence presence
+                    left join people person
+                      on presence.subject_kind='known'
+                     and person.person_key=presence.subject_key
+                    left join unknown_subjects unknown_subject
+                      on presence.subject_kind='unknown'
+                     and unknown_subject.subject_id=presence.subject_key
+                    left join people linked_person
+                      on linked_person.person_key=unknown_subject.linked_person_key
+                    where presence.presence_date=?
+                      and (
+                          presence.subject_kind<>'unknown'
+                          or coalesce(unknown_subject.status,'') not in ('ignored','quarantined')
+                      )
+                    group by presence.subject_kind,presence.subject_key
+                    order by presence.subject_kind,presence.subject_key
+                    """,
+                    (str(report_date),),
+                )
+            ]
+        return rows
 
     def replace_bootstrap(self, people: list[dict], sessions: list[dict]) -> None:
         now = utc_now()
@@ -152,7 +254,8 @@ class LocalStore:
         return result
 
     def find_session(self, person_key: str, occurred_at: datetime) -> int | None:
-        local_date = occurred_at.astimezone().date().isoformat()
+        local_occurred = business_time(occurred_at)
+        local_date = local_occurred.date().isoformat()
         with self.connection() as db:
             sessions = [dict(row) for row in db.execute("select * from sessions where session_date=? and closed=0", (local_date,))]
         candidates = []
@@ -163,16 +266,20 @@ class LocalStore:
             if not session["starts_at"]:
                 candidates.append((0, session["remote_id"]))
                 continue
-            start = datetime.combine(occurred_at.astimezone().date(), datetime_time.fromisoformat(session["starts_at"])).astimezone()
+            start = datetime.combine(
+                local_occurred.date(),
+                datetime_time.fromisoformat(session["starts_at"]),
+                tzinfo=BUSINESS_TIME_ZONE,
+            )
             duration = max(1, int(session["duration_minutes"] or 120))
             end = start + timedelta(minutes=duration)
-            delta = abs((occurred_at.astimezone() - start).total_seconds())
-            if start - timedelta(minutes=60) <= occurred_at.astimezone() <= end + timedelta(minutes=60):
+            delta = abs((local_occurred - start).total_seconds())
+            if start - timedelta(minutes=60) <= local_occurred <= end + timedelta(minutes=60):
                 candidates.append((delta, session["remote_id"]))
         return min(candidates)[1] if candidates else None
 
     def upsert_presence(self, subject_key: str, kind: str, seen_at: datetime, similarity: float, crop_path: str = "") -> dict:
-        day = seen_at.astimezone().date().isoformat()
+        day = business_time(seen_at).date().isoformat()
         resolved_session = self.find_session(subject_key, seen_at) if kind == "known" else None
         session_id = resolved_session if resolved_session is not None else -1
         now = seen_at.isoformat()

@@ -938,6 +938,115 @@ class FaceStationUnknownLink(TimestampedModel):
         ]
 
 
+class FaceStationDailyReport(TimestampedModel):
+    device = models.ForeignKey(
+        FaceStationDevice,
+        on_delete=models.PROTECT,
+        related_name="daily_reports",
+    )
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.PROTECT,
+        related_name="face_station_daily_reports",
+    )
+    report_date = models.DateField()
+    revision = models.PositiveIntegerField(default=1)
+    payload_sha256 = models.CharField(max_length=64)
+    schema_version = models.PositiveSmallIntegerField(default=1)
+    generated_at = models.DateTimeField()
+    finalized = models.BooleanField(default=True)
+    policy = models.JSONField(default=dict)
+    row_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "face_station_daily_reports"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["device", "report_date"],
+                name="uq_face_daily_device_date",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["site", "report_date"],
+                name="ix_face_daily_site_date",
+            ),
+        ]
+
+
+class FaceStationMonthlyPolicy(TimestampedModel):
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.PROTECT,
+        related_name="face_station_monthly_policies",
+    )
+    month_start = models.DateField()
+    monthly_fee_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=1000,
+    )
+    registered_minimum_days = models.PositiveSmallIntegerField(default=1)
+    unknown_minimum_days = models.PositiveSmallIntegerField(default=3)
+    source_device = models.ForeignKey(
+        FaceStationDevice,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="monthly_policies",
+    )
+
+    class Meta:
+        db_table = "face_station_monthly_policies"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["site", "month_start"],
+                name="uq_face_monthly_policy_site_month",
+            ),
+        ]
+
+
+class FaceStationDailyPresence(TimestampedModel):
+    report = models.ForeignKey(
+        FaceStationDailyReport,
+        on_delete=models.CASCADE,
+        related_name="presences",
+    )
+    subject_kind = models.CharField(max_length=10)
+    subject_key = models.CharField(max_length=120)
+    canonical_person_key = models.CharField(max_length=80, blank=True)
+    name = models.CharField(max_length=160)
+    person_type = models.CharField(max_length=32, blank=True)
+    group_name = models.CharField(max_length=80, blank=True)
+    team_name = models.CharField(max_length=120, blank=True)
+    status = models.CharField(max_length=32, blank=True)
+    session_count = models.PositiveIntegerField(default=0)
+    detection_count = models.PositiveIntegerField(default=0)
+    first_seen_at = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    best_similarity = models.FloatField(default=0)
+    evidence_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "face_station_daily_presences"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["report", "subject_kind", "subject_key"],
+                name="uq_face_daily_presence_subject",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["subject_kind", "subject_key"],
+                name="ix_face_daily_subject",
+            ),
+            models.Index(
+                fields=["canonical_person_key"],
+                name="ix_face_daily_canonical",
+            ),
+        ]
+
+
 class CoachWorkLog(TimestampedModel):
     coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="coach_work_logs")
     site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="coach_work_logs")

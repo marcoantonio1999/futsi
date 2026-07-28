@@ -40,6 +40,13 @@ class FutsiClient:
     def send_events(self, events: list[dict]) -> dict:
         return self._request("POST", "/api/face-station/events/batch/", json={"events": events}).json()
 
+    def sync_daily_report(self, payload: dict) -> dict:
+        return self._request(
+            "PUT",
+            "/api/face-station/reports/daily/",
+            json=payload,
+        ).json()
+
     def register_unknown(self, payload: dict) -> dict:
         return self._request("POST", "/api/face-station/unknowns/register/", json=payload).json()
 
