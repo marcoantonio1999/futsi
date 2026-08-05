@@ -66,9 +66,14 @@ class StationSynchronizer:
                     >= config.bootstrap_interval_seconds
                 ):
                     last_daily_report_sync = now
-                    if (
-                        not self.runtime._automatic_batch_active
-                        and not self.runtime._manual_batch_active
+                    if not getattr(
+                        self.runtime,
+                        "_automatic_batch_active",
+                        False,
+                    ) and not getattr(
+                        self.runtime,
+                        "_manual_batch_active",
+                        False,
                     ):
                         self._sync_daily_reports(client)
                 self.runtime._client_online = client.online

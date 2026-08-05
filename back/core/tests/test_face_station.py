@@ -309,9 +309,6 @@ def test_station_quick_creates_student_with_selected_crop_and_is_idempotent(
         "core.api.face_station_unknowns.upload_face_station_reference",
         fake_upload,
     )
-    event = event_payload("student", 0, session.id)
-    event.pop("person_type")
-    event.pop("person_id")
     payload = {
         "local_subject_id": local_subject_id,
         "full_name": "  Alumna   Nueva FaceGuard  ",
@@ -319,7 +316,13 @@ def test_station_quick_creates_student_with_selected_crop_and_is_idempotent(
             "data:image/jpeg;base64,"
             + base64.b64encode(b"selected-face-crop").decode("ascii")
         ),
-        "events": [event],
+        "events": [
+            {
+                key: value
+                for key, value in event_payload("student", 0, session.id).items()
+                if key not in {"person_type", "person_id"}
+            }
+        ],
     }
 
     first = api_client.post(
@@ -383,9 +386,6 @@ def test_station_quick_creates_collaborator_with_selected_crop_and_is_idempotent
         "core.api.face_station_unknowns.upload_face_station_reference",
         fake_upload,
     )
-    event = event_payload("collaborator", 0)
-    event.pop("person_type")
-    event.pop("person_id")
     payload = {
         "local_subject_id": local_subject_id,
         "full_name": "  Colaboradora   Nueva FaceGuard  ",
@@ -393,7 +393,13 @@ def test_station_quick_creates_collaborator_with_selected_crop_and_is_idempotent
             "data:image/jpeg;base64,"
             + base64.b64encode(b"collaborator-face-crop").decode("ascii")
         ),
-        "events": [event],
+        "events": [
+            {
+                key: value
+                for key, value in event_payload("collaborator", 0).items()
+                if key not in {"person_type", "person_id"}
+            }
+        ],
     }
 
     first = api_client.post(

@@ -1,7 +1,15 @@
 import type { AppData, TabKey } from "../../types";
 import { tabItems } from "./adminNavigation";
 
-export type AttendanceSubsection = "general" | "manual" | "automatic" | "report" | "occupancy" | "unknown" | "unknown-detail";
+export type AttendanceSubsection =
+  | "general"
+  | "manual"
+  | "automatic"
+  | "report"
+  | "occupancy"
+  | "unknown"
+  | "unknown-detail"
+  | "faceguard-monthly";
 export type BillingSubsection = "program" | "scheduled";
 export type StudentsSubsection = "create" | "registered";
 export type BusinessScope = "academy" | "adult";

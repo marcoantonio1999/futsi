@@ -363,4 +363,3 @@ def save_debug_image(image_bgr, path: str | Path) -> None:
     import cv2
 
     cv2.imwrite(str(path), image_bgr)
-

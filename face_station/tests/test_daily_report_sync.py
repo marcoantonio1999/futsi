@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import numpy as np
 from face_station.app.store import LocalStore
 from face_station.app.synchronizer import (
     BUSINESS_TIME_ZONE,
@@ -10,6 +11,10 @@ from face_station.app.synchronizer import (
 )
 
 
+def normalized(seed: int) -> np.ndarray:
+    generator = np.random.default_rng(seed)
+    value = generator.normal(size=512).astype(np.float32)
+    return value / np.linalg.norm(value)
 class RecordingClient:
     def __init__(self):
         self.payloads: list[dict] = []
@@ -64,6 +69,11 @@ def test_daily_report_sync_retries_changes_and_removes_obsolete_day(tmp_path):
     )
     crop_path = store.faces_dir / "student.jpg"
     crop_path.write_bytes(b"student")
+    store.save_person_embedding(
+        "student:17",
+        crop_path,
+        normalized(17),
+    )
     store.upsert_presence(
         "student:17",
         "known",

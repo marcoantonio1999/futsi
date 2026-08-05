@@ -137,6 +137,64 @@ def upload_face_station_reference(
     return photo_uri
 
 
+def upload_face_station_reference(
+    *,
+    person_type: str,
+    local_subject_id: str,
+    local_path: str | Path,
+    station_token: str,
+) -> str:
+    """Upload a station crop without exposing the Supabase service key to Render."""
+    if person_type not in {"student", "collaborator"}:
+        raise RuntimeError("Tipo de referencia de FaceGuard no permitido.")
+    if not station_token:
+        raise RuntimeError("Falta la llave autenticada de la estacion.")
+
+    endpoint = f"{supabase_url()}/functions/v1/face-station-photo"
+    payload = Path(local_path).read_bytes()
+    request = Request(
+        endpoint,
+        data=json.dumps(
+            {
+                "action": "upload_reference",
+                "person_type": person_type,
+                "local_subject_id": local_subject_id,
+                "image_base64": base64.b64encode(payload).decode("ascii"),
+            }
+        ).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Futsi-Station-Key": station_token,
+        },
+    )
+    try:
+        with urlopen(request, timeout=60) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        try:
+            detail = json.loads(detail).get("detail", detail)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+        raise RuntimeError(
+            f"El proxy privado de FaceGuard fallo con HTTP {exc.code}: {detail}"
+        ) from exc
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("El proxy privado de FaceGuard devolvio una respuesta invalida.") from exc
+
+    photo_uri = str(response_payload.get("photo_uri") or "")
+    parsed = parse_storage_uri(photo_uri)
+    expected_bucket = (
+        "student-private-photos"
+        if person_type == "student"
+        else "adult-private-photos"
+    )
+    if not parsed or parsed[0] != expected_bucket:
+        raise RuntimeError("El proxy privado no devolvio una referencia valida.")
+    return photo_uri
+
+
 def download_private_file(bucket: str, object_path: str, suffix: str = ".jpg") -> str:
     encoded_path = "/".join(quote(part) for part in object_path.replace("\\", "/").split("/"))
     endpoint = f"{supabase_url()}/storage/v1/object/authenticated/{bucket}/{encoded_path}"
