@@ -16,6 +16,7 @@ from face_station.app.mjpeg_stream import (
     MjpegStreamError,
     MultipartMjpegParser,
     OctetStreamJpegParser,
+    OctetStreamMjpegParser,
     boundary_from_content_type,
 )
 
@@ -159,6 +160,54 @@ def test_octet_stream_parser_rejects_truncation_oversize_garbage_and_nested_soi(
         OctetStreamJpegParser().feed(b"\xff\xd8\xff\xd8\xff\xd9")
 
 
+def test_octet_stream_sniffer_delegates_boundary_body_byte_by_byte_without_http_boundary():
+    _, first = _jpeg(96, 72, value=31)
+    _, second = _jpeg(96, 72, value=219)
+    wire = (
+        b"\r\n\t"
+        + _part(b"ffmpeg", first)
+        + _part(b"ffmpeg", second)
+        + b"--ffmpeg--\r\n"
+    )
+    parser = OctetStreamMjpegParser()
+
+    parsed = []
+    for value in wire:
+        parsed.extend(parser.feed(bytes((value,))))
+    parser.finish()
+
+    assert parsed == [first, second]
+    assert [hashlib.sha256(frame).digest() for frame in parsed] == [
+        hashlib.sha256(first).digest(),
+        hashlib.sha256(second).digest(),
+    ]
+    assert parser.frames_parsed == 2
+
+
+def test_octet_stream_sniffer_rejects_unknown_invalid_and_ambiguous_prefixes():
+    with pytest.raises(MjpegStreamError, match="prefijo desconocido"):
+        OctetStreamMjpegParser().feed(b"not-an-mjpeg-stream")
+    with pytest.raises(MjpegStreamError, match="multipart invalido"):
+        OctetStreamMjpegParser().feed(b"-not-a-boundary")
+    with pytest.raises(MjpegStreamError, match="no es valido"):
+        OctetStreamMjpegParser().feed(b"--\r\n")
+    with pytest.raises(MjpegStreamError, match="ASCII valido"):
+        OctetStreamMjpegParser().feed(b"--bad boundary\r\n")
+    with pytest.raises(MjpegStreamError, match="ASCII valido"):
+        OctetStreamMjpegParser().feed(b"--nonascii-\xff\r\n")
+    with pytest.raises(MjpegStreamError, match="excede"):
+        OctetStreamMjpegParser().feed(b"--" + (b"a" * 202))
+
+    empty = OctetStreamMjpegParser()
+    empty.feed(b" \r\n")
+    with pytest.raises(MjpegStreamError, match="antes de identificar"):
+        empty.finish()
+    partial = OctetStreamMjpegParser()
+    partial.feed(b"--ffmpeg")
+    with pytest.raises(MjpegStreamError, match="antes de identificar"):
+        partial.finish()
+
+
 class _FakeResponse:
     def __init__(self, chunks=(), *, status=200, content_type="multipart/x-mixed-replace; boundary=cam"):
         self.status_code = status
@@ -231,6 +280,30 @@ def test_http_reader_accepts_raw_octet_stream_and_preserves_frame_hashes(content
         [first[:1], first[1:37], first[37:] + second, b"\r\n"],
         content_type=content_type,
     )
+    frames = list(
+        MjpegHttpReader(
+            "http://camera/stream",
+            threading.Event(),
+            session=_FakeSession(response),
+        ).iter_frames()
+    )
+
+    assert frames == [first, second]
+    assert [hashlib.sha256(frame).hexdigest() for frame in frames] == [
+        hashlib.sha256(first).hexdigest(),
+        hashlib.sha256(second).hexdigest(),
+    ]
+
+
+def test_http_reader_sniffs_multipart_body_when_octet_stream_omits_boundary_parameter():
+    _, first = _jpeg(96, 72, value=48)
+    _, second = _jpeg(96, 72, value=196)
+    wire = _part(b"ffmpeg", first) + _part(b"ffmpeg", second) + b"--ffmpeg--\r\n"
+    response = _FakeResponse(
+        [bytes((value,)) for value in wire],
+        content_type="application/octet-stream",
+    )
+
     frames = list(
         MjpegHttpReader(
             "http://camera/stream",

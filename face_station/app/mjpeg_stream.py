@@ -422,6 +422,105 @@ class OctetStreamJpegParser:
             return marker_start
 
 
+class OctetStreamMjpegParser:
+    """Sniff the two strict MJPEG bodies used with octet-stream responses.
+
+    Raspberry/ffmpeg deployments in the field use both raw concatenated JPEGs
+    and a regular multipart body while incorrectly advertising the outer HTTP
+    response as ``application/octet-stream``. The first non-whitespace bytes
+    select exactly one parser: JPEG SOI selects :class:`OctetStreamJpegParser`,
+    while a validated ``--boundary`` line selects
+    :class:`MultipartMjpegParser`. No best-effort resynchronization is done.
+    """
+
+    def __init__(self, *, max_jpeg_bytes: int = MAX_JPEG_BYTES) -> None:
+        self.max_jpeg_bytes = max(4, int(max_jpeg_bytes))
+        self._buffer = bytearray()
+        self._parser: OctetStreamJpegParser | MultipartMjpegParser | None = None
+
+    @property
+    def pending_bytes(self) -> int:
+        if self._parser is not None:
+            return self._parser.pending_bytes
+        return len(self._buffer)
+
+    @property
+    def frames_parsed(self) -> int:
+        if self._parser is None:
+            return 0
+        return self._parser.frames_parsed
+
+    def feed(self, chunk: bytes | bytearray | memoryview) -> list[bytes]:
+        if self._parser is not None:
+            return self._parser.feed(chunk)
+        if chunk:
+            self._buffer.extend(chunk)
+        separator_count = 0
+        while (
+            separator_count < len(self._buffer)
+            and self._buffer[separator_count] in _RAW_STREAM_SEPARATORS
+        ):
+            separator_count += 1
+        if separator_count:
+            del self._buffer[:separator_count]
+        if not self._buffer:
+            return []
+
+        if self._buffer[0] == 0xFF:
+            if len(self._buffer) == 1:
+                return []
+            if self._buffer[1] != 0xD8:
+                raise MjpegStreamError("El octet-stream tiene un prefijo JPEG invalido.")
+            self._parser = OctetStreamJpegParser(max_jpeg_bytes=self.max_jpeg_bytes)
+            buffered = bytes(self._buffer)
+            self._buffer.clear()
+            return self._parser.feed(buffered)
+
+        if self._buffer[0] != 0x2D:  # '-'
+            raise MjpegStreamError("El octet-stream tiene un prefijo desconocido.")
+        if len(self._buffer) == 1:
+            return []
+        if self._buffer[1] != 0x2D:
+            raise MjpegStreamError("El octet-stream tiene un prefijo multipart invalido.")
+
+        newline = self._buffer.find(b"\n")
+        if newline < 0:
+            # ``--`` plus at most 200 boundary bytes and an optional CR.
+            if len(self._buffer) > 203:
+                raise MjpegStreamError("El boundary del octet-stream excede el limite permitido.")
+            return []
+        line = bytes(self._buffer[:newline])
+        if line.endswith(b"\r"):
+            line = line[:-1]
+        boundary = line[2:]
+        self._validate_boundary(boundary)
+        self._parser = MultipartMjpegParser(
+            boundary,
+            max_jpeg_bytes=self.max_jpeg_bytes,
+        )
+        buffered = bytes(self._buffer)
+        self._buffer.clear()
+        return self._parser.feed(buffered)
+
+    def finish(self) -> None:
+        if self._parser is None:
+            raise MjpegStreamError(
+                "El octet-stream termino antes de identificar su formato MJPEG."
+            )
+        self._parser.finish()
+
+    @staticmethod
+    def _validate_boundary(boundary: bytes) -> None:
+        if not boundary or len(boundary) > 200:
+            raise MjpegStreamError("El boundary del octet-stream no es valido.")
+        # A sniffed boundary has no quoting context, so require the RFC 2046
+        # non-space boundary alphabet. This also rejects controls, non-ASCII,
+        # header-like text, and ambiguous trailing whitespace.
+        allowed = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'()+_,-./:=?"
+        if any(value not in allowed for value in boundary):
+            raise MjpegStreamError("El boundary del octet-stream no es ASCII valido.")
+
+
 class MjpegHttpReader:
     """Requests-based streaming reader whose active socket can be closed."""
 
@@ -487,7 +586,7 @@ class MjpegHttpReader:
                     boundary_from_content_type(content_type)
                 )
             elif media_type == "application/octet-stream":
-                parser = OctetStreamJpegParser()
+                parser = OctetStreamMjpegParser()
             else:
                 raise MjpegStreamError(
                     "La respuesta HTTP no es un stream MJPEG multipart ni JPEG octet-stream."
