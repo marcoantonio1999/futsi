@@ -191,9 +191,8 @@ class CameraWorker:
             # configured requests timeout and fail closed rather than allowing
             # a restart to overlap the one-client FFmpeg endpoint.
             reader = self._mjpeg_reader
-            if reader is not None:
+            if self.async_mjpeg and reader is not None:
                 reader.close()
-            self._release_capture()
             deadline = time.monotonic() + max(0.1, self.SHUTDOWN_TIMEOUT_SECONDS)
             if self._thread and self._thread.is_alive():
                 self._thread.join(timeout=max(0.0, deadline - time.monotonic()))
@@ -202,7 +201,6 @@ class CameraWorker:
                 self._decoder_thread.join(
                     timeout=max(0.0, deadline - time.monotonic())
                 )
-            self._release_capture()
             self.connected = False
             alive = [
                 label
@@ -219,6 +217,12 @@ class CameraWorker:
                     + "."
                 )
                 raise RuntimeError(self.last_error)
+            # OpenCV/FFmpeg owns codec state in the receiver thread. Calling
+            # VideoCapture.release() while that thread is inside read() can
+            # trip libavcodec's async_lock assertion and abort the process.
+            # The normal receiver finally releases it; this is only a safe,
+            # idempotent cleanup after the receiver has definitely exited.
+            self._release_capture()
             self._thread = None
             self._decoder_thread = None
             self._mjpeg_reader = None

@@ -15,6 +15,7 @@ from face_station.app.mjpeg_stream import (
     MjpegHttpReader,
     MjpegStreamError,
     MultipartMjpegParser,
+    OctetStreamJpegParser,
     boundary_from_content_type,
 )
 
@@ -96,6 +97,68 @@ def test_parser_rejects_conflicting_length_truncation_and_limits():
         )
 
 
+def _jpeg_with_comment(jpeg: bytes, payload: bytes) -> bytes:
+    assert jpeg.startswith(b"\xff\xd8")
+    length = len(payload) + 2
+    assert length <= 0xFFFF
+    return jpeg[:2] + b"\xff\xfe" + length.to_bytes(2, "big") + payload + jpeg[2:]
+
+
+def test_octet_stream_parser_preserves_exact_jpegs_with_fragmentation_and_multiple_per_chunk():
+    _, first = _jpeg(value=42)
+    _, second = _jpeg(value=211)
+    parser = OctetStreamJpegParser()
+
+    parsed = []
+    wire = b"\r\n" + first + second + b"\n"
+    for value in wire:
+        parsed.extend(parser.feed(bytes((value,))))
+    parser.finish()
+
+    assert parsed == [first, second]
+    assert [hashlib.sha256(frame).digest() for frame in parsed] == [
+        hashlib.sha256(first).digest(),
+        hashlib.sha256(second).digest(),
+    ]
+    assert parser.frames_parsed == 2
+
+
+def test_octet_stream_parser_does_not_split_on_soi_or_eoi_inside_length_delimited_segment():
+    _, base = _jpeg(80, 60)
+    payload = b"metadata-before\xff\xd9middle\xff\xd8metadata-after"
+    framed = _jpeg_with_comment(base, payload)
+    parser = OctetStreamJpegParser()
+
+    parsed = []
+    for offset in range(0, len(framed), 11):
+        parsed.extend(parser.feed(framed[offset : offset + 11]))
+    parser.finish()
+
+    assert parsed == [framed]
+    assert hashlib.sha256(parsed[0]).digest() == hashlib.sha256(framed).digest()
+
+
+def test_octet_stream_parser_rejects_truncation_oversize_garbage_and_nested_soi():
+    _, jpeg = _jpeg(64, 48)
+
+    truncated = OctetStreamJpegParser()
+    assert truncated.feed(jpeg[:-1]) == []
+    with pytest.raises(MjpegStreamError, match="incompleta"):
+        truncated.finish()
+
+    oversized = OctetStreamJpegParser(max_jpeg_bytes=32)
+    with pytest.raises(MjpegStreamError, match="excede"):
+        oversized.feed(jpeg)
+
+    with pytest.raises(MjpegStreamError, match="ambiguos"):
+        OctetStreamJpegParser().feed(b"garbage\xff\xd8\xff\xd9")
+
+    # A nested SOI outside a length-delimited segment cannot be safely used to
+    # resynchronize: fail the connection instead of emitting a spliced frame.
+    with pytest.raises(MjpegStreamError, match="inicio de imagen ambiguo"):
+        OctetStreamJpegParser().feed(b"\xff\xd8\xff\xd8\xff\xd9")
+
+
 class _FakeResponse:
     def __init__(self, chunks=(), *, status=200, content_type="multipart/x-mixed-replace; boundary=cam"):
         self.status_code = status
@@ -143,6 +206,7 @@ def test_http_reader_disables_redirects_identity_encoding_and_validates_mime():
     assert frames == [jpeg]
     assert session.kwargs["allow_redirects"] is False
     assert session.kwargs["stream"] is True
+    assert "application/octet-stream" in session.kwargs["headers"]["Accept"]
     assert session.kwargs["headers"]["Accept-Encoding"] == "identity"
 
     redirect = _FakeResponse(status=302)
@@ -151,6 +215,51 @@ def test_http_reader_disables_redirects_identity_encoding_and_validates_mime():
     invalid_mime = _FakeResponse(content_type="text/html")
     with pytest.raises(MjpegStreamError, match="no es un stream"):
         list(MjpegHttpReader("http://camera/stream", threading.Event(), session=_FakeSession(invalid_mime)).iter_frames())
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    [
+        "application/octet-stream",
+        "Application/Octet-Stream; charset=binary",
+    ],
+)
+def test_http_reader_accepts_raw_octet_stream_and_preserves_frame_hashes(content_type):
+    _, first = _jpeg(96, 72, value=25)
+    _, second = _jpeg(96, 72, value=225)
+    response = _FakeResponse(
+        [first[:1], first[1:37], first[37:] + second, b"\r\n"],
+        content_type=content_type,
+    )
+    frames = list(
+        MjpegHttpReader(
+            "http://camera/stream",
+            threading.Event(),
+            session=_FakeSession(response),
+        ).iter_frames()
+    )
+
+    assert frames == [first, second]
+    assert [hashlib.sha256(frame).hexdigest() for frame in frames] == [
+        hashlib.sha256(first).hexdigest(),
+        hashlib.sha256(second).hexdigest(),
+    ]
+
+
+def test_http_reader_rejects_truncated_octet_stream_at_eof():
+    _, jpeg = _jpeg(64, 48)
+    response = _FakeResponse(
+        [jpeg[:-2]],
+        content_type="application/octet-stream",
+    )
+    with pytest.raises(MjpegStreamError, match="incompleta"):
+        list(
+            MjpegHttpReader(
+                "http://camera/stream",
+                threading.Event(),
+                session=_FakeSession(response),
+            ).iter_frames()
+        )
 
 
 def test_http_reader_close_unblocks_a_blocking_response():
@@ -408,3 +517,65 @@ def test_stop_during_connect_fails_closed_and_prevents_overlapping_restart(monke
 
     assert worker.status_metrics["receiver_alive"] is False
     assert worker.status_metrics["decoder_alive"] is False
+
+
+def test_opencv_stop_never_releases_capture_while_read_is_active(monkeypatch):
+    read_started = threading.Event()
+    release_read = threading.Event()
+
+    class GuardedCapture:
+        def __init__(self):
+            self.in_read = False
+            self.released = False
+            self.concurrent_release = False
+
+        def isOpened(self):
+            return not self.released
+
+        def set(self, *_args):
+            return True
+
+        def get(self, *_args):
+            return 0
+
+        def read(self):
+            self.in_read = True
+            read_started.set()
+            release_read.wait(2)
+            self.in_read = False
+            return False, None
+
+        def release(self):
+            if self.in_read:
+                self.concurrent_release = True
+            self.released = True
+
+    capture = GuardedCapture()
+    worker = CameraWorker("rtsp://camera/live", failover_after=1)
+    monkeypatch.setattr(worker, "_open", lambda _source=None: capture)
+    worker.start()
+    assert read_started.wait(1)
+    stop_errors = []
+
+    def stop_worker():
+        try:
+            worker.stop()
+        except Exception as exc:  # pragma: no cover - asserted below
+            stop_errors.append(exc)
+
+    stopper = threading.Thread(target=stop_worker)
+    stopper.start()
+    time.sleep(0.05)
+
+    assert stopper.is_alive()
+    assert capture.released is False
+    assert capture.concurrent_release is False
+
+    release_read.set()
+    stopper.join(2)
+
+    assert not stopper.is_alive()
+    assert stop_errors == []
+    assert capture.released is True
+    assert capture.concurrent_release is False
+    assert worker.status_metrics["receiver_alive"] is False
