@@ -132,6 +132,8 @@ def pending_video_matches_request(item: dict, requested_path: str | None) -> boo
 
 
 def video_clips_table_exists() -> bool:
+    if connection.vendor != "postgresql":
+        return "video_clips" in connection.introspection.table_names()
     with connection.cursor() as cursor:
         cursor.execute("select to_regclass('public.video_clips')")
         return bool(cursor.fetchone()[0])

@@ -27,6 +27,7 @@ class UserRole(models.TextChoices):
     SITE_COORDINATOR = "site_coordinator", "Coordinador de sede"
     CASHIER = "cashier", "Cajero"
     COACH = "coach", "Coach"
+    COLLABORATOR = "collaborator", "Colaborador"
     GUARDIAN = "guardian", "Representante"
     ADULT_REPRESENTATIVE = "adult_representative", "Representante adulto"
     ADULT_PLAYER = "adult_player", "Jugador adulto"
@@ -866,6 +867,13 @@ class FaceStationEvent(TimestampedModel):
     person_type = models.CharField(max_length=20)
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_events")
     player = models.ForeignKey(Player, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_events")
+    collaborator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="face_station_attendance_events",
+    )
     session = models.ForeignKey(AttendanceSession, null=True, blank=True, on_delete=models.SET_NULL, related_name="face_station_events")
     occurred_at = models.DateTimeField()
     detection_count = models.PositiveIntegerField(default=1)
@@ -883,8 +891,9 @@ class FaceStationEvent(TimestampedModel):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    Q(student__isnull=False, player__isnull=True, person_type="student")
-                    | Q(student__isnull=True, player__isnull=False, person_type="player")
+                    Q(student__isnull=False, player__isnull=True, collaborator__isnull=True, person_type="student")
+                    | Q(student__isnull=True, player__isnull=False, collaborator__isnull=True, person_type="player")
+                    | Q(student__isnull=True, player__isnull=True, collaborator__isnull=False, person_type="collaborator")
                 ),
                 name="ck_face_station_event_person",
             ),
@@ -893,6 +902,7 @@ class FaceStationEvent(TimestampedModel):
             models.Index(fields=["device", "occurred_at"], name="ix_face_station_device_time"),
             models.Index(fields=["student", "occurred_at"], name="ix_face_station_student_time"),
             models.Index(fields=["player", "occurred_at"], name="ix_face_station_player_time"),
+            models.Index(fields=["collaborator", "occurred_at"], name="ix_face_station_collab_time"),
         ]
 
 
@@ -902,6 +912,13 @@ class FaceStationUnknownLink(TimestampedModel):
     person_type = models.CharField(max_length=20)
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_unknown_links")
     player = models.ForeignKey(Player, null=True, blank=True, on_delete=models.PROTECT, related_name="face_station_unknown_links")
+    collaborator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="face_station_unknown_links",
+    )
     remote_subject_id = models.UUIDField(null=True, blank=True)
     evidence_uri = models.CharField(max_length=500, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
@@ -912,8 +929,9 @@ class FaceStationUnknownLink(TimestampedModel):
             models.UniqueConstraint(fields=["device", "local_subject_id"], name="uq_face_station_unknown_local"),
             models.CheckConstraint(
                 condition=(
-                    Q(student__isnull=False, player__isnull=True, person_type="student")
-                    | Q(student__isnull=True, player__isnull=False, person_type="player")
+                    Q(student__isnull=False, player__isnull=True, collaborator__isnull=True, person_type="student")
+                    | Q(student__isnull=True, player__isnull=False, collaborator__isnull=True, person_type="player")
+                    | Q(student__isnull=True, player__isnull=True, collaborator__isnull=False, person_type="collaborator")
                 ),
                 name="ck_face_station_unknown_person",
             ),

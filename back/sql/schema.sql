@@ -28,7 +28,7 @@ CREATE TABLE core_user (
     phone VARCHAR(30) NOT NULL DEFAULT '',
     primary_site_id BIGINT NULL REFERENCES sites(id) ON DELETE SET NULL,
     CONSTRAINT ck_core_user_role CHECK (
-        role IN ('admin', 'dev', 'accounting', 'owner', 'site_coordinator', 'cashier', 'coach', 'guardian')
+        role IN ('admin', 'dev', 'accounting', 'owner', 'site_coordinator', 'cashier', 'coach', 'collaborator', 'guardian')
     )
 );
 

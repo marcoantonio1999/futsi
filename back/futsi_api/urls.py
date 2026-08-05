@@ -34,9 +34,11 @@ from core.api.unknown_attendance import (
 )
 from core.api.face_station import (
     FaceStationBootstrapView,
+    FaceStationCollaboratorQuickCreateView,
     FaceStationEventBatchView,
     FaceStationHeartbeatView,
     FaceStationPersonPhotoView,
+    FaceStationStudentQuickCreateView,
     FaceStationUnknownRegisterView,
 )
 from core.api.dashboard import DashboardSummaryView
@@ -85,6 +87,14 @@ urlpatterns = [
     path("api/face-station/heartbeat/", FaceStationHeartbeatView.as_view()),
     path("api/face-station/events/batch/", FaceStationEventBatchView.as_view()),
     path("api/face-station/unknowns/register/", FaceStationUnknownRegisterView.as_view()),
+    path(
+        "api/face-station/students/quick-create/",
+        FaceStationStudentQuickCreateView.as_view(),
+    ),
+    path(
+        "api/face-station/collaborators/quick-create/",
+        FaceStationCollaboratorQuickCreateView.as_view(),
+    ),
     path("api/face-station/people/<str:person_type>/<int:person_id>/photo/", FaceStationPersonPhotoView.as_view()),
     path("api/", include(router.urls)),
 ]

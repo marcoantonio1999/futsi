@@ -5,16 +5,23 @@ import binascii
 import json
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from django.db import connection
 from django.utils import timezone
 
-from core.services.supabase_storage import upload_private_file
+from core.models import FaceStationUnknownLink, Guardian, Student, User, UserRole
+from core.services.supabase_storage import (
+    upload_face_station_reference,
+    upload_private_file,
+)
 
 from .face_station_service import parse_event
 
 
 UNKNOWN_FACE_BUCKET = "unknown-attendance-faces"
+STUDENT_PHOTO_BUCKET = "student-private-photos"
+COLLABORATOR_PHOTO_BUCKET = "adult-private-photos"
 
 
 def decode_face_crop(image_data: str) -> Path | None:
@@ -37,11 +44,39 @@ def table_exists(table_name: str) -> bool:
     return table_name in connection.introspection.table_names()
 
 
-def register_linked_unknown(device, payload: dict, person, events: list[dict]) -> dict:
+def register_linked_unknown(
+    device,
+    payload: dict,
+    person,
+    events: list[dict],
+    existing_face_uri: str = "",
+) -> dict:
+    parsed_events = [
+        parse_event(
+            {
+                **item,
+                "person_type": str(payload.get("person_type") or ""),
+                "person_id": person.id,
+            }
+        )
+        for item in events
+    ]
+    first_seen = min(
+        (item["occurred_at"] for item in parsed_events),
+        default=timezone.now(),
+    )
+    last_seen = max(
+        (item["occurred_at"] for item in parsed_events),
+        default=first_seen,
+    )
     if not table_exists("unknown_attendance_subjects"):
         return {"subject_id": None, "storage_warning": "La tabla de desconocidos no existe en esta base."}
-    crop_path = decode_face_crop(str(payload.get("best_crop", "")))
-    face_uri = ""
+    crop_path = (
+        None
+        if existing_face_uri
+        else decode_face_crop(str(payload.get("best_crop", "")))
+    )
+    face_uri = existing_face_uri
     storage_warning = ""
     if crop_path:
         object_path = f"face-stations/{device.site.code}/{device.public_id}/{payload.get('local_subject_id')}.jpg"
@@ -52,16 +87,21 @@ def register_linked_unknown(device, payload: dict, person, events: list[dict]) -
         finally:
             crop_path.unlink(missing_ok=True)
 
-    first_seen = min((parse_event(item)["occurred_at"] for item in events), default=timezone.now())
-    last_seen = max((parse_event(item)["occurred_at"] for item in events), default=first_seen)
     metadata = {
         "source": "face_station",
         "local_subject_id": str(payload.get("local_subject_id", "")),
         "registered_at": timezone.now().isoformat(),
         "face_crop_uri": face_uri,
     }
+    if payload.get("person_type") == "collaborator":
+        metadata["matched_collaborator_id"] = int(person.id)
     student_id = person.id if payload.get("person_type") == "student" else None
     player_id = person.id if payload.get("person_type") == "player" else None
+    matched_person_type = (
+        payload.get("person_type")
+        if payload.get("person_type") in {"student", "player"}
+        else None
+    )
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -76,8 +116,8 @@ def register_linked_unknown(device, payload: dict, person, events: list[dict]) -
                 device.site_id,
                 first_seen,
                 last_seen,
-                sum(max(1, int(item.get("detection_count", 1))) for item in events),
-                payload.get("person_type"),
+                sum(item["detection_count"] for item in parsed_events),
+                matched_person_type,
                 student_id,
                 player_id,
                 f"Vinculado desde {device.name}.",
@@ -91,3 +131,131 @@ def register_linked_unknown(device, payload: dict, person, events: list[dict]) -
         "face_uri": face_uri,
         "storage_warning": storage_warning,
     }
+
+
+def create_station_student(
+    device,
+    payload: dict,
+    events: list[dict],
+    station_token: str,
+) -> tuple[Student, FaceStationUnknownLink]:
+    full_name = " ".join(str(payload.get("full_name") or "").split())
+    local_subject_id = str(payload.get("local_subject_id") or "").strip()[:80]
+    if len(full_name) < 3:
+        raise ValueError("Captura el nombre completo del alumno.")
+    if len(full_name) > 160:
+        raise ValueError("El nombre completo no puede exceder 160 caracteres.")
+    if not local_subject_id:
+        raise ValueError("local_subject_id es obligatorio.")
+
+    crop_path = decode_face_crop(str(payload.get("best_crop") or ""))
+    if not crop_path:
+        raise ValueError("Selecciona un recorte para usarlo como foto del alumno.")
+    try:
+        photo_uri = upload_face_station_reference(
+            person_type="student",
+            local_subject_id=local_subject_id,
+            local_path=crop_path,
+            station_token=station_token,
+        )
+    finally:
+        crop_path.unlink(missing_ok=True)
+
+    guardian = Guardian.objects.create(
+        full_name=f"Datos de tutor pendientes - {full_name}"[:160],
+        phone="PENDIENTE",
+        notes=(
+            f"Registro provisional creado por {device.name} desde Face Station. "
+            "Completar los datos del tutor."
+        ),
+    )
+    student = Student.objects.create(
+        site=device.site,
+        guardian=guardian,
+        full_name=full_name,
+        group_name="",
+        category="",
+        status="trial",
+        photo_url=photo_uri,
+    )
+    registration = register_linked_unknown(
+        device,
+        {**payload, "person_type": "student"},
+        student,
+        events,
+        existing_face_uri=photo_uri,
+    )
+    link = FaceStationUnknownLink.objects.create(
+        device=device,
+        local_subject_id=local_subject_id,
+        person_type="student",
+        student=student,
+        remote_subject_id=registration.get("subject_id") or None,
+        evidence_uri=photo_uri,
+        metadata={
+            "created_from_face_station": True,
+            "storage_warning": registration.get("storage_warning", ""),
+        },
+    )
+    return student, link
+
+
+def create_station_collaborator(
+    device,
+    payload: dict,
+    events: list[dict],
+    station_token: str,
+) -> tuple[User, FaceStationUnknownLink]:
+    full_name = " ".join(str(payload.get("full_name") or "").split())
+    local_subject_id = str(payload.get("local_subject_id") or "").strip()[:80]
+    if len(full_name) < 3:
+        raise ValueError("Captura el nombre completo del colaborador.")
+    if len(full_name) > 150:
+        raise ValueError("El nombre completo no puede exceder 150 caracteres.")
+    if not local_subject_id:
+        raise ValueError("local_subject_id es obligatorio.")
+
+    crop_path = decode_face_crop(str(payload.get("best_crop") or ""))
+    if not crop_path:
+        raise ValueError("Selecciona un recorte para usarlo como foto del colaborador.")
+    try:
+        photo_uri = upload_face_station_reference(
+            person_type="collaborator",
+            local_subject_id=local_subject_id,
+            local_path=crop_path,
+            station_token=station_token,
+        )
+    finally:
+        crop_path.unlink(missing_ok=True)
+
+    first_name, _, last_name = full_name.partition(" ")
+    collaborator = User.objects.create_user(
+        username=f"faceguard-{device.site_id}-{uuid4().hex[:16]}",
+        password=None,
+        first_name=first_name,
+        last_name=last_name,
+        role=UserRole.COLLABORATOR,
+        primary_site=device.site,
+        avatar_url=photo_uri,
+        is_active=True,
+    )
+    registration = register_linked_unknown(
+        device,
+        {**payload, "person_type": "collaborator"},
+        collaborator,
+        events,
+        existing_face_uri=photo_uri,
+    )
+    link = FaceStationUnknownLink.objects.create(
+        device=device,
+        local_subject_id=local_subject_id,
+        person_type="collaborator",
+        collaborator=collaborator,
+        remote_subject_id=registration.get("subject_id") or None,
+        evidence_uri=photo_uri,
+        metadata={
+            "created_from_face_station": True,
+            "storage_warning": registration.get("storage_warning", ""),
+        },
+    )
+    return collaborator, link
