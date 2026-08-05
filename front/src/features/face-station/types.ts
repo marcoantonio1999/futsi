@@ -33,6 +33,61 @@ export interface CameraStatus {
   failover_count?: number;
   last_source_switch_at?: number;
   last_failover_reason?: string;
+  capture_pipeline?: {
+    pipeline_mode?: "async_mjpeg" | "opencv" | string;
+    decode_reduction?: number;
+    ingress_fps?: number;
+    ingress_mbps?: number;
+    decoded_frames?: number;
+    decode_errors?: number;
+    jpeg_errors?: number;
+    compressed_frames_dropped?: number;
+    packet_frames_dropped?: number;
+    frames_drained_while_paused?: number;
+    processing_enabled?: boolean;
+    receiver_alive?: boolean;
+    decoder_alive?: boolean;
+    detection_resolution?: { width: number; height: number } | null;
+    last_original_resolution?: { width: number; height: number } | null;
+  };
+}
+
+export interface PersistenceStatus {
+  queue_depth?: number;
+  queue_capacity?: number;
+  worker_active?: boolean;
+  enqueued?: number;
+  completed?: number;
+  dropped?: number;
+  failed?: number;
+  last_error?: string;
+  last_latency_ms?: number;
+  raw_batch?: {
+    max_items?: number;
+    window_ms?: number;
+    batches?: number;
+    items?: number;
+    largest?: number;
+  };
+  original_frames?: {
+    queue_depth?: number;
+    queue_capacity?: number;
+    queue_high_water?: number;
+    active?: number;
+    worker_count?: number;
+    workers_active?: number;
+    worker_active?: boolean;
+    enqueued?: number;
+    completed?: number;
+    decoded?: number;
+    crops_enqueued?: number;
+    dropped?: number;
+    dropped_faces?: number;
+    failed?: number;
+    last_sequence?: number;
+    last_error?: string;
+    last_latency_ms?: number;
+  };
 }
 
 export interface RecentDetection {
@@ -77,6 +132,7 @@ export interface StationStatus {
     pending: number;
     done: number;
   };
+  persistence?: PersistenceStatus;
   benchmark?: {
     samples?: number;
     provider?: string;
@@ -617,6 +673,8 @@ export interface StationConfig {
   camera_fallback_url?: string;
   camera_id: string;
   camera_label: string;
+  camera_async_mjpeg_enabled: boolean;
+  camera_mjpeg_decode_reduction: 1 | 2 | 4 | 8;
   camera_roi_left: number;
   camera_roi_right: number;
   secondary_camera_enabled: boolean;

@@ -678,7 +678,12 @@ class FaceDetector:
                 return candidate
         raise FileNotFoundError(f"No se encontro el modelo {filename} de {self.config.model_name}.")
 
-    def detect(self, frame) -> list[DetectedFace]:
+    def detect(
+        self,
+        frame,
+        *,
+        min_face_size: int | None = None,
+    ) -> list[DetectedFace]:
         if self.model is None:
             raise RuntimeError("SCRFD no esta cargado.")
         with self._inference_lock:
@@ -686,11 +691,19 @@ class FaceDetector:
         detections: list[DetectedFace] = []
         if boxes is None:
             return detections
+        effective_min_face_size = max(
+            1,
+            int(
+                self.config.min_face_size
+                if min_face_size is None
+                else min_face_size
+            ),
+        )
         for index, values in enumerate(boxes):
             x1, y1, x2, y2 = [int(round(float(value))) for value in values[:4]]
             width, height = max(0, x2 - x1), max(0, y2 - y1)
             score = float(values[4]) if len(values) > 4 else 0.0
-            if score < self.config.min_det_score or min(width, height) < self.config.min_face_size:
+            if score < self.config.min_det_score or min(width, height) < effective_min_face_size:
                 continue
             area_factor = min(1.0, min(width, height) / 180.0)
             points = None

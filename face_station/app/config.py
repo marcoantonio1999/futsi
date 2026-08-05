@@ -27,6 +27,8 @@ class StationConfig:
     camera_fallback_url: str = ""
     camera_id: str = "cancha_1"
     camera_label: str = "Raspberry"
+    camera_async_mjpeg_enabled: bool = False
+    camera_mjpeg_decode_reduction: int = 4
     camera_roi_left: float = 0.0
     camera_roi_right: float = 1.0
     secondary_camera_enabled: bool = False
@@ -104,6 +106,16 @@ class StationConfig:
             self.camera_fallback_url = ""
         self.camera_id = str(self.camera_id).strip() or "cancha_1"
         self.camera_label = str(self.camera_label).strip() or "Raspberry"
+        self.camera_async_mjpeg_enabled = self._as_bool(
+            self.camera_async_mjpeg_enabled
+        )
+        if int(self.camera_mjpeg_decode_reduction) not in {1, 2, 4, 8}:
+            raise ValueError(
+                "camera_mjpeg_decode_reduction debe ser 1, 2, 4 u 8."
+            )
+        self.camera_mjpeg_decode_reduction = int(
+            self.camera_mjpeg_decode_reduction
+        )
         self.camera_roi_left, self.camera_roi_right = self._validated_horizontal_roi(
             self.camera_roi_left,
             self.camera_roi_right,
@@ -264,10 +276,35 @@ class StationConfig:
         userinfo = f"{username}:{password}@" if self.secondary_camera_password else f"{username}@"
         return urlunsplit((parsed.scheme, f"{userinfo}{host}{port}", parsed.path, parsed.query, parsed.fragment))
 
+    @staticmethod
+    def _redacted_camera_source(source: str) -> str:
+        """Return a UI-safe source while retaining legacy userinfo on disk."""
+        if not source or "://" not in source:
+            return source
+        try:
+            parsed = urlsplit(source)
+            _ = parsed.port
+        except ValueError:
+            return source
+        if parsed.username is None and parsed.password is None:
+            return source
+        if not parsed.hostname:
+            return "<fuente de camara configurada>"
+        host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+        port = f":{parsed.port}" if parsed.port else ""
+        return urlunsplit(
+            (parsed.scheme, f"***@{host}{port}", parsed.path, parsed.query, parsed.fragment)
+        )
+
     def public_dict(self) -> dict:
         payload = asdict(self)
         payload["station_token_configured"] = bool(payload.pop("station_token"))
         payload["secondary_camera_password_configured"] = bool(payload.pop("secondary_camera_password"))
+        for field_name in ("camera_url", "camera_fallback_url"):
+            source = str(payload.get(field_name) or "")
+            redacted = self._redacted_camera_source(source)
+            payload[f"{field_name}_credentials_configured"] = redacted != source
+            payload[field_name] = redacted
         return payload
 
 
@@ -306,6 +343,13 @@ class ConfigManager:
                 current["station_token"] = self._config.station_token
             if not patch.get("secondary_camera_password") and "secondary_camera_password" in patch:
                 current["secondary_camera_password"] = self._config.secondary_camera_password
+            for field_name in ("camera_url", "camera_fallback_url"):
+                if field_name not in patch:
+                    continue
+                configured = str(getattr(self._config, field_name) or "")
+                redacted = StationConfig._redacted_camera_source(configured)
+                if redacted != configured and str(patch[field_name]) == redacted:
+                    current[field_name] = configured
             updated = StationConfig.from_dict(current)
             self._write(updated)
             self._config = updated

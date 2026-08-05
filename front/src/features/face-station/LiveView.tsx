@@ -31,6 +31,34 @@ export function LiveView({
   const batchCompleted = manualBusy ? manualCompleted : automaticCompleted;
   const batchInitial = manualBusy ? Number(manual?.initial_pending || 0) : Number(automatic?.initial_pending || 0);
   const evidence = queue?.evidence_maintenance;
+  const persistence = status?.persistence;
+  const originalFrames = persistence?.original_frames;
+  const persistenceDrops = Number(persistence?.dropped || 0);
+  const persistenceFailures = Number(persistence?.failed || 0);
+  const originalFrameDrops = Number(originalFrames?.dropped || 0);
+  const originalFaceDrops = Number(originalFrames?.dropped_faces || 0);
+  const originalFrameFailures = Number(originalFrames?.failed || 0);
+  const cameraPipelines = [status?.cameras?.primary, status?.cameras?.secondary]
+    .filter((camera): camera is CameraStatus => Boolean(camera?.capture_pipeline))
+    .map((camera) => ({ camera, pipeline: camera.capture_pipeline! }));
+  const cameraPipelineErrors = cameraPipelines.reduce((total, { pipeline }) => total
+    + Number(pipeline.compressed_frames_dropped || 0)
+    + Number(pipeline.packet_frames_dropped || 0)
+    + Number(pipeline.decode_errors || 0)
+    + Number(pipeline.jpeg_errors || 0), 0);
+  const cameraWorkerFailures = cameraPipelines.filter(({ camera, pipeline }) => (
+    status?.state === "running"
+    && camera.connected
+    && pipeline.pipeline_mode === "async_mjpeg"
+    && (pipeline.receiver_alive === false || pipeline.decoder_alive === false)
+  )).length;
+  const hasPersistenceLoss = persistenceDrops > 0
+    || persistenceFailures > 0
+    || originalFrameDrops > 0
+    || originalFaceDrops > 0
+    || originalFrameFailures > 0
+    || cameraPipelineErrors > 0
+    || cameraWorkerFailures > 0;
   const cameraPerformance = [status?.cameras?.primary, status?.cameras?.secondary]
     .filter((camera): camera is CameraStatus => Boolean(camera))
     .map((camera) => `${camera.label || "Cámara"} ${Number(camera.processing_fps || 0).toFixed(1)}`)
@@ -87,6 +115,36 @@ export function LiveView({
         <MetricCard label="Captura facial" value={compactNumber(queue?.today?.captured)} detail={`${compactNumber(capture?.frames_today)} frames desde el último inicio`} accent="violet" />
         <MetricCard label="Cola nocturna" value={`${compactNumber(queue?.pending)} recortes`} detail={`${fileSize(queue?.active_bytes)} · ${evidence?.daily_limit || 30} evidencias/día · auditoría ${evidence?.safety_days || 7} días`} accent="amber" />
       </section>
+
+      {persistence ? (
+        <section
+          aria-live="polite"
+          className={`mb-4 flex flex-col gap-2 rounded-xl border px-3.5 py-3 text-[10px] sm:flex-row sm:items-center sm:justify-between ${hasPersistenceLoss ? "border-red-200 bg-red-50 text-red-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}
+          data-testid="persistence-health"
+          role={hasPersistenceLoss ? "alert" : "status"}
+        >
+          <div className="flex min-w-0 items-start gap-2.5">
+            <HardDrive className={`mt-0.5 shrink-0 ${hasPersistenceLoss ? "text-red-700" : "text-emerald-700"}`} size={16} />
+            <div className="min-w-0">
+              <strong className="block text-[11px] font-extrabold">
+                {hasPersistenceLoss ? "Advertencia: se perdió evidencia durante esta ejecución" : "Persistencia de recortes saludable"}
+              </strong>
+              <span className="mt-0.5 block leading-4">
+                {originalFrames
+                  ? `Frame original: cola ${compactNumber(originalFrames.queue_depth)}/${compactNumber(originalFrames.queue_capacity)} · ${compactNumber(originalFrameDrops)} frames descartados (${compactNumber(originalFaceDrops)} rostros) · ${compactNumber(originalFrameFailures)} fallos.`
+                  : "Frame original: métricas no disponibles en esta versión del motor."}
+              </span>
+              <span className="mt-0.5 block leading-4">
+                Captura de camara: {compactNumber(cameraPipelineErrors)} descartes/errores
+                {cameraWorkerFailures ? ` · ${compactNumber(cameraWorkerFailures)} pipeline(s) incompleto(s)` : " · receptores y decoders activos"}.
+              </span>
+            </div>
+          </div>
+          <span className="shrink-0 font-bold tabular-nums sm:text-right">
+            Escritura: cola {compactNumber(persistence.queue_depth)}/{compactNumber(persistence.queue_capacity)} · {compactNumber(persistenceDrops)} descartes · {compactNumber(persistenceFailures)} fallos
+          </span>
+        </section>
+      ) : null}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(280px,0.68fr)_minmax(0,1.72fr)]">
         <section className={`${panelClass} order-2 xl:order-1`}>
@@ -194,6 +252,20 @@ function ManualBatchConfirmation({
 
 function CameraFeed({ kind, camera, paused }: { kind: "primary" | "secondary"; camera?: CameraStatus; paused?: boolean }) {
   const label = camera?.label || (kind === "primary" ? "Raspberry" : "Dahua");
+  const pipeline = camera?.capture_pipeline;
+  const asyncMjpeg = pipeline?.pipeline_mode === "async_mjpeg";
+  const pipelineDrops = Number(pipeline?.compressed_frames_dropped || 0)
+    + Number(pipeline?.packet_frames_dropped || 0)
+    + Number(pipeline?.decode_errors || 0)
+    + Number(pipeline?.jpeg_errors || 0);
+  const pipelineHealthy = !asyncMjpeg
+    || (pipeline?.receiver_alive !== false && pipeline?.decoder_alive !== false);
+  const cameraLive = Boolean(camera?.connected && pipelineHealthy);
+  const pipelineLabel = asyncMjpeg
+    ? `MJPEG directo · ${Number(pipeline?.ingress_fps || 0).toFixed(1)} FPS de entrada · detección 1/${Number(pipeline?.decode_reduction || 1)}`
+    : kind === "secondary"
+      ? "RTSP · ruta OpenCV"
+      : "Ruta compatible OpenCV";
   const roiLabel = camera?.roi_active && camera.roi
     ? `Área útil ${Math.round(camera.roi[0] * 100)}–${Math.round(camera.roi[1] * 100)}%`
     : "Marco completo";
@@ -204,9 +276,12 @@ function CameraFeed({ kind, camera, paused }: { kind: "primary" | "secondary"; c
           <span className="block text-[7px] font-extrabold uppercase tracking-widest text-zinc-500">{kind === "primary" ? "Fuente local" : "Fuente de red"}</span>
           <strong className="block truncate text-[11px]">{label}</strong>
           <span className={`mt-0.5 block text-[7px] font-bold uppercase tracking-wide ${camera?.roi_active ? "text-rose-300" : "text-zinc-600"}`}>{roiLabel}</span>
+          <span className={`mt-0.5 block text-[7px] font-bold uppercase tracking-wide ${pipelineDrops ? "text-amber-300" : asyncMjpeg ? "text-sky-300" : "text-zinc-600"}`}>
+            {pipelineLabel}{pipelineDrops ? ` · ${pipelineDrops} incidencias` : ""}{!pipelineHealthy ? " · pipeline incompleto" : ""}
+          </span>
         </div>
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-bold ${paused ? "border-amber-300/30 text-amber-100" : camera?.connected ? "border-emerald-400/25 text-emerald-200" : "border-amber-300/20 text-amber-100"}`}>
-          <i className={`size-1.5 rounded-full ${paused ? "animate-pulse bg-amber-400" : camera?.connected ? "bg-emerald-400" : "bg-amber-400"}`} /> {paused ? "Detección pausada" : camera?.connected ? `En vivo · ${Number(camera.processing_fps || 0).toFixed(1)} FPS${camera.hardware_acceleration ? " · HW" : ""}` : "Sin señal"}
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-bold ${paused ? "border-amber-300/30 text-amber-100" : cameraLive ? "border-emerald-400/25 text-emerald-200" : "border-amber-300/20 text-amber-100"}`}>
+          <i className={`size-1.5 rounded-full ${paused ? "animate-pulse bg-amber-400" : cameraLive ? "bg-emerald-400" : "bg-amber-400"}`} /> {paused ? "Detección pausada" : cameraLive ? `En vivo · ${Number(camera?.processing_fps || 0).toFixed(1)} FPS${camera?.hardware_acceleration ? " · HW" : ""}` : camera?.connected ? "Pipeline incompleto" : "Sin señal"}
         </span>
       </div>
       <div className="relative aspect-video overflow-hidden bg-black">

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from collections import deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
@@ -9,7 +10,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from queue import Empty, Full, Queue
-from threading import Event, Lock, RLock, Thread
+from threading import Event, Lock, RLock, Thread, current_thread
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import cv2
@@ -51,6 +52,15 @@ UNKNOWN_TRACK_MIN_IOU = 0.12
 UNKNOWN_TRACK_MAX_CENTER_DISTANCE = 0.45
 QUALITY_PROBE_INTERVAL_SECONDS = 0.5
 PERSISTENCE_QUEUE_MAX = 512
+RAW_FRAME_QUEUE_MAX = 512
+RAW_FRAME_WORKER_COUNT = 2
+RAW_PERSISTENCE_BATCH_MAX = 64
+RAW_PERSISTENCE_BATCH_WINDOW_SECONDS = 0.020
+RAW_PERSISTENCE_BACKPRESSURE_SECONDS = 2.0
+RAW_PERSISTENCE_BACKPRESSURE_SLICE_SECONDS = 0.1
+STOP_CONTROL_JOIN_SECONDS = 8.0
+STOP_RAW_DRAIN_SECONDS = 20.0
+STOP_PERSISTENCE_DRAIN_SECONDS = 20.0
 UNKNOWN_CACHE_REFRESH_SECONDS = 0.25
 BATCH_CANDIDATE_REFRESH_OBSERVED_SECONDS = 300.0
 BATCH_PERSISTENT_REFRESH_CROPS = 128
@@ -90,6 +100,19 @@ class PersistenceTask:
     enqueued_at: float = field(default_factory=time.monotonic)
 
 
+@dataclass(slots=True)
+class RawFrameTask:
+    """One compressed source frame awaiting a single full-resolution decode."""
+
+    sequence: int
+    observed_at: datetime
+    camera_key: str
+    detection_shape: tuple[int, int]
+    detections: tuple[DetectedFace, ...]
+    encoded_original: bytes
+    enqueued_at: float = field(default_factory=time.monotonic)
+
+
 class StationRuntime:
     """Owns the camera, InsightFace engine, local store, and background sync."""
 
@@ -100,6 +123,8 @@ class StationRuntime:
         self._preview_lock = RLock()
         self._lifecycle_lock = RLock()
         self._stop = Event()
+        self._capture_producer_done = Event()
+        self._capture_producer_done.set()
         self._benchmark_requested = Event()
         self._manual_batch_requested = Event()
         self._manual_batch_cancel_requested = Event()
@@ -108,8 +133,12 @@ class StationRuntime:
         self._processing_thread: Thread | None = None
         self._sync_thread: Thread | None = None
         self._persistence_thread: Thread | None = None
+        self._raw_frame_threads: list[Thread] = []
         self._batch_thread: Thread | None = None
         self._persistence_queue: Queue[PersistenceTask] = Queue(maxsize=PERSISTENCE_QUEUE_MAX)
+        self._raw_frame_queue: Queue[RawFrameTask] = Queue(
+            maxsize=RAW_FRAME_QUEUE_MAX
+        )
         self._cameras: dict[str, CameraWorker] = {}
         self._camera_labels: dict[str, str] = {}
         self._camera_ids: dict[str, str] = {}
@@ -183,6 +212,23 @@ class StationRuntime:
         self._persistence_failed = 0
         self._persistence_last_error = ""
         self._persistence_last_latency_ms = 0.0
+        self._persistence_raw_batches = 0
+        self._persistence_raw_batch_items = 0
+        self._persistence_raw_batch_max = 0
+        self._persistence_backpressure_retries = 0
+        self._persistence_inline_completed = 0
+        self._raw_frame_enqueued = 0
+        self._raw_frame_completed = 0
+        self._raw_frame_dropped = 0
+        self._raw_frame_dropped_faces = 0
+        self._raw_frame_failed = 0
+        self._raw_frame_decoded = 0
+        self._raw_frame_crops_enqueued = 0
+        self._raw_frame_queue_high_water = 0
+        self._raw_frame_active = 0
+        self._raw_frame_last_sequence = 0
+        self._raw_frame_last_error = ""
+        self._raw_frame_last_latency_ms = 0.0
         self._last_face_at = 0.0
         self._batch_state = "waiting_schedule"
         self._batch_processed = 0
@@ -248,10 +294,70 @@ class StationRuntime:
     def running(self) -> bool:
         return bool(self._processing_thread and self._processing_thread.is_alive())
 
+    def _worker_threads(self) -> list[tuple[str, Thread]]:
+        """Return every runtime-owned worker without hiding duplicate references."""
+        workers: list[tuple[str, Thread | None]] = [
+            ("processing", self._processing_thread),
+            ("sync", self._sync_thread),
+            ("persistence", self._persistence_thread),
+            ("batch", self._batch_thread),
+        ]
+        workers.extend(
+            (f"raw-{index + 1}", thread)
+            for index, thread in enumerate(self._raw_frame_threads)
+        )
+        unique: list[tuple[str, Thread]] = []
+        seen: set[int] = set()
+        for label, thread in workers:
+            if thread is None or id(thread) in seen:
+                continue
+            seen.add(id(thread))
+            unique.append((label, thread))
+        return unique
+
+    def _live_worker_names(self) -> list[str]:
+        return [
+            f"{label} ({thread.name})"
+            for label, thread in self._worker_threads()
+            if thread.is_alive()
+        ]
+
+    def _live_camera_worker_names(self) -> list[str]:
+        live: list[str] = []
+        for camera_key, camera in self._cameras.items():
+            try:
+                metrics = dict(getattr(camera, "status_metrics", {}) or {})
+            except Exception as exc:
+                LOGGER.exception(
+                    "No se pudo inspeccionar el pipeline de camara %s",
+                    camera_key,
+                )
+                live.append(f"{camera_key} (estado desconocido: {exc})")
+                continue
+            if metrics.get("receiver_alive"):
+                live.append(f"{camera_key} (receptor)")
+            if metrics.get("decoder_alive"):
+                live.append(f"{camera_key} (decoder)")
+        return live
+
+    @staticmethod
+    def _join_threads_until(threads: list[Thread], deadline: float) -> None:
+        caller = current_thread()
+        for thread in threads:
+            if thread is caller or not thread.is_alive():
+                continue
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+
     def start(self) -> None:
         with self._lifecycle_lock:
-            if self.running:
-                return
+            live_workers = self._live_worker_names()
+            live_camera_workers = self._live_camera_worker_names()
+            if live_workers or live_camera_workers:
+                active = [*live_workers, *live_camera_workers]
+                raise RuntimeError(
+                    "No se puede iniciar otro motor mientras siguen activos "
+                    f"workers anteriores: {', '.join(active)}."
+                )
             self._stop.clear()
             self._manual_batch_requested.clear()
             self._manual_batch_cancel_requested.clear()
@@ -285,6 +391,30 @@ class StationRuntime:
             self._last_recent_refresh_date = ""
             self._invalidate_batch_candidate_cache()
             self._persistence_queue = Queue(maxsize=PERSISTENCE_QUEUE_MAX)
+            self._raw_frame_queue = Queue(maxsize=RAW_FRAME_QUEUE_MAX)
+            self._persistence_enqueued = 0
+            self._persistence_completed = 0
+            self._persistence_dropped = 0
+            self._persistence_failed = 0
+            self._persistence_last_error = ""
+            self._persistence_last_latency_ms = 0.0
+            self._persistence_raw_batches = 0
+            self._persistence_raw_batch_items = 0
+            self._persistence_raw_batch_max = 0
+            self._persistence_backpressure_retries = 0
+            self._persistence_inline_completed = 0
+            self._raw_frame_enqueued = 0
+            self._raw_frame_completed = 0
+            self._raw_frame_dropped = 0
+            self._raw_frame_dropped_faces = 0
+            self._raw_frame_failed = 0
+            self._raw_frame_decoded = 0
+            self._raw_frame_crops_enqueued = 0
+            self._raw_frame_queue_high_water = 0
+            self._raw_frame_active = 0
+            self._raw_frame_last_sequence = 0
+            self._raw_frame_last_error = ""
+            self._raw_frame_last_latency_ms = 0.0
             self.store.recover_processing_crops()
             config = self.config_manager.config
             definitions = self._camera_definitions(config)
@@ -293,6 +423,10 @@ class StationRuntime:
                     details["source"],
                     name=key,
                     fallback_source=details.get("fallback_source", ""),
+                    async_mjpeg=bool(details.get("async_mjpeg", False)),
+                    mjpeg_decode_reduction=int(
+                        details.get("mjpeg_decode_reduction", 1)
+                    ),
                 )
                 for key, details in definitions.items()
             }
@@ -309,11 +443,25 @@ class StationRuntime:
                 camera.start()
             self._started_at = datetime.now(timezone.utc).isoformat()
             self._set_state("starting", "")
+            # Cleared only after all camera starts succeeded. The raw workers
+            # use this barrier to stay alive until the detector and every
+            # in-flight executor task have lost the ability to enqueue.
+            self._capture_producer_done.clear()
             self._processing_thread = Thread(target=self._processing_loop, name="futsi-recognition", daemon=True)
             self._sync_thread = Thread(target=StationSynchronizer(self).run, name="futsi-sync", daemon=True)
             self._persistence_thread = Thread(target=self._persistence_loop, name="futsi-persistence", daemon=True)
+            self._raw_frame_threads = [
+                Thread(
+                    target=self._raw_frame_loop,
+                    name=f"futsi-original-frame-{index + 1}",
+                    daemon=True,
+                )
+                for index in range(RAW_FRAME_WORKER_COUNT)
+            ]
             self._batch_thread = Thread(target=self._batch_loop, name="futsi-night-batch", daemon=True)
             self._persistence_thread.start()
+            for thread in self._raw_frame_threads:
+                thread.start()
             self._processing_thread.start()
             self._sync_thread.start()
             self._batch_thread.start()
@@ -321,31 +469,77 @@ class StationRuntime:
     def stop(self) -> None:
         with self._lifecycle_lock:
             self._stop.set()
-            for camera in self._cameras.values():
-                camera.stop()
-            for thread in (self._processing_thread, self._sync_thread, self._batch_thread):
-                if thread and thread.is_alive():
-                    thread.join(timeout=8)
-            if self._persistence_thread and self._persistence_thread.is_alive():
-                self._persistence_thread.join(timeout=20)
-            if self._persistence_thread and self._persistence_thread.is_alive():
-                LOGGER.warning(
-                    "La cola de persistencia no termino a tiempo; se descartaran %s tareas pendientes",
-                    self._persistence_queue.qsize(),
+            camera_stop_errors: list[str] = []
+            for camera_key, camera in self._cameras.items():
+                try:
+                    camera.stop()
+                except Exception as exc:
+                    LOGGER.exception(
+                        "No se pudo detener la camara %s",
+                        camera_key,
+                    )
+                    camera_stop_errors.append(f"{camera_key}: {exc}")
+            control_threads = [
+                thread
+                for thread in (
+                    self._processing_thread,
+                    self._sync_thread,
+                    self._batch_thread,
                 )
-                while True:
-                    try:
-                        task = self._persistence_queue.get_nowait()
-                    except Empty:
-                        break
-                    else:
-                        self._finish_pending_quality(task)
-                        self._persistence_queue.task_done()
-                        self._persistence_dropped += 1
-                self._persistence_thread.join(timeout=5)
+                if thread is not None
+            ]
+            self._join_threads_until(
+                control_threads,
+                time.monotonic() + STOP_CONTROL_JOIN_SECONDS,
+            )
+            if (
+                self._processing_thread is None
+                or not self._processing_thread.is_alive()
+            ):
+                self._capture_producer_done.set()
+            self._join_threads_until(
+                list(self._raw_frame_threads),
+                time.monotonic() + STOP_RAW_DRAIN_SECONDS,
+            )
+            if self._persistence_thread is not None:
+                self._join_threads_until(
+                    [self._persistence_thread],
+                    time.monotonic() + STOP_PERSISTENCE_DRAIN_SECONDS,
+                )
+
+            live_workers = self._live_worker_names()
+            live_camera_workers = self._live_camera_worker_names()
+            if live_workers or live_camera_workers or camera_stop_errors:
+                details = []
+                if live_workers:
+                    details.append(
+                        "workers activos: " + ", ".join(live_workers)
+                    )
+                if live_camera_workers:
+                    details.append(
+                        "pipelines de camara activos: "
+                        + ", ".join(live_camera_workers)
+                    )
+                if camera_stop_errors:
+                    details.append(
+                        "errores al detener camaras: "
+                        + "; ".join(camera_stop_errors)
+                    )
+                message = (
+                    "La estacion no pudo detener todos sus workers; se conservaron "
+                    "las colas y referencias para evitar perdida de evidencia y un "
+                    "reinicio duplicado. "
+                    + " | ".join(details)
+                    + "."
+                )
+                LOGGER.error(message)
+                self._set_state("error", message)
+                raise RuntimeError(message)
+
             self._processing_thread = None
             self._sync_thread = None
             self._persistence_thread = None
+            self._raw_frame_threads = []
             self._batch_thread = None
             self._engine = None
             self._detector = None
@@ -550,13 +744,58 @@ class StationRuntime:
                     "completed": self._persistence_completed,
                     "dropped": self._persistence_dropped,
                     "failed": self._persistence_failed,
+                    "backpressure_retries": self._persistence_backpressure_retries,
+                    "inline_completed": self._persistence_inline_completed,
                     "last_error": self._persistence_last_error,
                     "last_latency_ms": round(self._persistence_last_latency_ms, 1),
+                    "raw_batch": {
+                        "max_items": RAW_PERSISTENCE_BATCH_MAX,
+                        "window_ms": int(
+                            RAW_PERSISTENCE_BATCH_WINDOW_SECONDS * 1000
+                        ),
+                        "batches": self._persistence_raw_batches,
+                        "items": self._persistence_raw_batch_items,
+                        "largest": self._persistence_raw_batch_max,
+                    },
+                    "original_frames": {
+                        "queue_depth": self._raw_frame_queue.qsize(),
+                        "queue_capacity": RAW_FRAME_QUEUE_MAX,
+                        "queue_high_water": self._raw_frame_queue_high_water,
+                        "active": self._raw_frame_active,
+                        "worker_count": len(self._raw_frame_threads),
+                        "workers_active": sum(
+                            1
+                            for thread in self._raw_frame_threads
+                            if thread.is_alive()
+                        ),
+                        "worker_active": any(
+                            thread.is_alive()
+                            for thread in self._raw_frame_threads
+                        ),
+                        "enqueued": self._raw_frame_enqueued,
+                        "completed": self._raw_frame_completed,
+                        "decoded": self._raw_frame_decoded,
+                        "crops_enqueued": self._raw_frame_crops_enqueued,
+                        "dropped": self._raw_frame_dropped,
+                        "dropped_faces": self._raw_frame_dropped_faces,
+                        "failed": self._raw_frame_failed,
+                        "last_sequence": self._raw_frame_last_sequence,
+                        "last_error": self._raw_frame_last_error,
+                        "last_latency_ms": round(
+                            self._raw_frame_last_latency_ms,
+                            1,
+                        ),
+                    },
                 },
             }
         cameras = {}
         for key, details in definitions.items():
             camera = self._cameras.get(key)
+            capture_pipeline = (
+                dict(camera.status_metrics)
+                if camera is not None
+                else {}
+            )
             cameras[key] = {
                 "label": details["label"],
                 "camera_id": details["camera_id"],
@@ -575,6 +814,10 @@ class StationRuntime:
                 "failover_count": int(camera.failover_count if camera else 0),
                 "last_source_switch_at": float(camera.last_source_switch_at if camera else 0.0),
                 "last_failover_reason": camera.last_failover_reason if camera else "",
+                # CameraWorker owns this whitelist and never exposes source
+                # URLs or credentials. Keep protocol diagnostics nested so
+                # existing status consumers remain compatible.
+                "capture_pipeline": capture_pipeline,
             }
         connected_count = sum(1 for camera in cameras.values() if camera["connected"])
         payload["cameras"] = cameras
@@ -812,6 +1055,7 @@ class StationRuntime:
                     thread_name_prefix="futsi-detection",
                 )
             in_flight = {}
+            capture_workers_suspended = False
 
             def record_completion(camera_key: str) -> None:
                 completed = time.perf_counter()
@@ -847,11 +1091,21 @@ class StationRuntime:
                             self._processing_fps = 0.0
                             for camera_key in camera_keys:
                                 self._camera_processing_fps[camera_key] = 0.0
+                        # Keep the network sessions alive while the nightly
+                        # matcher owns the GPU, but do not decode or retain an
+                        # overnight backlog. Detection resumes from a fresh
+                        # frame when the batch is complete.
+                        if not capture_workers_suspended:
+                            self._suspend_capture_workers()
+                            capture_workers_suspended = True
                     with self._state_lock:
                         self._detection_paused = True
                     self._manual_detection_ready.set()
                     self._stop.wait(0.05)
                     continue
+                if capture_workers_suspended:
+                    self._resume_capture_workers()
+                    capture_workers_suspended = False
                 if self._detection_paused:
                     with self._state_lock:
                         self._detection_paused = False
@@ -872,10 +1126,14 @@ class StationRuntime:
                     for camera_key in camera_keys:
                         if camera_key in busy_cameras:
                             continue
-                        frame, captured_at = self._cameras[camera_key].next_frame()
-                        if frame is None:
+                        packet = self._cameras[camera_key].next_packet()
+                        if packet is None:
                             continue
-                        future = executor.submit(self._capture_frame, frame, captured_at, camera_key)
+                        future = executor.submit(
+                            self._capture_packet,
+                            packet,
+                            camera_key,
+                        )
                         in_flight[future] = camera_key
                     if not in_flight:
                         for camera in self._cameras.values():
@@ -890,10 +1148,10 @@ class StationRuntime:
                 else:
                     processed_any = False
                     for camera_key in camera_keys:
-                        frame, captured_at = self._cameras[camera_key].next_frame()
-                        if frame is None:
+                        packet = self._cameras[camera_key].next_packet()
+                        if packet is None:
                             continue
-                        self._capture_frame(frame, captured_at, camera_key)
+                        self._capture_packet(packet, camera_key)
                         record_completion(camera_key)
                         processed_any = True
                     if not processed_any:
@@ -902,14 +1160,23 @@ class StationRuntime:
                                 break
         except Exception as exc:
             LOGGER.exception("El motor de reconocimiento se detuvo")
+            # A failed detector must terminate every auxiliary worker before a
+            # restart can be attempted; otherwise two independent runtimes can
+            # consume the same cameras and queues.
+            self._stop.set()
             self._set_state("error", str(exc))
             for key in self._cameras or {"primary": None}:
                 self._set_preview(placeholder_frame("Error del motor", str(exc)), key)
         finally:
-            if executor:
-                executor.shutdown(wait=True, cancel_futures=True)
-            for camera in self._cameras.values():
-                camera.stop()
+            try:
+                if executor:
+                    executor.shutdown(wait=True, cancel_futures=True)
+            finally:
+                # This is the producer fence for original-frame workers. It
+                # must be raised only after every capture task has returned.
+                self._capture_producer_done.set()
+                for camera in self._cameras.values():
+                    camera.stop()
 
     def _batch_detection_pause_requested(self) -> bool:
         return (
@@ -917,50 +1184,301 @@ class StationRuntime:
             or self._automatic_batch_requested.is_set()
         )
 
+    def _suspend_capture_workers(self) -> None:
+        for camera in self._cameras.values():
+            camera.set_processing_enabled(False)
+            camera.clear_pending()
+
+    def _resume_capture_workers(self) -> None:
+        for camera in self._cameras.values():
+            # Discard the final packets received before the pause took effect;
+            # attendance must resume from a current frame, not from an
+            # hours-old packet retained across the nightly batch.
+            camera.clear_pending()
+            camera.set_processing_enabled(True)
+
+    def _enqueue_raw_frame(self, task: RawFrameTask) -> bool:
+        """Hand off original JPEG work without ever stalling SCRFD."""
+        try:
+            self._raw_frame_queue.put_nowait(task)
+        except Full:
+            with self._state_lock:
+                self._raw_frame_dropped += 1
+                self._raw_frame_dropped_faces += len(task.detections)
+                self._raw_frame_last_error = "Cola de frames originales llena"
+            LOGGER.warning(
+                "Se descarto el frame original %s de %s con %s rostros porque la cola esta llena",
+                task.sequence,
+                task.camera_key,
+                len(task.detections),
+            )
+            return False
+        with self._state_lock:
+            self._raw_frame_enqueued += 1
+            self._raw_frame_queue_high_water = max(
+                self._raw_frame_queue_high_water,
+                self._raw_frame_queue.qsize(),
+            )
+        return True
+
+    def _raw_frame_loop(self) -> None:
+        """Decode originals off the detector thread; captured_at remains authoritative."""
+        while (
+            not self._stop.is_set()
+            or not self._capture_producer_done.is_set()
+            or not self._raw_frame_queue.empty()
+        ):
+            try:
+                task = self._raw_frame_queue.get(timeout=0.1)
+            except Empty:
+                continue
+            with self._state_lock:
+                self._raw_frame_active += 1
+            try:
+                crops_enqueued = self._process_raw_frame_task(task)
+                with self._state_lock:
+                    self._raw_frame_completed += 1
+                    self._raw_frame_crops_enqueued += crops_enqueued
+                    self._raw_frame_last_sequence = max(
+                        self._raw_frame_last_sequence,
+                        int(task.sequence),
+                    )
+                    self._raw_frame_last_error = ""
+            except Exception as exc:
+                LOGGER.exception(
+                    "No se pudo convertir el frame original %s de %s en recortes",
+                    task.sequence,
+                    task.camera_key,
+                )
+                with self._state_lock:
+                    self._raw_frame_failed += 1
+                    self._raw_frame_last_sequence = max(
+                        self._raw_frame_last_sequence,
+                        int(task.sequence),
+                    )
+                    self._raw_frame_last_error = str(exc)[:500]
+                self._stop.set()
+                self._set_state(
+                    "error",
+                    "Se detuvo la captura porque un frame original no pudo "
+                    f"conservarse: {exc}",
+                )
+            finally:
+                with self._state_lock:
+                    self._raw_frame_active = max(
+                        0,
+                        self._raw_frame_active - 1,
+                    )
+                    self._raw_frame_last_latency_ms = (
+                        time.monotonic() - task.enqueued_at
+                    ) * 1000
+                self._raw_frame_queue.task_done()
+
+    def _process_raw_frame_task(self, task: RawFrameTask) -> int:
+        """Decode one JPEG exactly once and enqueue all of its face crops."""
+        encoded = np.frombuffer(task.encoded_original, dtype=np.uint8)
+        source_frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+        if source_frame is None or source_frame.size == 0:
+            raise ValueError("No se pudo decodificar el JPEG original para persistencia.")
+        with self._state_lock:
+            self._raw_frame_decoded += 1
+
+        enqueued = 0
+        for detected in task.detections:
+            source_detection = self._detection_for_source_shape(
+                detected,
+                task.detection_shape,
+                source_frame.shape[:2],
+            )
+            crop, bounds = face_crop_with_bounds(source_frame, source_detection)
+            if crop.size == 0:
+                continue
+            left, top, _, _ = bounds
+            relative_landmarks = None
+            if source_detection.landmarks is not None:
+                relative_landmarks = source_detection.landmarks.copy()
+                relative_landmarks[:, 0] -= left
+                relative_landmarks[:, 1] -= top
+            self._enqueue_raw_persistence(
+                PersistenceTask(
+                    kind="raw",
+                    subject_key=uuid4().hex,
+                    observed_at=task.observed_at,
+                    crop=crop.copy(),
+                    similarity=0.0,
+                    detected_quality=source_detection.score,
+                    camera_key=task.camera_key,
+                    bbox=source_detection.bbox,
+                    landmarks=relative_landmarks,
+                )
+            )
+            enqueued += 1
+        return enqueued
+
+    def _record_persistence_enqueued(self, task: PersistenceTask) -> None:
+        with self._state_lock:
+            self._persistence_enqueued += 1
+            if task.kind == "unknown":
+                self._pending_quality_subjects.add(task.subject_key)
+                self._last_quality_probe[
+                    f"unknown:{task.subject_key}"
+                ] = time.monotonic()
+
+    def _enqueue_raw_persistence(self, task: PersistenceTask) -> None:
+        """Apply bounded backpressure, then persist inline instead of losing a crop."""
+        deadline = time.monotonic() + RAW_PERSISTENCE_BACKPRESSURE_SECONDS
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                self._persistence_queue.put(
+                    task,
+                    timeout=min(
+                        RAW_PERSISTENCE_BACKPRESSURE_SLICE_SECONDS,
+                        remaining,
+                    ),
+                )
+            except Full:
+                with self._state_lock:
+                    self._persistence_backpressure_retries += 1
+                continue
+            self._record_persistence_enqueued(task)
+            return
+
+        LOGGER.warning(
+            "La cola de persistencia siguio llena; el recorte %s se guardara "
+            "directamente para conservar la evidencia",
+            task.subject_key,
+        )
+        try:
+            self._persist_raw_crop_batch([task])
+        except Exception as exc:
+            message = (
+                "No se pudo conservar un recorte despues de agotar el "
+                f"backpressure de persistencia: {exc}"
+            )
+            with self._state_lock:
+                self._persistence_failed += 1
+                self._persistence_last_error = message[:500]
+            raise RuntimeError(message) from exc
+        with self._state_lock:
+            self._persistence_inline_completed += 1
+            self._persistence_last_error = ""
+
     def _enqueue_persistence(self, task: PersistenceTask) -> bool:
         timeout = 0.2 if task.should_persist or task.kind == "known" else 0.0
         try:
             self._persistence_queue.put(task, timeout=timeout)
         except Full:
+            message = (
+                f"Cola de persistencia llena para una tarea {task.kind} "
+                f"de {task.subject_key}"
+            )
             with self._state_lock:
                 self._persistence_dropped += 1
-                self._persistence_last_error = "Cola de persistencia llena"
-            LOGGER.warning("Se descarto una tarea %s para %s porque la cola esta llena", task.kind, task.subject_key)
+                self._persistence_last_error = message
+            LOGGER.warning(
+                "Se descarto una tarea %s para %s porque la cola esta llena",
+                task.kind,
+                task.subject_key,
+            )
+            if task.should_persist or task.kind == "known":
+                self._stop.set()
+                self._set_state("error", message)
             return False
-        with self._state_lock:
-            self._persistence_enqueued += 1
-            if task.kind == "unknown":
-                self._pending_quality_subjects.add(task.subject_key)
-                self._last_quality_probe[f"unknown:{task.subject_key}"] = time.monotonic()
+        self._record_persistence_enqueued(task)
         return True
 
     def _persistence_loop(self) -> None:
         unknown_cache_dirty = False
         last_cache_refresh = time.monotonic()
-        while not self._stop.is_set() or not self._persistence_queue.empty():
+        deferred_task: PersistenceTask | None = None
+        while (
+            not self._stop.is_set()
+            or any(thread.is_alive() for thread in self._raw_frame_threads)
+            or not self._persistence_queue.empty()
+            or deferred_task is not None
+        ):
+            if deferred_task is not None:
+                task = deferred_task
+                deferred_task = None
+            else:
+                try:
+                    task = self._persistence_queue.get(timeout=0.1)
+                except Empty:
+                    if unknown_cache_dirty:
+                        self._reload_unknown_database()
+                        unknown_cache_dirty = False
+                        last_cache_refresh = time.monotonic()
+                    continue
+
+            tasks = [task]
+            if task.kind == "raw":
+                deadline = (
+                    time.monotonic() + RAW_PERSISTENCE_BATCH_WINDOW_SECONDS
+                )
+                while len(tasks) < RAW_PERSISTENCE_BATCH_MAX:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    try:
+                        candidate = self._persistence_queue.get(
+                            timeout=remaining
+                        )
+                    except Empty:
+                        break
+                    if candidate.kind != "raw":
+                        deferred_task = candidate
+                        break
+                    tasks.append(candidate)
             try:
-                task = self._persistence_queue.get(timeout=0.1)
-            except Empty:
-                if unknown_cache_dirty:
-                    self._reload_unknown_database()
-                    unknown_cache_dirty = False
-                    last_cache_refresh = time.monotonic()
-                continue
-            try:
-                unknown_cache_dirty = self._persist_task(task) or unknown_cache_dirty
+                if task.kind == "raw":
+                    with self._state_lock:
+                        self._persistence_raw_batches += 1
+                        self._persistence_raw_batch_items += len(tasks)
+                        self._persistence_raw_batch_max = max(
+                            self._persistence_raw_batch_max,
+                            len(tasks),
+                        )
+                    self._persist_raw_crop_batch(tasks)
+                else:
+                    unknown_cache_dirty = (
+                        self._persist_task(task) or unknown_cache_dirty
+                    )
                 with self._state_lock:
-                    self._persistence_completed += 1
+                    self._persistence_completed += len(tasks)
                     self._persistence_last_error = ""
             except Exception as exc:
-                LOGGER.exception("No se pudo persistir una deteccion %s", task.subject_key)
+                LOGGER.exception(
+                    "No se pudo persistir %s tarea(s) de tipo %s",
+                    len(tasks),
+                    task.kind,
+                )
                 with self._state_lock:
-                    self._persistence_failed += 1
+                    self._persistence_failed += len(tasks)
                     self._persistence_last_error = str(exc)[:500]
+                if any(
+                    queued.kind == "raw"
+                    or queued.kind == "known"
+                    or queued.should_persist
+                    for queued in tasks
+                ):
+                    self._stop.set()
+                    self._set_state(
+                        "error",
+                        "Se detuvo la captura porque no se pudo guardar "
+                        f"evidencia: {exc}",
+                    )
             finally:
-                self._finish_pending_quality(task)
+                for completed_task in tasks:
+                    self._finish_pending_quality(completed_task)
+                    self._persistence_queue.task_done()
                 with self._state_lock:
-                    self._persistence_last_latency_ms = (time.monotonic() - task.enqueued_at) * 1000
-                self._persistence_queue.task_done()
+                    self._persistence_last_latency_ms = max(
+                        time.monotonic() - completed_task.enqueued_at
+                        for completed_task in tasks
+                    ) * 1000
             if unknown_cache_dirty and (
                 self._persistence_queue.empty()
                 or time.monotonic() - last_cache_refresh >= UNKNOWN_CACHE_REFRESH_SECONDS
@@ -989,30 +1507,64 @@ class StationRuntime:
         raise ValueError(f"Tipo de persistencia desconocido: {task.kind}")
 
     def _persist_raw_crop_task(self, task: PersistenceTask) -> None:
-        crop_path = save_crop_image(
-            self.store.spool_dir,
-            task.crop,
-            task.camera_key,
-            task.subject_key,
-            task.observed_at,
-            jpeg_quality=self.config_manager.config.spool_jpeg_quality,
-        )
-        if not crop_path:
-            raise RuntimeError("No se pudo guardar el recorte de la cola nocturna.")
-        path = Path(crop_path)
-        height, width = task.crop.shape[:2]
-        self.store.enqueue_crop_for_processing(
-            captured_at=task.observed_at,
-            camera_key=task.camera_key,
-            camera_label=self._camera_labels.get(task.camera_key, task.camera_key),
-            crop_path=crop_path,
-            file_bytes=path.stat().st_size,
-            crop_width=width,
-            crop_height=height,
-            det_score=task.detected_quality,
-            bbox=task.bbox or (0, 0, width, height),
-            landmarks=task.landmarks,
-        )
+        self._persist_raw_crop_batch([task])
+
+    def _persist_raw_crop_batch(
+        self,
+        tasks: list[PersistenceTask],
+    ) -> list[dict]:
+        """Write JPEGs first, then commit their queue rows in one WAL txn."""
+        if not tasks:
+            return []
+        created_paths: list[Path] = []
+        items: list[dict] = []
+        try:
+            for task in tasks:
+                crop_path = save_crop_image(
+                    self.store.spool_dir,
+                    task.crop,
+                    task.camera_key,
+                    task.subject_key,
+                    task.observed_at,
+                    jpeg_quality=self.config_manager.config.spool_jpeg_quality,
+                )
+                if not crop_path:
+                    raise RuntimeError(
+                        "No se pudo guardar un recorte de la cola nocturna."
+                    )
+                path = Path(crop_path)
+                created_paths.append(path)
+                height, width = task.crop.shape[:2]
+                items.append(
+                    {
+                        "captured_at": task.observed_at,
+                        "camera_key": task.camera_key,
+                        "camera_label": self._camera_labels.get(
+                            task.camera_key,
+                            task.camera_key,
+                        ),
+                        "crop_path": crop_path,
+                        "file_bytes": path.stat().st_size,
+                        "crop_width": width,
+                        "crop_height": height,
+                        "det_score": task.detected_quality,
+                        "bbox": task.bbox or (0, 0, width, height),
+                        "landmarks": task.landmarks,
+                    }
+                )
+            return self.store.enqueue_crops_for_processing(items)
+        except Exception:
+            # The SQLite insert is atomic. Mirror that property on disk so a
+            # failed batch cannot leave unindexed JPEGs consuming storage.
+            for path in created_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    LOGGER.exception(
+                        "No se pudo retirar el recorte compensatorio %s",
+                        path,
+                    )
+            raise
 
     def _persist_known_task(self, task: PersistenceTask) -> None:
         person = task.person or {}
@@ -1677,6 +2229,50 @@ class StationRuntime:
             )
 
     def _capture_frame(self, source_frame, captured_at: float, camera_key: str) -> None:
+        """Compatibility path for decoded OpenCV frames and existing callers."""
+        self._capture_detection_frame(
+            source_frame,
+            captured_at,
+            camera_key,
+            decode_reduction=1,
+            decode_original=lambda: source_frame,
+            sequence=0,
+            encoded_original=None,
+        )
+
+    def _capture_packet(self, packet, camera_key: str) -> None:
+        """Detect on the reduced view and crop only from its exact source frame."""
+        detection_frame = getattr(packet, "detection_frame", None)
+        if (
+            not isinstance(detection_frame, np.ndarray)
+            or detection_frame.size == 0
+        ):
+            LOGGER.warning("La camara %s entrego un paquete sin imagen valida", camera_key)
+            return
+        self._capture_detection_frame(
+            detection_frame,
+            float(getattr(packet, "captured_at", 0.0) or time.time()),
+            camera_key,
+            decode_reduction=max(
+                1,
+                int(getattr(packet, "decode_reduction", 1) or 1),
+            ),
+            decode_original=packet.decode_original,
+            sequence=int(getattr(packet, "sequence", 0) or 0),
+            encoded_original=getattr(packet, "encoded_original", None),
+        )
+
+    def _capture_detection_frame(
+        self,
+        detection_source,
+        captured_at: float,
+        camera_key: str,
+        *,
+        decode_reduction: int,
+        decode_original,
+        sequence: int,
+        encoded_original: bytes | None,
+    ) -> None:
         config = self.config_manager.config
         observed_at = business_time(
             datetime.fromtimestamp(
@@ -1690,13 +2286,32 @@ class StationRuntime:
                 self._capture_date = observed_date
                 self._captured_frames_today = 0
                 self._captured_faces_today = 0
-        source_height, source_width = source_frame.shape[:2]
+        detection_height, detection_width = detection_source.shape[:2]
         roi_left, roi_right = self._camera_roi(config, camera_key)
-        roi_x1 = max(0, min(source_width - 1, int(round(source_width * roi_left))))
-        roi_x2 = max(roi_x1 + 1, min(source_width, int(round(source_width * roi_right))))
-        detection_frame = source_frame[:, roi_x1:roi_x2]
+        roi_x1 = max(
+            0,
+            min(
+                detection_width - 1,
+                int(round(detection_width * roi_left)),
+            ),
+        )
+        roi_x2 = max(
+            roi_x1 + 1,
+            min(detection_width, int(round(detection_width * roi_right))),
+        )
+        detection_frame = detection_source[:, roi_x1:roi_x2]
         detector = self._detectors.get(camera_key) or self._detector
-        roi_detections = detector.detect(detection_frame) if detector else []
+        if detector and decode_reduction > 1:
+            minimum_at_detector_scale = max(
+                1,
+                int(math.ceil(float(config.min_face_size) / decode_reduction)),
+            )
+            roi_detections = detector.detect(
+                detection_frame,
+                min_face_size=minimum_at_detector_scale,
+            )
+        else:
+            roi_detections = detector.detect(detection_frame) if detector else []
         detections = [
             self._offset_detection(detected, roi_x1, 0)
             for detected in roi_detections
@@ -1705,14 +2320,18 @@ class StationRuntime:
             time.monotonic() - self._last_preview_at.get(camera_key, 0.0)
             >= 1.0 / max(float(config.preview_fps), 1.0)
         )
-        preview_frame = resize_for_processing(source_frame, config.preview_width) if preview_due else None
+        preview_frame = (
+            resize_for_processing(detection_source, config.preview_width)
+            if preview_due
+            else None
+        )
         preview_scale_x = (
-            preview_frame.shape[1] / source_frame.shape[1]
+            preview_frame.shape[1] / detection_width
             if preview_frame is not None
             else 1.0
         )
         preview_scale_y = (
-            preview_frame.shape[0] / source_frame.shape[0]
+            preview_frame.shape[0] / detection_height
             if preview_frame is not None
             else 1.0
         )
@@ -1726,7 +2345,46 @@ class StationRuntime:
                     preview_frame.shape[0],
                 ),
             )
-        for detected in detections:
+
+        source_frame = None
+        source_detections: list[DetectedFace] = []
+        raw_frame_enqueued: bool | None = None
+        if detections and encoded_original:
+            raw_frame_enqueued = self._enqueue_raw_frame(
+                RawFrameTask(
+                    sequence=sequence,
+                    observed_at=observed_at,
+                    camera_key=camera_key,
+                    detection_shape=(detection_height, detection_width),
+                    detections=tuple(detections),
+                    encoded_original=encoded_original,
+                )
+            )
+        elif detections:
+            raw_frame_enqueued = False
+            try:
+                source_frame = decode_original()
+            except Exception as exc:
+                LOGGER.warning(
+                    "No se pudo decodificar el frame original de %s: %s",
+                    camera_key,
+                    exc,
+                )
+            if (
+                isinstance(source_frame, np.ndarray)
+                and source_frame.size > 0
+            ):
+                source_detections = [
+                    self._detection_for_source(
+                        detected,
+                        detection_source,
+                        source_frame,
+                    )
+                    for detected in detections
+                ]
+                raw_frame_enqueued = True
+
+        for detected in source_detections:
             crop, bounds = face_crop_with_bounds(source_frame, detected)
             if crop.size == 0:
                 continue
@@ -1736,7 +2394,7 @@ class StationRuntime:
                 relative_landmarks = detected.landmarks.copy()
                 relative_landmarks[:, 0] -= left
                 relative_landmarks[:, 1] -= top
-            self._enqueue_persistence(
+            self._enqueue_raw_persistence(
                 PersistenceTask(
                     kind="raw",
                     subject_key=uuid4().hex,
@@ -1749,7 +2407,8 @@ class StationRuntime:
                     landmarks=relative_landmarks,
                 )
             )
-            if preview_frame is not None:
+        if preview_frame is not None:
+            for detected in detections:
                 x1, y1, x2, y2 = detected.bbox
                 preview_detection = DetectedFace(
                     bbox=(
@@ -1762,11 +2421,21 @@ class StationRuntime:
                     score=detected.score,
                     quality=detected.quality,
                 )
+                if raw_frame_enqueued is False:
+                    preview_label = (
+                        f"No guardado: cola llena {detected.score * 100:.0f}%"
+                    )
+                    preview_color = AMBER
+                else:
+                    preview_label = (
+                        f"Recorte en cola {detected.score * 100:.0f}%"
+                    )
+                    preview_color = BLUE
                 draw_face(
                     preview_frame,
                     preview_detection,
-                    f"Recorte en cola {detected.score * 100:.0f}%",
-                    BLUE,
+                    preview_label,
+                    preview_color,
                 )
         if detections:
             self._last_face_at = time.monotonic()
@@ -2214,10 +2883,20 @@ class StationRuntime:
 
     def _capture_persistence_drained(self) -> bool:
         with self._state_lock:
+            # A failed/rejected write is not a completed fence item. Starting
+            # the nightly matcher in that state would make missing evidence
+            # indistinguishable from a successfully drained capture queue.
+            if (
+                self._raw_frame_failed > 0
+                or self._persistence_failed > 0
+                or self._persistence_dropped > 0
+            ):
+                return False
+            if self._raw_frame_enqueued > self._raw_frame_completed:
+                return False
             if self._batch_persistence_fence is None:
                 self._batch_persistence_fence = self._persistence_enqueued
-            completed = self._persistence_completed + self._persistence_failed
-            return completed >= self._batch_persistence_fence
+            return self._persistence_completed >= self._batch_persistence_fence
 
     def _batch_loop(self) -> None:
         while not self._stop.is_set():
@@ -3340,8 +4019,20 @@ class StationRuntime:
     @staticmethod
     def _detection_for_source(detected: DetectedFace, detection_frame, source_frame) -> DetectedFace:
         """Map a detection back to the untouched camera frame for high-quality crops."""
-        detection_height, detection_width = detection_frame.shape[:2]
-        source_height, source_width = source_frame.shape[:2]
+        return StationRuntime._detection_for_source_shape(
+            detected,
+            detection_frame.shape[:2],
+            source_frame.shape[:2],
+        )
+
+    @staticmethod
+    def _detection_for_source_shape(
+        detected: DetectedFace,
+        detection_shape: tuple[int, int],
+        source_shape: tuple[int, int],
+    ) -> DetectedFace:
+        detection_height, detection_width = detection_shape
+        source_height, source_width = source_shape
         if (detection_width, detection_height) == (source_width, source_height):
             return detected
         scale_x = source_width / max(detection_width, 1)
@@ -3353,7 +4044,12 @@ class StationRuntime:
             max(1, min(source_width, round(x2 * scale_x))),
             max(1, min(source_height, round(y2 * scale_y))),
         )
-        return replace(detected, bbox=bbox)
+        landmarks = None
+        if detected.landmarks is not None:
+            landmarks = np.asarray(detected.landmarks, dtype=np.float32).copy()
+            landmarks[:, 0] *= scale_x
+            landmarks[:, 1] *= scale_y
+        return replace(detected, bbox=bbox, landmarks=landmarks)
 
     @staticmethod
     def _offset_detection(detected: DetectedFace, offset_x: int, offset_y: int) -> DetectedFace:
@@ -3382,13 +4078,30 @@ class StationRuntime:
 
     @staticmethod
     def _camera_definitions(config) -> dict[str, dict]:
+        primary_source = str(config.camera_url).strip()
+        primary_is_http = primary_source.lower().startswith(
+            ("http://", "https://")
+        )
+        primary_async_mjpeg = bool(
+            config.camera_async_mjpeg_enabled and primary_is_http
+        )
         definitions = {
             "primary": {
-                "source": config.camera_url,
+                "source": primary_source,
                 "fallback_source": config.camera_fallback_url,
                 "camera_id": config.camera_id,
                 "label": config.camera_label,
                 "roi": [float(config.camera_roi_left), float(config.camera_roi_right)],
+                # The compressed JPEG path is intentionally restricted to the
+                # Raspberry's HTTP MJPEG source. RTSP cameras continue through
+                # OpenCV/NVDEC until a timestamped main/sub-stream design is
+                # introduced for them.
+                "async_mjpeg": primary_async_mjpeg,
+                "mjpeg_decode_reduction": int(
+                    config.camera_mjpeg_decode_reduction
+                    if primary_async_mjpeg
+                    else 1
+                ),
             }
         }
         if config.secondary_camera_enabled and config.secondary_camera_url:
@@ -3400,5 +4113,7 @@ class StationRuntime:
                     float(config.secondary_camera_roi_left),
                     float(config.secondary_camera_roi_right),
                 ],
+                "async_mjpeg": False,
+                "mjpeg_decode_reduction": 1,
             }
         return definitions

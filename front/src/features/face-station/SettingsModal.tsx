@@ -33,6 +33,7 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
       "detector_size", "processing_width", "preview_width", "target_fps",
       "known_threshold", "unknown_threshold", "unknown_confirmation_threshold",
       "spool_jpeg_quality", "night_embedding_batch_size",
+      "camera_mjpeg_decode_reduction",
       "daily_evidence_limit", "evidence_safety_days",
       "camera_roi_left", "camera_roi_right",
       "secondary_camera_roi_left", "secondary_camera_roi_right",
@@ -45,7 +46,7 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
     for (const [key, rawValue] of form.entries()) {
       const value = String(rawValue);
       if (["station_token", "secondary_camera_password"].includes(key) && !value) continue;
-      payload[key] = key === "secondary_camera_enabled"
+      payload[key] = ["secondary_camera_enabled", "camera_async_mjpeg_enabled"].includes(key)
         ? value === "true"
         : roiPercentages.has(key)
           ? Number(value) / 100
@@ -54,8 +55,13 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
             : value;
     }
     try {
-      await stationApi("/api/config", { method: "PATCH", body: JSON.stringify(payload) });
-      onNotify("Configuración guardada. El motor se está reiniciando.");
+      const result = await stationApi<{ saved: boolean; config: StationConfig; restarting: boolean }>("/api/config", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      onNotify(result.restarting
+        ? "Configuración guardada. El motor se está reiniciando."
+        : "Configuración guardada. El motor está detenido; pulsa Iniciar motor para aplicar los cambios.");
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo guardar la configuración.");
@@ -94,9 +100,11 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
               <label className={`${labelClass} sm:col-span-2`}>URL de respaldo<input className={inputClass} defaultValue={config.camera_fallback_url || ""} name="camera_fallback_url" placeholder="Tailscale u otra ruta alternativa" /></label>
               <label className={labelClass}>Nombre visible<input className={inputClass} defaultValue={config.camera_label} name="camera_label" required /></label>
               <label className={labelClass}>Identificador<input className={inputClass} defaultValue={config.camera_id} name="camera_id" required /></label>
+              <label className={labelClass}>Recepción MJPEG<select className={inputClass} defaultValue={String(config.camera_async_mjpeg_enabled ?? false)} name="camera_async_mjpeg_enabled"><option value="false">Compatible (anterior)</option><option value="true">Asíncrona (Raspberry HTTP)</option></select></label>
+              <label className={labelClass}>Reducción para detectar<select className={inputClass} defaultValue={config.camera_mjpeg_decode_reduction ?? 4} name="camera_mjpeg_decode_reduction">{[1, 2, 4, 8].map((value) => <option key={value} value={value}>{value === 1 ? "1× · resolución completa" : `${value}× · detección reducida`}</option>)}</select></label>
               <label className={labelClass}>Área útil desde (%)<input className={inputClass} defaultValue={Number((config.camera_roi_left * 100).toFixed(1))} name="camera_roi_left" type="number" min="0" max="90" step="0.1" /></label>
               <label className={labelClass}>Área útil hasta (%)<input className={inputClass} defaultValue={Number((config.camera_roi_right * 100).toFixed(1))} name="camera_roi_right" type="number" min="10" max="100" step="0.1" /></label>
-              <p className="text-[9px] leading-4 text-zinc-400 sm:col-span-2">Solo esta franja entra a SCRFD. Las zonas laterales sombreadas no generan recortes.</p>
+              <p className="text-[9px] leading-4 text-zinc-400 sm:col-span-2">El modo asíncrono solo se aplica a la Raspberry por HTTP MJPEG; la Dahua RTSP conserva su ruta actual. La reducción afecta únicamente la imagen que analiza SCRFD: el recorte se extrae del JPEG original con resolución completa. Solo el área útil entra a detección.</p>
             </CameraSection>
 
             <CameraSection title="Cámara Dahua" detail="Segunda fuente RTSP procesada en paralelo." icon={<Wifi size={15} />}>

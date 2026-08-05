@@ -3,6 +3,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from queue import Queue
 from threading import Event, Thread
 from uuid import uuid4
 
@@ -17,8 +18,13 @@ from face_station.app.config import ConfigManager
 from face_station.app.face_quality import FACE_OVAL, FaceQualityEvaluator, FaceQualityResult, FaceQualityThresholds
 from face_station.app.futsi_client import FutsiClient
 from face_station.app.preview import save_crop
-from face_station.app.processor import PersistenceTask, StationRuntime
-from face_station.app.recognition import DetectedFace, FaceEngine
+from face_station.app.processor import (
+    RAW_FRAME_WORKER_COUNT,
+    PersistenceTask,
+    RawFrameTask,
+    StationRuntime,
+)
+from face_station.app.recognition import DetectedFace, FaceDetector, FaceEngine
 from face_station.app.reprocess_unknowns import CropAnalysis, UnknownCluster, promote_clusters
 from face_station.app.store import LocalStore
 
@@ -68,6 +74,28 @@ def test_night_batch_time_is_normalized_and_validated(tmp_path):
         manager.update({"night_batch_start_time": "24:30"})
 
 
+def test_async_mjpeg_config_is_reversible_and_validated(tmp_path):
+    manager = ConfigManager(tmp_path)
+
+    assert manager.config.camera_async_mjpeg_enabled is False
+    assert manager.config.camera_mjpeg_decode_reduction == 4
+
+    updated = manager.update({
+        "camera_async_mjpeg_enabled": "true",
+        "camera_mjpeg_decode_reduction": 2,
+    })
+    assert updated.camera_async_mjpeg_enabled is True
+    assert updated.camera_mjpeg_decode_reduction == 2
+    assert updated.public_dict()["camera_async_mjpeg_enabled"] is True
+    assert updated.public_dict()["camera_mjpeg_decode_reduction"] == 2
+
+    rolled_back = manager.update({"camera_async_mjpeg_enabled": False})
+    assert rolled_back.camera_async_mjpeg_enabled is False
+
+    with pytest.raises(ValueError, match="camera_mjpeg_decode_reduction"):
+        manager.update({"camera_mjpeg_decode_reduction": 3})
+
+
 def test_config_validates_horizontal_camera_roi(tmp_path):
     manager = ConfigManager(tmp_path)
     updated = manager.update({"camera_roi_left": 0.336, "camera_roi_right": 0.773})
@@ -93,6 +121,31 @@ def test_primary_camera_keeps_distinct_fallback_source(tmp_path):
 
     duplicate = manager.update({"camera_fallback_url": updated.camera_url})
     assert duplicate.camera_fallback_url == ""
+
+
+def test_async_mjpeg_flags_only_apply_to_the_primary_http_camera(tmp_path):
+    manager = ConfigManager(tmp_path)
+    config = manager.update({
+        "camera_url": "http://192.168.1.42:8080/stream",
+        "camera_async_mjpeg_enabled": True,
+        "camera_mjpeg_decode_reduction": 4,
+        "secondary_camera_enabled": True,
+        "secondary_camera_url": "rtsp://192.168.1.50:554/live",
+    })
+
+    definitions = StationRuntime._camera_definitions(config)
+
+    assert definitions["primary"]["async_mjpeg"] is True
+    assert definitions["primary"]["mjpeg_decode_reduction"] == 4
+    assert definitions["secondary"]["async_mjpeg"] is False
+    assert definitions["secondary"]["mjpeg_decode_reduction"] == 1
+
+    rtsp_primary = manager.update({
+        "camera_url": "rtsp://192.168.1.51:554/live",
+    })
+    primary = StationRuntime._camera_definitions(rtsp_primary)["primary"]
+    assert primary["async_mjpeg"] is False
+    assert primary["mjpeg_decode_reduction"] == 1
 
 
 def test_secondary_camera_credentials_stay_private_and_survive_blank_updates(tmp_path):
@@ -1450,6 +1503,36 @@ def test_runtime_health_status_never_queries_sqlite_summaries(tmp_path, monkeypa
     }
 
 
+def test_night_pause_drains_camera_packets_and_resumes_from_a_fresh_frame(tmp_path):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    calls = []
+
+    class Camera:
+        @staticmethod
+        def set_processing_enabled(enabled):
+            calls.append(("enabled", enabled))
+
+        @staticmethod
+        def clear_pending():
+            calls.append(("clear", None))
+
+    runtime._cameras = {"primary": Camera(), "secondary": Camera()}
+
+    runtime._suspend_capture_workers()
+    runtime._resume_capture_workers()
+
+    assert calls == [
+        ("enabled", False),
+        ("clear", None),
+        ("enabled", False),
+        ("clear", None),
+        ("clear", None),
+        ("enabled", True),
+        ("clear", None),
+        ("enabled", True),
+    ]
+
+
 def test_manual_batch_request_is_explicit_and_cancel_does_not_consume_queue(tmp_path):
     runtime = StationRuntime(ConfigManager(tmp_path))
     now = datetime.now(timezone.utc).astimezone() - timedelta(days=1)
@@ -1608,11 +1691,202 @@ def test_batch_waits_for_capture_persistence_fence(tmp_path):
     runtime = StationRuntime(ConfigManager(tmp_path))
     runtime._persistence_enqueued = 4
     runtime._persistence_completed = 2
-    runtime._persistence_failed = 1
 
     assert runtime._capture_persistence_drained() is False
-    runtime._persistence_completed = 3
+    runtime._persistence_completed = 4
     assert runtime._capture_persistence_drained() is True
+
+    runtime._persistence_failed = 1
+    assert runtime._capture_persistence_drained() is False
+
+
+def test_stop_preserves_queues_and_rejects_restart_while_a_worker_is_alive(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    monkeypatch.setattr(processor_module, "STOP_CONTROL_JOIN_SECONDS", 0.02)
+    monkeypatch.setattr(processor_module, "STOP_RAW_DRAIN_SECONDS", 0.02)
+    monkeypatch.setattr(processor_module, "STOP_PERSISTENCE_DRAIN_SECONDS", 0.02)
+    release = Event()
+    orphan = Thread(target=release.wait, name="qa-orphan", daemon=True)
+    runtime._processing_thread = orphan
+    observed_at = datetime.now(timezone.utc).astimezone()
+    detected = DetectedFace((10, 10, 30, 30), None, 0.9, 0.8)
+    runtime._raw_frame_queue.put_nowait(
+        RawFrameTask(
+            sequence=1,
+            observed_at=observed_at,
+            camera_key="primary",
+            detection_shape=(40, 40),
+            detections=(detected,),
+            encoded_original=b"pending-jpeg",
+        )
+    )
+    runtime._persistence_queue.put_nowait(
+        PersistenceTask(
+            kind="raw",
+            subject_key="pending-crop",
+            observed_at=observed_at,
+            crop=np.zeros((20, 20, 3), dtype=np.uint8),
+            similarity=0.0,
+            detected_quality=0.9,
+            camera_key="primary",
+        )
+    )
+    orphan.start()
+
+    try:
+        with pytest.raises(RuntimeError, match="workers activos"):
+            runtime.stop()
+
+        assert runtime._stop.is_set()
+        assert runtime._processing_thread is orphan
+        assert runtime._raw_frame_queue.qsize() == 1
+        assert runtime._persistence_queue.qsize() == 1
+        assert runtime._state == "error"
+        with pytest.raises(RuntimeError, match="workers anteriores"):
+            runtime.start()
+    finally:
+        release.set()
+        orphan.join(timeout=1)
+
+
+def test_camera_stop_failure_is_aggregated_and_blocks_a_second_pipeline(tmp_path):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    calls = []
+
+    class StuckCamera:
+        @property
+        def status_metrics(self):
+            return {"receiver_alive": True, "decoder_alive": False}
+
+        def stop(self):
+            calls.append("stuck")
+            raise RuntimeError("receptor no termino")
+
+    class OtherCamera:
+        @property
+        def status_metrics(self):
+            return {"receiver_alive": False, "decoder_alive": False}
+
+        def stop(self):
+            calls.append("other")
+
+    cameras = {"primary": StuckCamera(), "secondary": OtherCamera()}
+    runtime._cameras = cameras
+
+    with pytest.raises(RuntimeError, match="primary.*receptor"):
+        runtime.stop()
+
+    assert calls == ["stuck", "other"]
+    assert runtime._cameras is cameras
+    assert runtime._stop.is_set()
+    assert runtime._state == "error"
+    with pytest.raises(RuntimeError, match=r"primary \(receptor\)"):
+        runtime.start()
+    assert runtime._cameras is cameras
+
+
+def test_stop_waits_for_a_late_inflight_frame_before_raw_workers_exit(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    observed_at = datetime.now(timezone.utc).astimezone()
+    detected = DetectedFace((10, 10, 30, 30), None, 0.9, 0.8)
+    producer_started = Event()
+    release_producer = Event()
+    processed = []
+    stop_errors = []
+    runtime._capture_producer_done.clear()
+
+    def delayed_producer():
+        producer_started.set()
+        try:
+            assert release_producer.wait(2)
+            assert runtime._enqueue_raw_frame(
+                RawFrameTask(
+                    sequence=77,
+                    observed_at=observed_at,
+                    camera_key="primary",
+                    detection_shape=(40, 40),
+                    detections=(detected,),
+                    encoded_original=b"late-but-valid",
+                )
+            )
+        finally:
+            runtime._capture_producer_done.set()
+
+    monkeypatch.setattr(
+        runtime,
+        "_process_raw_frame_task",
+        lambda item: processed.append(item.sequence) or len(item.detections),
+    )
+    runtime._processing_thread = Thread(
+        target=delayed_producer,
+        name="qa-delayed-producer",
+        daemon=True,
+    )
+    raw_worker = Thread(
+        target=runtime._raw_frame_loop,
+        name="qa-raw-consumer",
+        daemon=True,
+    )
+    runtime._raw_frame_threads = [raw_worker]
+    runtime._processing_thread.start()
+    raw_worker.start()
+    assert producer_started.wait(1)
+
+    def stop_runtime():
+        try:
+            runtime.stop()
+        except Exception as exc:  # pragma: no cover - asserted below
+            stop_errors.append(exc)
+
+    stopper = Thread(target=stop_runtime, name="qa-stop")
+    stopper.start()
+    assert runtime._stop.wait(1)
+    __import__("time").sleep(0.05)
+    assert raw_worker.is_alive()
+
+    release_producer.set()
+    stopper.join(timeout=2)
+
+    assert not stopper.is_alive()
+    assert stop_errors == []
+    assert processed == [77]
+    assert runtime._raw_frame_completed == 1
+    assert runtime._raw_frame_dropped == 0
+    assert runtime._capture_producer_done.is_set()
+    assert runtime._stop.is_set()
+    assert runtime._state == "stopped"
+
+
+def test_processing_loop_failure_stops_all_auxiliary_workers(tmp_path, monkeypatch):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    stopped = []
+
+    class Camera:
+        def stop(self):
+            stopped.append(True)
+
+    class BrokenDetector:
+        def __init__(self, _config):
+            pass
+
+        def load(self):
+            raise RuntimeError("modelo roto QA")
+
+    runtime._cameras = {"primary": Camera()}
+    monkeypatch.setattr(processor_module, "FaceDetector", BrokenDetector)
+
+    runtime._processing_loop()
+
+    assert runtime._stop.is_set()
+    assert runtime._state == "error"
+    assert "modelo roto QA" in runtime._last_error
+    assert stopped == [True]
 
 
 def test_queued_crop_reuses_landmarks_without_running_detection(tmp_path):
@@ -1988,6 +2262,510 @@ def test_capture_pipeline_detects_original_frame_and_queues_original_crop(tmp_pa
     assert queued["crop_height"] == 426
     assert stored_crop.shape[:2] == (426, 330)
     assert runtime.status()["capture"]["faces_today"] == 1
+
+
+def test_reduced_capture_skips_original_decode_when_scrfd_finds_no_faces(tmp_path):
+    manager = ConfigManager(tmp_path)
+    manager.update({
+        "camera_roi_left": 0.25,
+        "camera_roi_right": 0.75,
+        "min_face_size": 70,
+    })
+    runtime = StationRuntime(manager)
+    reduced = np.full((486, 648, 3), 150, dtype=np.uint8)
+    original = np.full((1944, 2592, 3), 150, dtype=np.uint8)
+    calls = {"decode": 0, "threshold": None, "shape": None}
+
+    class EmptyDetector:
+        def detect(self, source, *, min_face_size=None):
+            calls["shape"] = source.shape
+            calls["threshold"] = min_face_size
+            return []
+
+    class Packet:
+        sequence = 40
+        captured_at = datetime.now(timezone.utc).timestamp()
+        detection_frame = reduced
+        decode_reduction = 4
+        encoded_original = b"unused-source-jpeg"
+
+        @staticmethod
+        def decode_original():
+            calls["decode"] += 1
+            return original
+
+    runtime._detector = EmptyDetector()
+    runtime._last_preview_at["primary"] = __import__("time").monotonic()
+
+    runtime._capture_packet(Packet(), "primary")
+
+    assert calls["shape"] == (486, 324, 3)
+    assert calls["threshold"] == 18
+    assert calls["decode"] == 0
+    assert runtime._raw_frame_queue.empty()
+    assert runtime._persistence_queue.empty()
+    assert runtime.status()["capture"]["frames_today"] == 1
+    assert runtime.status()["capture"]["faces_today"] == 0
+
+
+def test_reduced_capture_defers_one_original_decode_and_scales_all_faces(
+    tmp_path,
+    monkeypatch,
+):
+    manager = ConfigManager(tmp_path)
+    manager.update({
+        "camera_roi_left": 0.25,
+        "camera_roi_right": 0.75,
+        "min_face_size": 70,
+    })
+    runtime = StationRuntime(manager)
+    reduced = np.full((486, 648, 3), 140, dtype=np.uint8)
+    original = np.full((1944, 2592, 3), 140, dtype=np.uint8)
+    calls = {"packet_decode": 0, "worker_decode": 0, "threshold": None}
+    first_landmarks = np.asarray(
+        [[100, 205], [130, 205], [115, 220], [104, 240], [126, 240]],
+        dtype=np.float32,
+    )
+    second_landmarks = np.asarray(
+        [[170, 112], [195, 112], [182, 128], [173, 148], [193, 148]],
+        dtype=np.float32,
+    )
+
+    class TwoFaceDetector:
+        def detect(self, source, *, min_face_size=None):
+            assert source.shape == (486, 324, 3)
+            calls["threshold"] = min_face_size
+            return [
+                DetectedFace((88, 190, 143, 255), None, 0.98, 0.9, first_landmarks),
+                DetectedFace((160, 100, 210, 160), None, 0.96, 0.8, second_landmarks),
+            ]
+
+    class Packet:
+        sequence = 41
+        captured_at = datetime.now(timezone.utc).timestamp()
+        detection_frame = reduced
+        decode_reduction = 4
+        encoded_original = b"exact-source-jpeg"
+
+        @staticmethod
+        def decode_original():
+            calls["packet_decode"] += 1
+            raise AssertionError("SCRFD no debe esperar el decode 4K.")
+
+    runtime._detector = TwoFaceDetector()
+    runtime._last_preview_at["primary"] = __import__("time").monotonic()
+
+    runtime._capture_packet(Packet(), "primary")
+
+    raw_task = runtime._raw_frame_queue.get_nowait()
+    runtime._raw_frame_queue.task_done()
+    assert raw_task.sequence == 41
+    assert len(raw_task.detections) == 2
+    assert calls["packet_decode"] == 0
+    assert runtime._persistence_queue.empty()
+
+    def decode_original(encoded, mode):
+        assert encoded.tobytes() == Packet.encoded_original
+        assert mode == cv2.IMREAD_COLOR
+        calls["worker_decode"] += 1
+        return original
+
+    monkeypatch.setattr(processor_module.cv2, "imdecode", decode_original)
+    assert runtime._process_raw_frame_task(raw_task) == 2
+
+    first = runtime._persistence_queue.get_nowait()
+    second = runtime._persistence_queue.get_nowait()
+    runtime._persistence_queue.task_done()
+    runtime._persistence_queue.task_done()
+
+    assert calls["threshold"] == 18
+    assert calls["worker_decode"] == 1
+    assert first.bbox == (1000, 760, 1220, 1020)
+    assert first.crop.shape[:2] == (426, 330)
+    assert np.allclose(
+        first.landmarks,
+        np.asarray(
+            [[103, 143], [223, 143], [163, 203], [119, 283], [207, 283]],
+            dtype=np.float32,
+        ),
+    )
+    assert second.bbox == (1288, 400, 1488, 640)
+    assert runtime._persistence_queue.empty()
+    assert runtime.status()["capture"]["faces_today"] == 2
+
+
+def test_scrfd_accepts_a_detector_scale_minimum_without_changing_default(tmp_path):
+    config = ConfigManager(tmp_path).config
+    detector = FaceDetector(config)
+
+    class Model:
+        @staticmethod
+        def detect(_frame, max_num=0, metric="default"):
+            assert max_num == 0
+            assert metric == "default"
+            return (
+                np.asarray(
+                    [
+                        [10, 10, 30, 30, 0.95],
+                        [40, 40, 57, 57, 0.95],
+                    ],
+                    dtype=np.float32,
+                ),
+                None,
+            )
+
+    detector.model = Model()
+    frame = np.zeros((160, 160, 3), dtype=np.uint8)
+
+    assert detector.detect(frame) == []
+    scaled = detector.detect(frame, min_face_size=18)
+
+    assert len(scaled) == 1
+    assert scaled[0].bbox == (10, 10, 30, 30)
+
+
+def test_original_frame_queue_is_nonblocking_and_reports_drops(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._raw_frame_queue = Queue(maxsize=2)
+    detected = DetectedFace((10, 10, 40, 40), None, 0.9, 0.8)
+    observed_at = datetime.now(timezone.utc).astimezone()
+
+    def task(sequence):
+        return RawFrameTask(
+            sequence=sequence,
+            observed_at=observed_at,
+            camera_key="primary",
+            detection_shape=(100, 100),
+            detections=(detected,),
+            encoded_original=f"jpeg-{sequence}".encode(),
+        )
+
+    assert runtime._enqueue_raw_frame(task(1)) is True
+    assert runtime._enqueue_raw_frame(task(2)) is True
+    assert runtime._enqueue_raw_frame(task(3)) is False
+    assert runtime._raw_frame_dropped == 1
+    assert runtime._raw_frame_dropped_faces == 1
+    assert runtime._capture_persistence_drained() is False
+
+    processed = []
+    monkeypatch.setattr(
+        runtime,
+        "_process_raw_frame_task",
+        lambda item: processed.append(item.sequence) or len(item.detections),
+    )
+    runtime._stop.set()
+    runtime._raw_frame_loop()
+
+    assert sorted(processed) == [1, 2]
+    assert runtime._raw_frame_completed == 2
+    assert runtime._raw_frame_crops_enqueued == 2
+    assert runtime._capture_persistence_drained() is True
+    status = runtime.status()["persistence"]["original_frames"]
+    assert status["queue_depth"] == 0
+    assert status["queue_high_water"] == 2
+    assert status["dropped"] == 1
+    assert status["last_sequence"] == 2
+
+
+def test_full_original_queue_never_labels_the_preview_as_enqueued(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._raw_frame_queue = Queue(maxsize=1)
+    observed_at = datetime.now(timezone.utc).astimezone()
+    detected = DetectedFace((12, 14, 42, 48), None, 0.93, 0.8)
+    runtime._raw_frame_queue.put_nowait(
+        RawFrameTask(
+            sequence=1,
+            observed_at=observed_at,
+            camera_key="primary",
+            detection_shape=(80, 100),
+            detections=(detected,),
+            encoded_original=b"already-pending",
+        )
+    )
+    labels = []
+
+    class Detector:
+        @staticmethod
+        def detect(_frame, *, min_face_size=None):
+            assert min_face_size is not None
+            return [detected]
+
+    class Packet:
+        sequence = 2
+        captured_at = observed_at.timestamp()
+        detection_frame = np.full((80, 100, 3), 128, dtype=np.uint8)
+        decode_reduction = 4
+        encoded_original = b"new-frame"
+
+        @staticmethod
+        def decode_original():
+            raise AssertionError("La captura asincrona no debe decodificar aqui.")
+
+    runtime._detector = Detector()
+    monkeypatch.setattr(
+        processor_module,
+        "draw_face",
+        lambda _frame, _detected, label, color: labels.append((label, color)),
+    )
+    monkeypatch.setattr(processor_module, "encode_preview", lambda *_args: b"preview")
+
+    runtime._capture_packet(Packet(), "primary")
+
+    assert labels
+    assert all("Recorte en cola" not in label for label, _color in labels)
+    assert all("No guardado: cola llena" in label for label, _color in labels)
+    assert all(color == processor_module.AMBER for _label, color in labels)
+    status = runtime.status()["persistence"]["original_frames"]
+    assert status["dropped"] == 1
+    assert status["dropped_faces"] == 1
+    assert status["queue_depth"] == 1
+
+
+def test_raw_persistence_uses_bounded_inline_fallback_without_losing_crop(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._persistence_queue = Queue(maxsize=1)
+    observed_at = datetime.now(timezone.utc).astimezone()
+    blocker = PersistenceTask(
+        kind="raw",
+        subject_key="blocker",
+        observed_at=observed_at,
+        crop=np.zeros((20, 20, 3), dtype=np.uint8),
+        similarity=0.0,
+        detected_quality=0.9,
+        camera_key="primary",
+    )
+    runtime._persistence_queue.put_nowait(blocker)
+    task = PersistenceTask(
+        kind="raw",
+        subject_key="must-survive",
+        observed_at=observed_at,
+        crop=np.full((20, 20, 3), 150, dtype=np.uint8),
+        similarity=0.0,
+        detected_quality=0.95,
+        camera_key="primary",
+    )
+    persisted = []
+    monkeypatch.setattr(
+        processor_module,
+        "RAW_PERSISTENCE_BACKPRESSURE_SECONDS",
+        0.02,
+    )
+    monkeypatch.setattr(
+        processor_module,
+        "RAW_PERSISTENCE_BACKPRESSURE_SLICE_SECONDS",
+        0.005,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_persist_raw_crop_batch",
+        lambda tasks: persisted.extend(tasks) or [{}],
+    )
+
+    runtime._enqueue_raw_persistence(task)
+
+    assert persisted == [task]
+    assert runtime._persistence_inline_completed == 1
+    assert runtime._persistence_dropped == 0
+    assert runtime._capture_persistence_drained() is True
+    status = runtime.status()["persistence"]
+    assert status["backpressure_retries"] >= 1
+    assert status["inline_completed"] == 1
+
+
+def test_failed_raw_persistence_is_not_completed_and_stops_before_batch(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._persistence_queue = Queue(maxsize=1)
+    observed_at = datetime.now(timezone.utc).astimezone()
+    runtime._persistence_queue.put_nowait(
+        PersistenceTask(
+            kind="raw",
+            subject_key="blocker",
+            observed_at=observed_at,
+            crop=np.zeros((20, 20, 3), dtype=np.uint8),
+            similarity=0.0,
+            detected_quality=0.9,
+            camera_key="primary",
+        )
+    )
+    image = np.full((80, 80, 3), 170, dtype=np.uint8)
+    encoded_ok, encoded = cv2.imencode(".jpg", image)
+    assert encoded_ok
+    detected = DetectedFace((20, 18, 58, 62), None, 0.95, 0.8)
+    assert runtime._enqueue_raw_frame(
+        RawFrameTask(
+            sequence=9,
+            observed_at=observed_at,
+            camera_key="primary",
+            detection_shape=(80, 80),
+            detections=(detected,),
+            encoded_original=encoded.tobytes(),
+        )
+    )
+    monkeypatch.setattr(
+        processor_module,
+        "RAW_PERSISTENCE_BACKPRESSURE_SECONDS",
+        0.02,
+    )
+    monkeypatch.setattr(
+        processor_module,
+        "RAW_PERSISTENCE_BACKPRESSURE_SLICE_SECONDS",
+        0.005,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_persist_raw_crop_batch",
+        lambda _tasks: (_ for _ in ()).throw(RuntimeError("sqlite QA")),
+    )
+
+    runtime._raw_frame_loop()
+
+    assert runtime._stop.is_set()
+    assert runtime._raw_frame_completed == 0
+    assert runtime._raw_frame_failed == 1
+    assert runtime._persistence_failed == 1
+    assert runtime._capture_persistence_drained() is False
+    assert runtime._state == "error"
+    assert "sqlite QA" in runtime._last_error
+
+
+def test_two_original_frame_workers_decode_concurrently_and_keep_timestamps(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._raw_frame_queue = Queue(maxsize=4)
+    observed = [
+        datetime.now(timezone.utc).astimezone(),
+        datetime.now(timezone.utc).astimezone() + timedelta(milliseconds=10),
+    ]
+    detected = DetectedFace((10, 10, 40, 40), None, 0.9, 0.8)
+    started = []
+    both_started = Event()
+    release = Event()
+
+    def process(item):
+        started.append((item.sequence, item.observed_at))
+        if len(started) == 2:
+            both_started.set()
+        assert release.wait(2)
+        return 1
+
+    monkeypatch.setattr(runtime, "_process_raw_frame_task", process)
+    for index in range(2):
+        assert runtime._enqueue_raw_frame(
+            RawFrameTask(
+                sequence=index + 1,
+                observed_at=observed[index],
+                camera_key="primary",
+                detection_shape=(100, 100),
+                detections=(detected,),
+                encoded_original=b"jpeg",
+            )
+        )
+    runtime._raw_frame_threads = [
+        Thread(
+            target=runtime._raw_frame_loop,
+            name=f"test-original-{index}",
+            daemon=True,
+        )
+        for index in range(RAW_FRAME_WORKER_COUNT)
+    ]
+    for thread in runtime._raw_frame_threads:
+        thread.start()
+
+    try:
+        assert both_started.wait(2)
+        status = runtime.status()["persistence"]["original_frames"]
+        assert status["worker_count"] == 2
+        assert status["workers_active"] == 2
+        assert status["active"] == 2
+    finally:
+        runtime._stop.set()
+        release.set()
+        for thread in runtime._raw_frame_threads:
+            thread.join(timeout=2)
+
+    assert sorted(started) == [(1, observed[0]), (2, observed[1])]
+    assert runtime._raw_frame_completed == 2
+    assert runtime._raw_frame_crops_enqueued == 2
+
+
+def test_raw_persistence_writer_batches_64_crops_without_loss(tmp_path):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._camera_labels = {"primary": "Raspberry"}
+    observed_at = datetime.now(timezone.utc).astimezone()
+    crop = np.full((48, 36, 3), 150, dtype=np.uint8)
+    for index in range(64):
+        assert runtime._enqueue_persistence(
+            PersistenceTask(
+                kind="raw",
+                subject_key=f"raw-{index:02d}",
+                observed_at=observed_at + timedelta(milliseconds=index),
+                crop=crop.copy(),
+                similarity=0.0,
+                detected_quality=0.9,
+                camera_key="primary",
+                bbox=(10, 12, 30, 42),
+            )
+        )
+
+    runtime._stop.set()
+    runtime._persistence_loop()
+
+    summary = runtime.store.crop_queue_summary(observed_at.date().isoformat())
+    persistence = runtime.status()["persistence"]
+    assert summary["captured"] == 64
+    assert persistence["completed"] == 64
+    assert persistence["failed"] == 0
+    assert persistence["dropped"] == 0
+    assert persistence["raw_batch"]["batches"] == 1
+    assert persistence["raw_batch"]["largest"] == 64
+    assert len(list(runtime.store.spool_dir.rglob("*.jpg"))) == 64
+
+
+def test_raw_persistence_batch_removes_files_when_sqlite_rolls_back(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._camera_labels = {"primary": "Raspberry"}
+    observed_at = datetime.now(timezone.utc).astimezone()
+    tasks = [
+        PersistenceTask(
+            kind="raw",
+            subject_key=f"rollback-{index}",
+            observed_at=observed_at + timedelta(milliseconds=index),
+            crop=np.full((48, 36, 3), 150 + index, dtype=np.uint8),
+            similarity=0.0,
+            detected_quality=0.9,
+            camera_key="primary",
+            bbox=(10, 12, 30, 42),
+        )
+        for index in range(3)
+    ]
+    monkeypatch.setattr(
+        runtime.store,
+        "enqueue_crops_for_processing",
+        lambda _items: (_ for _ in ()).throw(RuntimeError("rollback QA")),
+    )
+
+    with pytest.raises(RuntimeError, match="rollback QA"):
+        runtime._persist_raw_crop_batch(tasks)
+
+    assert list(runtime.store.spool_dir.rglob("*.jpg")) == []
+    assert runtime.store.crop_queue_total_summary()["captured"] == 0
 
 
 def test_secondary_camera_crop_keeps_its_origin_in_the_night_queue(tmp_path):
@@ -4126,6 +4904,7 @@ def test_camera_status_reports_safe_failover_role_without_source_urls(tmp_path):
     assert status["source_role"] == "fallback"
     assert status["using_fallback"] is True
     assert status["failover_count"] == 1
+    assert status["capture_pipeline"]["pipeline_mode"] == "opencv"
     assert "source" not in status
     assert "192.168.1.42" not in json.dumps(status)
     assert "100.104.142.37" not in json.dumps(status)

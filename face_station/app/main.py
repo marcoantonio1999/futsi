@@ -103,6 +103,7 @@ async def update_config(request: Request):
             raise ValueError("La configuracion debe ser un objeto JSON.")
         allowed = {
             "api_url", "reference_proxy_url", "station_token", "camera_url", "camera_fallback_url", "camera_id", "camera_label",
+            "camera_async_mjpeg_enabled", "camera_mjpeg_decode_reduction",
             "camera_roi_left", "camera_roi_right",
             "secondary_camera_enabled", "secondary_camera_url", "secondary_camera_id",
             "secondary_camera_label", "secondary_camera_username", "secondary_camera_password",
@@ -134,12 +135,13 @@ async def update_config(request: Request):
         restart_required = bool(
             set(patch) - {"monthly_fee_amount"}
         )
-        if runtime.running and restart_required:
+        should_restart = bool(runtime.running and restart_required)
+        if should_restart:
             Thread(target=runtime.restart, name="futsi-restart", daemon=True).start()
         return {
             "saved": True,
             "config": updated.public_dict(),
-            "restarting": bool(runtime.running and restart_required),
+            "restarting": should_restart,
         }
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
