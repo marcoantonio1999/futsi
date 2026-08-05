@@ -12,6 +12,13 @@ v4l2-ctl --list-devices
 sudo bash install-camera-stream.sh /dev/video0 8080
 ```
 
+El servicio selecciona automaticamente la mayor resolucion MJPEG que anuncie
+la camara. Para fijar una resolucion manual:
+
+```bash
+sudo FUTSI_CAMERA_RESOLUTION=1920x1080 bash install-camera-stream.sh /dev/video0 8080
+```
+
 La URL que se configura en Face Station es:
 
 ```text
@@ -28,4 +35,9 @@ Comandos de soporte:
 sudo systemctl status futsi-camera
 sudo journalctl -u futsi-camera -f
 v4l2-ctl -d /dev/video0 --list-formats-ext
+lsusb -t
 ```
+
+Una camara USB 3.0 debe aparecer a `5000M` en `lsusb -t`. Si aparece a `480M`,
+revisa que este conectada a un puerto USB 3.0 y que el cable tambien sea USB
+3.0; un cable USB-C de solo USB 2.0 limita los modos que el firmware anuncia.

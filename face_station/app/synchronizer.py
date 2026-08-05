@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 import logging
 import time
 from datetime import datetime, timezone
@@ -8,12 +10,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .futsi_client import FutsiClient
+from .time_utils import BUSINESS_TIME_ZONE
 
 if TYPE_CHECKING:
     from .processor import StationRuntime
 
 
 LOGGER = logging.getLogger("futsi.face_station")
+DAILY_REPORT_STATE_PREFIX = "daily_report_sync:"
 
 
 class StationSynchronizer:
@@ -23,6 +27,10 @@ class StationSynchronizer:
     def run(self) -> None:
         last_bootstrap = 0.0
         last_heartbeat = 0.0
+        last_reference_refresh = 0.0
+        last_daily_report_sync = 0.0
+        client = None
+        client_signature = None
         while not self.runtime._stop.is_set():
             config = self.runtime.config_manager.config
             if not config.station_token:
@@ -32,17 +40,37 @@ class StationSynchronizer:
                 )
                 self.runtime._stop.wait(5)
                 continue
-            client = FutsiClient(config.api_url, config.station_token)
+            signature = (config.api_url, config.station_token, config.reference_proxy_url)
+            if client is None or signature != client_signature:
+                client = FutsiClient(config.api_url, config.station_token, config.reference_proxy_url)
+                client_signature = signature
+                last_bootstrap = 0.0
+                last_heartbeat = 0.0
+                last_reference_refresh = 0.0
+                last_daily_report_sync = 0.0
             try:
                 now = time.monotonic()
                 if now - last_bootstrap >= config.bootstrap_interval_seconds:
                     self._bootstrap(client)
                     last_bootstrap = now
+                if self.runtime._engine and now - last_reference_refresh >= config.bootstrap_interval_seconds:
+                    last_reference_refresh = now
+                    self.runtime._refresh_reference_embeddings()
                 if now - last_heartbeat >= 60:
                     client.heartbeat()
                     last_heartbeat = now
                 self._sync_known_events(client)
                 self._sync_unknown_registrations(client)
+                if (
+                    now - last_daily_report_sync
+                    >= config.bootstrap_interval_seconds
+                ):
+                    last_daily_report_sync = now
+                    if (
+                        not self.runtime._automatic_batch_active
+                        and not self.runtime._manual_batch_active
+                    ):
+                        self._sync_daily_reports(client)
                 self.runtime._client_online = client.online
                 self.runtime._client_error = client.last_error
             except Exception as exc:
@@ -53,14 +81,20 @@ class StationSynchronizer:
 
     def _bootstrap(self, client: FutsiClient) -> None:
         payload = client.bootstrap()
-        self.runtime.store.replace_bootstrap(payload.get("people", []), payload.get("sessions", []))
+        self.runtime.store.replace_bootstrap(
+            payload.get("people", []),
+            payload.get("sessions", []),
+            payload.get("monthly_payments", []),
+        )
+        self.runtime._update_reference_summary()
         with self.runtime._state_lock:
             device = payload.get("device", {})
             self.runtime._device_name = device.get("name", self.runtime._device_name)
             self.runtime._station_id = device.get("id", self.runtime._station_id)
             self.runtime._site_name = device.get("site_name", self.runtime._site_name)
             self.runtime._last_bootstrap_at = datetime.now(timezone.utc).isoformat()
-        self.runtime._refresh_reference_embeddings()
+            self.runtime._client_online = client.online
+            self.runtime._client_error = client.last_error
 
     def _sync_known_events(self, client: FutsiClient) -> None:
         rows = self.runtime.store.pending_queue("known_event", limit=100)
@@ -102,3 +136,108 @@ class StationSynchronizer:
                 self.runtime.store.mark_queue_failed(
                     row["event_id"], str(exc), min(3600, 10 * 2**attempts)
                 )
+
+    def _sync_daily_reports(self, client: FutsiClient) -> None:
+        today = datetime.now(BUSINESS_TIME_ZONE).date()
+        today_value = today.isoformat()
+        current_month = today_value[:7]
+        config = self.runtime.config_manager.config
+        policy = {
+            "monthly_fee_amount": config.monthly_fee_amount,
+            "registered_minimum_days": 1,
+            "unknown_minimum_days": 3,
+        }
+        for report_date in self.runtime.store.attendance_report_dates():
+            try:
+                parsed_date = datetime.strptime(
+                    report_date,
+                    "%Y-%m-%d",
+                ).date()
+            except ValueError:
+                LOGGER.warning(
+                    "Se omitio una fecha de asistencia invalida: %s",
+                    report_date,
+                )
+                continue
+            state_key = f"{DAILY_REPORT_STATE_PREFIX}{report_date}"
+            try:
+                state = json.loads(
+                    self.runtime.store.runtime_state(state_key, "{}")
+                    or "{}"
+                )
+            except (TypeError, json.JSONDecodeError):
+                state = {}
+            report_policy = (
+                policy
+                if report_date[:7] == current_month
+                else state.get("policy") or policy
+            )
+            rows = self.runtime.store.daily_attendance_report(report_date)
+            source = {
+                "schema_version": 1,
+                "report_date": report_date,
+                "finalized": parsed_date < today,
+                "policy": report_policy,
+                "rows": rows,
+            }
+            source_hash = hashlib.sha256(
+                json.dumps(
+                    source,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()
+            unchanged = state.get("source_hash") == source_hash
+            already_synced_today = (
+                state.get("last_synced_date") == today_value
+            )
+            if unchanged and (
+                report_date[:7] != current_month
+                or already_synced_today
+            ):
+                continue
+            revision = max(1, int(state.get("revision") or 0))
+            if not unchanged:
+                revision += 1 if state else 0
+            payload = {
+                **source,
+                "revision": revision,
+                "base_revision": int(state.get("revision") or 0),
+                "base_payload_sha256": state.get("server_hash") or "",
+                "generated_at": datetime.now(
+                    timezone.utc
+                ).astimezone().isoformat(),
+                "payload_hash": f"sha256:{source_hash}",
+            }
+            try:
+                response = client.sync_daily_report(payload)
+            except Exception as exc:
+                LOGGER.warning(
+                    "No se pudo sincronizar el reporte diario %s: %s",
+                    report_date,
+                    exc,
+                )
+                continue
+            self.runtime.store.set_runtime_state(
+                state_key,
+                json.dumps(
+                    {
+                        "source_hash": source_hash,
+                        "server_hash": response.get(
+                            "payload_sha256",
+                            "",
+                        ),
+                        "revision": int(
+                            response.get("revision", revision)
+                        ),
+                        "policy": report_policy,
+                        "last_synced_date": today_value,
+                        "synced_at": datetime.now(
+                            timezone.utc
+                        ).isoformat(),
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            )

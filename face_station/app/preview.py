@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from shutil import copy2
 
 import cv2
 import numpy as np
@@ -12,6 +13,7 @@ from .recognition import DetectedFace
 GREEN = (38, 174, 96)
 BLUE = (235, 153, 40)
 AMBER = (28, 170, 245)
+MUTED = (120, 120, 120)
 WHITE = (250, 250, 250)
 
 
@@ -38,6 +40,50 @@ def encode_preview(frame, target_width: int) -> bytes:
     return encoded.tobytes() if ok else b""
 
 
+def draw_detection_roi(frame, bounds: tuple[int, int, int, int]) -> None:
+    """Shade the areas intentionally excluded from face detection."""
+    height, width = frame.shape[:2]
+    left, top, right, bottom = bounds
+    left = max(0, min(int(left), width))
+    right = max(left + 1, min(int(right), width))
+    top = max(0, min(int(top), height))
+    bottom = max(top + 1, min(int(bottom), height))
+    if left == 0 and top == 0 and right == width and bottom == height:
+        return
+
+    overlay = frame.copy()
+    excluded_color = (38, 35, 128)
+    regions = (
+        (0, 0, left, height),
+        (right, 0, width, height),
+        (left, 0, right, top),
+        (left, bottom, right, height),
+    )
+    for x1, y1, x2, y2 in regions:
+        if x2 > x1 and y2 > y1:
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), excluded_color, -1)
+    cv2.addWeighted(overlay, 0.46, frame, 0.54, 0, frame)
+    cv2.rectangle(frame, (left, top), (right - 1, bottom - 1), (62, 203, 132), 2)
+
+    for x1, y1, x2, y2 in regions[:2]:
+        if x2 - x1 < 74:
+            continue
+        label = "ZONA EXCLUIDA"
+        (label_width, _), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
+        label_x = x1 + max(6, ((x2 - x1) - label_width) // 2)
+        label_y = max(74, min(height - 12, height // 2))
+        cv2.putText(
+            frame,
+            label,
+            (label_x, label_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.36,
+            (244, 238, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+
 def draw_face(frame, detected: DetectedFace, label: str, color: tuple[int, int, int]) -> None:
     x1, y1, x2, y2 = detected.bbox
     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
@@ -58,7 +104,15 @@ def draw_overlay(
 ) -> None:
     cv2.rectangle(frame, (0, 0), (frame.shape[1], 54), (17, 22, 20), -1)
     connection = "ONLINE" if online else "OFFLINE"
-    text = f"FUTSI | {provider} | {processing_fps:.1f} FPS | Rostros {face_count} | {connection}"
+    # OpenCV's built-in Hershey font is ASCII-only. Keep the in-frame
+    # diagnostics legible even though the web UI can render the middle dot.
+    if "CUDA" in provider:
+        provider_ascii = "SCRFD GPU CUDA"
+    elif "CPU" in provider:
+        provider_ascii = "SCRFD CPU"
+    else:
+        provider_ascii = provider.replace("·", "-").encode("ascii", "ignore").decode("ascii")
+    text = f"FUTSI | {provider_ascii} | {processing_fps:.1f} FPS | Rostros {face_count} | {connection}"
     cv2.putText(frame, text, (18, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.64, WHITE, 2, cv2.LINE_AA)
     stamp = observed_at.strftime("%Y-%m-%d %H:%M:%S")
     cv2.putText(
@@ -79,26 +133,69 @@ def save_crop(
     kind: str,
     key: str,
     observed_at: datetime,
+    crop=None,
 ) -> str:
-    x1, y1, x2, y2 = detected.bbox
-    width, height = x2 - x1, y2 - y1
-    margin_x, margin_y = int(width * 0.25), int(height * 0.32)
-    left, top = max(0, x1 - margin_x), max(0, y1 - margin_y)
-    right, bottom = min(frame.shape[1], x2 + margin_x), min(frame.shape[0], y2 + margin_y)
-    crop = frame[top:bottom, left:right]
+    crop = face_crop(frame, detected) if crop is None else crop
+    return save_crop_image(faces_dir, crop, kind, key, observed_at)
+
+
+def save_crop_image(
+    faces_dir: Path,
+    crop,
+    kind: str,
+    key: str,
+    observed_at: datetime,
+    jpeg_quality: int = 92,
+) -> str:
     if crop.size == 0:
         return ""
     safe_key = "".join(character if character.isalnum() or character in "-_" else "_" for character in key)
-    folder = faces_dir / observed_at.date().isoformat() / kind / safe_key
+    folder = faces_dir / observed_at.date().isoformat() / kind
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / f"{int(observed_at.timestamp() * 1000)}.jpg"
-    ok, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    target = folder / f"{safe_key}_{int(observed_at.timestamp() * 1000)}.jpg"
+    ok, encoded = cv2.imencode(
+        ".jpg",
+        crop,
+        [cv2.IMWRITE_JPEG_QUALITY, max(85, min(int(jpeg_quality), 100))],
+    )
     if not ok:
         return ""
     temp = target.with_suffix(".tmp")
     temp.write_bytes(encoded.tobytes())
     temp.replace(target)
     return str(target)
+
+
+def copy_crop_file(
+    faces_dir: Path,
+    source_path: str,
+    kind: str,
+    key: str,
+    observed_at: datetime,
+) -> str:
+    source = Path(source_path).resolve()
+    if not source.is_file():
+        return ""
+    safe_key = "".join(character if character.isalnum() or character in "-_" else "_" for character in key)
+    folder = faces_dir / observed_at.date().isoformat() / kind
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"{safe_key}_{int(observed_at.timestamp() * 1000)}_{source.stem[-8:]}.jpg"
+    copy2(source, target)
+    return str(target)
+
+
+def face_crop(frame, detected: DetectedFace):
+    crop, _ = face_crop_with_bounds(frame, detected)
+    return crop
+
+
+def face_crop_with_bounds(frame, detected: DetectedFace):
+    x1, y1, x2, y2 = detected.bbox
+    width, height = x2 - x1, y2 - y1
+    margin_x, margin_y = int(width * 0.25), int(height * 0.32)
+    left, top = max(0, x1 - margin_x), max(0, y1 - margin_y)
+    right, bottom = min(frame.shape[1], x2 + margin_x), min(frame.shape[0], y2 + margin_y)
+    return frame[top:bottom, left:right], (left, top, right, bottom)
 
 
 def placeholder_frame(title: str, detail: str = "") -> bytes:

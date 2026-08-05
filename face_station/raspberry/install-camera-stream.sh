@@ -3,9 +3,10 @@ set -euo pipefail
 
 DEVICE="${1:-/dev/video0}"
 PORT="${2:-8080}"
-RESOLUTION="${FUTSI_CAMERA_RESOLUTION:-1280x720}"
+RESOLUTION="${FUTSI_CAMERA_RESOLUTION:-auto}"
 FPS="${FUTSI_CAMERA_FPS:-15}"
 SERVICE_USER="${SUDO_USER:-$USER}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Ejecuta: sudo bash install-camera-stream.sh [device] [port]"
@@ -18,7 +19,7 @@ if [[ ! -e "${DEVICE}" ]]; then
 fi
 
 apt-get update
-apt-get install -y v4l-utils curl ca-certificates
+apt-get install -y v4l-utils ffmpeg curl ca-certificates
 if ! apt-get install -y ustreamer; then
   apt-get install -y git build-essential libevent-dev libjpeg-dev libbsd-dev
   temp_dir="$(mktemp -d)"
@@ -29,6 +30,7 @@ if ! apt-get install -y ustreamer; then
 fi
 
 USTREAMER="$(command -v ustreamer)"
+install -m 0755 "${SCRIPT_DIR}/camera-stream.sh" /usr/local/bin/futsi-camera-stream
 usermod -aG video "${SERVICE_USER}"
 cat >/etc/systemd/system/futsi-camera.service <<EOF
 [Unit]
@@ -40,7 +42,8 @@ Wants=network-online.target
 Type=simple
 User=${SERVICE_USER}
 SupplementaryGroups=video
-ExecStart=${USTREAMER} --device=${DEVICE} --resolution=${RESOLUTION} --desired-fps=${FPS} --host=0.0.0.0 --port=${PORT}
+Environment=FUTSI_USTREAMER_BIN=${USTREAMER}
+ExecStart=/usr/local/bin/futsi-camera-stream ${DEVICE} ${PORT} ${FPS} ${RESOLUTION}
 Restart=always
 RestartSec=2
 

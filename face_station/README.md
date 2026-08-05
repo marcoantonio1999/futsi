@@ -1,5 +1,14 @@
 # Futsi Face Station
 
+La interfaz de la estación está implementada en React 19 + TypeScript + Vite y comparte el stack del frontend principal. El código fuente vive en `front/src/features/face-station` y FastAPI sirve el build generado desde `face_station/app/static-react`.
+
+Para validar y generar la interfaz desde `front/`:
+
+```powershell
+npm run typecheck
+npm run build:face-station
+```
+
 Estacion local para detectar y reconocer rostros en una cancha, consolidar una
 asistencia por persona y sesion, y sincronizarla con Futsi cuando haya internet.
 La Raspberry Pi solo transmite video; InsightFace y los datos temporales viven en
@@ -19,9 +28,12 @@ flowchart LR
 
 Un rostro registrado genera como maximo una asistencia por persona, fecha y
 sesion. Las detecciones posteriores solo incrementan el contador local. Un rostro
-desconocido recibe un nombre temporal, por ejemplo `Desconocido 4359`, y permanece
-en la PC hasta que un operador confirma a quien pertenece. Solo entonces se envia
-el consolidado al backend.
+desconocido recibe un nombre temporal, por ejemplo `Desconocido 4359`, solamente
+cuando un recorte frontal supera el filtro de calidad. Los recortes borrosos,
+incompletos o con una coincidencia ambigua no pueden crear ni mejorar referencias.
+Si uno de esos recortes coincide de forma valida con una identidad ya consolidada,
+si registra su asistencia y queda guardado solo como evidencia rechazada; si no hay
+una identidad confiable, permanece como `Sin asignar`.
 
 ## Requisitos
 
@@ -55,6 +67,11 @@ Endpoints del backend:
 - `POST /api/face-station/heartbeat/`: salud de la estacion.
 - `POST /api/face-station/events/batch/`: asistencias identificadas e idempotentes.
 - `POST /api/face-station/unknowns/register/`: alta tras confirmar identidad.
+
+Si el backend no tiene acceso directo a Storage privado, configura
+`reference_proxy_url` con la funcion Supabase `face-station-photo`. La funcion
+valida el token de estacion, limita cada consulta a la sede asignada y nunca
+expone una llave privilegiada en la PC.
 
 ## Instalar en Windows
 
@@ -118,6 +135,12 @@ Para una camara USB conectada directamente a la PC, usa `0` como `camera_url`.
 Para la Raspberry usa su URL MJPEG. La fuente `synthetic://diagnostic` permite
 probar instalacion y panel sin una camara.
 
+El panel tambien admite una segunda camara RTSP en paralelo. Para Dahua usa una
+URL sin credenciales como
+`rtsp://IP:554/cam/realmonitor?channel=1&subtype=1` y captura usuario y contrasena
+en sus campos separados. La API local nunca devuelve la contrasena y los errores
+de video eliminan las credenciales antes de registrarse.
+
 Pruebas:
 
 ```powershell
@@ -144,6 +167,35 @@ Calibra los umbrales con fotos reales de la cancha antes de automatizar decision
 - Una deteccion sin sesion valida se conserva, pero no fabrica una asistencia.
 - La API valida que la persona y la sesion pertenezcan a la sede del dispositivo.
 - Los recortes y logs se guardan en `C:\ProgramData\FutsiFaceStation`.
+- Los recortes usan una carpeta plana por fecha y tipo:
+  `faces\AAAA-MM-DD\{known|unknown}\<identidad>_<timestamp>.jpg`. La identidad
+  y la mejor evidencia siguen indexadas en SQLite; no se crea una carpeta por
+  cada rostro.
+- El panel agrupa las detecciones por identidad local. Cada tarjeta conserva el
+  conteo completo, pero muestra hasta 30 evidencias representativas por persona
+  y dia, escogidas por calidad, camara, horario y diversidad facial.
+- Tanto personas registradas como desconocidos consolidados usan hasta 12
+  referencias frontales curadas. El matcher compara contra la galeria completa
+  y calcula el margen contra otra identidad, no contra otra foto de la misma
+  persona. Un recorte nuevo solo entra si pasa calidad y una coincidencia
+  estricta; una referencia mejor puede reemplazar otra redundante o debil.
+- La admision de referencias y el pase de lista son decisiones independientes:
+  la calidad visual nunca anula una coincidencia que el matcher facial ya acepto,
+  pero un recorte rechazado no contamina centroides ni galerias. El filtro
+  semantico opcional (`semantic_reference_filter_enabled`) agrega visibilidad de
+  ambos ojos, apertura ocular, region oral y oclusion por gorra; el peso ONNX se
+  configura por separado mediante `semantic_reference_model_path`.
+- Al terminar el lote nocturno, un reconciliador global compara galerias completas
+  y une solamente grupos con evidencia reciproca y enlace completo. Antes de cada
+  fusion SQLite crea un respaldo y valida integridad y llaves foraneas.
+- `GET /api/unknowns/reconcile` expone el plan explicable en modo lectura. La
+  aplicacion del plan requiere que la deteccion este pausada.
+- Todos los JPEG nuevos permanecen completos al menos 7 dias para auditoria.
+  Despues, solo los redundantes no protegidos pasan a cuarentena reversible:
+  primero se crea respaldo SQLite y manifiesto, se mueven archivos en el mismo
+  volumen y se revalidan referencias; la purga fisica ocurre 24 horas despues.
+  Referencias permanentes, mejores recortes, asistencias, conteos historicos,
+  cola de sincronizacion y recortes sin asignar nunca entran en este proceso.
 
 Antes de operar con menores se deben definir aviso de privacidad, consentimiento,
 retencion, acceso a evidencia, procedimiento de borrado y revision humana de
@@ -156,6 +208,11 @@ incluyen autorizacion comercial automatica. Revisa [MODEL_LICENSE.md](MODEL_LICE
 y consigue una licencia apropiada o usa pesos propios/licenciados antes de operar
 comercialmente. El instalador no redistribuye los pesos; InsightFace los obtiene en
 la primera ejecucion.
+
+El filtro semantico tampoco redistribuye pesos. El modelo usado durante la
+calibracion experimental se entreno con CelebAMask-HQ y no debe activarse para uso
+comercial sin confirmar una licencia compatible; en produccion configura un peso
+propio o debidamente licenciado.
 
 ## Diagnostico rapido
 
