@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+import face_station.app.store as store_module
 from face_station.app.store import LocalStore, embedding_blob
 
 
@@ -390,6 +392,86 @@ def test_move_failure_restores_files_and_database_rows(tmp_path, monkeypatch):
         ).fetchone()
     assert crop_count == 34
     assert run["status"] == "rolled_back"
+    assert all(path.is_file() for path in paths)
+
+
+def test_chunked_retention_delete_exceeds_sqlite_variable_limit():
+    db = sqlite3.connect(":memory:")
+    db.execute("create table face_crops (id integer primary key)")
+    crop_ids = list(range(1, 33_018))
+    db.executemany(
+        "insert into face_crops(id) values (?)",
+        ((crop_id,) for crop_id in crop_ids),
+    )
+    db.commit()
+    db.execute("begin immediate")
+    try:
+        deleted = LocalStore._delete_face_crops_by_ids(db, crop_ids)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    assert deleted == len(crop_ids)
+    assert db.execute("select count(*) from face_crops").fetchone()[0] == 0
+    db.close()
+
+
+def test_chunked_delete_failure_rolls_back_database_and_restores_files(
+    tmp_path,
+    monkeypatch,
+):
+    store = LocalStore(tmp_path)
+    add_person(store)
+    old_day = datetime(2026, 7, 10, 9, tzinfo=timezone.utc)
+    paths = add_crops(store, person_key="student:1", start=old_day, count=34)
+    store.curate_daily_evidence("2026-07-10", limit=30)
+    with store.connection() as db:
+        candidates = store._retention_candidates(
+            db,
+            cutoff_date="2026-07-13",
+        )
+        assert len(candidates) == 4
+        fail_id = int(candidates[2]["id"])
+        db.execute(
+            f"""
+            create trigger fail_retention_delete
+            before delete on face_crops
+            when old.id={fail_id}
+            begin
+                select raise(abort,'fallo de delete inyectado');
+            end
+            """
+        )
+    monkeypatch.setattr(store_module, "RETENTION_DELETE_BATCH_SIZE", 2)
+
+    with pytest.raises(sqlite3.IntegrityError, match="fallo de delete inyectado"):
+        store.prune_redundant_evidence(
+            safety_days=7,
+            run_at=datetime(2026, 7, 20, 1, tzinfo=timezone.utc),
+        )
+
+    with store.connection() as db:
+        crop_count = db.execute("select count(*) from face_crops").fetchone()[0]
+        run = db.execute(
+            """
+            select run_id,status from evidence_retention_runs
+            order by created_at desc limit 1
+            """
+        ).fetchone()
+        states = {
+            str(row["state"]): int(row["items"])
+            for row in db.execute(
+                """
+                select state,count(*) as items
+                from evidence_retention_items where run_id=? group by state
+                """,
+                (run["run_id"],),
+            )
+        }
+    assert crop_count == 34
+    assert run["status"] == "rolled_back"
+    assert states == {"restored": 4}
     assert all(path.is_file() for path in paths)
 
 

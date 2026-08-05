@@ -33,6 +33,7 @@ MATCH_ANALYSIS_VERSION = "match-window-v6-weekly-dominant"
 MATCH_WINDOW_MINUTES = 50
 MATCH_MIN_UNIQUE_PEOPLE = 10
 MATCH_SCHEDULE_TOLERANCE_MINUTES = 15
+RETENTION_DELETE_BATCH_SIZE = 5_000
 
 # Los equipos cambian cada jornada, pero estos bloques se repiten cada semana.
 # El indice usa datetime.date.weekday(): lunes=0, domingo=6.
@@ -139,6 +140,10 @@ class LocalStore:
         for folder in (self.faces_dir, self.spool_dir, self.references_dir, self.logs_dir):
             folder.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
+        # Raw crop ingestion has its own serialized writer. Keeping it out of
+        # ``_lock`` lets SQLite WAL accept captures while a long report keeps
+        # the general store lock (and a read snapshot) open.
+        self._ingest_lock = Lock()
         self._match_analysis_guard = Lock()
         self._match_analysis_state_lock = RLock()
         self._match_analysis_state = {
@@ -1300,36 +1305,105 @@ class LocalStore:
         bbox: tuple[int, int, int, int],
         landmarks: np.ndarray | None,
     ) -> dict:
-        now = utc_now()
-        points = np.asarray(landmarks, dtype=np.float32).tolist() if landmarks is not None else []
-        with self.connection() as db:
-            cursor = db.execute(
-                """
-                insert into crop_processing_queue
-                    (captured_at,camera_key,camera_label,crop_path,file_bytes,crop_width,
-                     crop_height,det_score,bbox_json,landmarks_json,status,created_at,updated_at)
-                values (?,?,?,?,?,?,?,?,?,?,'pending',?,?)
-                """,
+        rows = self.enqueue_crops_for_processing(
+            [
+                {
+                    "captured_at": captured_at,
+                    "camera_key": camera_key,
+                    "camera_label": camera_label,
+                    "crop_path": crop_path,
+                    "file_bytes": file_bytes,
+                    "crop_width": crop_width,
+                    "crop_height": crop_height,
+                    "det_score": det_score,
+                    "bbox": bbox,
+                    "landmarks": landmarks,
+                }
+            ]
+        )
+        return rows[0]
+
+    def enqueue_crops_for_processing(self, items: list[dict]) -> list[dict]:
+        """Atomically enqueue raw crops through the dedicated WAL writer.
+
+        Every item accepts the same fields as ``enqueue_crop_for_processing``.
+        The complete batch commits once; an invalid or duplicate item rolls
+        back the rows and their aggregate-stat triggers together.
+        """
+        if not items:
+            return []
+
+        created_at = utc_now()
+        values = []
+        for item in items:
+            captured_at = item["captured_at"]
+            points = (
+                np.asarray(item.get("landmarks"), dtype=np.float32).tolist()
+                if item.get("landmarks") is not None
+                else []
+            )
+            values.append(
                 (
                     captured_at.isoformat(),
-                    camera_key,
-                    camera_label,
-                    crop_path,
-                    max(0, int(file_bytes)),
-                    max(0, int(crop_width)),
-                    max(0, int(crop_height)),
-                    float(det_score),
-                    json.dumps(list(bbox)),
+                    item["camera_key"],
+                    item["camera_label"],
+                    item["crop_path"],
+                    max(0, int(item["file_bytes"])),
+                    max(0, int(item["crop_width"])),
+                    max(0, int(item["crop_height"])),
+                    float(item["det_score"]),
+                    json.dumps(list(item["bbox"])),
                     json.dumps(points),
-                    now,
-                    now,
-                ),
+                    created_at,
+                    created_at,
+                )
             )
-            row = db.execute(
-                "select * from crop_processing_queue where id=?",
-                (cursor.lastrowid,),
-            ).fetchone()
-        return self._public_crop_queue_row(dict(row))
+
+        with self._ingest_lock:
+            db = sqlite3.connect(self.db_path, timeout=30)
+            db.row_factory = sqlite3.Row
+            db.execute("pragma foreign_keys = on")
+            db.execute("pragma busy_timeout = 30000")
+            db.execute("pragma synchronous = normal")
+            journal_mode = str(
+                db.execute("pragma journal_mode").fetchone()[0]
+            ).lower()
+            if journal_mode != "wal":
+                db.close()
+                raise RuntimeError(
+                    "La cola de recortes requiere SQLite en modo WAL."
+                )
+            try:
+                db.execute("begin immediate")
+                inserted_ids = []
+                for row_values in values:
+                    cursor = db.execute(
+                        """
+                        insert into crop_processing_queue
+                            (captured_at,camera_key,camera_label,crop_path,file_bytes,
+                             crop_width,crop_height,det_score,bbox_json,landmarks_json,
+                             status,created_at,updated_at)
+                        values (?,?,?,?,?,?,?,?,?,?,'pending',?,?)
+                        """,
+                        row_values,
+                    )
+                    inserted_ids.append(int(cursor.lastrowid))
+                rows = [
+                    dict(
+                        db.execute(
+                            "select * from crop_processing_queue where id=?",
+                            (row_id,),
+                        ).fetchone()
+                    )
+                    for row_id in inserted_ids
+                ]
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
+        return [self._public_crop_queue_row(row) for row in rows]
 
     @staticmethod
     def _public_crop_queue_row(row: dict) -> dict:
@@ -4847,6 +4921,44 @@ class LocalStore:
                     time.sleep(0.15 * (attempt + 1))
         raise last_error or OSError("No se pudo mover el archivo.")
 
+    @staticmethod
+    def _delete_face_crops_by_ids(
+        db: sqlite3.Connection,
+        crop_ids: list[int],
+        *,
+        batch_size: int | None = None,
+    ) -> int:
+        """Delete a large evidence set without exceeding SQLite variables.
+
+        The caller must own the surrounding transaction. All chunks therefore
+        commit or roll back together even though each DELETE stays comfortably
+        below SQLite's host-parameter limit.
+        """
+        if not crop_ids:
+            return 0
+        if not db.in_transaction:
+            raise RuntimeError(
+                "La eliminacion por lotes requiere una transaccion activa."
+            )
+        chunk_size = max(
+            1,
+            min(
+                int(batch_size or RETENTION_DELETE_BATCH_SIZE),
+                RETENTION_DELETE_BATCH_SIZE,
+            ),
+        )
+        deleted = 0
+        for start in range(0, len(crop_ids), chunk_size):
+            chunk = crop_ids[start : start + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            deleted += int(
+                db.execute(
+                    f"delete from face_crops where id in ({placeholders})",
+                    chunk,
+                ).rowcount
+            )
+        return deleted
+
     def prune_redundant_evidence(
         self,
         *,
@@ -5017,11 +5129,7 @@ class LocalStore:
                             f"El recorte {crop_id} cambio durante la retencion."
                         )
                 ids = [crop_id for crop_id, _, _ in moved]
-                placeholders = ",".join("?" for _ in ids)
-                deleted = db.execute(
-                    f"delete from face_crops where id in ({placeholders})",
-                    ids,
-                ).rowcount
+                deleted = self._delete_face_crops_by_ids(db, ids)
                 if int(deleted) != len(ids):
                     raise RuntimeError("No se eliminaron todas las filas planificadas.")
                 if db.execute("pragma integrity_check").fetchone()[0] != "ok":
