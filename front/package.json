@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:face-station": "vite --config vite.face-station.config.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
+    "build:face-station": "vite build --config vite.face-station.config.ts",
     "build:android": "vite build --base ./ --mode android",
     "preview": "vite preview",
     "cap:sync": "npm run build:android && cap sync android",
