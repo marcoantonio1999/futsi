@@ -388,6 +388,7 @@ export interface MatchWindow {
   window_status:
     | "scheduled"
     | "scheduled_with_evidence"
+    | "scheduled_insufficient_evidence"
     | "scheduled_no_evidence"
     | "outside_schedule";
   schedule_id?: number | null;
@@ -455,6 +456,37 @@ export interface MatchAnalysisResponse {
   limit: number;
   summary: MatchAnalysisSummary;
   analysis: MatchAnalysisStatus;
+  revenue_policy?: {
+    match_fee_amount: number;
+  };
+}
+
+export interface MatchScheduleItem {
+  id: number;
+  match_date: string;
+  starts_at: string;
+  ends_at: string;
+  expected_duration_minutes: number;
+  tolerance_minutes: number;
+  tournament?: string;
+  home_team?: string;
+  away_team?: string;
+  referee?: string;
+  source?: string;
+  analysis_window_id?: number | null;
+  analysis_status?: MatchWindow["window_status"] | "pending_analysis" | "";
+  participant_count?: number;
+  known_count?: number;
+  unknown_count?: number;
+  evidence_starts_at?: string;
+  evidence_ends_at?: string;
+}
+
+export interface MatchScheduleResponse {
+  items: MatchScheduleItem[];
+  total: number;
+  start_date: string;
+  end_date: string;
 }
 
 export type IdentityStatus = "all" | "ready" | "missing" | "duplicates" | "unknown";
@@ -714,6 +746,7 @@ export interface StationConfig {
   daily_evidence_limit: number;
   evidence_safety_days: number;
   monthly_fee_amount: number;
+  match_fee_amount: number;
   [key: string]: string | number | boolean | undefined;
 }
 

@@ -29,7 +29,7 @@ from .unknown_gallery import (
 UNKNOWN_INACTIVE_STATUSES = frozenset({"ignored", "quarantined"})
 MONTHLY_REVENUE_MIN_DAYS = 3
 MONTHLY_REGISTERED_REVENUE_MIN_DAYS = 1
-MATCH_ANALYSIS_VERSION = "match-window-v6-weekly-dominant"
+MATCH_ANALYSIS_VERSION = "match-window-v8-scheduled-rolling-window"
 MATCH_WINDOW_MINUTES = 50
 MATCH_MIN_UNIQUE_PEOPLE = 10
 MATCH_SCHEDULE_TOLERANCE_MINUTES = 15
@@ -7136,6 +7136,8 @@ class LocalStore:
         cls,
         events: list[dict],
         schedule: list[dict],
+        *,
+        minimum_unique_people: int = MATCH_MIN_UNIQUE_PEOPLE,
     ) -> tuple[list[dict], set[int]]:
         if not schedule:
             return [], set()
@@ -7240,15 +7242,22 @@ class LocalStore:
             schedule_id = int(item["id"])
             assigned_events = assigned_by_schedule[schedule_id]
             participants = cls._match_participants(assigned_events)
+            _, max_unique_people = cls._detect_match_windows(
+                assigned_events,
+                window_minutes=MATCH_WINDOW_MINUTES,
+                minimum_unique_people=minimum_unique_people,
+            )
             known_count = sum(
                 1
                 for participant in participants
                 if participant["kind"] == "known"
             )
-            if participants:
+            if max_unique_people >= max(1, int(minimum_unique_people)):
                 window_status = "scheduled_with_evidence"
             elif slot["authorized_ends_at"] >= now:
                 window_status = "scheduled"
+            elif participants:
+                window_status = "scheduled_insufficient_evidence"
             else:
                 window_status = "scheduled_no_evidence"
             evidence_times = sorted(
@@ -7264,7 +7273,7 @@ class LocalStore:
                         item["expected_duration_minutes"]
                         or MATCH_WINDOW_MINUTES
                     ),
-                    "max_unique_people": len(participants),
+                    "max_unique_people": int(max_unique_people),
                     "participant_count": len(participants),
                     "known_count": known_count,
                     "unknown_count": len(participants) - known_count,

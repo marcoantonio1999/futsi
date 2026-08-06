@@ -128,7 +128,7 @@ async def update_config(request: Request):
             "semantic_reference_filter_enabled", "semantic_reference_model_path",
             "adaptive_known_min_similarity", "adaptive_known_min_margin",
             "adaptive_unknown_min_similarity", "daily_evidence_limit",
-            "evidence_safety_days", "monthly_fee_amount",
+            "evidence_safety_days", "monthly_fee_amount", "match_fee_amount",
             "candidate_ttl_minutes",
             "sync_interval_seconds", "retention_days", "auto_start_engine", "open_browser",
         }
@@ -137,7 +137,7 @@ async def update_config(request: Request):
             raise ValueError(f"Campos no permitidos: {', '.join(unexpected)}")
         updated = config_manager.update(patch)
         restart_required = bool(
-            set(patch) - {"monthly_fee_amount"}
+            set(patch) - {"monthly_fee_amount", "match_fee_amount"}
         )
         should_restart = bool(runtime.running and restart_required)
         if should_restart:
@@ -235,11 +235,15 @@ def match_analysis(
     limit: int = Query(default=31, ge=1, le=100),
 ):
     try:
-        return runtime.store.match_history(
+        payload = runtime.store.match_history(
             status=status,
             offset=offset,
             limit=limit,
         )
+        payload["revenue_policy"] = {
+            "match_fee_amount": config_manager.config.match_fee_amount,
+        }
+        return payload
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

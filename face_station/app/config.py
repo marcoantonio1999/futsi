@@ -79,6 +79,7 @@ class StationConfig:
     daily_evidence_limit: int = 30
     evidence_safety_days: int = 7
     monthly_fee_amount: float = 1000.0
+    match_fee_amount: float = 0.0
     candidate_ttl_minutes: int = 30
     detection_debounce_seconds: float = 2.0
     capture_priority_start_hour: int = 9
@@ -282,6 +283,11 @@ class StationConfig:
                 "monthly_fee_amount debe estar entre 0 y 1000000."
             )
         self.monthly_fee_amount = round(float(self.monthly_fee_amount), 2)
+        if not 0 <= float(self.match_fee_amount) <= 1_000_000:
+            raise ValueError(
+                "match_fee_amount debe estar entre 0 y 1000000."
+            )
+        self.match_fee_amount = round(float(self.match_fee_amount), 2)
         if not 1 <= int(self.candidate_ttl_minutes) <= 1440:
             raise ValueError("candidate_ttl_minutes debe estar entre 1 y 1440.")
         if not 0 <= int(self.capture_priority_start_hour) <= 23:

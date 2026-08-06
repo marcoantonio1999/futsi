@@ -53,6 +53,7 @@ def test_config_is_atomic_and_blank_token_does_not_erase_secret(tmp_path):
     assert reloaded.config.target_fps == 7
     assert reloaded.config.unknown_confirmation_threshold == pytest.approx(0.50)
     assert reloaded.config.monthly_fee_amount == pytest.approx(1000.0)
+    assert reloaded.config.match_fee_amount == pytest.approx(0.0)
     assert reloaded.config.public_dict()["station_token_configured"] is True
     assert "station_token" not in reloaded.config.public_dict()
 
@@ -60,6 +61,11 @@ def test_config_is_atomic_and_blank_token_does_not_erase_secret(tmp_path):
     assert ConfigManager(tmp_path).config.monthly_fee_amount == pytest.approx(1250.0)
     with pytest.raises(ValueError, match="monthly_fee_amount"):
         manager.update({"monthly_fee_amount": -1})
+
+    manager.update({"match_fee_amount": 850})
+    assert ConfigManager(tmp_path).config.match_fee_amount == pytest.approx(850.0)
+    with pytest.raises(ValueError, match="match_fee_amount"):
+        manager.update({"match_fee_amount": -1})
 
     with pytest.raises(ValueError, match="unknown_confirmation_threshold"):
         manager.update({"unknown_confirmation_threshold": 1.1})
@@ -4176,7 +4182,7 @@ def test_match_schedule_separates_authorized_evidence_from_outside_schedule(
         imported["items"][0]["starts_at"]
     )
     with store.connection(immediate=True) as db:
-        for index, person in enumerate(people[:5]):
+        for index, person in enumerate(people[:10]):
             # Includes one arrival exactly five minutes before kickoff.
             observed_at = (
                 scheduled_start
@@ -4260,7 +4266,7 @@ def test_match_schedule_separates_authorized_evidence_from_outside_schedule(
     assert day["scheduled_confirmed_count"] == 1
     assert day["unscheduled_count"] == 1
     assert scheduled["window_status"] == "scheduled_with_evidence"
-    assert scheduled["participant_count"] == 5
+    assert scheduled["participant_count"] == 10
     assert scheduled["tolerance_minutes"] == 15
     assert scheduled["home_team"] == "Beatriz FC"
     assert scheduled["away_team"] == "Mainz"
@@ -4279,7 +4285,7 @@ def test_match_schedule_separates_authorized_evidence_from_outside_schedule(
 
     scheduled_people = store.match_window_participants(scheduled["id"])
     outside_people = store.match_window_participants(outside["id"])
-    assert scheduled_people["total"] == 5
+    assert scheduled_people["total"] == 10
     assert outside_people["total"] == 10
     assert all(
         item["person_type"] != "collaborator"
@@ -4294,7 +4300,7 @@ def test_match_schedule_separates_authorized_evidence_from_outside_schedule(
         end_date="2026-07-21",
     )
     assert calendar[0]["analysis_status"] == "scheduled_with_evidence"
-    assert calendar[0]["participant_count"] == 5
+    assert calendar[0]["participant_count"] == 10
 
 
 def test_match_schedule_repeats_weekly_and_preserves_explicit_teams(tmp_path):
@@ -4419,6 +4425,53 @@ def test_match_schedule_assigns_early_arrival_by_dominant_presence(tmp_path):
     assert "student:arrives-early" not in previous_people
     assert upcoming_people["student:arrives-early"]["detection_count"] == 4
     assert previous_people["student:previous-match"]["detection_count"] == 2
+    assert previous["window_status"] == "scheduled_insufficient_evidence"
+    assert upcoming["window_status"] == "scheduled_insufficient_evidence"
+
+
+def test_scheduled_match_requires_ten_people_inside_fifty_minutes():
+    starts_at = datetime(2026, 7, 21, 20, tzinfo=timezone.utc).astimezone()
+    ends_at = starts_at + timedelta(minutes=50)
+    schedule = [{
+        "id": 1,
+        "starts_at": starts_at.isoformat(),
+        "ends_at": ends_at.isoformat(),
+        "expected_duration_minutes": 50,
+        "tolerance_minutes": 15,
+    }]
+    observed_times = [
+        starts_at - timedelta(minutes=15) + timedelta(seconds=index)
+        for index in range(5)
+    ] + [
+        ends_at + timedelta(minutes=15) - timedelta(seconds=index)
+        for index in range(5)
+    ]
+    events = [
+        {
+            "id": index + 1,
+            "seen_at": observed_at.isoformat(),
+            "identity_kind": "known",
+            "identity_key": f"student:spread-{index}",
+            "name": f"Jugador separado {index}",
+            "person_type": "student",
+            "quality": 80,
+            "quality_pass": 1,
+            "evidence_selected": 1,
+            "evidence_score": 0.8,
+            "camera": "camera-1",
+        }
+        for index, observed_at in enumerate(observed_times)
+    ]
+
+    windows, assigned_ids = LocalStore._scheduled_match_windows(
+        events,
+        schedule,
+    )
+
+    assert assigned_ids == set(range(1, 11))
+    assert windows[0]["participant_count"] == 10
+    assert windows[0]["max_unique_people"] == 5
+    assert windows[0]["window_status"] == "scheduled_insufficient_evidence"
 
 
 def test_match_participant_keeps_the_timestamp_of_its_best_crop():
