@@ -4,9 +4,18 @@ import { stationApi, toQuery } from "./api";
 import { Button, EmptyState, MetricCard, SectionHeading, panelClass } from "./components";
 import { compactNumber, fileSize, localTime, stateLabel, todayLocal } from "./format";
 import { useInfiniteTrigger } from "./hooks";
-import type { CameraStatus, CropQueueResponse, CropQueueSummary, QueuedCrop, StationStatus, ToastMessage } from "./types";
+import type { CameraKey, CameraStatus, CropQueueResponse, CropQueueSummary, QueuedCrop, StationStatus, ToastMessage } from "./types";
 
 const CROP_BATCH_SIZE = 48;
+const CAMERA_VIEWS: ReadonlyArray<{
+  key: CameraKey;
+  fallbackLabel: string;
+  sourceLabel: string;
+}> = [
+  { key: "primary", fallbackLabel: "Raspberry principal", sourceLabel: "Raspberry principal" },
+  { key: "secondary", fallbackLabel: "Dahua", sourceLabel: "Cámara de red" },
+  { key: "tertiary", fallbackLabel: "Raspberry adicional", sourceLabel: "Raspberry adicional" },
+];
 
 export function LiveView({
   status,
@@ -38,9 +47,12 @@ export function LiveView({
   const originalFrameDrops = Number(originalFrames?.dropped || 0);
   const originalFaceDrops = Number(originalFrames?.dropped_faces || 0);
   const originalFrameFailures = Number(originalFrames?.failed || 0);
-  const cameraPipelines = [status?.cameras?.primary, status?.cameras?.secondary]
-    .filter((camera): camera is CameraStatus => Boolean(camera?.capture_pipeline))
-    .map((camera) => ({ camera, pipeline: camera.capture_pipeline! }));
+  const configuredCameras = CAMERA_VIEWS
+    .map((definition) => ({ ...definition, camera: status?.cameras?.[definition.key] }))
+    .filter((entry) => entry.key === "primary" || Boolean(entry.camera));
+  const cameraPipelines = configuredCameras
+    .filter((entry): entry is typeof entry & { camera: CameraStatus } => Boolean(entry.camera?.capture_pipeline))
+    .map(({ camera }) => ({ camera, pipeline: camera.capture_pipeline! }));
   const cameraPipelineErrors = cameraPipelines.reduce((total, { pipeline }) => total
     + Number(pipeline.compressed_frames_dropped || 0)
     + Number(pipeline.packet_frames_dropped || 0)
@@ -59,9 +71,9 @@ export function LiveView({
     || originalFrameFailures > 0
     || cameraPipelineErrors > 0
     || cameraWorkerFailures > 0;
-  const cameraPerformance = [status?.cameras?.primary, status?.cameras?.secondary]
-    .filter((camera): camera is CameraStatus => Boolean(camera))
-    .map((camera) => `${camera.label || "Cámara"} ${Number(camera.processing_fps || 0).toFixed(1)}`)
+  const cameraPerformance = configuredCameras
+    .filter((entry): entry is typeof entry & { camera: CameraStatus } => Boolean(entry.camera))
+    .map(({ camera, fallbackLabel }) => `${camera.label || fallbackLabel} ${Number(camera.processing_fps || 0).toFixed(1)}`)
     .join(" · ");
 
   async function engineAction(action: "start" | "stop" | "benchmark") {
@@ -156,9 +168,17 @@ export function LiveView({
               ? <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[9px] font-extrabold text-amber-800"><BrainCircuit size={11} /> GPU EN LOTE</span>
               : <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[9px] font-extrabold text-red-700"><i className="size-1.5 animate-pulse rounded-full bg-red-500" /> EN VIVO</span>}
           />
-          <div className={`grid gap-px bg-zinc-200 ${status?.cameras?.secondary ? "md:grid-cols-2 xl:grid-cols-1" : "grid-cols-1"}`}>
-            <CameraFeed kind="primary" camera={status?.cameras?.primary} paused={batchBusy} />
-            {status?.cameras?.secondary ? <CameraFeed kind="secondary" camera={status.cameras.secondary} paused={batchBusy} /> : null}
+          <div className={`grid gap-px bg-zinc-200 ${configuredCameras.length > 1 ? "md:grid-cols-2 xl:grid-cols-1" : "grid-cols-1"}`}>
+            {configuredCameras.map(({ key, camera, fallbackLabel, sourceLabel }) => (
+              <CameraFeed
+                key={key}
+                kind={key}
+                camera={camera}
+                fallbackLabel={fallbackLabel}
+                sourceLabel={sourceLabel}
+                paused={batchBusy}
+              />
+            ))}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-zinc-200 bg-emerald-950 px-4 py-2.5 text-[9px] font-semibold text-emerald-50/75">
             <Legend color="bg-sky-400" label="Rostro enviado a la cola" />
@@ -233,7 +253,7 @@ function ManualBatchConfirmation({
         </div>
         <div className="space-y-4 px-5 py-5">
           <p className="text-sm leading-6 text-zinc-600">
-            FaceGuard pausará la detección de las dos cámaras y usará la GPU para comparar <strong className="text-zinc-900">{compactNumber(pending)} recortes pendientes</strong> con <strong className="text-zinc-900">{compactNumber(references)} referencias válidas</strong> y con los desconocidos ya consolidados.
+            FaceGuard pausará la detección de todas las cámaras y usará la GPU para comparar <strong className="text-zinc-900">{compactNumber(pending)} recortes pendientes</strong> con <strong className="text-zinc-900">{compactNumber(references)} referencias válidas</strong> y con los desconocidos ya consolidados.
           </p>
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-950">
             Las cámaras seguirán conectadas, pero no crearán recortes durante la prueba. La detección se reanudará automáticamente al terminar, si ocurre un error o si detienes el lote.
@@ -250,8 +270,20 @@ function ManualBatchConfirmation({
   );
 }
 
-function CameraFeed({ kind, camera, paused }: { kind: "primary" | "secondary"; camera?: CameraStatus; paused?: boolean }) {
-  const label = camera?.label || (kind === "primary" ? "Raspberry" : "Dahua");
+function CameraFeed({
+  kind,
+  camera,
+  fallbackLabel,
+  sourceLabel,
+  paused,
+}: {
+  kind: CameraKey;
+  camera?: CameraStatus;
+  fallbackLabel: string;
+  sourceLabel: string;
+  paused?: boolean;
+}) {
+  const label = camera?.label || fallbackLabel;
   const pipeline = camera?.capture_pipeline;
   const asyncMjpeg = pipeline?.pipeline_mode === "async_mjpeg";
   const pipelineDrops = Number(pipeline?.compressed_frames_dropped || 0)
@@ -273,7 +305,7 @@ function CameraFeed({ kind, camera, paused }: { kind: "primary" | "secondary"; c
     <article className="min-w-0 bg-zinc-950">
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5 text-white">
         <div className="min-w-0">
-          <span className="block text-[7px] font-extrabold uppercase tracking-widest text-zinc-500">{kind === "primary" ? "Fuente local" : "Fuente de red"}</span>
+          <span className="block text-[7px] font-extrabold uppercase tracking-widest text-zinc-500">{sourceLabel}</span>
           <strong className="block truncate text-[11px]">{label}</strong>
           <span className={`mt-0.5 block text-[7px] font-bold uppercase tracking-wide ${camera?.roi_active ? "text-rose-300" : "text-zinc-600"}`}>{roiLabel}</span>
           <span className={`mt-0.5 block text-[7px] font-bold uppercase tracking-wide ${pipelineDrops ? "text-amber-300" : asyncMjpeg ? "text-sky-300" : "text-zinc-600"}`}>

@@ -47,11 +47,28 @@ def test_config_api_accepts_async_mjpeg_fields_without_exposing_secrets(
         "station_token": "private-token",
         "camera_async_mjpeg_enabled": True,
         "camera_mjpeg_decode_reduction": 8,
+        "tertiary_camera_enabled": True,
+        "tertiary_camera_url": "http://192.168.1.44:8080/stream",
+        "tertiary_camera_fallback_url": "http://100.70.80.90:8080/stream",
+        "tertiary_camera_id": "raspberry_cancha_2",
+        "tertiary_camera_label": "Raspberry entrada 2",
+        "tertiary_camera_async_mjpeg_enabled": True,
+        "tertiary_camera_mjpeg_decode_reduction": 4,
+        "tertiary_camera_roi_left": 0.1,
+        "tertiary_camera_roi_right": 0.9,
     })))
 
     assert response["saved"] is True
     assert response["config"]["camera_async_mjpeg_enabled"] is True
     assert response["config"]["camera_mjpeg_decode_reduction"] == 8
+    assert response["config"]["tertiary_camera_enabled"] is True
+    assert response["config"]["tertiary_camera_url"] == (
+        "http://192.168.1.44:8080/stream"
+    )
+    assert response["config"]["tertiary_camera_fallback_url"] == (
+        "http://100.70.80.90:8080/stream"
+    )
+    assert response["config"]["tertiary_camera_mjpeg_decode_reduction"] == 4
     assert response["config"]["station_token_configured"] is True
     assert "station_token" not in response["config"]
 
@@ -67,8 +84,24 @@ def test_config_api_rejects_invalid_mjpeg_reduction(monkeypatch, tmp_path):
     assert captured.value.status_code == 400
     assert "camera_mjpeg_decode_reduction" in str(captured.value.detail)
 
+    with pytest.raises(HTTPException) as captured:
+        asyncio.run(main.update_config(_json_request({
+            "tertiary_camera_mjpeg_decode_reduction": 3,
+        })))
 
-@pytest.mark.parametrize("field_name", ["camera_url", "camera_fallback_url"])
+    assert captured.value.status_code == 400
+    assert "tertiary_camera_mjpeg_decode_reduction" in str(captured.value.detail)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "camera_url",
+        "camera_fallback_url",
+        "tertiary_camera_url",
+        "tertiary_camera_fallback_url",
+    ],
+)
 def test_config_api_redacts_and_preserves_camera_urls_with_embedded_credentials(
     monkeypatch,
     tmp_path,

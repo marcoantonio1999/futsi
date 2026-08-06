@@ -609,8 +609,16 @@ class StationRuntime:
 
     def latest_preview(self, camera_key: str = "primary") -> bytes:
         with self._preview_lock:
-            payload = self._preview_jpegs.get(camera_key) or self._preview_jpegs.get("primary")
-            return bytes(payload or placeholder_frame("Camara no configurada"))
+            payload = self._preview_jpegs.get(camera_key)
+            label = self._camera_labels.get(camera_key, camera_key)
+        return bytes(
+            payload
+            or placeholder_frame(
+                f"Esperando video de {label}"
+                if camera_key in self._camera_labels
+                else "Camara no configurada"
+            )
+        )
 
     def health_status(self) -> dict:
         """Return liveness data without touching SQLite or the worker pool.
@@ -4074,6 +4082,11 @@ class StationRuntime:
                 float(config.secondary_camera_roi_left),
                 float(config.secondary_camera_roi_right),
             )
+        if camera_key == "tertiary":
+            return (
+                float(config.tertiary_camera_roi_left),
+                float(config.tertiary_camera_roi_right),
+            )
         return float(config.camera_roi_left), float(config.camera_roi_right)
 
     @staticmethod
@@ -4115,5 +4128,30 @@ class StationRuntime:
                 ],
                 "async_mjpeg": False,
                 "mjpeg_decode_reduction": 1,
+            }
+        if config.tertiary_camera_enabled and config.tertiary_camera_url:
+            tertiary_source = str(config.tertiary_camera_url).strip()
+            tertiary_is_http = tertiary_source.lower().startswith(
+                ("http://", "https://")
+            )
+            tertiary_async_mjpeg = bool(
+                config.tertiary_camera_async_mjpeg_enabled
+                and tertiary_is_http
+            )
+            definitions["tertiary"] = {
+                "source": tertiary_source,
+                "fallback_source": config.tertiary_camera_fallback_url,
+                "camera_id": config.tertiary_camera_id,
+                "label": config.tertiary_camera_label,
+                "roi": [
+                    float(config.tertiary_camera_roi_left),
+                    float(config.tertiary_camera_roi_right),
+                ],
+                "async_mjpeg": tertiary_async_mjpeg,
+                "mjpeg_decode_reduction": int(
+                    config.tertiary_camera_mjpeg_decode_reduction
+                    if tertiary_async_mjpeg
+                    else 1
+                ),
             }
         return definitions

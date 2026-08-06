@@ -104,7 +104,11 @@ try { $stationToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($tokenP
 finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($tokenPointer) }
 if (-not $stationToken -and $existing.station_token) { $stationToken = $existing.station_token }
 
-$config = @{
+$config = @{}
+foreach ($property in $existing.PSObject.Properties) {
+    $config[$property.Name] = $property.Value
+}
+$installerValues = @{
     api_url = $apiUrl.TrimEnd("/")
     station_token = $stationToken
     camera_url = $cameraUrl
@@ -134,6 +138,9 @@ $config = @{
     open_browser = $true
     host = "127.0.0.1"
     port = 8765
+}
+foreach ($entry in $installerValues.GetEnumerator()) {
+    $config[$entry.Key] = $entry.Value
 }
 $configJson = $config | ConvertTo-Json -Depth 5
 $utf8 = New-Object System.Text.UTF8Encoding($false)

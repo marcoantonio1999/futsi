@@ -33,20 +33,27 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
       "detector_size", "processing_width", "preview_width", "target_fps",
       "known_threshold", "unknown_threshold", "unknown_confirmation_threshold",
       "spool_jpeg_quality", "night_embedding_batch_size",
-      "camera_mjpeg_decode_reduction",
+      "camera_mjpeg_decode_reduction", "tertiary_camera_mjpeg_decode_reduction",
       "daily_evidence_limit", "evidence_safety_days",
       "camera_roi_left", "camera_roi_right",
       "secondary_camera_roi_left", "secondary_camera_roi_right",
+      "tertiary_camera_roi_left", "tertiary_camera_roi_right",
     ]);
     const roiPercentages = new Set([
       "camera_roi_left", "camera_roi_right",
       "secondary_camera_roi_left", "secondary_camera_roi_right",
+      "tertiary_camera_roi_left", "tertiary_camera_roi_right",
     ]);
     const payload: Record<string, string | number | boolean> = {};
     for (const [key, rawValue] of form.entries()) {
       const value = String(rawValue);
       if (["station_token", "secondary_camera_password"].includes(key) && !value) continue;
-      payload[key] = ["secondary_camera_enabled", "camera_async_mjpeg_enabled"].includes(key)
+      payload[key] = [
+        "secondary_camera_enabled",
+        "camera_async_mjpeg_enabled",
+        "tertiary_camera_enabled",
+        "tertiary_camera_async_mjpeg_enabled",
+      ].includes(key)
         ? value === "true"
         : roiPercentages.has(key)
           ? Number(value) / 100
@@ -95,7 +102,7 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
               </div>
             </section>
 
-            <CameraSection title="Cámara principal" detail="Fuente conectada a la Raspberry o a esta PC." icon={<Video size={15} />}>
+            <CameraSection title="Raspberry principal" detail="Cámara principal conectada actualmente a FaceGuard." icon={<Video size={15} />}>
               <label className={`${labelClass} sm:col-span-2`}>URL MJPEG, RTSP o índice local<input className={inputClass} defaultValue={config.camera_url} name="camera_url" required /></label>
               <label className={`${labelClass} sm:col-span-2`}>URL de respaldo<input className={inputClass} defaultValue={config.camera_fallback_url || ""} name="camera_fallback_url" placeholder="Tailscale u otra ruta alternativa" /></label>
               <label className={labelClass}>Nombre visible<input className={inputClass} defaultValue={config.camera_label} name="camera_label" required /></label>
@@ -104,10 +111,23 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
               <label className={labelClass}>Reducción para detectar<select className={inputClass} defaultValue={config.camera_mjpeg_decode_reduction ?? 4} name="camera_mjpeg_decode_reduction">{[1, 2, 4, 8].map((value) => <option key={value} value={value}>{value === 1 ? "1× · resolución completa" : `${value}× · detección reducida`}</option>)}</select></label>
               <label className={labelClass}>Área útil desde (%)<input className={inputClass} defaultValue={Number((config.camera_roi_left * 100).toFixed(1))} name="camera_roi_left" type="number" min="0" max="90" step="0.1" /></label>
               <label className={labelClass}>Área útil hasta (%)<input className={inputClass} defaultValue={Number((config.camera_roi_right * 100).toFixed(1))} name="camera_roi_right" type="number" min="10" max="100" step="0.1" /></label>
-              <p className="text-[9px] leading-4 text-zinc-400 sm:col-span-2">El modo asíncrono solo se aplica a la Raspberry por HTTP MJPEG; la Dahua RTSP conserva su ruta actual. La reducción afecta únicamente la imagen que analiza SCRFD: el recorte se extrae del JPEG original con resolución completa. Solo el área útil entra a detección.</p>
+              <p className="text-[9px] leading-4 text-zinc-400 sm:col-span-2">El modo asíncrono recibe el JPEG original de la Raspberry y reduce únicamente la copia que analiza SCRFD. Los recortes conservan la resolución completa y solo el área útil entra a detección.</p>
             </CameraSection>
 
-            <CameraSection title="Cámara Dahua" detail="Segunda fuente RTSP procesada en paralelo." icon={<Wifi size={15} />}>
+            <CameraSection title="Raspberry adicional" detail="Tercera cámara HTTP procesada en paralelo, independiente de la Raspberry principal y la Dahua." icon={<Video size={15} />}>
+              <label className={labelClass}>Estado<select className={inputClass} defaultValue={String(config.tertiary_camera_enabled ?? false)} name="tertiary_camera_enabled"><option value="false">Desactivada</option><option value="true">Activada</option></select></label>
+              <label className={labelClass}>Nombre visible<input className={inputClass} defaultValue={config.tertiary_camera_label || ""} name="tertiary_camera_label" placeholder="Raspberry adicional" /></label>
+              <label className={`${labelClass} sm:col-span-2`}>URL MJPEG por LAN<input className={inputClass} defaultValue={config.tertiary_camera_url || ""} name="tertiary_camera_url" placeholder="http://192.168.1.43:8080/stream" type="url" /></label>
+              <label className={`${labelClass} sm:col-span-2`}>URL de respaldo opcional<input className={inputClass} defaultValue={config.tertiary_camera_fallback_url || ""} name="tertiary_camera_fallback_url" placeholder="Otra IP LAN o VPN" type="url" /></label>
+              <label className={`${labelClass} sm:col-span-2`}>Identificador<input className={inputClass} defaultValue={config.tertiary_camera_id || ""} name="tertiary_camera_id" placeholder="cancha_2" /></label>
+              <label className={labelClass}>Recepción MJPEG<select className={inputClass} defaultValue={String(config.tertiary_camera_async_mjpeg_enabled ?? true)} name="tertiary_camera_async_mjpeg_enabled"><option value="true">Asíncrona (recomendada)</option><option value="false">Compatible (OpenCV)</option></select></label>
+              <label className={labelClass}>Reducción para detectar<select className={inputClass} defaultValue={config.tertiary_camera_mjpeg_decode_reduction ?? 2} name="tertiary_camera_mjpeg_decode_reduction">{[1, 2, 4, 8].map((value) => <option key={value} value={value}>{value === 1 ? "1× · resolución completa" : `${value}× · detección reducida`}</option>)}</select></label>
+              <label className={labelClass}>Área útil desde (%)<input className={inputClass} defaultValue={Number(((config.tertiary_camera_roi_left ?? 0) * 100).toFixed(1))} name="tertiary_camera_roi_left" type="number" min="0" max="90" step="0.1" /></label>
+              <label className={labelClass}>Área útil hasta (%)<input className={inputClass} defaultValue={Number(((config.tertiary_camera_roi_right ?? 1) * 100).toFixed(1))} name="tertiary_camera_roi_right" type="number" min="10" max="100" step="0.1" /></label>
+              <p className="text-[9px] leading-4 text-zinc-400 sm:col-span-2">Usa la URL LAN como ruta principal y deja el respaldo vacío mientras ambas PCs compartan red. Solo agrega otra ruta LAN o VPN si existe una alternativa real. La reducción nunca cambia la calidad del recorte guardado.</p>
+            </CameraSection>
+
+            <CameraSection title="Cámara Dahua" detail="Fuente RTSP procesada en paralelo con ambas Raspberry." icon={<Wifi size={15} />} wide>
               <label className={labelClass}>Estado<select className={inputClass} defaultValue={String(config.secondary_camera_enabled)} name="secondary_camera_enabled"><option value="false">Desactivada</option><option value="true">Activada</option></select></label>
               <label className={labelClass}>Nombre visible<input className={inputClass} defaultValue={config.secondary_camera_label || ""} name="secondary_camera_label" /></label>
               <label className={`${labelClass} sm:col-span-2`}>URL RTSP sin credenciales<input className={inputClass} defaultValue={config.secondary_camera_url || ""} name="secondary_camera_url" placeholder="rtsp://IP:554/cam/realmonitor?..." /></label>
@@ -148,12 +168,12 @@ export function SettingsModal({ onClose, onNotify }: { onClose: () => void; onNo
   );
 }
 
-function CameraSection({ title, detail, icon, children }: { title: string; detail: string; icon: React.ReactNode; children: React.ReactNode }) {
+function CameraSection({ title, detail, icon, children, wide = false }: { title: string; detail: string; icon: React.ReactNode; children: React.ReactNode; wide?: boolean }) {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-4">
+    <section className={`rounded-xl border border-zinc-200 bg-white p-4 ${wide ? "lg:col-span-2" : ""}`}>
       <h3 className="flex items-center gap-2 text-xs font-bold text-zinc-800"><span className="text-emerald-700">{icon}</span>{title}</h3>
       <p className="mt-1 text-[10px] text-zinc-500">{detail}</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">{children}</div>
+      <div className={`mt-3 grid gap-3 sm:grid-cols-2 ${wide ? "lg:grid-cols-4" : ""}`}>{children}</div>
     </section>
   );
 }

@@ -39,6 +39,15 @@ class StationConfig:
     secondary_camera_password: str = ""
     secondary_camera_roi_left: float = 0.0
     secondary_camera_roi_right: float = 1.0
+    tertiary_camera_enabled: bool = False
+    tertiary_camera_url: str = ""
+    tertiary_camera_fallback_url: str = ""
+    tertiary_camera_id: str = "raspberry_cancha_2"
+    tertiary_camera_label: str = "Raspberry 2"
+    tertiary_camera_async_mjpeg_enabled: bool = True
+    tertiary_camera_mjpeg_decode_reduction: int = 2
+    tertiary_camera_roi_left: float = 0.0
+    tertiary_camera_roi_right: float = 1.0
     processing_device: str = "auto"
     model_name: str = "buffalo_l"
     detector_size: int = 640
@@ -144,6 +153,73 @@ class StationConfig:
                 raise ValueError("La URL de la camara secundaria no es valida.") from exc
             if parsed_secondary.password is not None:
                 raise ValueError("Captura el usuario y la contrasena RTSP en sus campos separados.")
+        self.tertiary_camera_enabled = self._as_bool(self.tertiary_camera_enabled)
+        self.tertiary_camera_url = self._validated_http_camera_source(
+            self.tertiary_camera_url,
+            "tertiary_camera_url",
+        )
+        self.tertiary_camera_fallback_url = self._validated_http_camera_source(
+            self.tertiary_camera_fallback_url,
+            "tertiary_camera_fallback_url",
+        )
+        if self.tertiary_camera_fallback_url == self.tertiary_camera_url:
+            self.tertiary_camera_fallback_url = ""
+        self.tertiary_camera_id = (
+            str(self.tertiary_camera_id).strip() or "raspberry_cancha_2"
+        )
+        self.tertiary_camera_label = (
+            str(self.tertiary_camera_label).strip() or "Raspberry 2"
+        )
+        self.tertiary_camera_async_mjpeg_enabled = self._as_bool(
+            self.tertiary_camera_async_mjpeg_enabled
+        )
+        if int(self.tertiary_camera_mjpeg_decode_reduction) not in {1, 2, 4, 8}:
+            raise ValueError(
+                "tertiary_camera_mjpeg_decode_reduction debe ser 1, 2, 4 u 8."
+            )
+        self.tertiary_camera_mjpeg_decode_reduction = int(
+            self.tertiary_camera_mjpeg_decode_reduction
+        )
+        (
+            self.tertiary_camera_roi_left,
+            self.tertiary_camera_roi_right,
+        ) = self._validated_horizontal_roi(
+            self.tertiary_camera_roi_left,
+            self.tertiary_camera_roi_right,
+            "tertiary_camera",
+        )
+        if self.tertiary_camera_enabled and not self.tertiary_camera_url:
+            raise ValueError(
+                "Configura la URL de la tercera camara antes de activarla."
+            )
+        if self.tertiary_camera_enabled:
+            existing_sources = {
+                source
+                for source in (
+                    self.camera_url,
+                    self.camera_fallback_url,
+                    self.secondary_camera_url if self.secondary_camera_enabled else "",
+                )
+                if source
+            }
+            for field_name, source in (
+                ("tertiary_camera_url", self.tertiary_camera_url),
+                (
+                    "tertiary_camera_fallback_url",
+                    self.tertiary_camera_fallback_url,
+                ),
+            ):
+                if source and source in existing_sources:
+                    raise ValueError(
+                        f"{field_name} debe apuntar a una camara distinta."
+                    )
+            existing_ids = {self.camera_id}
+            if self.secondary_camera_enabled:
+                existing_ids.add(self.secondary_camera_id)
+            if self.tertiary_camera_id in existing_ids:
+                raise ValueError(
+                    "tertiary_camera_id debe ser distinto de las otras camaras."
+                )
         self.processing_device = self.processing_device.lower()
         if self.processing_device not in {"auto", "cpu", "gpu"}:
             raise ValueError("processing_device debe ser auto, cpu o gpu.")
@@ -250,6 +326,20 @@ class StationConfig:
         return left_value, right_value
 
     @staticmethod
+    def _validated_http_camera_source(value, name: str) -> str:
+        source = str(value or "").strip()
+        if not source:
+            return ""
+        try:
+            parsed = urlsplit(source)
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError(f"{name} no es una URL valida.") from exc
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            raise ValueError(f"{name} debe usar HTTP o HTTPS e incluir un host.")
+        return source
+
+    @staticmethod
     def _validated_time(value, name: str) -> str:
         parts = str(value).strip().split(":")
         if len(parts) != 2:
@@ -300,7 +390,12 @@ class StationConfig:
         payload = asdict(self)
         payload["station_token_configured"] = bool(payload.pop("station_token"))
         payload["secondary_camera_password_configured"] = bool(payload.pop("secondary_camera_password"))
-        for field_name in ("camera_url", "camera_fallback_url"):
+        for field_name in (
+            "camera_url",
+            "camera_fallback_url",
+            "tertiary_camera_url",
+            "tertiary_camera_fallback_url",
+        ):
             source = str(payload.get(field_name) or "")
             redacted = self._redacted_camera_source(source)
             payload[f"{field_name}_credentials_configured"] = redacted != source
@@ -343,7 +438,12 @@ class ConfigManager:
                 current["station_token"] = self._config.station_token
             if not patch.get("secondary_camera_password") and "secondary_camera_password" in patch:
                 current["secondary_camera_password"] = self._config.secondary_camera_password
-            for field_name in ("camera_url", "camera_fallback_url"):
+            for field_name in (
+                "camera_url",
+                "camera_fallback_url",
+                "tertiary_camera_url",
+                "tertiary_camera_fallback_url",
+            ):
                 if field_name not in patch:
                     continue
                 configured = str(getattr(self._config, field_name) or "")

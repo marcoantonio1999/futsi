@@ -1,5 +1,6 @@
 export type TabId = "live" | "attendance" | "monthly" | "matches" | "identities";
 export type SubjectKind = "known" | "unknown";
+export type CameraKey = "primary" | "secondary" | "tertiary";
 export type DetectionTarget =
   | {
       scope: "day";
@@ -118,10 +119,7 @@ export interface StationStatus {
     connected_count?: number;
     configured_count?: number;
   };
-  cameras?: {
-    primary?: CameraStatus;
-    secondary?: CameraStatus;
-  };
+  cameras?: Partial<Record<CameraKey, CameraStatus>>;
   references?: {
     total?: number;
     configured?: number;
@@ -686,6 +684,15 @@ export interface StationConfig {
   secondary_camera_password?: string;
   secondary_camera_roi_left: number;
   secondary_camera_roi_right: number;
+  tertiary_camera_enabled: boolean;
+  tertiary_camera_url?: string;
+  tertiary_camera_fallback_url?: string;
+  tertiary_camera_id?: string;
+  tertiary_camera_label?: string;
+  tertiary_camera_async_mjpeg_enabled: boolean;
+  tertiary_camera_mjpeg_decode_reduction: 1 | 2 | 4 | 8;
+  tertiary_camera_roi_left: number;
+  tertiary_camera_roi_right: number;
   processing_device: "auto" | "gpu" | "cpu";
   detector_size: number;
   processing_width: number;

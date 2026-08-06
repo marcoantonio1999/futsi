@@ -108,6 +108,10 @@ async def update_config(request: Request):
             "secondary_camera_enabled", "secondary_camera_url", "secondary_camera_id",
             "secondary_camera_label", "secondary_camera_username", "secondary_camera_password",
             "secondary_camera_roi_left", "secondary_camera_roi_right",
+            "tertiary_camera_enabled", "tertiary_camera_url", "tertiary_camera_fallback_url",
+            "tertiary_camera_id", "tertiary_camera_label",
+            "tertiary_camera_async_mjpeg_enabled", "tertiary_camera_mjpeg_decode_reduction",
+            "tertiary_camera_roi_left", "tertiary_camera_roi_right",
             "processing_device",
             "detector_size", "processing_width", "preview_width", "preview_fps", "target_fps",
             "known_threshold", "min_margin", "unknown_threshold",
@@ -627,7 +631,9 @@ def local_image(kind: str, identifier: str):
 
 
 @app.get("/api/stream.mjpg")
-def preview_stream(camera: str = Query(default="primary", pattern=r"^(primary|secondary)$")):
+def preview_stream(
+    camera: str = Query(default="primary", pattern=r"^(primary|secondary|tertiary)$"),
+):
     def frames():
         previous = b""
         while True:

@@ -79,6 +79,9 @@ def test_async_mjpeg_config_is_reversible_and_validated(tmp_path):
 
     assert manager.config.camera_async_mjpeg_enabled is False
     assert manager.config.camera_mjpeg_decode_reduction == 4
+    assert manager.config.tertiary_camera_enabled is False
+    assert manager.config.tertiary_camera_async_mjpeg_enabled is True
+    assert manager.config.tertiary_camera_mjpeg_decode_reduction == 2
 
     updated = manager.update({
         "camera_async_mjpeg_enabled": "true",
@@ -123,7 +126,7 @@ def test_primary_camera_keeps_distinct_fallback_source(tmp_path):
     assert duplicate.camera_fallback_url == ""
 
 
-def test_async_mjpeg_flags_only_apply_to_the_primary_http_camera(tmp_path):
+def test_async_mjpeg_flags_are_scoped_to_each_http_camera(tmp_path):
     manager = ConfigManager(tmp_path)
     config = manager.update({
         "camera_url": "http://192.168.1.42:8080/stream",
@@ -131,14 +134,36 @@ def test_async_mjpeg_flags_only_apply_to_the_primary_http_camera(tmp_path):
         "camera_mjpeg_decode_reduction": 4,
         "secondary_camera_enabled": True,
         "secondary_camera_url": "rtsp://192.168.1.50:554/live",
+        "tertiary_camera_enabled": True,
+        "tertiary_camera_url": "http://192.168.1.44:8080/stream",
+        "tertiary_camera_fallback_url": "http://100.70.80.90:8080/stream",
+        "tertiary_camera_id": "raspberry_cancha_2",
+        "tertiary_camera_label": "Raspberry entrada 2",
+        "tertiary_camera_async_mjpeg_enabled": True,
+        "tertiary_camera_mjpeg_decode_reduction": 8,
+        "tertiary_camera_roi_left": 0.1,
+        "tertiary_camera_roi_right": 0.9,
     })
 
     definitions = StationRuntime._camera_definitions(config)
 
+    assert list(definitions) == ["primary", "secondary", "tertiary"]
     assert definitions["primary"]["async_mjpeg"] is True
     assert definitions["primary"]["mjpeg_decode_reduction"] == 4
     assert definitions["secondary"]["async_mjpeg"] is False
     assert definitions["secondary"]["mjpeg_decode_reduction"] == 1
+    assert definitions["tertiary"] == {
+        "source": "http://192.168.1.44:8080/stream",
+        "fallback_source": "http://100.70.80.90:8080/stream",
+        "camera_id": "raspberry_cancha_2",
+        "label": "Raspberry entrada 2",
+        "roi": [0.1, 0.9],
+        "async_mjpeg": True,
+        "mjpeg_decode_reduction": 8,
+    }
+    assert StationRuntime._camera_roi(config, "tertiary") == pytest.approx(
+        (0.1, 0.9)
+    )
 
     rtsp_primary = manager.update({
         "camera_url": "rtsp://192.168.1.51:554/live",
@@ -146,6 +171,37 @@ def test_async_mjpeg_flags_only_apply_to_the_primary_http_camera(tmp_path):
     primary = StationRuntime._camera_definitions(rtsp_primary)["primary"]
     assert primary["async_mjpeg"] is False
     assert primary["mjpeg_decode_reduction"] == 1
+
+
+def test_tertiary_camera_validation_preserves_existing_sources(tmp_path):
+    manager = ConfigManager(tmp_path)
+    manager.update({
+        "camera_url": "http://192.168.1.42:8080/stream",
+        "secondary_camera_enabled": True,
+        "secondary_camera_url": "rtsp://192.168.1.50:554/live",
+        "tertiary_camera_enabled": True,
+        "tertiary_camera_url": "http://192.168.1.44:8080/stream",
+        "tertiary_camera_fallback_url": "http://100.70.80.90:8080/stream",
+    })
+
+    with pytest.raises(ValueError, match="HTTP o HTTPS"):
+        manager.update({"tertiary_camera_url": "rtsp://192.168.1.44/live"})
+    with pytest.raises(ValueError, match="camara distinta"):
+        manager.update({"tertiary_camera_url": manager.config.camera_url})
+    with pytest.raises(ValueError, match="tertiary_camera_id"):
+        manager.update({"tertiary_camera_id": manager.config.camera_id})
+    with pytest.raises(ValueError, match="tertiary_camera_mjpeg_decode_reduction"):
+        manager.update({"tertiary_camera_mjpeg_decode_reduction": 3})
+    with pytest.raises(ValueError, match="izquierda"):
+        manager.update({
+            "tertiary_camera_roi_left": 0.8,
+            "tertiary_camera_roi_right": 0.7,
+        })
+
+    config = manager.config
+    assert config.camera_url == "http://192.168.1.42:8080/stream"
+    assert config.secondary_camera_url == "rtsp://192.168.1.50:554/live"
+    assert config.tertiary_camera_url == "http://192.168.1.44:8080/stream"
 
 
 def test_secondary_camera_credentials_stay_private_and_survive_blank_updates(tmp_path):
@@ -1503,6 +1559,64 @@ def test_runtime_health_status_never_queries_sqlite_summaries(tmp_path, monkeypa
     }
 
 
+def test_missing_tertiary_preview_never_falls_back_to_primary(tmp_path):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._camera_labels = {
+        "primary": "Raspberry",
+        "tertiary": "Raspberry entrada 2",
+    }
+    runtime._preview_jpegs = {"primary": b"primary-preview"}
+
+    payload = runtime.latest_preview("tertiary")
+
+    assert payload != b"primary-preview"
+    assert payload.startswith(b"\xff\xd8")
+
+
+def test_status_reports_tertiary_camera_independently(tmp_path):
+    manager = ConfigManager(tmp_path)
+    manager.update({
+        "secondary_camera_enabled": True,
+        "secondary_camera_url": "rtsp://192.168.1.50:554/live",
+        "tertiary_camera_enabled": True,
+        "tertiary_camera_url": "http://192.168.1.44:8080/stream",
+    })
+    runtime = StationRuntime(manager)
+
+    class Camera:
+        def __init__(self, connected, frames_read, pipeline_mode):
+            self.connected = connected
+            self.frames_read = frames_read
+            self.frames_dropped = 0
+            self.hardware_acceleration = False
+            self.queue_depth = 0
+            self.last_error = ""
+            self.source_role = "primary"
+            self.using_fallback = False
+            self.failover_count = 0
+            self.last_source_switch_at = 0.0
+            self.last_failover_reason = ""
+            self.status_metrics = {"pipeline_mode": pipeline_mode}
+
+    runtime._cameras = {
+        "primary": Camera(True, 10, "opencv"),
+        "secondary": Camera(True, 20, "opencv"),
+        "tertiary": Camera(False, 30, "async_mjpeg"),
+    }
+
+    status = runtime.status()
+
+    assert list(status["cameras"]) == ["primary", "secondary", "tertiary"]
+    assert status["cameras"]["tertiary"]["label"] == "Raspberry 2"
+    assert status["cameras"]["tertiary"]["connected"] is False
+    assert status["cameras"]["tertiary"]["capture_pipeline"]["pipeline_mode"] == (
+        "async_mjpeg"
+    )
+    assert status["camera"]["configured_count"] == 3
+    assert status["camera"]["connected_count"] == 2
+    assert status["camera"]["frames_read"] == 60
+
+
 def test_night_pause_drains_camera_packets_and_resumes_from_a_fresh_frame(tmp_path):
     runtime = StationRuntime(ConfigManager(tmp_path))
     calls = []
@@ -1516,7 +1630,11 @@ def test_night_pause_drains_camera_packets_and_resumes_from_a_fresh_frame(tmp_pa
         def clear_pending():
             calls.append(("clear", None))
 
-    runtime._cameras = {"primary": Camera(), "secondary": Camera()}
+    runtime._cameras = {
+        "primary": Camera(),
+        "secondary": Camera(),
+        "tertiary": Camera(),
+    }
 
     runtime._suspend_capture_workers()
     runtime._resume_capture_workers()
@@ -1526,6 +1644,10 @@ def test_night_pause_drains_camera_packets_and_resumes_from_a_fresh_frame(tmp_pa
         ("clear", None),
         ("enabled", False),
         ("clear", None),
+        ("enabled", False),
+        ("clear", None),
+        ("clear", None),
+        ("enabled", True),
         ("clear", None),
         ("enabled", True),
         ("clear", None),
