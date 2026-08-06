@@ -3892,6 +3892,26 @@ def test_match_analysis_detects_ten_unique_people_in_fifty_minutes(tmp_path):
     )
     assert outside_window["participant_count"] == 10
     assert outside_window["participants"] == []
+    with store.connection(immediate=True) as db:
+        stored_participants = json.loads(db.execute(
+            """
+            select participants_json from match_analysis_windows
+            where id=?
+            """,
+            (outside_window["id"],),
+        ).fetchone()[0])
+        for stored_participant in stored_participants:
+            stored_participant.pop("best_crop_seen_at", None)
+        db.execute(
+            """
+            update match_analysis_windows set participants_json=?
+            where id=?
+            """,
+            (
+                json.dumps(stored_participants),
+                outside_window["id"],
+            ),
+        )
     participants = store.match_window_participants(
         outside_window["id"]
     )
@@ -3902,6 +3922,19 @@ def test_match_analysis_detects_ten_unique_people_in_fifty_minutes(tmp_path):
         item["person_type"] != "collaborator"
         for item in participants["items"]
     )
+    assert all(
+        item["best_crop_seen_at"]
+        for item in participants["items"]
+    )
+    assert {
+        item["key"]: item["best_crop_seen_at"]
+        for item in participants["items"]
+    } == {
+        person["key"]: (
+            match_start + timedelta(minutes=index * 5)
+        ).isoformat()
+        for index, person in enumerate(people)
+    }
     assert clear_day["match_detected"] == 0
     assert clear_day["max_unique_people"] == 9
 
@@ -4264,6 +4297,49 @@ def test_match_schedule_assigns_early_arrival_by_dominant_presence(tmp_path):
     assert "student:arrives-early" not in previous_people
     assert upcoming_people["student:arrives-early"]["detection_count"] == 4
     assert previous_people["student:previous-match"]["detection_count"] == 2
+
+
+def test_match_participant_keeps_the_timestamp_of_its_best_crop():
+    starts_at = datetime(
+        2026, 7, 21, 17, 0, tzinfo=timezone.utc
+    ).astimezone()
+    events = [
+        {
+            "id": 1,
+            "seen_at": starts_at.isoformat(),
+            "identity_kind": "unknown",
+            "identity_key": "unknown:best-time",
+            "name": "Desconocido best-time",
+            "person_type": "unknown",
+            "quality": 45,
+            "quality_pass": 0,
+            "evidence_selected": 0,
+            "evidence_score": 0.2,
+            "camera": "camera-1",
+        },
+        {
+            "id": 2,
+            "seen_at": (
+                starts_at + timedelta(minutes=8, seconds=13)
+            ).isoformat(),
+            "identity_kind": "unknown",
+            "identity_key": "unknown:best-time",
+            "name": "Desconocido best-time",
+            "person_type": "unknown",
+            "quality": 92,
+            "quality_pass": 1,
+            "evidence_selected": 1,
+            "evidence_score": 0.9,
+            "camera": "camera-2",
+        },
+    ]
+
+    participant = LocalStore._match_participants(events)[0]
+
+    assert participant["best_crop_id"] == 2
+    assert participant["best_crop_seen_at"] == events[1]["seen_at"]
+    assert participant["first_seen_at"] == events[0]["seen_at"]
+    assert participant["last_seen_at"] == events[1]["seen_at"]
 
 
 def test_monthly_detection_detail_pages_all_crops_with_a_stable_cursor(tmp_path):

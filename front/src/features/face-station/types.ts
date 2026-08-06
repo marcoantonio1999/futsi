@@ -369,6 +369,7 @@ export interface MatchParticipant {
   last_seen_at: string;
   detection_count: number;
   best_crop_id: number;
+  best_crop_seen_at: string;
   best_quality?: number;
   camera?: string;
 }

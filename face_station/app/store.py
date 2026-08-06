@@ -7082,6 +7082,7 @@ class LocalStore:
                 "last_seen_at": seen_at,
                 "detection_count": 1,
                 "best_crop_id": int(event["id"]),
+                "best_crop_seen_at": seen_at,
                 "best_quality": float(event.get("quality") or 0.0),
                 "camera": str(event.get("camera") or ""),
                 "_evidence_score": evidence_score,
@@ -7101,6 +7102,7 @@ class LocalStore:
         if evidence_score > float(participant["_evidence_score"]):
             participant.update({
                 "best_crop_id": int(event["id"]),
+                "best_crop_seen_at": seen_at,
                 "best_quality": float(event.get("quality") or 0.0),
                 "camera": str(event.get("camera") or ""),
                 "_evidence_score": evidence_score,
@@ -7688,12 +7690,43 @@ class LocalStore:
                 """,
                 (int(window_id),),
             ).fetchone()
-        if row is None:
-            return None
-        try:
-            participants = json.loads(row["participants_json"] or "[]")
-        except (TypeError, json.JSONDecodeError):
-            participants = []
+            if row is None:
+                return None
+            try:
+                participants = json.loads(
+                    row["participants_json"] or "[]"
+                )
+            except (TypeError, json.JSONDecodeError):
+                participants = []
+            crop_ids = sorted({
+                int(participant["best_crop_id"])
+                for participant in participants
+                if participant.get("best_crop_id") is not None
+            })
+            crop_times = {}
+            if crop_ids:
+                placeholders = ",".join("?" for _ in crop_ids)
+                crop_times = {
+                    int(crop["id"]): str(crop["seen_at"] or "")
+                    for crop in db.execute(
+                        f"""
+                        select id,seen_at from face_crops
+                        where id in ({placeholders})
+                        """,
+                        crop_ids,
+                    )
+                }
+        for participant in participants:
+            crop_id = participant.get("best_crop_id")
+            participant["best_crop_seen_at"] = (
+                str(
+                    crop_times.get(int(crop_id), "")
+                    if crop_id is not None
+                    else ""
+                )
+                or str(participant.get("best_crop_seen_at") or "")
+                or str(participant.get("first_seen_at") or "")
+            )
         return {
             "window_id": int(row["id"]),
             "analysis_date": str(row["analysis_date"]),

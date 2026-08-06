@@ -669,9 +669,27 @@ function MatchParticipantEvidence({ participant }: { participant: MatchParticipa
         <span className="mt-0.5 block truncate text-[7px] text-zinc-400">
           {participant.kind === "known" ? identityTypeLabel(participant.person_type) : "No reconocido"}
         </span>
+        <span
+          className="mt-1 flex items-center gap-1 text-[7px] font-semibold tabular-nums text-zinc-600"
+          title={`Recorte capturado a las ${cropTimeLabel(participant.best_crop_seen_at || participant.first_seen_at)}`}
+        >
+          <Clock3 size={8} className="shrink-0 text-amber-700" />
+          {cropTimeLabel(participant.best_crop_seen_at || participant.first_seen_at)}
+        </span>
       </div>
     </div>
   );
+}
+
+function cropTimeLabel(value: string) {
+  if (!value) return "Hora no disponible";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Hora no disponible";
+  return parsed.toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function timeLabel(value: string) {
