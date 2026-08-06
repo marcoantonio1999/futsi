@@ -53,9 +53,10 @@ export function LiveView({
   const cameraPipelines = configuredCameras
     .filter((entry): entry is typeof entry & { camera: CameraStatus } => Boolean(entry.camera?.capture_pipeline))
     .map(({ camera }) => ({ camera, pipeline: camera.capture_pipeline! }));
-  const cameraPipelineErrors = cameraPipelines.reduce((total, { pipeline }) => total
+  const cameraFramesSkipped = cameraPipelines.reduce((total, { pipeline }) => total
     + Number(pipeline.compressed_frames_dropped || 0)
-    + Number(pipeline.packet_frames_dropped || 0)
+    + Number(pipeline.packet_frames_dropped || 0), 0);
+  const cameraPipelineErrors = cameraPipelines.reduce((total, { pipeline }) => total
     + Number(pipeline.decode_errors || 0)
     + Number(pipeline.jpeg_errors || 0), 0);
   const cameraWorkerFailures = cameraPipelines.filter(({ camera, pipeline }) => (
@@ -147,7 +148,7 @@ export function LiveView({
                   : "Frame original: métricas no disponibles en esta versión del motor."}
               </span>
               <span className="mt-0.5 block leading-4">
-                Captura de camara: {compactNumber(cameraPipelineErrors)} descartes/errores
+                Captura en tiempo real: {compactNumber(cameraFramesSkipped)} frames reemplazados por uno más reciente · {compactNumber(cameraPipelineErrors)} errores
                 {cameraWorkerFailures ? ` · ${compactNumber(cameraWorkerFailures)} pipeline(s) incompleto(s)` : " · receptores y decoders activos"}.
               </span>
             </div>
@@ -286,9 +287,9 @@ function CameraFeed({
   const label = camera?.label || fallbackLabel;
   const pipeline = camera?.capture_pipeline;
   const asyncMjpeg = pipeline?.pipeline_mode === "async_mjpeg";
-  const pipelineDrops = Number(pipeline?.compressed_frames_dropped || 0)
-    + Number(pipeline?.packet_frames_dropped || 0)
-    + Number(pipeline?.decode_errors || 0)
+  const pipelineSkipped = Number(pipeline?.compressed_frames_dropped || 0)
+    + Number(pipeline?.packet_frames_dropped || 0);
+  const pipelineErrors = Number(pipeline?.decode_errors || 0)
     + Number(pipeline?.jpeg_errors || 0);
   const pipelineHealthy = !asyncMjpeg
     || (pipeline?.receiver_alive !== false && pipeline?.decoder_alive !== false);
@@ -308,8 +309,8 @@ function CameraFeed({
           <span className="block text-[7px] font-extrabold uppercase tracking-widest text-zinc-500">{sourceLabel}</span>
           <strong className="block truncate text-[11px]">{label}</strong>
           <span className={`mt-0.5 block text-[7px] font-bold uppercase tracking-wide ${camera?.roi_active ? "text-rose-300" : "text-zinc-600"}`}>{roiLabel}</span>
-          <span className={`mt-0.5 block text-[7px] font-bold uppercase tracking-wide ${pipelineDrops ? "text-amber-300" : asyncMjpeg ? "text-sky-300" : "text-zinc-600"}`}>
-            {pipelineLabel}{pipelineDrops ? ` · ${pipelineDrops} incidencias` : ""}{!pipelineHealthy ? " · pipeline incompleto" : ""}
+          <span className={`mt-0.5 block text-[7px] font-bold uppercase tracking-wide ${pipelineErrors || !pipelineHealthy ? "text-red-300" : pipelineSkipped ? "text-amber-300" : asyncMjpeg ? "text-sky-300" : "text-zinc-600"}`}>
+            {pipelineLabel}{pipelineSkipped ? ` · ${compactNumber(pipelineSkipped)} omitidos` : ""}{pipelineErrors ? ` · ${compactNumber(pipelineErrors)} errores` : ""}{!pipelineHealthy ? " · pipeline incompleto" : ""}
           </span>
         </div>
         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-bold ${paused ? "border-amber-300/30 text-amber-100" : cameraLive ? "border-emerald-400/25 text-emerald-200" : "border-amber-300/20 text-amber-100"}`}>
