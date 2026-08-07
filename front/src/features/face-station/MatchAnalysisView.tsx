@@ -6,8 +6,19 @@ import { compactNumber, currency, dateLabel, identityTypeLabel } from "./format"
 import type { MatchAnalysisDay, MatchAnalysisResponse, MatchAnalysisStatus, MatchAnalysisSummary, MatchParticipant, MatchScheduleItem, MatchScheduleResponse, MatchWindow, ToastMessage } from "./types";
 
 const MATCH_PAGE_SIZE = 100;
+const MATCH_BILLING_TIME_ZONE = "America/Mexico_City";
+const MATCH_DAY_FEE_START_MINUTE = 9 * 60 + 45;
+const MATCH_DAY_FEE_END_MINUTE = 14 * 60;
+const MATCH_EVENING_FEE_START_MINUTE = 15 * 60 + 45;
+const MATCH_EVENING_FEE_END_MINUTE = 23 * 60;
 const WEEK_DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 type MatchViewMode = "summary" | "calendar";
+type MatchFeeBand = "day" | "evening";
+
+interface MatchFeeRates {
+  day: number;
+  evening: number;
+}
 
 const emptySummary: MatchAnalysisSummary = {
   total_days: 0,
@@ -47,8 +58,8 @@ export function MatchAnalysisView({
   const [currentMonth, setCurrentMonth] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedWindowId, setSelectedWindowId] = useState<number | null>(null);
-  const [matchFee, setMatchFee] = useState(0);
-  const [matchFeeDraft, setMatchFeeDraft] = useState("0");
+  const [matchFeeRates, setMatchFeeRates] = useState<MatchFeeRates>({ day: 0, evening: 0 });
+  const [matchFeeDrafts, setMatchFeeDrafts] = useState({ day: "0", evening: "0" });
   const [savingMatchFee, setSavingMatchFee] = useState(false);
   const [scheduleItems, setScheduleItems] = useState<MatchScheduleItem[]>([]);
   const [scheduleMonth, setScheduleMonth] = useState("");
@@ -93,11 +104,14 @@ export function MatchAnalysisView({
       });
       setSummary(firstPayload?.summary || emptySummary);
       setAnalysis(firstPayload?.analysis || emptyAnalysis);
-      const configuredFee = Number(firstPayload?.revenue_policy?.match_fee_amount ?? 0);
-      if (!feeLoaded.current && Number.isFinite(configuredFee)) {
+      const legacyFee = Number(firstPayload?.revenue_policy?.match_fee_amount ?? 0);
+      const fallbackFee = Number.isFinite(legacyFee) ? legacyFee : 0;
+      const configuredDayFee = Number(firstPayload?.revenue_policy?.match_day_fee_amount ?? fallbackFee);
+      const configuredEveningFee = Number(firstPayload?.revenue_policy?.match_evening_fee_amount ?? fallbackFee);
+      if (!feeLoaded.current && Number.isFinite(configuredDayFee) && Number.isFinite(configuredEveningFee)) {
         feeLoaded.current = true;
-        setMatchFee(configuredFee);
-        setMatchFeeDraft(String(configuredFee));
+        setMatchFeeRates({ day: configuredDayFee, evening: configuredEveningFee });
+        setMatchFeeDrafts({ day: String(configuredDayFee), evening: String(configuredEveningFee) });
       }
     } catch (reason) {
       if (id === requestId.current) {
@@ -180,23 +194,31 @@ export function MatchAnalysisView({
     }
   }
 
-  async function saveMatchFee() {
-    const amount = Number(matchFeeDraft);
-    if (!matchFeeDraft.trim() || !Number.isFinite(amount) || amount < 0 || amount > 1_000_000) {
-      onNotify("La tarifa por partido debe estar entre $0 y $1,000,000.", "error");
+  async function saveMatchFees() {
+    const dayAmount = Number(matchFeeDrafts.day);
+    const eveningAmount = Number(matchFeeDrafts.evening);
+    const invalid = [
+      { draft: matchFeeDrafts.day, amount: dayAmount },
+      { draft: matchFeeDrafts.evening, amount: eveningAmount },
+    ].some(({ draft, amount }) => !draft.trim() || !Number.isFinite(amount) || amount < 0 || amount > 1_000_000);
+    if (invalid) {
+      onNotify("Cada tarifa por partido debe estar entre $0 y $1,000,000.", "error");
       return;
     }
     setSavingMatchFee(true);
     try {
       await stationApi("/api/config", {
         method: "PATCH",
-        body: JSON.stringify({ match_fee_amount: amount }),
+        body: JSON.stringify({
+          match_day_fee_amount: dayAmount,
+          match_evening_fee_amount: eveningAmount,
+        }),
       });
-      setMatchFee(amount);
-      setMatchFeeDraft(String(amount));
-      onNotify(`Tarifa por partido actualizada a ${currency(amount)}. La detección continuó activa.`);
+      setMatchFeeRates({ day: dayAmount, evening: eveningAmount });
+      setMatchFeeDrafts({ day: String(dayAmount), evening: String(eveningAmount) });
+      onNotify(`Tarifas actualizadas: ${currency(dayAmount)} de 10 a.m. a 2 p.m. y ${currency(eveningAmount)} de 4 p.m. a 11 p.m. La detección continuó activa.`);
     } catch (reason) {
-      onNotify(reason instanceof Error ? reason.message : "No se pudo actualizar la tarifa por partido.", "error");
+      onNotify(reason instanceof Error ? reason.message : "No se pudieron actualizar las tarifas por partido.", "error");
     } finally {
       setSavingMatchFee(false);
     }
@@ -315,16 +337,16 @@ export function MatchAnalysisView({
           days={days}
           firstMonth={firstMonth}
           lastMonth={lastMonth}
-          matchFee={matchFee}
-          matchFeeDraft={matchFeeDraft}
+          matchFeeRates={matchFeeRates}
+          matchFeeDrafts={matchFeeDrafts}
           minimumUniquePeople={analysis.minimum_unique_people}
           schedule={scheduleItems}
           scheduleLoaded={scheduleMonth === currentMonth}
           scheduleLoading={scheduleLoading}
           scheduleError={scheduleError}
           savingMatchFee={savingMatchFee}
-          onMatchFeeDraftChange={setMatchFeeDraft}
-          onSaveMatchFee={() => void saveMatchFee()}
+          onMatchFeeDraftChange={(band, value) => setMatchFeeDrafts((current) => ({ ...current, [band]: value }))}
+          onSaveMatchFees={() => void saveMatchFees()}
           onPrevious={() => changeMonth(-1)}
           onNext={() => changeMonth(1)}
           onLatest={() => setCurrentMonth(lastMonth)}
@@ -470,8 +492,8 @@ function MatchSummaryPanel({
   days,
   firstMonth,
   lastMonth,
-  matchFee,
-  matchFeeDraft,
+  matchFeeRates,
+  matchFeeDrafts,
   minimumUniquePeople,
   schedule,
   scheduleLoaded,
@@ -479,7 +501,7 @@ function MatchSummaryPanel({
   scheduleError,
   savingMatchFee,
   onMatchFeeDraftChange,
-  onSaveMatchFee,
+  onSaveMatchFees,
   onPrevious,
   onNext,
   onLatest,
@@ -489,16 +511,16 @@ function MatchSummaryPanel({
   days: MatchAnalysisDay[];
   firstMonth: string;
   lastMonth: string;
-  matchFee: number;
-  matchFeeDraft: string;
+  matchFeeRates: MatchFeeRates;
+  matchFeeDrafts: Record<MatchFeeBand, string>;
   minimumUniquePeople: number;
   schedule: MatchScheduleItem[];
   scheduleLoaded: boolean;
   scheduleLoading: boolean;
   scheduleError: string;
   savingMatchFee: boolean;
-  onMatchFeeDraftChange: (value: string) => void;
-  onSaveMatchFee: () => void;
+  onMatchFeeDraftChange: (band: MatchFeeBand, value: string) => void;
+  onSaveMatchFees: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onLatest: () => void;
@@ -522,6 +544,11 @@ function MatchSummaryPanel({
     : completeMonthDays.reduce((total, day) => total + Number(day.scheduled_count || 0), 0);
   const unconfirmedCount = Math.max(0, scheduledSlotCount - inScheduleCount);
   const detectedCount = inScheduleCount + outsideCount;
+  const detectedWindows = [...inScheduleRows, ...outsideRows].flatMap((row) => row.windows);
+  const dayRateCount = detectedWindows.filter((window) => matchFeeBandForWindow(window) === "day").length;
+  const eveningRateCount = detectedWindows.filter((window) => matchFeeBandForWindow(window) === "evening").length;
+  const unpricedCount = detectedCount - dayRateCount - eveningRateCount;
+  const estimatedRevenue = detectedWindows.reduce((total, window) => total + matchFeeForWindow(window, matchFeeRates), 0);
 
   return (
     <section id="match-view-panel-summary" className={panelClass} role="tabpanel" aria-labelledby="match-view-tab-summary">
@@ -536,23 +563,20 @@ function MatchSummaryPanel({
           {month !== lastMonth ? <button type="button" onClick={onLatest} className="ml-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[8px] font-extrabold text-amber-800">Último mes</button> : null}
         </div>
         <form
-          className="flex flex-col gap-1.5 sm:flex-row sm:items-end"
+          className="w-full lg:w-auto"
           onSubmit={(event) => {
             event.preventDefault();
-            onSaveMatchFee();
+            onSaveMatchFees();
           }}
         >
-          <label className="block">
-            <span className="block text-[8px] font-extrabold uppercase tracking-wider text-zinc-500">Tarifa estimada por partido</span>
-            <span className="mt-1 flex min-h-9 items-center rounded-lg border border-zinc-200 bg-zinc-50 px-3 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100">
-              <span className="mr-1 text-xs font-bold text-zinc-400">$</span>
-              <input className="w-28 bg-transparent text-xs font-bold tabular-nums text-zinc-800 outline-none" inputMode="decimal" min="0" max="1000000" step="0.01" type="number" value={matchFeeDraft} onChange={(event) => onMatchFeeDraftChange(event.target.value)} />
-              <span className="ml-1 text-[8px] font-bold text-zinc-400">MXN</span>
-            </span>
-          </label>
-          <button type="submit" disabled={savingMatchFee} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 text-[9px] font-extrabold text-white transition hover:bg-amber-950 disabled:cursor-wait disabled:opacity-60">
-            {savingMatchFee ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}{savingMatchFee ? "Guardando" : "Guardar tarifa"}
-          </button>
+          <fieldset className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[150px_150px_auto] lg:items-end" disabled={savingMatchFee} aria-busy={savingMatchFee}>
+            <legend className="col-span-full mb-0.5 text-[9px] font-extrabold uppercase tracking-wider text-zinc-500">Tarifas estimadas por horario</legend>
+            <MatchFeeInput id="match-day-fee" label="10 a.m. — 2 p.m." value={matchFeeDrafts.day} onChange={(value) => onMatchFeeDraftChange("day", value)} />
+            <MatchFeeInput id="match-evening-fee" label="4 p.m. — 11 p.m." value={matchFeeDrafts.evening} onChange={(value) => onMatchFeeDraftChange("evening", value)} />
+            <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 text-[10px] font-extrabold text-white transition hover:bg-amber-950 disabled:cursor-wait disabled:opacity-60 sm:col-span-2 lg:col-span-1">
+              {savingMatchFee ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}{savingMatchFee ? "Guardando" : "Guardar tarifas"}
+            </button>
+          </fieldset>
         </form>
       </div>
 
@@ -564,7 +588,7 @@ function MatchSummaryPanel({
           <SummaryMetric label="En horario" value={compactNumber(inScheduleCount)} detail="Partidos con evidencia" tone="emerald" icon={<CheckCircle2 size={17} />} />
           <SummaryMetric label="Fuera de horario" value={compactNumber(outsideCount)} detail="Alertas que parecen partido" tone={outsideCount ? "red" : "zinc"} icon={<AlertTriangle size={17} />} />
           <SummaryMetric label="Sin evidencia suficiente" value={compactNumber(unconfirmedCount)} detail={`Menos de ${compactNumber(minimumUniquePeople)} personas`} tone="amber" icon={<Clock3 size={17} />} />
-          <SummaryMetric label="Ingreso estimado" value={currency(detectedCount * matchFee)} detail={`${compactNumber(detectedCount)} partidos × ${currency(matchFee)}`} tone="blue" icon={<Banknote size={17} />} />
+          <SummaryMetric label="Ingreso estimado" value={currency(estimatedRevenue)} detail={`${compactNumber(dayRateCount)} diurnos · ${compactNumber(eveningRateCount)} tarde/noche${unpricedCount ? ` · ${compactNumber(unpricedCount)} sin tarifa` : ""}`} tone="blue" icon={<Banknote size={17} />} />
         </div>
 
         <div className="mt-4 grid items-start gap-4 xl:grid-cols-2">
@@ -572,7 +596,7 @@ function MatchSummaryPanel({
             title="Dentro del horario de torneo"
             detail={`Partidos programados con al menos ${compactNumber(minimumUniquePeople)} personas.`}
             rows={inScheduleRows}
-            fee={matchFee}
+            feeRates={matchFeeRates}
             tone="scheduled"
             onOpenWindow={onOpenWindow}
           />
@@ -580,15 +604,15 @@ function MatchSummaryPanel({
             title="Fuera del horario autorizado"
             detail={`Actividad de ${compactNumber(minimumUniquePeople)} o más personas sin un horario asociado.`}
             rows={outsideRows}
-            fee={matchFee}
+            feeRates={matchFeeRates}
             tone="outside"
             onOpenWindow={onOpenWindow}
           />
         </div>
 
         <div className="mt-4 flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-[9px] text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
-          <span><strong className="text-zinc-800">Cómo se calcula:</strong> partidos con evidencia × tarifa vigente. Los {compactNumber(unconfirmedCount)} horarios sin evidencia quedan visibles en Calendario, pero no se cobran.{processingDays ? ` ${compactNumber(processingDays)} día(s) en proceso tampoco se incluyen.` : ""}</span>
-          {matchFee <= 0 ? <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 font-extrabold text-amber-800">Define una tarifa para ver montos</span> : null}
+          <span><strong className="text-zinc-800">Cómo se calcula:</strong> cada partido con evidencia usa la tarifa de su horario base. Los inicios hasta 15 min antes de 10 a.m. o 4 p.m. entran en la franja correspondiente. Los {compactNumber(unconfirmedCount)} horarios sin evidencia no se cobran.{unpricedCount ? ` ${compactNumber(unpricedCount)} partido(s) fuera de ambas franjas quedan sin tarifa.` : ""}{processingDays ? ` ${compactNumber(processingDays)} día(s) en proceso tampoco se incluyen.` : ""}</span>
+          {matchFeeRates.day <= 0 || matchFeeRates.evening <= 0 ? <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 font-extrabold text-amber-800">Completa ambas tarifas</span> : null}
         </div>
       </div>
     </section>
@@ -615,6 +639,57 @@ function countSummaryWindows(rows: SummaryDayRow[]) {
   return rows.reduce((total, row) => total + row.windows.length, 0);
 }
 
+function billingMinute(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: MATCH_BILLING_TIME_ZONE,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(parsed);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function matchFeeBandForWindow(window: MatchWindow): MatchFeeBand | null {
+  if (window.fee_band === "day" || window.fee_band === "evening") return window.fee_band;
+  if (window.fee_band === "") return null;
+  const anchor = window.billing_anchor_at || window.scheduled_starts_at || window.starts_at;
+  const minute = billingMinute(anchor);
+  if (minute == null) return null;
+  if (minute >= MATCH_DAY_FEE_START_MINUTE && minute <= MATCH_DAY_FEE_END_MINUTE) return "day";
+  if (minute >= MATCH_EVENING_FEE_START_MINUTE && minute <= MATCH_EVENING_FEE_END_MINUTE) return "evening";
+  return null;
+}
+
+function matchFeeForWindow(window: MatchWindow, rates: MatchFeeRates) {
+  const band = matchFeeBandForWindow(window);
+  return band ? rates[band] : 0;
+}
+
+function sumSummaryFees(rows: SummaryDayRow[], rates: MatchFeeRates) {
+  return rows.reduce(
+    (total, row) => total + row.windows.reduce((rowTotal, window) => rowTotal + matchFeeForWindow(window, rates), 0),
+    0,
+  );
+}
+
+function MatchFeeInput({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label htmlFor={id} className="block">
+      <span className="mb-1 block text-[10px] font-bold text-zinc-700">{label}</span>
+      <span className="flex min-h-11 items-center rounded-lg border border-zinc-200 bg-zinc-50 px-3 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100">
+        <span className="mr-1 text-xs font-bold text-zinc-400">$</span>
+        <input id={id} aria-label={`Tarifa para partidos de ${label}`} className="min-w-0 flex-1 bg-transparent text-xs font-bold tabular-nums text-zinc-800 outline-none" inputMode="decimal" min="0" max="1000000" step="0.01" type="number" value={value} onChange={(event) => onChange(event.target.value)} />
+        <span className="ml-1 text-[8px] font-bold text-zinc-400">MXN</span>
+      </span>
+    </label>
+  );
+}
+
 function SummaryMetric({ label, value, detail, tone, icon }: { label: string; value: string; detail: string; tone: "emerald" | "red" | "amber" | "blue" | "zinc"; icon: React.ReactNode }) {
   const styles = {
     emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -629,13 +704,14 @@ function SummaryMetric({ label, value, detail, tone, icon }: { label: string; va
         <div className="min-w-0"><p className="text-[8px] font-extrabold uppercase tracking-wider text-zinc-500">{label}</p><strong className="mt-1 block truncate text-xl font-extrabold tabular-nums text-zinc-900">{value}</strong></div>
         <span className={`grid size-9 shrink-0 place-items-center rounded-xl border ${styles[tone]}`}>{icon}</span>
       </div>
-      <p className="mt-2 truncate text-[9px] font-medium text-zinc-500">{detail}</p>
+      <p className="mt-2 text-[9px] font-medium leading-tight text-zinc-500">{detail}</p>
     </article>
   );
 }
 
-function MatchSummaryGroup({ title, detail, rows, fee, tone, onOpenWindow }: { title: string; detail: string; rows: SummaryDayRow[]; fee: number; tone: "scheduled" | "outside"; onOpenWindow: (date: string, windowId?: number | null) => void }) {
+function MatchSummaryGroup({ title, detail, rows, feeRates, tone, onOpenWindow }: { title: string; detail: string; rows: SummaryDayRow[]; feeRates: MatchFeeRates; tone: "scheduled" | "outside"; onOpenWindow: (date: string, windowId?: number | null) => void }) {
   const total = countSummaryWindows(rows);
+  const totalEstimated = sumSummaryFees(rows, feeRates);
   const accent = tone === "scheduled" ? "text-emerald-700" : "text-red-700";
   const badge = tone === "scheduled" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800";
   return (
@@ -650,7 +726,9 @@ function MatchSummaryGroup({ title, detail, rows, fee, tone, onOpenWindow }: { t
       </header>
       {rows.length ? (
         <div className="station-scrollbar divide-y divide-zinc-100 xl:max-h-[430px] xl:overflow-y-auto">
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const rowEstimated = row.windows.reduce((totalAmount, window) => totalAmount + matchFeeForWindow(window, feeRates), 0);
+            return (
             <article key={row.date} className="grid gap-3 px-4 py-3 transition hover:bg-zinc-50 sm:grid-cols-[120px_minmax(0,1fr)_88px] sm:items-center">
               <div>
                 <strong className="block text-[10px] text-zinc-800">{dateLabel(row.date)}</strong>
@@ -659,32 +737,33 @@ function MatchSummaryGroup({ title, detail, rows, fee, tone, onOpenWindow }: { t
               <div className="flex min-w-0 flex-wrap gap-1.5" aria-label={`Horarios de ${dateLabel(row.date)}`}>
                 {row.windows.map((window) => (
                   <button key={window.id} type="button" onClick={() => onOpenWindow(row.date, window.id)} className={`rounded-md border px-2 py-1 text-[8px] font-bold transition ${tone === "scheduled" ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" : "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"}`} title={`Abrir evidencia de ${timeLabel(window.starts_at)}`}>
-                    {dayPeriodLabel(window.starts_at)} · {timeLabel(window.starts_at)}
+                    {dayPeriodLabel(window.starts_at)} · {timeLabel(window.starts_at)} · {matchFeeBandForWindow(window) ? currency(matchFeeForWindow(window, feeRates)) : "Sin tarifa"}
                   </button>
                 ))}
               </div>
-              <button type="button" aria-label={`Abrir primer partido de ${dateLabel(row.date)}; estimado ${currency(row.windows.length * fee)}`} onClick={() => onOpenWindow(row.date, row.windows[0]?.id)} className="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-left transition hover:border-amber-300 hover:bg-amber-50">
-                <span><span className="block text-[7px] font-extrabold uppercase text-zinc-400">Estimado</span><strong className="text-[10px] tabular-nums text-zinc-800">{currency(row.windows.length * fee)}</strong></span>
+              <button type="button" aria-label={`Abrir primer partido de ${dateLabel(row.date)}; estimado ${currency(rowEstimated)}`} onClick={() => onOpenWindow(row.date, row.windows[0]?.id)} className="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-left transition hover:border-amber-300 hover:bg-amber-50">
+                <span><span className="block text-[7px] font-extrabold uppercase text-zinc-400">Estimado</span><strong className="text-[10px] tabular-nums text-zinc-800">{currency(rowEstimated)}</strong></span>
                 <ChevronRight size={13} className="text-zinc-400" />
               </button>
             </article>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="flex min-h-36 flex-col items-center justify-center px-5 py-8 text-center"><CheckCircle2 size={22} className={tone === "scheduled" ? "text-zinc-300" : "text-emerald-500"} /><strong className="mt-2 text-xs text-zinc-700">{tone === "scheduled" ? "Sin partidos confirmados" : "Sin partidos fuera de horario"}</strong><p className="mt-1 text-[9px] text-zinc-400">No hay actividad de este tipo en el mes seleccionado.</p></div>
       )}
       <footer className="flex items-center justify-between border-t border-zinc-200 bg-zinc-50 px-4 py-3">
         <span className="text-[8px] font-extrabold uppercase tracking-wider text-zinc-500">Total estimado</span>
-        <strong className={`text-base tabular-nums ${accent}`}>{currency(total * fee)}</strong>
+        <strong className={`text-base tabular-nums ${accent}`}>{currency(totalEstimated)}</strong>
       </footer>
     </section>
   );
 }
 
 function dayPeriodLabel(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "Horario";
-  const hour = parsed.getHours();
+  const minute = billingMinute(value);
+  if (minute == null) return "Horario";
+  const hour = Math.floor(minute / 60);
   if (hour < 12) return "Mañana";
   if (hour < 19) return "Tarde";
   return "Noche";
@@ -850,9 +929,7 @@ function shiftDate(date: string, days: number) {
 }
 
 function minutesInDay(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 0;
-  return parsed.getHours() * 60 + parsed.getMinutes() + parsed.getSeconds() / 60;
+  return billingMinute(value) ?? 0;
 }
 
 function minuteLabel(minutes: number) {
@@ -1166,6 +1243,7 @@ function cropTimeLabel(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: MATCH_BILLING_TIME_ZONE,
   });
 }
 
@@ -1173,5 +1251,5 @@ function timeLabel(value: string) {
   if (!value) return "—";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+  return parsed.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", timeZone: MATCH_BILLING_TIME_ZONE });
 }

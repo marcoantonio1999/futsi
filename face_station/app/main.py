@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from .config import ConfigManager
+from .match_pricing import annotate_match_revenue
 from .processor import StationRuntime
 
 
@@ -129,6 +130,7 @@ async def update_config(request: Request):
             "adaptive_known_min_similarity", "adaptive_known_min_margin",
             "adaptive_unknown_min_similarity", "daily_evidence_limit",
             "evidence_safety_days", "monthly_fee_amount", "match_fee_amount",
+            "match_day_fee_amount", "match_evening_fee_amount",
             "candidate_ttl_minutes",
             "sync_interval_seconds", "retention_days", "auto_start_engine", "open_browser",
         }
@@ -137,7 +139,10 @@ async def update_config(request: Request):
             raise ValueError(f"Campos no permitidos: {', '.join(unexpected)}")
         updated = config_manager.update(patch)
         restart_required = bool(
-            set(patch) - {"monthly_fee_amount", "match_fee_amount"}
+            set(patch) - {
+                "monthly_fee_amount", "match_fee_amount",
+                "match_day_fee_amount", "match_evening_fee_amount",
+            }
         )
         should_restart = bool(runtime.running and restart_required)
         if should_restart:
@@ -240,9 +245,13 @@ def match_analysis(
             offset=offset,
             limit=limit,
         )
-        payload["revenue_policy"] = {
-            "match_fee_amount": config_manager.config.match_fee_amount,
-        }
+        config = config_manager.config
+        annotate_match_revenue(
+            payload,
+            day_fee_amount=config.match_day_fee_amount,
+            evening_fee_amount=config.match_evening_fee_amount,
+        )
+        payload["revenue_policy"]["match_fee_amount"] = config.match_fee_amount
         return payload
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

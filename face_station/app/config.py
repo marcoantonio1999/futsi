@@ -80,6 +80,8 @@ class StationConfig:
     evidence_safety_days: int = 7
     monthly_fee_amount: float = 1000.0
     match_fee_amount: float = 0.0
+    match_day_fee_amount: float = 0.0
+    match_evening_fee_amount: float = 0.0
     candidate_ttl_minutes: int = 30
     detection_debounce_seconds: float = 2.0
     capture_priority_start_hour: int = 9
@@ -101,6 +103,9 @@ class StationConfig:
     def from_dict(cls, payload: dict) -> "StationConfig":
         allowed = {item.name for item in fields(cls)}
         values = {key: value for key, value in payload.items() if key in allowed}
+        legacy_match_fee = values.get("match_fee_amount", 0.0)
+        values.setdefault("match_day_fee_amount", legacy_match_fee)
+        values.setdefault("match_evening_fee_amount", legacy_match_fee)
         config = cls(**values)
         config.validate()
         return config
@@ -288,6 +293,10 @@ class StationConfig:
                 "match_fee_amount debe estar entre 0 y 1000000."
             )
         self.match_fee_amount = round(float(self.match_fee_amount), 2)
+        for name in ("match_day_fee_amount", "match_evening_fee_amount"):
+            if not 0 <= float(getattr(self, name)) <= 1_000_000:
+                raise ValueError(f"{name} debe estar entre 0 y 1000000.")
+            setattr(self, name, round(float(getattr(self, name)), 2))
         if not 1 <= int(self.candidate_ttl_minutes) <= 1440:
             raise ValueError("candidate_ttl_minutes debe estar entre 1 y 1440.")
         if not 0 <= int(self.capture_priority_start_hour) <= 23:
@@ -440,6 +449,13 @@ class ConfigManager:
         with self._lock:
             current = asdict(self._config)
             current.update(patch)
+            if (
+                "match_fee_amount" in patch
+                and "match_day_fee_amount" not in patch
+                and "match_evening_fee_amount" not in patch
+            ):
+                current["match_day_fee_amount"] = patch["match_fee_amount"]
+                current["match_evening_fee_amount"] = patch["match_fee_amount"]
             if not patch.get("station_token") and "station_token" in patch:
                 current["station_token"] = self._config.station_token
             if not patch.get("secondary_camera_password") and "secondary_camera_password" in patch:

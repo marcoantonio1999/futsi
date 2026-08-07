@@ -17,6 +17,7 @@ from face_station.app.camera import CameraWorker
 from face_station.app.config import ConfigManager
 from face_station.app.face_quality import FACE_OVAL, FaceQualityEvaluator, FaceQualityResult, FaceQualityThresholds
 from face_station.app.futsi_client import FutsiClient
+from face_station.app.match_pricing import annotate_match_revenue, match_fee_band
 from face_station.app.preview import save_crop
 from face_station.app.processor import (
     RAW_FRAME_WORKER_COUNT,
@@ -54,6 +55,8 @@ def test_config_is_atomic_and_blank_token_does_not_erase_secret(tmp_path):
     assert reloaded.config.unknown_confirmation_threshold == pytest.approx(0.50)
     assert reloaded.config.monthly_fee_amount == pytest.approx(1000.0)
     assert reloaded.config.match_fee_amount == pytest.approx(0.0)
+    assert reloaded.config.match_day_fee_amount == pytest.approx(0.0)
+    assert reloaded.config.match_evening_fee_amount == pytest.approx(0.0)
     assert reloaded.config.public_dict()["station_token_configured"] is True
     assert "station_token" not in reloaded.config.public_dict()
 
@@ -63,12 +66,99 @@ def test_config_is_atomic_and_blank_token_does_not_erase_secret(tmp_path):
         manager.update({"monthly_fee_amount": -1})
 
     manager.update({"match_fee_amount": 850})
-    assert ConfigManager(tmp_path).config.match_fee_amount == pytest.approx(850.0)
+    legacy_updated = ConfigManager(tmp_path).config
+    assert legacy_updated.match_fee_amount == pytest.approx(850.0)
+    assert legacy_updated.match_day_fee_amount == pytest.approx(850.0)
+    assert legacy_updated.match_evening_fee_amount == pytest.approx(850.0)
     with pytest.raises(ValueError, match="match_fee_amount"):
         manager.update({"match_fee_amount": -1})
 
+    manager.update({
+        "match_day_fee_amount": 600,
+        "match_evening_fee_amount": 900,
+    })
+    split_fees = ConfigManager(tmp_path).config
+    assert split_fees.match_day_fee_amount == pytest.approx(600.0)
+    assert split_fees.match_evening_fee_amount == pytest.approx(900.0)
+    with pytest.raises(ValueError, match="match_evening_fee_amount"):
+        manager.update({"match_evening_fee_amount": -1})
+
     with pytest.raises(ValueError, match="unknown_confirmation_threshold"):
         manager.update({"unknown_confirmation_threshold": 1.1})
+
+
+def test_legacy_match_fee_migrates_to_both_time_bands(tmp_path):
+    manager = ConfigManager(tmp_path)
+    payload = json.loads(manager.path.read_text(encoding="utf-8"))
+    payload["match_fee_amount"] = 725
+    payload.pop("match_day_fee_amount", None)
+    payload.pop("match_evening_fee_amount", None)
+    manager.path.write_text(json.dumps(payload), encoding="utf-8")
+
+    migrated = ConfigManager(tmp_path).config
+
+    assert migrated.match_day_fee_amount == pytest.approx(725.0)
+    assert migrated.match_evening_fee_amount == pytest.approx(725.0)
+
+
+@pytest.mark.parametrize(
+    ("starts_at", "expected"),
+    [
+        ("2026-08-02T09:44:00-06:00", ""),
+        ("2026-08-02T09:45:00-06:00", "day"),
+        ("2026-08-02T10:00:00-06:00", "day"),
+        ("2026-08-02T14:00:59-06:00", "day"),
+        ("2026-08-02T14:01:00-06:00", ""),
+        ("2026-08-02T15:44:00-06:00", ""),
+        ("2026-08-02T15:45:00-06:00", "evening"),
+        ("2026-08-02T15:50:00-06:00", "evening"),
+        ("2026-08-02T23:00:59-06:00", "evening"),
+        ("2026-08-02T23:01:00-06:00", ""),
+        ("2026-08-02T21:50:00+00:00", "evening"),
+        ("not-a-date", ""),
+    ],
+)
+def test_match_fee_band_uses_business_time_and_billing_grace(starts_at, expected):
+    assert match_fee_band(starts_at) == expected
+
+
+def test_match_revenue_uses_nominal_schedule_start_and_split_fees():
+    payload = {
+        "items": [{
+            "windows": [
+                {
+                    "window_type": "scheduled",
+                    "starts_at": "2026-08-02T15:35:00-06:00",
+                    "scheduled_starts_at": "2026-08-02T15:50:00-06:00",
+                    "evidence_starts_at": "2026-08-02T15:35:00-06:00",
+                },
+                {
+                    "window_type": "unscheduled",
+                    "starts_at": "2026-08-02T10:30:00-06:00",
+                },
+                {
+                    "window_type": "unscheduled",
+                    "starts_at": "2026-08-02T15:00:00-06:00",
+                },
+            ],
+        }],
+    }
+
+    annotated = annotate_match_revenue(
+        payload,
+        day_fee_amount=600,
+        evening_fee_amount=900,
+    )
+    windows = annotated["items"][0]["windows"]
+
+    assert windows[0]["fee_band"] == "evening"
+    assert windows[0]["fee_amount"] == pytest.approx(900.0)
+    assert windows[0]["billing_anchor_at"] == "2026-08-02T15:50:00-06:00"
+    assert windows[1]["fee_band"] == "day"
+    assert windows[1]["fee_amount"] == pytest.approx(600.0)
+    assert windows[2]["fee_band"] == ""
+    assert windows[2]["fee_amount"] == pytest.approx(0.0)
+    assert annotated["revenue_policy"]["early_grace_minutes"] == 15
 
 
 def test_night_batch_time_is_normalized_and_validated(tmp_path):

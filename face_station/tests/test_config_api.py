@@ -157,3 +157,31 @@ def test_config_api_reports_restart_from_one_atomic_running_snapshot(
             break
         __import__("time").sleep(0.001)
     assert runtime.restart_calls == 1
+
+
+def test_config_api_saves_split_match_fees_without_restarting_engine(
+    monkeypatch,
+    tmp_path,
+):
+    main = _load_main(monkeypatch, tmp_path)
+
+    class RunningRuntime:
+        running = True
+        restart_calls = 0
+
+        def restart(self):
+            self.restart_calls += 1
+
+    runtime = RunningRuntime()
+    monkeypatch.setattr(main, "runtime", runtime)
+
+    response = asyncio.run(main.update_config(_json_request({
+        "match_day_fee_amount": 600,
+        "match_evening_fee_amount": 900,
+    })))
+
+    assert response["saved"] is True
+    assert response["restarting"] is False
+    assert response["config"]["match_day_fee_amount"] == pytest.approx(600.0)
+    assert response["config"]["match_evening_fee_amount"] == pytest.approx(900.0)
+    assert runtime.restart_calls == 0

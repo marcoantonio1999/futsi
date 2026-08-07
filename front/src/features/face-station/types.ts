@@ -400,6 +400,9 @@ export interface MatchWindow {
   evidence_starts_at?: string;
   evidence_ends_at?: string;
   tolerance_minutes?: number;
+  fee_band?: "day" | "evening" | "";
+  fee_amount?: number;
+  billing_anchor_at?: string;
 }
 
 export interface MatchAnalysisDay {
@@ -458,6 +461,17 @@ export interface MatchAnalysisResponse {
   analysis: MatchAnalysisStatus;
   revenue_policy?: {
     match_fee_amount: number;
+    match_day_fee_amount?: number;
+    match_evening_fee_amount?: number;
+    time_zone?: string;
+    early_grace_minutes?: number;
+    bands?: Array<{
+      key: "day" | "evening";
+      label: string;
+      effective_start: string;
+      effective_end: string;
+      amount: number;
+    }>;
   };
 }
 
@@ -747,6 +761,8 @@ export interface StationConfig {
   evidence_safety_days: number;
   monthly_fee_amount: number;
   match_fee_amount: number;
+  match_day_fee_amount: number;
+  match_evening_fee_amount: number;
   [key: string]: string | number | boolean | undefined;
 }
 
