@@ -1,0 +1,13 @@
+[Unit]
+Description=Apply FaceGuard ELP 2 day and night exposure profiles
+
+[Timer]
+OnBootSec=30s
+OnCalendar=*-*-* 08:00:00
+OnCalendar=*-*-* 17:00:00
+Persistent=true
+AccuracySec=30s
+Unit=faceguard-camera-exposure.service
+
+[Install]
+WantedBy=timers.target

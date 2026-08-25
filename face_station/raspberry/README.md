@@ -70,3 +70,32 @@ lsusb -t
 Una camara USB 3.0 debe aparecer a `5000M` en `lsusb -t`. Si aparece a `480M`,
 revisa que este conectada a un puerto USB 3.0 y que el cable tambien sea USB
 3.0; un cable USB-C de solo USB 2.0 limita los modos que el firmware anuncia.
+
+## Exposicion programada para ELP 2
+
+La camara ELP 2 usa exposicion manual `20` de 08:00 a 16:59 y exposicion
+automatica desde las 17:00 hasta las 07:59. El perfil se aplica al arrancar la
+Raspberry, a las 08:00, a las 17:00 y cada vez que reinicia el servicio de la
+camara.
+
+El instalador habilita el horario automaticamente para dispositivos cuyo
+modelo UVC es `48MP USB Camera`. Tambien puede forzarse para otro dispositivo:
+
+```bash
+sudo FUTSI_CAMERA_EXPOSURE_SCHEDULE=true FUTSI_CAMERA_EXPOSURE=20 \
+  bash install-camera-stream.sh /dev/video0 8080
+```
+
+Para deshabilitarlo explicitamente:
+
+```bash
+sudo FUTSI_CAMERA_EXPOSURE_SCHEDULE=false \
+  bash install-camera-stream.sh /dev/video0 8080
+```
+
+Archivos instalados:
+
+- `/usr/local/sbin/faceguard-camera-exposure-profile`
+- `/etc/systemd/system/faceguard-camera-exposure.service`
+- `/etc/systemd/system/faceguard-camera-exposure.timer`
+- `/etc/default/faceguard-camera-exposure`

@@ -1,0 +1,8 @@
+[Unit]
+Description=FaceGuard ELP 2 scheduled exposure profile
+After=futsi-camera.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/default/faceguard-camera-exposure
+ExecStart=/usr/local/sbin/faceguard-camera-exposure-profile

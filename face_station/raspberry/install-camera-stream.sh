@@ -5,6 +5,8 @@ DEVICE="${1:-/dev/video0}"
 PORT="${2:-8080}"
 RESOLUTION="${FUTSI_CAMERA_RESOLUTION:-auto}"
 FPS="${FUTSI_CAMERA_FPS:-15}"
+EXPOSURE_SCHEDULE="${FUTSI_CAMERA_EXPOSURE_SCHEDULE:-auto}"
+EXPOSURE_VALUE="${FUTSI_CAMERA_EXPOSURE:-20}"
 SERVICE_USER="${SUDO_USER:-$USER}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 temp_dir=""
@@ -48,6 +50,32 @@ selected_backend() {
   else
     printf '%s\n' 'ustreamer'
   fi
+}
+
+exposure_schedule_enabled() {
+  local properties=""
+
+  case "${EXPOSURE_SCHEDULE,,}" in
+    1|true|yes|on)
+      return 0
+      ;;
+    0|false|no|off)
+      return 1
+      ;;
+    auto)
+      if [[ "${DEVICE}" == *"48MP_USB_Camera"* ]]; then
+        return 0
+      fi
+      if command -v udevadm >/dev/null 2>&1; then
+        properties="$(udevadm info --query=property --name="${DEVICE}" 2>/dev/null || true)"
+      fi
+      grep -Eq '^ID_MODEL(_ENC)?=48MP(_x20|_)USB(_x20|_)Camera$' <<<"${properties}"
+      ;;
+    *)
+      echo "FUTSI_CAMERA_EXPOSURE_SCHEDULE debe ser auto, true o false" >&2
+      return 2
+      ;;
+  esac
 }
 
 wait_for_camera_stream() {
@@ -124,7 +152,34 @@ fi
 USTREAMER="$(command -v ustreamer)"
 install -m 0755 "${SCRIPT_DIR}/camera-stream.sh" /usr/local/bin/futsi-camera-stream
 install -m 0755 "${SCRIPT_DIR}/mjpeg-broadcast-relay.py" /usr/local/bin/faceguard-mjpeg-relay
+install -m 0755 "${SCRIPT_DIR}/camera-exposure-profile.sh" \
+  /usr/local/sbin/faceguard-camera-exposure-profile
+install -m 0644 "${SCRIPT_DIR}/faceguard-camera-exposure.service" \
+  /etc/systemd/system/faceguard-camera-exposure.service
+install -m 0644 "${SCRIPT_DIR}/faceguard-camera-exposure.timer" \
+  /etc/systemd/system/faceguard-camera-exposure.timer
 usermod -aG video "${SERVICE_USER}"
+
+EXPOSURE_SERVICE_LINES=""
+if exposure_schedule_enabled; then
+  install -d -m 0755 /etc/default
+  cat >/etc/default/faceguard-camera-exposure <<EOF
+FUTSI_CAMERA_DEVICE=${DEVICE}
+FUTSI_CAMERA_EXPOSURE=${EXPOSURE_VALUE}
+FUTSI_CAMERA_PROFILE=schedule
+EOF
+  EXPOSURE_SERVICE_LINES="Environment=FUTSI_CAMERA_DEVICE=${DEVICE}
+Environment=FUTSI_CAMERA_EXPOSURE=${EXPOSURE_VALUE}
+Environment=FUTSI_CAMERA_PROFILE=schedule
+ExecStartPost=/usr/local/sbin/faceguard-camera-exposure-profile"
+  echo "Perfil de exposicion programada habilitado para ${DEVICE}"
+else
+  exposure_status="$?"
+  if (( exposure_status == 2 )); then
+    exit 1
+  fi
+fi
+
 cat >/etc/systemd/system/futsi-camera.service <<EOF
 [Unit]
 Description=Futsi Raspberry camera stream
@@ -137,6 +192,7 @@ User=${SERVICE_USER}
 SupplementaryGroups=video
 Environment=FUTSI_USTREAMER_BIN=${USTREAMER}
 Environment=FUTSI_MJPEG_RELAY_BIN=/usr/local/bin/faceguard-mjpeg-relay
+${EXPOSURE_SERVICE_LINES}
 ExecStart=/usr/local/bin/futsi-camera-stream ${DEVICE} ${PORT} ${FPS} ${RESOLUTION}
 Restart=always
 RestartSec=2
@@ -147,6 +203,11 @@ EOF
 
 systemctl daemon-reload
 systemctl enable futsi-camera.service
+if [[ -n "${EXPOSURE_SERVICE_LINES}" ]]; then
+  systemctl enable --now faceguard-camera-exposure.timer
+else
+  systemctl disable --now faceguard-camera-exposure.timer 2>/dev/null || true
+fi
 systemctl restart futsi-camera.service
 
 BACKEND="$(selected_backend)"
