@@ -311,6 +311,32 @@ create table if not exists match_analysis_windows (
     foreign key(analysis_date) references match_analysis_days(analysis_date) on delete cascade
 );
 
+create table if not exists match_evidence_videos (
+    id integer primary key autoincrement,
+    job_path text not null unique,
+    video_id text not null,
+    analysis_date text not null,
+    camera_key text not null default '',
+    camera_label text not null default '',
+    started_at text not null,
+    finished_at text not null default '',
+    duration_seconds real not null default 0,
+    evidence_status text not null,
+    evidence_video_path text not null default '',
+    evidence_file_bytes integer not null default 0,
+    evidence_delete_after text not null default '',
+    fallback_original integer not null default 0,
+    updated_at text not null
+);
+
+create table if not exists match_evidence_window_links (
+    evidence_video_id integer not null,
+    window_id integer not null,
+    primary key(evidence_video_id,window_id),
+    foreign key(evidence_video_id) references match_evidence_videos(id) on delete cascade,
+    foreign key(window_id) references match_analysis_windows(id) on delete cascade
+);
+
 create table if not exists sync_queue (
     id integer primary key autoincrement,
     event_id text not null unique,
@@ -340,6 +366,9 @@ create index if not exists ix_crop_processing_date on crop_processing_queue(subs
 create index if not exists ix_match_schedule_date on match_schedule(match_date,starts_at);
 create index if not exists ix_match_analysis_days_status on match_analysis_days(status,analysis_date desc);
 create index if not exists ix_match_analysis_windows_date on match_analysis_windows(analysis_date,window_index);
+create index if not exists ix_match_evidence_status_date on match_evidence_videos(evidence_status,analysis_date,started_at);
+create index if not exists ix_match_evidence_video_id on match_evidence_videos(video_id);
+create index if not exists ix_match_evidence_links_window on match_evidence_window_links(window_id,evidence_video_id);
 create index if not exists ix_sync_pending on sync_queue(status, next_attempt_at);
 
 create trigger if not exists trg_crop_processing_stats_insert

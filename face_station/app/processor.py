@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import math
+import subprocess
+import tempfile
 import time
 from collections import deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
@@ -20,6 +22,22 @@ from .camera import CameraWorker
 from .config import ConfigManager
 from .futsi_client import FutsiClient
 from .face_quality import FaceQualityEvaluator, FaceQualityThresholds
+from .mjpeg_stream import MjpegStreamError, OctetStreamJpegParser
+from .match_video import (
+    MATCH_EVIDENCE_RETENTION_DAYS,
+    MatchEvidenceWriter,
+    segment_needs_evidence_candidate,
+)
+from .mjpeg_index import (
+    IndexedMjpegReader,
+    MjpegPacket,
+    build_mjpeg_index,
+    load_mjpeg_index,
+    mjpeg_index_path,
+    mjpeg_packets_in_windows,
+    select_mjpeg_scout_packets,
+)
+from .nvjpeg_cuda import NvJpegCudaDecoder, NvJpegCudaError
 from .preview import AMBER, BLUE, GREEN, MUTED, copy_crop_file, draw_detection_roi, draw_face, encode_preview, face_crop, face_crop_with_bounds, placeholder_frame, resize_for_processing, save_crop_image
 from .recognition import (
     DetectedFace,
@@ -28,6 +46,17 @@ from .recognition import (
     LandmarkValidationError,
     match_matrix,
     validate_insightface_landmarks,
+)
+from .recorded_pipeline import (
+    CREATE_NO_WINDOW,
+    RecordedCameraWorker,
+    TieredRecordingStorage,
+    find_media_binary,
+    list_segment_jobs,
+    list_segment_jobs_in_roots,
+    recover_segment_jobs,
+    segment_job_summary_in_roots,
+    update_segment_job,
 )
 from .semantic_reference import SEMANTIC_REFERENCE_VERSION, SemanticReferenceGate
 from .store import LocalStore, UNKNOWN_INACTIVE_STATUSES
@@ -70,6 +99,11 @@ AUTOMATIC_BATCH_COMPLETED_STATE_KEY = "automatic_batch_completed_date"
 NIGHT_BATCH_WRITE_STATE_KEY = "night_batch_write_state"
 UNKNOWN_RECONCILIATION_STATE_KEY = "unknown_reconciliation_last"
 EVIDENCE_MAINTENANCE_STATE_KEY = "evidence_maintenance_last"
+RECORDED_ACTIVITY_PADDING_SECONDS = 1.0
+RECORDED_MJPEG_BATCH_SIZE = 10
+RECORDED_MJPEG_SINGLE_PASS_ENABLED = True
+
+
 class AtomicNightCommitError(RuntimeError):
     """The prepared result did not reach a confirmed atomic SQLite commit."""
 
@@ -289,6 +323,29 @@ class StationRuntime:
         ).date().isoformat()
         self._captured_frames_today = 0
         self._captured_faces_today = 0
+        self._recorded_storage_root: Path | None = None
+        self._recorded_storage_roots: tuple[Path, ...] = ()
+        self._recorded_storage_router: TieredRecordingStorage | None = None
+        self._recorded_ffmpeg: Path | None = None
+        self._recorded_ffprobe: Path | None = None
+        self._recorded_nvjpeg: NvJpegCudaDecoder | None = None
+        self._recorded_last_queue_refresh = 0.0
+        self._recorded_last_cleanup = 0.0
+        self._recorded_pipeline_status: dict = {
+            "enabled": False,
+            "state": "disabled",
+            "current": {},
+            "queue": {
+                "pending": 0,
+                "processing": 0,
+                "done": 0,
+                "error": 0,
+                "total": 0,
+                "pending_bytes": 0,
+                "recent": [],
+            },
+            "last_error": "",
+        }
 
     @property
     def running(self) -> bool:
@@ -418,18 +475,112 @@ class StationRuntime:
             self.store.recover_processing_crops()
             config = self.config_manager.config
             definitions = self._camera_definitions(config)
-            self._cameras = {
-                key: CameraWorker(
-                    details["source"],
-                    name=key,
-                    fallback_source=details.get("fallback_source", ""),
-                    async_mjpeg=bool(details.get("async_mjpeg", False)),
-                    mjpeg_decode_reduction=int(
-                        details.get("mjpeg_decode_reduction", 1)
-                    ),
+            if config.recorded_detection_enabled:
+                storage_value = str(config.recorded_video_dir).strip()
+                if not storage_value:
+                    storage_value = str(
+                        self.config_manager.data_dir / "video-segments"
+                    )
+                storage_root = Path(storage_value).expanduser().resolve()
+                storage_root.mkdir(parents=True, exist_ok=True)
+                self._recorded_storage_root = storage_root
+                hot_value = str(config.recorded_hot_video_dir).strip()
+                hot_root = (
+                    Path(hot_value).expanduser().resolve()
+                    if hot_value
+                    else None
                 )
-                for key, details in definitions.items()
-            }
+                storage_router = TieredRecordingStorage(
+                    storage_root,
+                    hot_root=hot_root,
+                    min_free_gb=float(config.recorded_hot_min_free_gb),
+                    resume_free_gb=float(config.recorded_hot_resume_free_gb),
+                )
+                self._recorded_storage_router = storage_router
+                self._recorded_storage_roots = storage_router.roots
+                self._recorded_ffmpeg = find_media_binary(
+                    "ffmpeg",
+                    config.recorded_ffmpeg_path,
+                )
+                self._recorded_ffprobe = find_media_binary(
+                    "ffprobe",
+                    config.recorded_ffprobe_path,
+                )
+                recovered = sum(
+                    recover_segment_jobs(root)
+                    for root in self._recorded_storage_roots
+                )
+                evidence_index = self._rebuild_match_evidence_index()
+                LOGGER.info(
+                    "Indice de evidencia reconstruido: %s videos, %s relaciones",
+                    evidence_index["videos"],
+                    evidence_index["links"],
+                )
+                self._cameras = {
+                    key: RecordedCameraWorker(
+                        details["source"],
+                        name=key,
+                        label=details["label"],
+                        storage_root=storage_root,
+                        storage_router=storage_router,
+                        ffmpeg=self._recorded_ffmpeg,
+                        ffprobe=self._recorded_ffprobe,
+                        segment_seconds=int(config.recorded_segment_minutes) * 60,
+                        preview_callback=(
+                            lambda payload, camera_key=key: self._publish_recorded_live_preview(
+                                camera_key,
+                                payload,
+                            )
+                        ),
+                        preview_fps=float(config.preview_fps),
+                    )
+                    for key, details in definitions.items()
+                }
+                with self._state_lock:
+                    self._recorded_pipeline_status = {
+                        "enabled": True,
+                        "state": "starting",
+                        "storage_dir": str(storage_root),
+                        "storage_tier": storage_router.status(),
+                        "segment_minutes": int(config.recorded_segment_minutes),
+                        "sample_fps": float(config.recorded_sample_fps),
+                        "processing_width": int(config.recorded_processing_width),
+                        "original_retention_hours": int(
+                            config.recorded_original_retention_hours
+                        ),
+                        "recovered_jobs": recovered,
+                        "current": {},
+                        "queue": segment_job_summary_in_roots(
+                            self._recorded_storage_roots
+                        ),
+                        "last_error": "",
+                    }
+            else:
+                self._recorded_storage_root = None
+                self._recorded_storage_roots = ()
+                self._recorded_storage_router = None
+                self._recorded_ffmpeg = None
+                self._recorded_ffprobe = None
+                self._cameras = {
+                    key: CameraWorker(
+                        details["source"],
+                        name=key,
+                        fallback_source=details.get("fallback_source", ""),
+                        async_mjpeg=bool(details.get("async_mjpeg", False)),
+                        mjpeg_decode_reduction=int(
+                            details.get("mjpeg_decode_reduction", 1)
+                        ),
+                    )
+                    for key, details in definitions.items()
+                }
+                with self._state_lock:
+                    self._recorded_pipeline_status = {
+                        "enabled": False,
+                        "state": "disabled",
+                        "current": {},
+                        "queue": {},
+                        "last_error": "",
+                    }
             self._camera_labels = {key: details["label"] for key, details in definitions.items()}
             self._camera_ids = {key: details["camera_id"] for key, details in definitions.items()}
             self._camera_processing_fps = {key: 0.0 for key in definitions}
@@ -447,17 +598,26 @@ class StationRuntime:
             # use this barrier to stay alive until the detector and every
             # in-flight executor task have lost the ability to enqueue.
             self._capture_producer_done.clear()
-            self._processing_thread = Thread(target=self._processing_loop, name="futsi-recognition", daemon=True)
+            processing_target = (
+                self._recorded_processing_loop
+                if config.recorded_detection_enabled
+                else self._processing_loop
+            )
+            self._processing_thread = Thread(target=processing_target, name="futsi-recognition", daemon=True)
             self._sync_thread = Thread(target=StationSynchronizer(self).run, name="futsi-sync", daemon=True)
             self._persistence_thread = Thread(target=self._persistence_loop, name="futsi-persistence", daemon=True)
-            self._raw_frame_threads = [
-                Thread(
-                    target=self._raw_frame_loop,
-                    name=f"futsi-original-frame-{index + 1}",
-                    daemon=True,
-                )
-                for index in range(RAW_FRAME_WORKER_COUNT)
-            ]
+            self._raw_frame_threads = (
+                []
+                if config.recorded_detection_enabled
+                else [
+                    Thread(
+                        target=self._raw_frame_loop,
+                        name=f"futsi-original-frame-{index + 1}",
+                        daemon=True,
+                    )
+                    for index in range(RAW_FRAME_WORKER_COUNT)
+                ]
+            )
             self._batch_thread = Thread(target=self._batch_loop, name="futsi-night-batch", daemon=True)
             self._persistence_thread.start()
             for thread in self._raw_frame_threads:
@@ -636,6 +796,83 @@ class StationRuntime:
             "online": self._client_online,
         }
 
+    def _recorded_file_path(self, value: str) -> Path | None:
+        if not value or not self._recorded_storage_roots:
+            return None
+        try:
+            candidate = Path(value).resolve()
+        except OSError:
+            return None
+        for root in self._recorded_storage_roots:
+            try:
+                candidate.relative_to(root.resolve())
+            except (OSError, ValueError):
+                continue
+            return candidate if candidate.is_file() else None
+        return None
+
+    def _index_match_evidence_job(self, job_path: Path, payload: dict) -> None:
+        try:
+            self.store.upsert_match_evidence_video(job_path, payload)
+        except Exception:
+            # The job JSON remains the durable source of truth. Startup rebuilds
+            # the complete index if SQLite was temporarily unavailable here.
+            LOGGER.exception(
+                "No se pudo actualizar el indice de evidencia para %s",
+                job_path,
+            )
+
+    def _rebuild_match_evidence_index(self) -> dict:
+        roots = self._recorded_storage_roots
+        jobs = (
+            list_segment_jobs_in_roots(roots, statuses={"done"})
+            if roots
+            else []
+        )
+        return self.store.rebuild_match_evidence_index(jobs)
+
+    def match_window_videos(self, window_id: int) -> list[dict] | None:
+        context = self.store.match_window_context(window_id)
+        if context is None:
+            return None
+        if (
+            not self._recorded_storage_roots
+            or str(context.get("window_type")) != "unscheduled"
+        ):
+            return []
+        items = []
+        for payload in self.store.match_evidence_videos_for_window(window_id):
+            path = self._recorded_file_path(
+                str(payload.get("evidence_video_path") or "")
+            )
+            if path is None:
+                continue
+            items.append({
+                "video_id": str(payload.get("video_id") or ""),
+                "camera_key": str(payload.get("camera_key") or ""),
+                "camera_label": str(payload.get("camera_label") or ""),
+                "started_at": str(payload.get("started_at") or ""),
+                "finished_at": str(payload.get("finished_at") or ""),
+                "duration_seconds": float(payload.get("duration_seconds") or 0.0),
+                "file_bytes": int(path.stat().st_size),
+                "retained_until": str(
+                    payload.get("evidence_delete_after") or ""
+                ),
+                "fallback_original": bool(payload.get("fallback_original")),
+            })
+        return items
+
+    def match_window_video_path(self, window_id: int, video_id: str) -> Path | None:
+        context = self.store.match_window_context(window_id)
+        if context is None or str(context.get("window_type")) != "unscheduled":
+            return None
+        payload = self.store.match_evidence_video_for_window(window_id, video_id)
+        if payload is None:
+            return None
+        return self._recorded_file_path(
+            str(payload.get("evidence_video_path") or "")
+        )
+
     def status(self) -> dict:
         config = self.config_manager.config
         definitions = self._camera_definitions(config)
@@ -671,6 +908,15 @@ class StationRuntime:
                     "faces_today": self._captured_faces_today,
                     "night_batch_start_time": config.night_batch_start_time,
                     "detection_paused": self._detection_paused,
+                },
+                "recorded_pipeline": {
+                    **dict(self._recorded_pipeline_status),
+                    "current": dict(
+                        self._recorded_pipeline_status.get("current") or {}
+                    ),
+                    "queue": dict(
+                        self._recorded_pipeline_status.get("queue") or {}
+                    ),
                 },
                 "crop_queue": {
                     **queue_summary,
@@ -1188,6 +1434,2943 @@ class StationRuntime:
                 self._capture_producer_done.set()
                 for camera in self._cameras.values():
                     camera.stop()
+
+    def _recorded_processing_loop(self) -> None:
+        """Analyze closed lossless segments instead of competing with live capture."""
+        capture_workers_suspended = False
+        try:
+            config = self.config_manager.config
+            self._set_state("loading_model", "")
+            detector = FaceDetector(config)
+            detector.load()
+            self._detector = detector
+            self._detectors = {key: detector for key in self._cameras}
+            self._recorded_nvjpeg = NvJpegCudaDecoder()
+            with self._state_lock:
+                self._recorded_pipeline_status["jpeg_decoder"] = (
+                    "nvJPEG CUDA GPU_HYBRID"
+                )
+            self._provider = detector.provider_label
+            self._target_fps = float(config.recorded_sample_fps)
+            self._reload_known_database()
+            self._reload_unknown_database()
+            self._update_reference_summary()
+            self._set_state("running", "")
+            self._set_recorded_pipeline_state("recording")
+
+            while not self._stop.is_set():
+                pause_requested = self._batch_detection_pause_requested()
+                if pause_requested and not capture_workers_suspended:
+                    self._set_recorded_pipeline_state("closing_segments")
+                    self._suspend_capture_workers()
+                    for camera in self._cameras.values():
+                        wait_until_idle = getattr(camera, "wait_until_idle", None)
+                        if callable(wait_until_idle):
+                            wait_until_idle(12.0)
+                    capture_workers_suspended = True
+
+                job = self._next_recorded_segment_job()
+                if job is not None:
+                    job_path, payload = job
+                    self._process_recorded_segment_job(job_path, payload)
+                    continue
+
+                self._refresh_recorded_pipeline_queue()
+                if pause_requested:
+                    with self._state_lock:
+                        self._detection_paused = True
+                        self._processing_fps = 0.0
+                        for camera_key in self._camera_processing_fps:
+                            self._camera_processing_fps[camera_key] = 0.0
+                    self._set_recorded_pipeline_state("paused_for_night_batch")
+                    self._manual_detection_ready.set()
+                    self._stop.wait(0.05)
+                    continue
+
+                if capture_workers_suspended:
+                    self._resume_capture_workers()
+                    capture_workers_suspended = False
+                if self._detection_paused:
+                    with self._state_lock:
+                        self._detection_paused = False
+                    self._manual_detection_ready.clear()
+                if self._benchmark_requested.is_set():
+                    self._benchmark_requested.clear()
+                    self._run_benchmark()
+                self._cleanup_recorded_originals()
+                self._set_recorded_pipeline_state("recording")
+                self._stop.wait(0.25)
+        except Exception as exc:
+            LOGGER.exception("El pipeline de video grabado se detuvo")
+            self._stop.set()
+            self._set_recorded_pipeline_state("error", str(exc))
+            self._set_state("error", str(exc))
+            for key in self._cameras or {"primary": None}:
+                self._set_preview(placeholder_frame("Error del pipeline", str(exc)), key)
+        finally:
+            if self._recorded_nvjpeg is not None:
+                try:
+                    self._recorded_nvjpeg.close()
+                except Exception:
+                    LOGGER.exception("No se pudo cerrar nvJPEG")
+                self._recorded_nvjpeg = None
+            self._capture_producer_done.set()
+            for camera in self._cameras.values():
+                try:
+                    camera.stop()
+                except Exception:
+                    LOGGER.exception("No se pudo detener el grabador de cámara")
+
+    def _set_recorded_pipeline_state(
+        self,
+        state: str,
+        error: str = "",
+        *,
+        current: dict | None = None,
+    ) -> None:
+        with self._state_lock:
+            self._recorded_pipeline_status["state"] = state
+            self._recorded_pipeline_status["last_error"] = error[:500]
+            if current is not None:
+                self._recorded_pipeline_status["current"] = dict(current)
+
+    def _refresh_recorded_pipeline_queue(self) -> None:
+        roots = self._recorded_storage_roots
+        if not roots:
+            return
+        now = time.monotonic()
+        if now - self._recorded_last_queue_refresh < 1.0:
+            return
+        summary = segment_job_summary_in_roots(roots)
+        with self._state_lock:
+            self._recorded_pipeline_status["queue"] = summary
+            if self._recorded_storage_router is not None:
+                self._recorded_pipeline_status["storage_tier"] = (
+                    self._recorded_storage_router.status()
+                )
+            self._recorded_last_queue_refresh = now
+
+    def _next_recorded_segment_job(self) -> tuple[Path, dict] | None:
+        roots = self._recorded_storage_roots
+        if not roots:
+            return None
+        jobs: list[tuple[Path, dict]] = []
+        # The SSD hot tier is first. Archive work continues whenever hot work
+        # is drained, while old F: jobs remain fully compatible.
+        for root in roots:
+            jobs = list_segment_jobs(root, statuses={"pending"}, limit=1)
+            if jobs:
+                break
+        if not jobs:
+            return None
+        job_path, payload = jobs[0]
+        payload = update_segment_job(
+            job_path,
+            status="processing",
+            stage="probing",
+            attempts=int(payload.get("attempts") or 0) + 1,
+            last_error="",
+            processing_started_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._refresh_recorded_pipeline_queue()
+        return job_path, payload
+
+    def _process_recorded_segment_job(self, job_path: Path, job: dict) -> None:
+        started = time.perf_counter()
+        video_path = Path(str(job.get("path") or ""))
+        camera_key = str(job.get("camera_key") or "")
+        label = str(job.get("camera_label") or camera_key)
+        evidence_writer: MatchEvidenceWriter | None = None
+        evidence_result: dict = {}
+        current = {
+            "camera_key": camera_key,
+            "camera_label": label,
+            "filename": str(job.get("filename") or video_path.name),
+            "stage": "probing",
+            "progress": 0.0,
+            "sampled_frames": 0,
+            "face_frames": 0,
+            "faces": 0,
+            "crops_enqueued": 0,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._set_recorded_pipeline_state("processing", current=current)
+        try:
+            if not video_path.is_file():
+                raise FileNotFoundError(f"No existe el segmento {video_path.name}.")
+            info = self._probe_recorded_video(video_path)
+            duration = float(info["duration_seconds"])
+            current.update(
+                {
+                    "stage": "detecting",
+                    "source_width": int(info["width"]),
+                    "source_height": int(info["height"]),
+                    "duration_seconds": round(duration, 2),
+                    "decoder": info["decoder"],
+                }
+            )
+            update_segment_job(
+                job_path,
+                stage="detecting",
+                source_width=int(info["width"]),
+                source_height=int(info["height"]),
+                duration_seconds=round(duration, 3),
+                codec=info["codec"],
+                decoder=info["decoder"],
+            )
+            try:
+                evidence_writer = self._open_match_evidence_writer(
+                    video_path,
+                    camera_key,
+                    job,
+                    info,
+                )
+            except Exception as exc:
+                LOGGER.exception(
+                    "No se pudo iniciar la copia de evidencia de %s",
+                    video_path,
+                )
+                evidence_result = {
+                    "ok": False,
+                    "path": "",
+                    "file_bytes": 0,
+                    "frames": 0,
+                    "error": str(exc),
+                }
+            single_pass_mjpeg = (
+                RECORDED_MJPEG_SINGLE_PASS_ENABLED
+                and str(info.get("codec") or "") == "mjpeg"
+            )
+            if single_pass_mjpeg:
+                indexed_packets: list[MjpegPacket] = []
+                try:
+                    indexed_packets = load_mjpeg_index(video_path)
+                    if not indexed_packets and video_path.suffix.lower() == ".avi":
+                        if self._recorded_ffprobe is None:
+                            raise RuntimeError("FFprobe no esta configurado.")
+                        current.update({"stage": "indexing", "progress": 0.0})
+                        self._set_recorded_pipeline_state(
+                            "processing",
+                            current=current,
+                        )
+                        update_segment_job(
+                            job_path,
+                            stage="indexing",
+                            pipeline_mode="mjpeg_indexed_selective",
+                        )
+                        indexed_packets, index_seconds, index_cached = (
+                            build_mjpeg_index(
+                                self._recorded_ffprobe,
+                                video_path,
+                                stop_event=self._stop,
+                            )
+                        )
+                        update_segment_job(
+                            job_path,
+                            stage="detecting",
+                            mjpeg_index_path=str(mjpeg_index_path(video_path)),
+                            mjpeg_index_packets=len(indexed_packets),
+                            mjpeg_index_seconds=round(index_seconds, 3),
+                            mjpeg_index_cached=bool(index_cached),
+                            mjpeg_index_error="",
+                        )
+                    elif not indexed_packets:
+                        # Legacy Matroska MJPEG segments have no per-frame
+                        # offset table. Building one requires rereading every
+                        # byte and can be slower than the proven decoder path
+                        # on a busy archive disk. New ELP recordings use AVI.
+                        update_segment_job(
+                            job_path,
+                            stage="detecting",
+                            pipeline_mode="mjpeg_single_pass_legacy",
+                            mjpeg_index_error=(
+                                "Segmento MKV anterior sin indice; se usa la "
+                                "ruta compatible de una pasada."
+                            ),
+                        )
+                except Exception as exc:
+                    LOGGER.exception(
+                        "No se pudo preparar el indice de %s; se usa la ruta "
+                        "anterior de una pasada.",
+                        video_path,
+                    )
+                    update_segment_job(
+                        job_path,
+                        stage="detecting",
+                        mjpeg_index_error=str(exc)[:1000],
+                    )
+
+                if indexed_packets:
+                    (
+                        anchors,
+                        scan_stats,
+                        activity_windows,
+                        activity_stats,
+                    ) = self._process_recorded_mjpeg_indexed(
+                        video_path,
+                        camera_key,
+                        job,
+                        info,
+                        current,
+                        indexed_packets,
+                        evidence_writer=evidence_writer,
+                    )
+                else:
+                    (
+                        anchors,
+                        scan_stats,
+                        activity_windows,
+                        activity_stats,
+                    ) = self._process_recorded_mjpeg_single_pass(
+                        video_path,
+                        camera_key,
+                        job,
+                        info,
+                        current,
+                        evidence_writer=evidence_writer,
+                    )
+            else:
+                anchors, scan_stats = self._scan_recorded_video(
+                    video_path,
+                    camera_key,
+                    job,
+                    info,
+                    current,
+                    evidence_writer=evidence_writer,
+                )
+                activity_windows = self._recorded_activity_windows(
+                    anchors,
+                    duration,
+                    padding_seconds=max(
+                        RECORDED_ACTIVITY_PADDING_SECONDS,
+                        1.0
+                        / max(
+                            float(
+                                self.config_manager.config.recorded_sample_fps
+                            ),
+                            0.001,
+                        ),
+                    ),
+                )
+            if evidence_writer is not None:
+                evidence_result = evidence_writer.close()
+                evidence_writer = None
+            current.update(scan_stats)
+            current.update(
+                {
+                    "stage": (
+                        "analyzing_activity" if activity_windows else "finalizing"
+                    ),
+                    "progress": 0.92 if activity_windows else 1.0,
+                    "scout_face_frames": int(scan_stats["face_frames"]),
+                    "scout_faces": int(scan_stats["faces"]),
+                    "activity_windows": len(activity_windows),
+                    "activity_seconds": round(
+                        sum(end - start for start, end in activity_windows),
+                        3,
+                    ),
+                    "full_fps_frames": 0,
+                    "face_frames": 0,
+                    "faces": 0,
+                    "crops_enqueued": 0,
+                }
+            )
+            self._set_recorded_pipeline_state("processing", current=current)
+            update_segment_job(
+                job_path,
+                stage=(
+                    "analyzing_activity" if activity_windows else "finalizing"
+                ),
+                sampled_frames=int(scan_stats["sampled_frames"]),
+                scout_face_frames=int(scan_stats["face_frames"]),
+                scout_faces=int(scan_stats["faces"]),
+                activity_windows=len(activity_windows),
+                activity_seconds=current["activity_seconds"],
+                face_frames=0,
+                faces=0,
+            )
+            if not single_pass_mjpeg:
+                activity_stats = self._persist_recorded_activity_windows(
+                    video_path,
+                    camera_key,
+                    job,
+                    info,
+                    activity_windows,
+                    current,
+                )
+                activity_stats = self._recover_empty_h264_activity(
+                    video_path,
+                    job_path,
+                    camera_key,
+                    job,
+                    info,
+                    duration,
+                    scan_stats,
+                    activity_stats,
+                    current,
+                )
+            if self._scout_recovery_requires_retry(scan_stats, activity_stats):
+                raise RuntimeError(
+                    "El rastreo detecto rostros, pero la recuperacion a FPS completo "
+                    "no reprodujo ninguno; se conserva el video original para reintentar."
+                )
+            current.update(activity_stats)
+            with self._state_lock:
+                full_fps_frames = int(activity_stats["full_fps_frames"])
+                final_faces = int(activity_stats["faces"])
+                scout_faces = int(scan_stats["faces"])
+                self._processed_frames += full_fps_frames
+                self._camera_processed_frames[camera_key] = (
+                    self._camera_processed_frames.get(camera_key, 0)
+                    + full_fps_frames
+                )
+                self._captured_frames_today += full_fps_frames
+                face_adjustment = final_faces - scout_faces
+                self._detected_faces = max(
+                    0,
+                    self._detected_faces + face_adjustment,
+                )
+                self._captured_faces_today = max(
+                    0,
+                    self._captured_faces_today + face_adjustment,
+                )
+            crops_enqueued = int(activity_stats["crops_enqueued"])
+            persistence_timeout = max(120.0, min(900.0, crops_enqueued * 0.1))
+            if crops_enqueued and not self._wait_recorded_persistence(
+                persistence_timeout
+            ):
+                raise RuntimeError(
+                    "Los recortes no terminaron de guardarse; se conservó el "
+                    "video original para reintentar."
+                )
+            elapsed = time.perf_counter() - started
+            original_deleted = False
+            retention_hours = int(
+                self.config_manager.config.recorded_original_retention_hours
+            )
+            delete_after = ""
+            evidence_status = ""
+            evidence_path = str(evidence_result.get("path") or "")
+            if evidence_result and not evidence_result.get("ok"):
+                # A browser proxy could not be written. Preserve the source as
+                # a recoverable fallback instead of losing match evidence.
+                evidence_status = "candidate_fallback"
+                evidence_path = str(video_path)
+                retention_hours = max(
+                    retention_hours,
+                    MATCH_EVIDENCE_RETENTION_DAYS * 24,
+                )
+            elif evidence_path:
+                evidence_status = "candidate"
+            if retention_hours <= 0:
+                video_path.unlink(missing_ok=True)
+                original_deleted = not video_path.exists()
+                if original_deleted:
+                    mjpeg_index_path(video_path).unlink(missing_ok=True)
+            else:
+                delete_after = (
+                    datetime.now(timezone.utc)
+                    + timedelta(hours=retention_hours)
+                ).isoformat()
+            current.update(
+                {
+                    "stage": "complete",
+                    "progress": 1.0,
+                    "crops_enqueued": crops_enqueued,
+                    "elapsed_seconds": round(elapsed, 2),
+                }
+            )
+            completed_payload = update_segment_job(
+                job_path,
+                status="done",
+                stage="complete",
+                processed_at=datetime.now(timezone.utc).isoformat(),
+                elapsed_seconds=round(elapsed, 3),
+                crops_enqueued=crops_enqueued,
+                sampled_frames=int(scan_stats["sampled_frames"]),
+                scout_face_frames=int(scan_stats["face_frames"]),
+                scout_faces=int(scan_stats["faces"]),
+                activity_windows=len(activity_windows),
+                activity_seconds=current["activity_seconds"],
+                full_fps_frames=int(activity_stats["full_fps_frames"]),
+                face_frames=int(activity_stats["face_frames"]),
+                faces=int(activity_stats["faces"]),
+                original_deleted=original_deleted,
+                delete_after=delete_after,
+                evidence_status=evidence_status,
+                evidence_video_path=evidence_path,
+                evidence_file_bytes=int(evidence_result.get("file_bytes") or 0),
+                evidence_frames=int(evidence_result.get("frames") or 0),
+                evidence_fps=float(
+                    self.config_manager.config.recorded_sample_fps
+                ),
+                evidence_size=420 if evidence_path else 0,
+                evidence_error=str(evidence_result.get("error") or "")[:1000],
+                evidence_window_ids=[],
+                evidence_delete_after="",
+                last_error="",
+            )
+            self._index_match_evidence_job(job_path, completed_payload)
+            self._set_recorded_pipeline_state("recording", current=current)
+        except Exception as exc:
+            if evidence_writer is not None:
+                try:
+                    evidence_writer.close(commit=False)
+                except Exception:
+                    LOGGER.exception(
+                        "No se pudo cerrar el video de evidencia incompleto"
+                    )
+            LOGGER.exception("No se pudo procesar el segmento %s", video_path)
+            update_segment_job(
+                job_path,
+                status="error",
+                stage="error",
+                last_error=str(exc)[:1000],
+                failed_at=datetime.now(timezone.utc).isoformat(),
+            )
+            current.update(
+                {
+                    "stage": "error",
+                    "last_error": str(exc)[:500],
+                    "elapsed_seconds": round(time.perf_counter() - started, 2),
+                }
+            )
+            self._set_recorded_pipeline_state(
+                "recording_with_errors",
+                str(exc),
+                current=current,
+            )
+        finally:
+            self._refresh_recorded_pipeline_queue()
+
+    def _recover_empty_h264_activity(
+        self,
+        video_path: Path,
+        job_path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+        duration: float,
+        scan_stats: dict,
+        activity_stats: dict,
+        current: dict,
+    ) -> dict:
+        """Recover H.264 detections when random frame seeking lands incorrectly.
+
+        OpenCV frame seeking can report success while returning frames around a
+        different keyframe than the requested interval.  The scout pass then
+        sees a face, but the selective full-FPS pass sees none.  In that rare
+        case, decode the segment sequentially from frame zero once.  Normal
+        segments keep the fast selective path.
+        """
+        if (
+            str(info.get("codec") or "").lower() != "h264"
+            or int(scan_stats.get("faces") or 0) <= 0
+            or int(activity_stats.get("faces") or 0) > 0
+        ):
+            return activity_stats
+
+        recovery_mode = "h264_full_segment_sequential"
+        current.update(
+            {
+                "stage": "recovering_activity",
+                "progress": 0.92,
+                "recovery_mode": recovery_mode,
+                "recovery_trigger": "scout_faces_without_selective_faces",
+            }
+        )
+        self._set_recorded_pipeline_state("processing", current=current)
+        update_segment_job(
+            job_path,
+            stage="recovering_activity",
+            recovery_mode=recovery_mode,
+            recovery_trigger="scout_faces_without_selective_faces",
+        )
+        recovered = self._persist_recorded_activity_windows(
+            video_path,
+            camera_key,
+            job,
+            info,
+            [(0.0, max(float(duration), 0.001))],
+            current,
+        )
+        source_fps = max(float(info.get("source_fps") or 0.0), 0.001)
+        expected_frames = max(1, int(math.ceil(float(duration) * source_fps)))
+        # OpenCV/FFmpeg may omit a handful of tail frames when a segment ends
+        # between GOPs.  Missing at most one second still means every useful
+        # part of the segment was decoded sequentially.  If that exhaustive
+        # pass cannot reproduce the scout's single detection, the scout was a
+        # decoder artefact/false positive rather than unprocessed evidence.
+        exhaustive_floor = max(1, expected_frames - max(2, int(math.ceil(source_fps))))
+        recovery_exhaustive = (
+            int(recovered.get("full_fps_frames") or 0) >= exhaustive_floor
+        )
+        recovery_faces = int(recovered.get("faces") or 0)
+        recovered["recovery_exhaustive"] = recovery_exhaustive
+        recovered["recovery_outcome"] = (
+            "confirmed_faces"
+            if recovery_faces > 0
+            else (
+                "scout_false_positive"
+                if recovery_exhaustive
+                else "incomplete_without_faces"
+            )
+        )
+        update_segment_job(
+            job_path,
+            recovery_mode=recovery_mode,
+            recovery_faces=recovery_faces,
+            recovery_crops_enqueued=int(recovered.get("crops_enqueued") or 0),
+            recovery_exhaustive=recovery_exhaustive,
+            recovery_outcome=recovered["recovery_outcome"],
+        )
+        return recovered
+
+    @staticmethod
+    def _scout_recovery_requires_retry(
+        scan_stats: dict,
+        activity_stats: dict,
+    ) -> bool:
+        return (
+            int(scan_stats.get("faces") or 0) > 0
+            and int(activity_stats.get("faces") or 0) <= 0
+            and not bool(activity_stats.get("recovery_exhaustive"))
+        )
+
+    def _probe_recorded_video(self, path: Path) -> dict:
+        if self._recorded_ffprobe is None:
+            raise RuntimeError("FFprobe no está configurado.")
+        command = [
+            str(self._recorded_ffprobe),
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            (
+                "stream=codec_name,width,height,pix_fmt,avg_frame_rate,duration:"
+                "format=duration"
+            ),
+            "-of",
+            "json",
+            str(path),
+        ]
+        payload = json.loads(
+            subprocess.check_output(
+                command,
+                text=True,
+                timeout=20,
+                creationflags=CREATE_NO_WINDOW,
+            )
+        )
+        stream = payload.get("streams", [{}])[0]
+        codec = str(stream.get("codec_name") or "")
+        duration = float(
+            stream.get("duration")
+            or payload.get("format", {}).get("duration")
+            or 0.0
+        )
+        cuvid = {
+            "h264": "h264_cuvid",
+            "hevc": "hevc_cuvid",
+            "mjpeg": "mjpeg_cuvid",
+            "mpeg2video": "mpeg2_cuvid",
+            "mpeg4": "mpeg4_cuvid",
+            "vp8": "vp8_cuvid",
+            "vp9": "vp9_cuvid",
+            "av1": "av1_cuvid",
+        }.get(codec)
+        return {
+            "codec": codec,
+            "width": int(stream.get("width") or 0),
+            "height": int(stream.get("height") or 0),
+            "pixel_format": str(stream.get("pix_fmt") or ""),
+            "source_fps": self._parse_recorded_frame_rate(
+                stream.get("avg_frame_rate")
+            ),
+            "duration_seconds": duration,
+            "decoder": "nvjpeg_cuda" if codec == "mjpeg" else (cuvid or "cpu"),
+        }
+
+    @staticmethod
+    def _parse_recorded_frame_rate(value) -> float:
+        text = str(value or "").strip()
+        try:
+            if "/" in text:
+                numerator, denominator = text.split("/", 1)
+                rate = float(numerator) / float(denominator)
+            else:
+                rate = float(text)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0.0
+        return rate if math.isfinite(rate) and rate > 0 else 0.0
+
+    @staticmethod
+    def _recorded_activity_windows(
+        anchors: list[
+            tuple[float, tuple[int, int], tuple[DetectedFace, ...]]
+        ],
+        duration_seconds: float,
+        *,
+        padding_seconds: float = RECORDED_ACTIVITY_PADDING_SECONDS,
+    ) -> list[tuple[float, float]]:
+        """Merge scout hits into intervals that must be rescanned at full FPS."""
+        duration = max(0.0, float(duration_seconds))
+        padding = max(0.0, float(padding_seconds))
+        intervals = sorted(
+            (
+                max(0.0, float(offset) - padding),
+                min(duration, float(offset) + padding),
+            )
+            for offset, _shape, detections in anchors
+            if detections and 0.0 <= float(offset) <= duration
+        )
+        merged: list[tuple[float, float]] = []
+        for start, end in intervals:
+            if end < start:
+                continue
+            if not merged or start > merged[-1][1] + 1e-6:
+                merged.append((start, end))
+                continue
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        return merged
+
+    def _probe_recorded_packet_offsets(self, path: Path) -> list[float]:
+        if self._recorded_ffprobe is None:
+            raise RuntimeError("FFprobe no esta configurado.")
+        output = subprocess.check_output(
+            [
+                str(self._recorded_ffprobe),
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "packet=pts_time",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            text=True,
+            timeout=30,
+            creationflags=CREATE_NO_WINDOW,
+            stderr=subprocess.DEVNULL,
+        )
+        timestamps: list[float] = []
+        for line in output.splitlines():
+            value = line.strip().split(",", 1)[0]
+            try:
+                timestamp = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(timestamp):
+                timestamps.append(timestamp)
+        if not timestamps:
+            return []
+        origin = timestamps[0]
+        return [max(0.0, timestamp - origin) for timestamp in timestamps]
+
+    @staticmethod
+    def _read_recorded_frame(stream, frame_bytes: int) -> bytes:
+        buffer = bytearray(frame_bytes)
+        view = memoryview(buffer)
+        received = 0
+        while received < frame_bytes:
+            count = stream.readinto(view[received:])
+            if not count:
+                return b"" if received == 0 else bytes(view[:received])
+            received += count
+        return bytes(buffer)
+
+    def _open_match_evidence_writer(
+        self,
+        video_path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+    ) -> MatchEvidenceWriter | None:
+        root = self._recorded_storage_root
+        ffmpeg = self._recorded_ffmpeg
+        if root is None or ffmpeg is None:
+            return None
+        started_at = datetime.fromisoformat(str(job["started_at"])).astimezone(
+            BUSINESS_TIME_ZONE
+        )
+        ends_at = started_at + timedelta(
+            seconds=max(0.0, float(info.get("duration_seconds") or 0.0))
+        )
+        if not segment_needs_evidence_candidate(started_at, ends_at):
+            return None
+        output_path = (
+            root
+            / "_match-evidence"
+            / "candidates"
+            / started_at.date().isoformat()
+            / camera_key
+            / f"{video_path.stem}.mp4"
+        )
+        return MatchEvidenceWriter(
+            ffmpeg,
+            output_path,
+            fps=float(self.config_manager.config.recorded_sample_fps),
+        )
+
+    def _process_recorded_mjpeg_indexed(
+        self,
+        path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+        current: dict,
+        packets: list[MjpegPacket],
+        *,
+        evidence_writer: MatchEvidenceWriter | None = None,
+    ) -> tuple[list, dict, list[tuple[float, float]], dict]:
+        """Detect from indexed scouts and read original packets only on hits."""
+        decoder = self._recorded_nvjpeg
+        detector = self._detector
+        if decoder is None or detector is None:
+            raise NvJpegCudaError("nvJPEG no esta preparado para procesar MJPEG.")
+        if not packets:
+            raise RuntimeError("El indice MJPEG no contiene paquetes.")
+
+        config = self.config_manager.config
+        width = int(config.recorded_processing_width)
+        height = max(
+            2,
+            int(round(width * int(info["height"]) / max(int(info["width"]), 1))),
+        )
+        if height % 2:
+            height += 1
+        sample_fps = float(config.recorded_sample_fps)
+        sample_interval = 1.0 / max(sample_fps, 0.001)
+        duration = max(float(info.get("duration_seconds") or 0.0), 0.001)
+        padding = max(RECORDED_ACTIVITY_PADDING_SECONDS, sample_interval)
+        scout_packets = select_mjpeg_scout_packets(packets, sample_fps)
+        expected_scout_frames = len(scout_packets)
+
+        roi_left, roi_right = self._camera_roi(config, camera_key)
+        roi_x1 = max(0, min(width - 1, int(round(width * roi_left))))
+        roi_x2 = max(roi_x1 + 1, min(width, int(round(width * roi_right))))
+        scaled_min_face_size = max(
+            1,
+            int(
+                round(
+                    float(config.min_face_size)
+                    * width
+                    / max(int(config.processing_width), 1)
+                )
+            ),
+        )
+        job_started = datetime.fromisoformat(str(job["started_at"]))
+        pass_started = time.perf_counter()
+        activity_windows: list[tuple[float, float]] = []
+        anchors: list[
+            tuple[float, tuple[int, int], tuple[DetectedFace, ...]]
+        ] = []
+        sampled_frames = 0
+        scout_face_frames = 0
+        scout_faces = 0
+        full_fps_frames = 0
+        full_face_frames = 0
+        full_faces = 0
+        crops_enqueued = 0
+        batch_limit = 0
+        last_job_update = 0.0
+        full_packets: list[MjpegPacket] = []
+        selective_bytes_read = 0
+        selective_read_seconds = 0.0
+
+        def merge_activity(start: float, end: float) -> None:
+            start = max(0.0, start)
+            end = min(duration, end)
+            if not activity_windows or start > activity_windows[-1][1] + 1e-6:
+                activity_windows.append((start, end))
+                return
+            previous_start, previous_end = activity_windows[-1]
+            activity_windows[-1] = (previous_start, max(previous_end, end))
+
+        def publish_scout_frame(
+            frame: np.ndarray,
+            offset: float,
+            detections: tuple[DetectedFace, ...],
+        ) -> None:
+            captured_at = job_started.timestamp() + offset
+            camera = self._cameras.get(camera_key)
+            publish = getattr(camera, "publish_detection_frame", None)
+            if callable(publish):
+                publish(frame, captured_at)
+            camera_metrics = camera.status_metrics if camera is not None else {}
+            if camera_metrics.get("live_preview_enabled"):
+                return
+            preview_due = (
+                time.monotonic() - self._last_preview_at.get(camera_key, 0.0)
+                >= 1.0 / max(float(config.preview_fps), 1.0)
+            )
+            if not preview_due:
+                return
+            preview = frame.copy()
+            draw_detection_roi(preview, (roi_x1, 0, roi_x2, height))
+            for detected in detections:
+                draw_face(
+                    preview,
+                    detected,
+                    f"Detectado {detected.score * 100:.0f}%",
+                    BLUE,
+                )
+            self._set_preview(
+                encode_preview(preview, config.preview_width),
+                camera_key,
+            )
+            self._last_preview_at[camera_key] = time.monotonic()
+
+        def update_progress(*, force: bool = False) -> None:
+            nonlocal last_job_update
+            elapsed = time.perf_counter() - pass_started
+            completed = sampled_frames + full_fps_frames
+            expected = expected_scout_frames + len(full_packets)
+            progress = 0.9 * completed / max(expected, 1)
+            throughput = completed / max(elapsed, 0.001)
+            source_bytes = max(int(info.get("file_bytes") or path.stat().st_size), 1)
+            current.update(
+                {
+                    "stage": "detecting",
+                    "pipeline_mode": "mjpeg_indexed_selective",
+                    "decoder": "nvjpeg_cuda",
+                    "pixel_format": str(info.get("pixel_format") or ""),
+                    "decode_batch_size": batch_limit,
+                    "progress": round(min(0.9, progress), 4),
+                    "sampled_frames": sampled_frames,
+                    "expected_frames": expected_scout_frames,
+                    "source_packets": len(packets),
+                    "packet_timestamps": len(packets),
+                    "timestamp_fallbacks": 0,
+                    "timestamp_source": "matroska_packet_index",
+                    "face_frames": scout_face_frames,
+                    "faces": scout_faces,
+                    "full_fps_frames": full_fps_frames,
+                    "full_fps_expected_frames": len(full_packets),
+                    "full_fps_face_frames": full_face_frames,
+                    "full_fps_faces": full_faces,
+                    "crops_enqueued": crops_enqueued,
+                    "activity_windows": len(activity_windows),
+                    "selective_mib_read": round(selective_bytes_read / 1024**2, 2),
+                    "source_fraction_read": round(
+                        selective_bytes_read / source_bytes,
+                        6,
+                    ),
+                    "throughput_fps": round(throughput, 2),
+                    "elapsed_seconds": round(elapsed, 2),
+                }
+            )
+            with self._state_lock:
+                self._processing_fps = throughput
+                self._camera_processing_fps[camera_key] = throughput
+            self._set_recorded_pipeline_state("processing", current=current)
+            now = time.monotonic()
+            if not force and now - last_job_update < 5.0:
+                return
+            update_segment_job(
+                path.with_suffix(path.suffix + ".job.json"),
+                stage="detecting",
+                pipeline_mode="mjpeg_indexed_selective",
+                decoder="nvjpeg_cuda",
+                pixel_format=str(info.get("pixel_format") or ""),
+                decode_batch_size=batch_limit,
+                sampled_frames=sampled_frames,
+                expected_frames=expected_scout_frames,
+                source_packets=len(packets),
+                packet_timestamps=len(packets),
+                timestamp_fallbacks=0,
+                timestamp_source="matroska_packet_index",
+                scout_face_frames=scout_face_frames,
+                scout_faces=scout_faces,
+                full_fps_frames=full_fps_frames,
+                full_fps_expected_frames=len(full_packets),
+                face_frames=full_face_frames,
+                faces=full_faces,
+                crops_enqueued=crops_enqueued,
+                activity_windows=len(activity_windows),
+                selective_mib_read=current["selective_mib_read"],
+                source_fraction_read=current["source_fraction_read"],
+                progress=current["progress"],
+            )
+            last_job_update = now
+
+        with IndexedMjpegReader(path) as reader:
+            def process_rows(rows: list[MjpegPacket], *, full: bool) -> None:
+                nonlocal batch_limit, sampled_frames, scout_face_frames
+                nonlocal scout_faces, full_fps_frames, full_face_frames
+                nonlocal full_faces, crops_enqueued, selective_bytes_read
+                nonlocal selective_read_seconds
+                cursor = 0
+                while cursor < len(rows):
+                    if self._stop.is_set():
+                        raise RuntimeError(
+                            "El analisis se interrumpio al detener la estacion."
+                        )
+                    requested = batch_limit or RECORDED_MJPEG_BATCH_SIZE
+                    batch_rows = rows[cursor : cursor + requested]
+                    payloads = [reader.read(packet) for packet in batch_rows]
+                    selective_bytes_read = reader.bytes_read
+                    selective_read_seconds = reader.read_seconds
+                    if batch_limit <= 0:
+                        jpeg_info = decoder.image_info(payloads[0])
+                        batch_limit = decoder.recommended_batch_size(
+                            jpeg_info,
+                            width,
+                            height,
+                            requested=RECORDED_MJPEG_BATCH_SIZE,
+                        )
+                        if len(payloads) > batch_limit:
+                            payloads = payloads[:batch_limit]
+                            batch_rows = batch_rows[:batch_limit]
+                    with self._gpu_lock:
+                        decoded = decoder.decode_resize_batch(
+                            payloads,
+                            width,
+                            height,
+                        )
+                    try:
+                        for batch_index, (frame, packet) in enumerate(
+                            zip(
+                                decoded.resized_frames,
+                                batch_rows,
+                                strict=True,
+                            )
+                        ):
+                            if not full and evidence_writer is not None:
+                                evidence_writer.write(frame)
+                            with self._gpu_lock:
+                                roi_detections = detector.detect(
+                                    frame[:, roi_x1:roi_x2],
+                                    min_face_size=scaled_min_face_size,
+                                )
+                            detections = tuple(
+                                self._offset_detection(detected, roi_x1, 0)
+                                for detected in roi_detections
+                            )
+                            if not full:
+                                sampled_frames += 1
+                                if detections:
+                                    anchors.append(
+                                        (packet.offset, frame.shape[:2], detections)
+                                    )
+                                    scout_face_frames += 1
+                                    scout_faces += len(detections)
+                                    merge_activity(
+                                        packet.offset - padding,
+                                        packet.offset + padding,
+                                    )
+                                    self._last_face_at = time.monotonic()
+                                publish_scout_frame(
+                                    frame,
+                                    packet.offset,
+                                    detections,
+                                )
+                                continue
+
+                            if detections:
+                                with self._gpu_lock:
+                                    source_frame = decoded.copy_original(batch_index)
+                                crops_enqueued += (
+                                    self._enqueue_recorded_source_detections(
+                                        source_frame,
+                                        frame.shape[:2],
+                                        detections,
+                                        camera_key,
+                                        job_started,
+                                        packet.offset,
+                                    )
+                                )
+                                full_face_frames += 1
+                                full_faces += len(detections)
+                                self._last_face_at = time.monotonic()
+                            full_fps_frames += 1
+                    finally:
+                        decoded.close()
+                    cursor += len(batch_rows)
+                    update_progress()
+
+            process_rows(scout_packets, full=False)
+            full_packets = mjpeg_packets_in_windows(packets, activity_windows)
+            process_rows(full_packets, full=True)
+            selective_bytes_read = reader.bytes_read
+            selective_read_seconds = reader.read_seconds
+
+        elapsed = time.perf_counter() - pass_started
+        observed_fps = len(packets) / duration
+        source_bytes = max(path.stat().st_size, 1)
+        with self._state_lock:
+            self._processed_frames += sampled_frames
+            self._detected_faces += scout_faces
+            self._camera_processed_frames[camera_key] = (
+                self._camera_processed_frames.get(camera_key, 0) + sampled_frames
+            )
+            observed_date = job_started.astimezone(
+                BUSINESS_TIME_ZONE
+            ).date().isoformat()
+            if observed_date != self._capture_date:
+                self._capture_date = observed_date
+                self._captured_frames_today = 0
+                self._captured_faces_today = 0
+            self._captured_frames_today += sampled_frames
+            self._captured_faces_today += scout_faces
+        update_progress(force=True)
+        common_stats = {
+            "pipeline_mode": "mjpeg_indexed_selective",
+            "source_packets": len(packets),
+            "packet_timestamps": len(packets),
+            "timestamp_fallbacks": 0,
+            "timestamp_source": "matroska_packet_index",
+            "decoder": "nvjpeg_cuda",
+            "decode_batch_size": batch_limit,
+            "selective_bytes_read": selective_bytes_read,
+            "selective_mib_read": round(selective_bytes_read / 1024**2, 2),
+            "source_fraction_read": round(
+                selective_bytes_read / source_bytes,
+                6,
+            ),
+            "selective_read_seconds": round(selective_read_seconds, 3),
+            "indexed_processing_seconds": round(elapsed, 3),
+        }
+        scan_stats = {
+            **common_stats,
+            "sampled_frames": sampled_frames,
+            "expected_frames": expected_scout_frames,
+            "face_frames": scout_face_frames,
+            "faces": scout_faces,
+            "crops_enqueued": 0,
+            "throughput_fps": round(sampled_frames / max(elapsed, 0.001), 2),
+            "scan_seconds": round(elapsed, 3),
+        }
+        activity_stats = {
+            **common_stats,
+            "full_fps_frames": full_fps_frames,
+            "full_fps_expected_frames": len(full_packets),
+            "face_frames": full_face_frames,
+            "faces": full_faces,
+            "crops_enqueued": crops_enqueued,
+            "full_fps": round(observed_fps, 3),
+            "activity_throughput_fps": round(
+                full_fps_frames / max(elapsed, 0.001),
+                2,
+            ),
+            "activity_scan_seconds": round(elapsed, 3),
+        }
+        return anchors, scan_stats, activity_windows, activity_stats
+
+    def _process_recorded_mjpeg_single_pass(
+        self,
+        path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+        current: dict,
+        *,
+        evidence_writer: MatchEvidenceWriter | None = None,
+    ) -> tuple[list, dict, list[tuple[float, float]], dict]:
+        """Scout and recover original MJPEG packets during one demux pass.
+
+        A compressed ring retains only packets that may still fall inside the
+        padding of a future scout hit. Final inactive packets are released and
+        active packets are decoded at full FPS without reopening the segment.
+        """
+        decoder = self._recorded_nvjpeg
+        detector = self._detector
+        ffmpeg = self._recorded_ffmpeg
+        if decoder is None or detector is None or ffmpeg is None:
+            raise NvJpegCudaError("nvJPEG no esta preparado para procesar MJPEG.")
+
+        config = self.config_manager.config
+        width = int(config.recorded_processing_width)
+        height = max(
+            2,
+            int(round(width * int(info["height"]) / max(int(info["width"]), 1))),
+        )
+        if height % 2:
+            height += 1
+        sample_fps = float(config.recorded_sample_fps)
+        sample_interval = 1.0 / max(sample_fps, 0.001)
+        duration = max(float(info.get("duration_seconds") or 0.0), 0.001)
+        source_fps = float(info.get("source_fps") or 25.0)
+        padding = max(RECORDED_ACTIVITY_PADDING_SECONDS, sample_interval)
+        expected_scout_frames = max(1, int(math.ceil(duration * sample_fps)))
+
+        roi_left, roi_right = self._camera_roi(config, camera_key)
+        roi_x1 = max(0, min(width - 1, int(round(width * roi_left))))
+        roi_x2 = max(roi_x1 + 1, min(width, int(round(width * roi_right))))
+        scaled_min_face_size = max(
+            1,
+            int(
+                round(
+                    float(config.min_face_size)
+                    * width
+                    / max(int(config.processing_width), 1)
+                )
+            ),
+        )
+        job_started = datetime.fromisoformat(str(job["started_at"]))
+        pass_started = time.perf_counter()
+
+        packet_buffer: deque[tuple[float, bytes]] = deque()
+        scout_payloads: list[bytes] = []
+        scout_offsets: list[float] = []
+        full_payloads: list[bytes] = []
+        full_offsets: list[float] = []
+        observed_offsets: list[float] = []
+        activity_windows: list[tuple[float, float]] = []
+        anchors: list[
+            tuple[float, tuple[int, int], tuple[DetectedFace, ...]]
+        ] = []
+        source_packets = 0
+        sampled_frames = 0
+        scout_face_frames = 0
+        scout_faces = 0
+        full_fps_frames = 0
+        full_face_frames = 0
+        full_faces = 0
+        crops_enqueued = 0
+        next_sample_at = 0.0
+        batch_limit = 0
+        buffer_bytes = 0
+        max_buffer_bytes = 0
+        last_job_update = 0.0
+        timestamped_packets = 0
+        timestamp_fallbacks = 0
+        parser = OctetStreamJpegParser()
+
+        def merge_activity(start: float, end: float) -> None:
+            start = max(0.0, start)
+            end = min(duration, end)
+            if not activity_windows or start > activity_windows[-1][1] + 1e-6:
+                activity_windows.append((start, end))
+                return
+            previous_start, previous_end = activity_windows[-1]
+            activity_windows[-1] = (previous_start, max(previous_end, end))
+
+        def is_active(offset: float) -> bool:
+            for start, end in activity_windows:
+                if offset < start - 1e-6:
+                    return False
+                if offset <= end + 1e-6:
+                    return True
+            return False
+
+        def publish_scout_frame(
+            frame: np.ndarray,
+            offset: float,
+            detections: tuple[DetectedFace, ...],
+        ) -> None:
+            captured_at = job_started.timestamp() + offset
+            camera = self._cameras.get(camera_key)
+            publish = getattr(camera, "publish_detection_frame", None)
+            if callable(publish):
+                publish(frame, captured_at)
+            camera_metrics = camera.status_metrics if camera is not None else {}
+            if camera_metrics.get("live_preview_enabled"):
+                return
+            preview_due = (
+                time.monotonic() - self._last_preview_at.get(camera_key, 0.0)
+                >= 1.0 / max(float(config.preview_fps), 1.0)
+            )
+            if not preview_due:
+                return
+            preview = frame.copy()
+            draw_detection_roi(preview, (roi_x1, 0, roi_x2, height))
+            for detected in detections:
+                draw_face(
+                    preview,
+                    detected,
+                    f"Detectado {detected.score * 100:.0f}%",
+                    BLUE,
+                )
+            self._set_preview(
+                encode_preview(preview, config.preview_width),
+                camera_key,
+            )
+            self._last_preview_at[camera_key] = time.monotonic()
+
+        def update_progress(*, force: bool = False) -> None:
+            nonlocal last_job_update
+            elapsed = time.perf_counter() - pass_started
+            throughput = sampled_frames / max(elapsed, 0.001)
+            current.update(
+                {
+                    "stage": "detecting",
+                    "pipeline_mode": "mjpeg_single_pass",
+                    "decoder": "nvjpeg_cuda",
+                    "pixel_format": str(info.get("pixel_format") or ""),
+                    "decode_batch_size": batch_limit,
+                    "progress": round(
+                        min(
+                            0.9,
+                            0.9 * sampled_frames / expected_scout_frames,
+                        ),
+                        4,
+                    ),
+                    "sampled_frames": sampled_frames,
+                    "expected_frames": expected_scout_frames,
+                    "source_packets": source_packets,
+                    "packet_timestamps": timestamped_packets,
+                    "timestamp_fallbacks": timestamp_fallbacks,
+                    "timestamp_source": "ffmpeg_live_demux",
+                    "face_frames": scout_face_frames,
+                    "faces": scout_faces,
+                    "full_fps_frames": full_fps_frames,
+                    "full_fps_face_frames": full_face_frames,
+                    "full_fps_faces": full_faces,
+                    "crops_enqueued": crops_enqueued,
+                    "activity_windows": len(activity_windows),
+                    "compressed_buffer_mib": round(buffer_bytes / 1024**2, 2),
+                    "max_compressed_buffer_mib": round(
+                        max_buffer_bytes / 1024**2,
+                        2,
+                    ),
+                    "throughput_fps": round(throughput, 2),
+                    "elapsed_seconds": round(elapsed, 2),
+                }
+            )
+            with self._state_lock:
+                self._processing_fps = throughput
+                self._camera_processing_fps[camera_key] = throughput
+            self._set_recorded_pipeline_state("processing", current=current)
+            now = time.monotonic()
+            if not force and now - last_job_update < 5.0:
+                return
+            update_segment_job(
+                path.with_suffix(path.suffix + ".job.json"),
+                stage="detecting",
+                pipeline_mode="mjpeg_single_pass",
+                decoder="nvjpeg_cuda",
+                pixel_format=str(info.get("pixel_format") or ""),
+                decode_batch_size=batch_limit,
+                sampled_frames=sampled_frames,
+                expected_frames=expected_scout_frames,
+                source_packets=source_packets,
+                packet_timestamps=timestamped_packets,
+                timestamp_fallbacks=timestamp_fallbacks,
+                timestamp_source="ffmpeg_live_demux",
+                scout_face_frames=scout_face_frames,
+                scout_faces=scout_faces,
+                full_fps_frames=full_fps_frames,
+                face_frames=full_face_frames,
+                faces=full_faces,
+                crops_enqueued=crops_enqueued,
+                activity_windows=len(activity_windows),
+                max_compressed_buffer_mib=round(max_buffer_bytes / 1024**2, 2),
+                progress=current["progress"],
+            )
+            last_job_update = now
+
+        def process_scout_batch() -> None:
+            nonlocal sampled_frames, scout_face_frames, scout_faces
+            if not scout_payloads:
+                return
+            with self._gpu_lock:
+                decoded = decoder.decode_resize_batch(
+                    scout_payloads,
+                    width,
+                    height,
+                )
+            try:
+                for frame, offset in zip(
+                    decoded.resized_frames,
+                    scout_offsets,
+                    strict=True,
+                ):
+                    if evidence_writer is not None:
+                        evidence_writer.write(frame)
+                    with self._gpu_lock:
+                        roi_detections = detector.detect(
+                            frame[:, roi_x1:roi_x2],
+                            min_face_size=scaled_min_face_size,
+                        )
+                    detections = tuple(
+                        self._offset_detection(detected, roi_x1, 0)
+                        for detected in roi_detections
+                    )
+                    if detections:
+                        anchors.append((offset, frame.shape[:2], detections))
+                        scout_face_frames += 1
+                        scout_faces += len(detections)
+                        merge_activity(offset - padding, offset + padding)
+                        self._last_face_at = time.monotonic()
+                    publish_scout_frame(frame, offset, detections)
+                    sampled_frames += 1
+            finally:
+                decoded.close()
+                scout_payloads.clear()
+                scout_offsets.clear()
+            update_progress()
+
+        def process_full_batch() -> None:
+            nonlocal full_fps_frames, full_face_frames, full_faces
+            nonlocal crops_enqueued
+            if not full_payloads:
+                return
+            with self._gpu_lock:
+                decoded = decoder.decode_resize_batch(
+                    full_payloads,
+                    width,
+                    height,
+                )
+            try:
+                for batch_index, (frame, offset) in enumerate(
+                    zip(
+                        decoded.resized_frames,
+                        full_offsets,
+                        strict=True,
+                    )
+                ):
+                    with self._gpu_lock:
+                        roi_detections = detector.detect(
+                            frame[:, roi_x1:roi_x2],
+                            min_face_size=scaled_min_face_size,
+                        )
+                    detections = tuple(
+                        self._offset_detection(detected, roi_x1, 0)
+                        for detected in roi_detections
+                    )
+                    if detections:
+                        with self._gpu_lock:
+                            source_frame = decoded.copy_original(batch_index)
+                        crops_enqueued += self._enqueue_recorded_source_detections(
+                            source_frame,
+                            frame.shape[:2],
+                            detections,
+                            camera_key,
+                            job_started,
+                            offset,
+                        )
+                        full_face_frames += 1
+                        full_faces += len(detections)
+                        self._last_face_at = time.monotonic()
+                    full_fps_frames += 1
+            finally:
+                decoded.close()
+                full_payloads.clear()
+                full_offsets.clear()
+            update_progress()
+
+        def finalize_safe(cutoff: float) -> None:
+            nonlocal buffer_bytes
+            while packet_buffer and packet_buffer[0][0] <= cutoff + 1e-6:
+                offset, payload = packet_buffer.popleft()
+                buffer_bytes -= len(payload)
+                if not is_active(offset):
+                    continue
+                full_payloads.append(payload)
+                full_offsets.append(offset)
+                if len(full_payloads) >= batch_limit:
+                    process_full_batch()
+
+        command = [
+            str(ffmpeg),
+            "-hide_banner",
+            "-loglevel",
+            "debug",
+            "-debug_ts",
+            "-i",
+            str(path),
+            "-map",
+            "0:v:0",
+            "-an",
+            "-sn",
+            "-c:v",
+            "copy",
+            "-f",
+            "image2pipe",
+            "pipe:1",
+        ]
+        timestamp_queue: Queue[float] = Queue()
+        timestamp_reader_stop = Event()
+        timestamp_reader_done = Event()
+        error_tail: deque[str] = deque(maxlen=120)
+        with tempfile.TemporaryFile() as error_stream:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=0,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            assert process.stdout is not None
+            assert process.stderr is not None
+
+            def read_packet_timestamps() -> None:
+                origin: float | None = None
+                try:
+                    while not timestamp_reader_stop.is_set():
+                        raw_line = process.stderr.readline()
+                        if not raw_line:
+                            break
+                        line = raw_line.decode("utf-8", errors="replace")
+                        error_tail.append(line)
+                        if "] demuxer -> " not in line or "pkt_pts_time:" not in line:
+                            continue
+                        token = line.split("pkt_pts_time:", 1)[1].split(None, 1)[0]
+                        try:
+                            pts = float(token)
+                        except (TypeError, ValueError):
+                            continue
+                        if not math.isfinite(pts):
+                            continue
+                        if origin is None:
+                            origin = pts
+                        timestamp_queue.put(max(0.0, pts - origin))
+                finally:
+                    timestamp_reader_done.set()
+
+            timestamp_reader = Thread(
+                target=read_packet_timestamps,
+                name="faceguard-mjpeg-timestamps",
+                daemon=True,
+            )
+            timestamp_reader.start()
+            try:
+                while not self._stop.is_set():
+                    chunk = process.stdout.read(2 * 1024 * 1024)
+                    if not chunk:
+                        break
+                    for jpeg in parser.feed(chunk):
+                        try:
+                            offset = timestamp_queue.get(timeout=15.0)
+                            timestamped_packets += 1
+                        except Empty:
+                            if not timestamp_reader_done.is_set():
+                                raise TimeoutError(
+                                    "FFmpeg no entrego el timestamp del paquete MJPEG."
+                                )
+                            offset = source_packets / max(source_fps, 0.001)
+                            timestamp_fallbacks += 1
+                        source_packets += 1
+                        observed_offsets.append(offset)
+                        packet_buffer.append((offset, jpeg))
+                        buffer_bytes += len(jpeg)
+                        max_buffer_bytes = max(max_buffer_bytes, buffer_bytes)
+                        if batch_limit <= 0:
+                            jpeg_info = decoder.image_info(jpeg)
+                            batch_limit = decoder.recommended_batch_size(
+                                jpeg_info,
+                                width,
+                                height,
+                                requested=RECORDED_MJPEG_BATCH_SIZE,
+                            )
+                        if offset + 1e-6 < next_sample_at:
+                            continue
+                        scout_payloads.append(jpeg)
+                        scout_offsets.append(offset)
+                        while next_sample_at <= offset + 1e-6:
+                            next_sample_at += sample_interval
+                        if len(scout_payloads) >= batch_limit:
+                            process_scout_batch()
+                            finalize_safe(offset - padding)
+                if self._stop.is_set():
+                    raise RuntimeError(
+                        "El analisis se interrumpio al detener la estacion."
+                    )
+                try:
+                    parser.finish()
+                except MjpegStreamError as exc:
+                    if source_packets <= 0:
+                        raise
+                    LOGGER.warning(
+                        "Se omitio el ultimo JPEG incompleto de %s: %s",
+                        path,
+                        exc,
+                    )
+                    current["trailing_frame_dropped"] = True
+                process_scout_batch()
+                finalize_safe(float("inf"))
+                process_full_batch()
+                return_code = process.wait(timeout=10)
+                if return_code:
+                    stderr = "".join(error_tail)
+                    raise RuntimeError(
+                        f"FFmpeg termino con codigo {return_code}: {stderr[-1200:]}"
+                    )
+                if sampled_frames <= 0:
+                    raise RuntimeError("El segmento MJPEG no entrego frames completos.")
+            finally:
+                timestamp_reader_stop.set()
+                if process.poll() is None:
+                    process.kill()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+                try:
+                    process.stdout.close()
+                except OSError:
+                    pass
+                try:
+                    process.stderr.close()
+                except OSError:
+                    pass
+                timestamp_reader.join(timeout=2)
+
+        expected_full_frames = sum(
+            1 for offset in observed_offsets if is_active(offset)
+        )
+        if full_fps_frames != expected_full_frames:
+            raise RuntimeError(
+                "La recuperacion MJPEG de una pasada esperaba "
+                f"{expected_full_frames} frames y obtuvo {full_fps_frames}."
+            )
+        elapsed = time.perf_counter() - pass_started
+        observed_fps = len(observed_offsets) / duration
+        with self._state_lock:
+            self._processed_frames += sampled_frames
+            self._detected_faces += scout_faces
+            self._camera_processed_frames[camera_key] = (
+                self._camera_processed_frames.get(camera_key, 0) + sampled_frames
+            )
+            observed_date = job_started.astimezone(
+                BUSINESS_TIME_ZONE
+            ).date().isoformat()
+            if observed_date != self._capture_date:
+                self._capture_date = observed_date
+                self._captured_frames_today = 0
+                self._captured_faces_today = 0
+            self._captured_frames_today += sampled_frames
+            self._captured_faces_today += scout_faces
+        update_progress(force=True)
+        scan_stats = {
+            "pipeline_mode": "mjpeg_single_pass",
+            "sampled_frames": sampled_frames,
+            "expected_frames": expected_scout_frames,
+            "source_packets": source_packets,
+            "packet_timestamps": timestamped_packets,
+            "timestamp_fallbacks": timestamp_fallbacks,
+            "timestamp_source": "ffmpeg_live_demux",
+            "face_frames": scout_face_frames,
+            "faces": scout_faces,
+            "crops_enqueued": 0,
+            "decoder": "nvjpeg_cuda",
+            "decode_batch_size": batch_limit,
+            "throughput_fps": round(sampled_frames / max(elapsed, 0.001), 2),
+            "scan_seconds": round(elapsed, 3),
+            "single_pass_seconds": round(elapsed, 3),
+            "max_compressed_buffer_mib": round(max_buffer_bytes / 1024**2, 2),
+        }
+        activity_stats = {
+            "pipeline_mode": "mjpeg_single_pass",
+            "full_fps_frames": full_fps_frames,
+            "full_fps_expected_frames": expected_full_frames,
+            "face_frames": full_face_frames,
+            "faces": full_faces,
+            "crops_enqueued": crops_enqueued,
+            "full_fps": round(observed_fps, 3),
+            "activity_throughput_fps": round(
+                full_fps_frames / max(elapsed, 0.001),
+                2,
+            ),
+            "activity_scan_seconds": round(elapsed, 3),
+            "single_pass_seconds": round(elapsed, 3),
+            "max_compressed_buffer_mib": round(max_buffer_bytes / 1024**2, 2),
+        }
+        return anchors, scan_stats, activity_windows, activity_stats
+
+    def _scan_recorded_video(
+        self,
+        path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+        current: dict,
+        *,
+        evidence_writer: MatchEvidenceWriter | None = None,
+    ) -> tuple[list[tuple[float, tuple[int, int], tuple[DetectedFace, ...]]], dict]:
+        if self._recorded_ffmpeg is None or self._detector is None:
+            raise RuntimeError("El detector grabado no está preparado.")
+        if str(info.get("codec") or "") == "mjpeg":
+            return self._scan_recorded_mjpeg_cuda(
+                path,
+                camera_key,
+                job,
+                info,
+                current,
+                evidence_writer=evidence_writer,
+            )
+        config = self.config_manager.config
+        width = int(config.recorded_processing_width)
+        height = max(
+            2,
+            int(round(width * int(info["height"]) / max(int(info["width"]), 1))),
+        )
+        if height % 2:
+            height += 1
+        sample_fps = float(config.recorded_sample_fps)
+        decoder = str(info.get("decoder") or "cpu")
+        use_nvdec = decoder != "cpu"
+        command = [str(self._recorded_ffmpeg), "-hide_banner", "-loglevel", "error"]
+        if use_nvdec:
+            command += [
+                "-hwaccel",
+                "cuda",
+                "-hwaccel_output_format",
+                "cuda",
+                "-c:v",
+                decoder,
+            ]
+        command += ["-i", str(path), "-an", "-sn"]
+        filters = (
+            [
+                f"scale_cuda={width}:{height}",
+                "hwdownload",
+                "format=nv12",
+                (
+                    "setparams=colorspace=bt709:color_primaries=bt709:"
+                    "color_trc=bt709:range=full"
+                ),
+            ]
+            if use_nvdec
+            else [f"scale={width}:{height}:flags=fast_bilinear"]
+        )
+        filters.append(f"fps=fps={sample_fps}")
+        command += [
+            "-vf",
+            ",".join(filters),
+            "-fps_mode",
+            "passthrough",
+            "-pix_fmt",
+            "bgr24",
+            "-f",
+            "rawvideo",
+            "pipe:1",
+        ]
+        frame_bytes = width * height * 3
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=frame_bytes * 2,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        assert process.stdout is not None
+        assert process.stderr is not None
+        roi_left, roi_right = self._camera_roi(config, camera_key)
+        roi_x1 = max(0, min(width - 1, int(round(width * roi_left))))
+        roi_x2 = max(roi_x1 + 1, min(width, int(round(width * roi_right))))
+        scaled_min_face_size = max(
+            1,
+            int(
+                round(
+                    float(config.min_face_size)
+                    * width
+                    / max(int(config.processing_width), 1)
+                )
+            ),
+        )
+        anchors = []
+        frames = 0
+        face_frames = 0
+        faces = 0
+        expected_frames = max(1, int(math.ceil(float(info["duration_seconds"]) * sample_fps)))
+        scan_started = time.perf_counter()
+        job_started = datetime.fromisoformat(str(job["started_at"]))
+        last_job_update = 0.0
+        try:
+            while not self._stop.is_set():
+                raw = self._read_recorded_frame(process.stdout, frame_bytes)
+                if not raw:
+                    break
+                if len(raw) != frame_bytes:
+                    raise RuntimeError(
+                        f"FFmpeg entregó un frame incompleto: {len(raw)}/{frame_bytes}."
+                    )
+                frame = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, 3)
+                if evidence_writer is not None:
+                    evidence_writer.write(frame)
+                offset = frames / max(sample_fps, 0.001)
+                with self._gpu_lock:
+                    roi_detections = self._detector.detect(
+                        frame[:, roi_x1:roi_x2],
+                        min_face_size=scaled_min_face_size,
+                    )
+                detections = tuple(
+                    self._offset_detection(detected, roi_x1, 0)
+                    for detected in roi_detections
+                )
+                if detections:
+                    anchors.append((offset, (height, width), detections))
+                    face_frames += 1
+                    faces += len(detections)
+                    self._last_face_at = time.monotonic()
+                frames += 1
+                captured_at = job_started.timestamp() + offset
+                camera = self._cameras.get(camera_key)
+                publish = getattr(camera, "publish_detection_frame", None)
+                if callable(publish):
+                    publish(frame, captured_at)
+                camera_metrics = (
+                    camera.status_metrics if camera is not None else {}
+                )
+                has_live_preview = bool(
+                    camera_metrics.get("live_preview_enabled")
+                )
+                preview_due = (
+                    time.monotonic() - self._last_preview_at.get(camera_key, 0.0)
+                    >= 1.0 / max(float(config.preview_fps), 1.0)
+                )
+                if preview_due and not has_live_preview:
+                    preview = frame.copy()
+                    draw_detection_roi(
+                        preview,
+                        (roi_x1, 0, roi_x2, height),
+                    )
+                    for detected in detections:
+                        draw_face(
+                            preview,
+                            detected,
+                            f"Detectado {detected.score * 100:.0f}%",
+                            BLUE,
+                        )
+                    self._set_preview(
+                        encode_preview(preview, config.preview_width),
+                        camera_key,
+                    )
+                    self._last_preview_at[camera_key] = time.monotonic()
+                elapsed = time.perf_counter() - scan_started
+                throughput = frames / max(elapsed, 0.001)
+                current.update(
+                    {
+                        "stage": "detecting",
+                        "progress": round(min(0.9, 0.9 * frames / expected_frames), 4),
+                        "sampled_frames": frames,
+                        "expected_frames": expected_frames,
+                        "face_frames": face_frames,
+                        "faces": faces,
+                        "throughput_fps": round(throughput, 2),
+                        "elapsed_seconds": round(elapsed, 2),
+                    }
+                )
+                with self._state_lock:
+                    self._processing_fps = throughput
+                    self._camera_processing_fps[camera_key] = throughput
+                self._set_recorded_pipeline_state("processing", current=current)
+                now = time.monotonic()
+                if now - last_job_update >= 5.0:
+                    update_segment_job(
+                        path.with_suffix(path.suffix + ".job.json"),
+                        stage="detecting",
+                        sampled_frames=frames,
+                        expected_frames=expected_frames,
+                        face_frames=face_frames,
+                        faces=faces,
+                        progress=current["progress"],
+                    )
+                    last_job_update = now
+            if self._stop.is_set() and process.poll() is None:
+                process.kill()
+            stderr = process.stderr.read().decode("utf-8", errors="replace")
+            return_code = process.wait()
+            if self._stop.is_set():
+                raise RuntimeError("El análisis se interrumpió al detener la estación.")
+            if return_code:
+                raise RuntimeError(
+                    f"FFmpeg terminó con código {return_code}: {stderr[-1200:]}"
+                )
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+        elapsed = time.perf_counter() - scan_started
+        with self._state_lock:
+            self._processed_frames += frames
+            self._detected_faces += faces
+            self._camera_processed_frames[camera_key] = (
+                self._camera_processed_frames.get(camera_key, 0) + frames
+            )
+            observed_date = job_started.astimezone(BUSINESS_TIME_ZONE).date().isoformat()
+            if observed_date != self._capture_date:
+                self._capture_date = observed_date
+                self._captured_frames_today = 0
+                self._captured_faces_today = 0
+            self._captured_frames_today += frames
+            self._captured_faces_today += faces
+        return anchors, {
+            "sampled_frames": frames,
+            "expected_frames": expected_frames,
+            "face_frames": face_frames,
+            "faces": faces,
+            "throughput_fps": round(frames / max(elapsed, 0.001), 2),
+            "scan_seconds": round(elapsed, 3),
+        }
+
+    def _scan_recorded_mjpeg_cuda(
+        self,
+        path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+        current: dict,
+        *,
+        evidence_writer: MatchEvidenceWriter | None = None,
+    ) -> tuple[list, dict]:
+        decoder = self._recorded_nvjpeg
+        detector = self._detector
+        ffmpeg = self._recorded_ffmpeg
+        if decoder is None or detector is None or ffmpeg is None:
+            raise NvJpegCudaError("nvJPEG no esta preparado para procesar MJPEG.")
+
+        config = self.config_manager.config
+        width = int(config.recorded_processing_width)
+        height = max(
+            2,
+            int(round(width * int(info["height"]) / max(int(info["width"]), 1))),
+        )
+        if height % 2:
+            height += 1
+        sample_fps = float(config.recorded_sample_fps)
+        source_fps = float(info.get("source_fps") or 25.0)
+        sample_interval = 1.0 / max(sample_fps, 0.001)
+        packet_offsets = self._probe_recorded_packet_offsets(path)
+        expected_frames = max(
+            1,
+            int(math.ceil(float(info["duration_seconds"]) * sample_fps)),
+        )
+        roi_left, roi_right = self._camera_roi(config, camera_key)
+        roi_x1 = max(0, min(width - 1, int(round(width * roi_left))))
+        roi_x2 = max(roi_x1 + 1, min(width, int(round(width * roi_right))))
+        scaled_min_face_size = max(
+            1,
+            int(
+                round(
+                    float(config.min_face_size)
+                    * width
+                    / max(int(config.processing_width), 1)
+                )
+            ),
+        )
+        job_started = datetime.fromisoformat(str(job["started_at"]))
+        scan_started = time.perf_counter()
+        frames = 0
+        face_frames = 0
+        faces = 0
+        anchors: list[
+            tuple[float, tuple[int, int], tuple[DetectedFace, ...]]
+        ] = []
+        source_packets = 0
+        next_sample_at = 0.0
+        selected_payloads: list[bytes] = []
+        selected_offsets: list[float] = []
+        batch_limit = 0
+        last_job_update = 0.0
+        parser = OctetStreamJpegParser()
+
+        command = [
+            str(ffmpeg),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-map",
+            "0:v:0",
+            "-an",
+            "-sn",
+            "-c:v",
+            "copy",
+            "-f",
+            "image2pipe",
+            "pipe:1",
+        ]
+
+        def process_selected_batch() -> None:
+            nonlocal frames, face_frames, faces, last_job_update
+            if not selected_payloads:
+                return
+            batch_started = time.perf_counter()
+            with self._gpu_lock:
+                decoded = decoder.decode_resize_batch(
+                    selected_payloads,
+                    width,
+                    height,
+                )
+            try:
+                for batch_index, (frame, offset) in enumerate(
+                    zip(
+                        decoded.resized_frames,
+                        selected_offsets,
+                        strict=True,
+                    )
+                ):
+                    if evidence_writer is not None:
+                        evidence_writer.write(frame)
+                    with self._gpu_lock:
+                        roi_detections = detector.detect(
+                            frame[:, roi_x1:roi_x2],
+                            min_face_size=scaled_min_face_size,
+                        )
+                    detections = tuple(
+                        self._offset_detection(detected, roi_x1, 0)
+                        for detected in roi_detections
+                    )
+                    if detections:
+                        anchors.append((offset, frame.shape[:2], detections))
+                        face_frames += 1
+                        faces += len(detections)
+                        self._last_face_at = time.monotonic()
+
+                    captured_at = job_started.timestamp() + offset
+                    camera = self._cameras.get(camera_key)
+                    publish = getattr(camera, "publish_detection_frame", None)
+                    if callable(publish):
+                        publish(frame, captured_at)
+                    camera_metrics = (
+                        camera.status_metrics if camera is not None else {}
+                    )
+                    has_live_preview = bool(
+                        camera_metrics.get("live_preview_enabled")
+                    )
+                    preview_due = (
+                        time.monotonic()
+                        - self._last_preview_at.get(camera_key, 0.0)
+                        >= 1.0 / max(float(config.preview_fps), 1.0)
+                    )
+                    if preview_due and not has_live_preview:
+                        preview = frame.copy()
+                        draw_detection_roi(preview, (roi_x1, 0, roi_x2, height))
+                        for detected in detections:
+                            draw_face(
+                                preview,
+                                detected,
+                                f"Detectado {detected.score * 100:.0f}%",
+                                BLUE,
+                            )
+                        self._set_preview(
+                            encode_preview(preview, config.preview_width),
+                            camera_key,
+                        )
+                        self._last_preview_at[camera_key] = time.monotonic()
+                    frames += 1
+            finally:
+                decoded.close()
+
+            elapsed = time.perf_counter() - scan_started
+            throughput = frames / max(elapsed, 0.001)
+            current.update(
+                {
+                    "stage": "detecting",
+                    "decoder": "nvjpeg_cuda",
+                    "pixel_format": str(info.get("pixel_format") or ""),
+                    "decode_batch_size": batch_limit,
+                    "progress": round(
+                        min(0.9, 0.9 * frames / expected_frames),
+                        4,
+                    ),
+                    "sampled_frames": frames,
+                    "expected_frames": expected_frames,
+                    "source_packets": source_packets,
+                    "packet_timestamps": len(packet_offsets),
+                    "face_frames": face_frames,
+                    "faces": faces,
+                    "crops_enqueued": 0,
+                    "throughput_fps": round(throughput, 2),
+                    "elapsed_seconds": round(elapsed, 2),
+                    "last_batch_seconds": round(
+                        time.perf_counter() - batch_started,
+                        3,
+                    ),
+                }
+            )
+            with self._state_lock:
+                self._processing_fps = throughput
+                self._camera_processing_fps[camera_key] = throughput
+            self._set_recorded_pipeline_state("processing", current=current)
+            now = time.monotonic()
+            if now - last_job_update >= 5.0:
+                update_segment_job(
+                    path.with_suffix(path.suffix + ".job.json"),
+                    stage="detecting",
+                    decoder="nvjpeg_cuda",
+                    pixel_format=str(info.get("pixel_format") or ""),
+                    decode_batch_size=batch_limit,
+                    sampled_frames=frames,
+                    expected_frames=expected_frames,
+                    source_packets=source_packets,
+                    packet_timestamps=len(packet_offsets),
+                    face_frames=face_frames,
+                    faces=faces,
+                    crops_enqueued=0,
+                    progress=current["progress"],
+                )
+                last_job_update = now
+            selected_payloads.clear()
+            selected_offsets.clear()
+
+        chunk_queue: Queue = Queue(maxsize=2)
+        reader_stop = Event()
+        reader_done = object()
+        with tempfile.TemporaryFile() as error_stream:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=error_stream,
+                bufsize=0,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            assert process.stdout is not None
+
+            def read_stdout() -> None:
+                try:
+                    while not reader_stop.is_set():
+                        chunk = process.stdout.read(2 * 1024 * 1024)
+                        if not chunk:
+                            break
+                        while not reader_stop.is_set():
+                            try:
+                                chunk_queue.put(chunk, timeout=0.25)
+                                break
+                            except Full:
+                                continue
+                finally:
+                    while not reader_stop.is_set():
+                        try:
+                            chunk_queue.put(reader_done, timeout=0.25)
+                            break
+                        except Full:
+                            continue
+
+            reader = Thread(
+                target=read_stdout,
+                name="faceguard-mjpeg-demux",
+                daemon=True,
+            )
+            reader.start()
+            last_chunk_at = time.monotonic()
+            try:
+                while not self._stop.is_set():
+                    try:
+                        chunk = chunk_queue.get(timeout=0.5)
+                    except Empty:
+                        if time.monotonic() - last_chunk_at >= 15.0:
+                            raise TimeoutError(
+                                "FFmpeg no entrego paquetes MJPEG durante 15 segundos."
+                            )
+                        continue
+                    if chunk is reader_done:
+                        break
+                    last_chunk_at = time.monotonic()
+                    for jpeg in parser.feed(chunk):
+                        offset = (
+                            packet_offsets[source_packets]
+                            if source_packets < len(packet_offsets)
+                            else source_packets / max(source_fps, 0.001)
+                        )
+                        source_packets += 1
+                        if offset + 1e-6 < next_sample_at:
+                            continue
+                        selected_payloads.append(jpeg)
+                        selected_offsets.append(offset)
+                        while next_sample_at <= offset + 1e-6:
+                            next_sample_at += sample_interval
+                        if batch_limit <= 0:
+                            jpeg_info = decoder.image_info(jpeg)
+                            batch_limit = decoder.recommended_batch_size(
+                                jpeg_info,
+                                width,
+                                height,
+                                requested=RECORDED_MJPEG_BATCH_SIZE,
+                            )
+                            current.update(
+                                {
+                                    "decoder": "nvjpeg_cuda",
+                                    "pixel_format": str(
+                                        info.get("pixel_format") or ""
+                                    ),
+                                    "decode_batch_size": batch_limit,
+                                }
+                            )
+                        if len(selected_payloads) >= batch_limit:
+                            process_selected_batch()
+                if self._stop.is_set():
+                    raise RuntimeError(
+                        "El analisis se interrumpio al detener la estacion."
+                    )
+                try:
+                    parser.finish()
+                except MjpegStreamError as exc:
+                    if source_packets <= 0:
+                        raise
+                    LOGGER.warning(
+                        "Se omitio el ultimo JPEG incompleto de %s: %s",
+                        path,
+                        exc,
+                    )
+                    current["trailing_frame_dropped"] = True
+                process_selected_batch()
+                return_code = process.wait(timeout=10)
+                error_stream.seek(0)
+                stderr = error_stream.read().decode("utf-8", errors="replace")
+                if return_code:
+                    raise RuntimeError(
+                        f"FFmpeg termino con codigo {return_code}: {stderr[-1200:]}"
+                    )
+                if frames <= 0:
+                    raise RuntimeError("El segmento MJPEG no entrego frames completos.")
+            finally:
+                reader_stop.set()
+                if process.poll() is None:
+                    process.kill()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+                try:
+                    process.stdout.close()
+                except OSError:
+                    pass
+                reader.join(timeout=2)
+
+        elapsed = time.perf_counter() - scan_started
+        with self._state_lock:
+            self._processed_frames += frames
+            self._detected_faces += faces
+            self._camera_processed_frames[camera_key] = (
+                self._camera_processed_frames.get(camera_key, 0) + frames
+            )
+            observed_date = job_started.astimezone(
+                BUSINESS_TIME_ZONE
+            ).date().isoformat()
+            if observed_date != self._capture_date:
+                self._capture_date = observed_date
+                self._captured_frames_today = 0
+                self._captured_faces_today = 0
+            self._captured_frames_today += frames
+            self._captured_faces_today += faces
+        return anchors, {
+            "sampled_frames": frames,
+            "expected_frames": expected_frames,
+            "source_packets": source_packets,
+            "packet_timestamps": len(packet_offsets),
+            "face_frames": face_frames,
+            "faces": faces,
+            "crops_enqueued": 0,
+            "decoder": "nvjpeg_cuda",
+            "decode_batch_size": batch_limit,
+            "throughput_fps": round(frames / max(elapsed, 0.001), 2),
+            "scan_seconds": round(elapsed, 3),
+        }
+
+    def _enqueue_recorded_source_detections(
+        self,
+        source_frame: np.ndarray,
+        detection_shape: tuple[int, int],
+        detections: tuple[DetectedFace, ...],
+        camera_key: str,
+        started_at: datetime,
+        offset: float,
+    ) -> int:
+        observed_at = business_time(
+            datetime.fromtimestamp(
+                started_at.timestamp() + offset,
+                timezone.utc,
+            )
+        )
+        enqueued = 0
+        for detected in detections:
+            source_detection = self._detection_for_source_shape(
+                detected,
+                detection_shape,
+                source_frame.shape[:2],
+            )
+            crop, bounds = face_crop_with_bounds(source_frame, source_detection)
+            if crop.size == 0:
+                continue
+            left, top, _, _ = bounds
+            relative_landmarks = None
+            if source_detection.landmarks is not None:
+                relative_landmarks = source_detection.landmarks.copy()
+                relative_landmarks[:, 0] -= left
+                relative_landmarks[:, 1] -= top
+            self._enqueue_raw_persistence(
+                PersistenceTask(
+                    kind="raw",
+                    subject_key=uuid4().hex,
+                    observed_at=observed_at,
+                    crop=crop.copy(),
+                    similarity=0.0,
+                    detected_quality=source_detection.score,
+                    camera_key=camera_key,
+                    bbox=source_detection.bbox,
+                    landmarks=relative_landmarks,
+                )
+            )
+            enqueued += 1
+        return enqueued
+
+    def _persist_recorded_activity_windows(
+        self,
+        video_path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+        activity_windows: list[tuple[float, float]],
+        current: dict,
+    ) -> dict:
+        """Rescan only active intervals at source FPS and persist every face."""
+        empty = {
+            "full_fps_frames": 0,
+            "face_frames": 0,
+            "faces": 0,
+            "crops_enqueued": 0,
+            "full_fps": round(float(info.get("source_fps") or 0.0), 3),
+        }
+        if not activity_windows:
+            return empty
+        if self._detector is None:
+            raise RuntimeError("El detector grabado no esta preparado.")
+
+        if (
+            str(info.get("codec") or "").lower() == "mjpeg"
+            and self._recorded_nvjpeg is not None
+            and self._recorded_ffmpeg is not None
+        ):
+            return self._persist_recorded_mjpeg_activity_windows(
+                video_path,
+                camera_key,
+                job,
+                info,
+                activity_windows,
+                current,
+            )
+
+        config = self.config_manager.config
+        processing_width = int(config.recorded_processing_width)
+        processing_height = max(
+            2,
+            int(
+                round(
+                    processing_width
+                    * int(info["height"])
+                    / max(int(info["width"]), 1)
+                )
+            ),
+        )
+        if processing_height % 2:
+            processing_height += 1
+        source_fps = float(info.get("source_fps") or 0.0)
+        capture = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
+        if not capture.isOpened():
+            raise RuntimeError(
+                "No se pudo abrir el video original para analizar la actividad."
+            )
+        if source_fps <= 0:
+            source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+        if source_fps <= 0:
+            source_fps = 25.0
+
+        roi_left, roi_right = self._camera_roi(config, camera_key)
+        roi_x1 = max(
+            0,
+            min(
+                processing_width - 1,
+                int(round(processing_width * roi_left)),
+            ),
+        )
+        roi_x2 = max(
+            roi_x1 + 1,
+            min(
+                processing_width,
+                int(round(processing_width * roi_right)),
+            ),
+        )
+        scaled_min_face_size = max(
+            1,
+            int(
+                round(
+                    float(config.min_face_size)
+                    * processing_width
+                    / max(int(config.processing_width), 1)
+                )
+            ),
+        )
+        started_at = datetime.fromisoformat(str(job["started_at"]))
+        expected_frames = max(
+            1,
+            sum(
+                max(1, int(math.ceil((end - start) * source_fps)))
+                for start, end in activity_windows
+            ),
+        )
+        full_fps_frames = 0
+        face_frames = 0
+        faces = 0
+        crops_enqueued = 0
+        pass_started = time.perf_counter()
+        last_update = 0.0
+        try:
+            for window_start, window_end in activity_windows:
+                start_frame = max(0, int(math.floor(window_start * source_fps)))
+                end_frame = max(start_frame, int(math.ceil(window_end * source_fps)))
+                capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+                window_frames = 0
+                for frame_index in range(start_frame, end_frame + 1):
+                    if self._stop.is_set():
+                        raise RuntimeError(
+                            "El analisis adaptativo se interrumpio al detener "
+                            "la estacion."
+                        )
+                    ok, source_frame = capture.read()
+                    if not ok or source_frame is None or source_frame.size == 0:
+                        break
+                    detection_frame = cv2.resize(
+                        source_frame,
+                        (processing_width, processing_height),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                    with self._gpu_lock:
+                        roi_detections = self._detector.detect(
+                            detection_frame[:, roi_x1:roi_x2],
+                            min_face_size=scaled_min_face_size,
+                        )
+                    detections = tuple(
+                        self._offset_detection(detected, roi_x1, 0)
+                        for detected in roi_detections
+                    )
+                    offset = frame_index / max(source_fps, 0.001)
+                    if detections:
+                        crops_enqueued += self._enqueue_recorded_source_detections(
+                            source_frame,
+                            detection_frame.shape[:2],
+                            detections,
+                            camera_key,
+                            started_at,
+                            offset,
+                        )
+                        face_frames += 1
+                        faces += len(detections)
+                        self._last_face_at = time.monotonic()
+                    full_fps_frames += 1
+                    window_frames += 1
+                    now = time.monotonic()
+                    if now - last_update >= 0.5:
+                        current.update(
+                            {
+                                "stage": "analyzing_activity",
+                                "progress": round(
+                                    min(
+                                        0.999,
+                                        0.92
+                                        + 0.079
+                                        * full_fps_frames
+                                        / expected_frames,
+                                    ),
+                                    4,
+                                ),
+                                "full_fps": round(source_fps, 3),
+                                "full_fps_frames": full_fps_frames,
+                                "full_fps_expected_frames": expected_frames,
+                                "face_frames": face_frames,
+                                "faces": faces,
+                                "crops_enqueued": crops_enqueued,
+                                "activity_throughput_fps": round(
+                                    full_fps_frames
+                                    / max(
+                                        time.perf_counter() - pass_started,
+                                        0.001,
+                                    ),
+                                    2,
+                                ),
+                            }
+                        )
+                        self._set_recorded_pipeline_state(
+                            "processing",
+                            current=current,
+                        )
+                        update_segment_job(
+                            video_path.with_suffix(
+                                video_path.suffix + ".job.json"
+                            ),
+                            stage="analyzing_activity",
+                            full_fps=round(source_fps, 3),
+                            full_fps_frames=full_fps_frames,
+                            full_fps_expected_frames=expected_frames,
+                            face_frames=face_frames,
+                            faces=faces,
+                            crops_enqueued=crops_enqueued,
+                            progress=current["progress"],
+                        )
+                        last_update = now
+                if window_frames <= 0:
+                    raise RuntimeError(
+                        "No se pudo recuperar ningun frame original entre "
+                        f"{window_start:.3f}s y {window_end:.3f}s."
+                    )
+        finally:
+            capture.release()
+        elapsed = time.perf_counter() - pass_started
+        return {
+            "full_fps": round(source_fps, 3),
+            "full_fps_frames": full_fps_frames,
+            "full_fps_expected_frames": expected_frames,
+            "face_frames": face_frames,
+            "faces": faces,
+            "crops_enqueued": crops_enqueued,
+            "activity_throughput_fps": round(
+                full_fps_frames / max(elapsed, 0.001),
+                2,
+            ),
+            "activity_scan_seconds": round(elapsed, 3),
+        }
+
+    def _persist_recorded_mjpeg_activity_windows(
+        self,
+        video_path: Path,
+        camera_key: str,
+        job: dict,
+        info: dict,
+        activity_windows: list[tuple[float, float]],
+        current: dict,
+    ) -> dict:
+        """Recover exact MJPEG packets in active windows and crop originals.
+
+        Camera MJPEG containers commonly advertise 25 FPS even when network
+        delivery is much lower. Packet timestamps are therefore authoritative;
+        frame-number seeking would reopen the wrong part of the recording.
+        """
+        decoder = self._recorded_nvjpeg
+        detector = self._detector
+        ffmpeg = self._recorded_ffmpeg
+        if decoder is None or detector is None or ffmpeg is None:
+            raise RuntimeError("nvJPEG no esta preparado para recuperar actividad.")
+
+        packet_offsets = self._probe_recorded_packet_offsets(video_path)
+        if not packet_offsets:
+            raise RuntimeError("El segmento MJPEG no contiene timestamps de paquetes.")
+        windows = sorted(activity_windows)
+        expected_frames = sum(
+            1
+            for offset in packet_offsets
+            if any(start - 1e-6 <= offset <= end + 1e-6 for start, end in windows)
+        )
+        if expected_frames <= 0:
+            raise RuntimeError(
+                "Ningun frame original coincide con la actividad detectada."
+            )
+
+        config = self.config_manager.config
+        width = int(config.recorded_processing_width)
+        height = max(
+            2,
+            int(round(width * int(info["height"]) / max(int(info["width"]), 1))),
+        )
+        if height % 2:
+            height += 1
+        roi_left, roi_right = self._camera_roi(config, camera_key)
+        roi_x1 = max(0, min(width - 1, int(round(width * roi_left))))
+        roi_x2 = max(roi_x1 + 1, min(width, int(round(width * roi_right))))
+        scaled_min_face_size = max(
+            1,
+            int(
+                round(
+                    float(config.min_face_size)
+                    * width
+                    / max(int(config.processing_width), 1)
+                )
+            ),
+        )
+        started_at = datetime.fromisoformat(str(job["started_at"]))
+        duration = max(float(info.get("duration_seconds") or 0.0), 0.001)
+        observed_fps = len(packet_offsets) / duration
+        selected_payloads: list[bytes] = []
+        selected_offsets: list[float] = []
+        full_fps_frames = 0
+        face_frames = 0
+        faces = 0
+        crops_enqueued = 0
+        source_packets = 0
+        window_index = 0
+        batch_limit = 0
+        pass_started = time.perf_counter()
+        last_update = 0.0
+        parser = OctetStreamJpegParser()
+
+        def update_progress(*, force: bool = False) -> None:
+            nonlocal last_update
+            now = time.monotonic()
+            if not force and now - last_update < 0.5:
+                return
+            throughput = full_fps_frames / max(
+                time.perf_counter() - pass_started,
+                0.001,
+            )
+            current.update(
+                {
+                    "stage": "analyzing_activity",
+                    "progress": round(
+                        min(
+                            0.999,
+                            0.92 + 0.079 * full_fps_frames / expected_frames,
+                        ),
+                        4,
+                    ),
+                    "full_fps": round(observed_fps, 3),
+                    "full_fps_frames": full_fps_frames,
+                    "full_fps_expected_frames": expected_frames,
+                    "face_frames": face_frames,
+                    "faces": faces,
+                    "crops_enqueued": crops_enqueued,
+                    "activity_throughput_fps": round(throughput, 2),
+                }
+            )
+            self._set_recorded_pipeline_state("processing", current=current)
+            update_segment_job(
+                video_path.with_suffix(video_path.suffix + ".job.json"),
+                stage="analyzing_activity",
+                full_fps=round(observed_fps, 3),
+                full_fps_frames=full_fps_frames,
+                full_fps_expected_frames=expected_frames,
+                face_frames=face_frames,
+                faces=faces,
+                crops_enqueued=crops_enqueued,
+                activity_throughput_fps=round(throughput, 2),
+                progress=current["progress"],
+            )
+            last_update = now
+
+        def process_selected_batch() -> None:
+            nonlocal full_fps_frames, face_frames, faces, crops_enqueued
+            if not selected_payloads:
+                return
+            with self._gpu_lock:
+                decoded = decoder.decode_resize_batch(
+                    selected_payloads,
+                    width,
+                    height,
+                )
+            try:
+                for batch_index, (frame, offset) in enumerate(
+                    zip(
+                        decoded.resized_frames,
+                        selected_offsets,
+                        strict=True,
+                    )
+                ):
+                    with self._gpu_lock:
+                        roi_detections = detector.detect(
+                            frame[:, roi_x1:roi_x2],
+                            min_face_size=scaled_min_face_size,
+                        )
+                    detections = tuple(
+                        self._offset_detection(detected, roi_x1, 0)
+                        for detected in roi_detections
+                    )
+                    if detections:
+                        with self._gpu_lock:
+                            source_frame = decoded.copy_original(batch_index)
+                        crops_enqueued += self._enqueue_recorded_source_detections(
+                            source_frame,
+                            frame.shape[:2],
+                            detections,
+                            camera_key,
+                            started_at,
+                            offset,
+                        )
+                        face_frames += 1
+                        faces += len(detections)
+                        self._last_face_at = time.monotonic()
+                    full_fps_frames += 1
+                update_progress()
+            finally:
+                decoded.close()
+                selected_payloads.clear()
+                selected_offsets.clear()
+
+        command = [
+            str(ffmpeg),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(video_path),
+            "-map",
+            "0:v:0",
+            "-an",
+            "-sn",
+            "-c:v",
+            "copy",
+            "-f",
+            "image2pipe",
+            "pipe:1",
+        ]
+        with tempfile.TemporaryFile() as error_stream:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=error_stream,
+                bufsize=0,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            assert process.stdout is not None
+            try:
+                while not self._stop.is_set():
+                    chunk = process.stdout.read(2 * 1024 * 1024)
+                    if not chunk:
+                        break
+                    for jpeg in parser.feed(chunk):
+                        if source_packets >= len(packet_offsets):
+                            break
+                        offset = packet_offsets[source_packets]
+                        source_packets += 1
+                        while (
+                            window_index < len(windows)
+                            and offset > windows[window_index][1] + 1e-6
+                        ):
+                            window_index += 1
+                        if window_index >= len(windows):
+                            continue
+                        start, end = windows[window_index]
+                        if offset < start - 1e-6 or offset > end + 1e-6:
+                            continue
+                        selected_payloads.append(jpeg)
+                        selected_offsets.append(offset)
+                        if batch_limit <= 0:
+                            jpeg_info = decoder.image_info(jpeg)
+                            batch_limit = decoder.recommended_batch_size(
+                                jpeg_info,
+                                width,
+                                height,
+                                requested=RECORDED_MJPEG_BATCH_SIZE,
+                            )
+                        if len(selected_payloads) >= batch_limit:
+                            process_selected_batch()
+                if self._stop.is_set():
+                    raise RuntimeError(
+                        "El analisis adaptativo se interrumpio al detener la estacion."
+                    )
+                try:
+                    parser.finish()
+                except MjpegStreamError as exc:
+                    if source_packets <= 0:
+                        raise
+                    LOGGER.warning(
+                        "Se omitio el ultimo JPEG incompleto durante la "
+                        "recuperacion de %s: %s",
+                        video_path,
+                        exc,
+                    )
+                    current["trailing_frame_dropped"] = True
+                process_selected_batch()
+                return_code = process.wait(timeout=10)
+                if return_code:
+                    error_stream.seek(0)
+                    stderr = error_stream.read().decode("utf-8", errors="replace")
+                    raise RuntimeError(
+                        f"FFmpeg termino con codigo {return_code}: {stderr[-1200:]}"
+                    )
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+                try:
+                    process.stdout.close()
+                except OSError:
+                    pass
+
+        if full_fps_frames != expected_frames:
+            raise RuntimeError(
+                "La recuperacion adaptativa esperaba "
+                f"{expected_frames} frames y obtuvo {full_fps_frames}."
+            )
+        elapsed = time.perf_counter() - pass_started
+        update_progress(force=True)
+        return {
+            "full_fps_frames": full_fps_frames,
+            "full_fps_expected_frames": expected_frames,
+            "face_frames": face_frames,
+            "faces": faces,
+            "crops_enqueued": crops_enqueued,
+            "full_fps": round(observed_fps, 3),
+            "activity_throughput_fps": round(
+                full_fps_frames / max(elapsed, 0.001),
+                2,
+            ),
+            "activity_scan_seconds": round(elapsed, 3),
+        }
+
+    def _wait_recorded_persistence(self, timeout: float) -> bool:
+        deadline = time.monotonic() + max(0.0, timeout)
+        while time.monotonic() < deadline:
+            if int(getattr(self._persistence_queue, "unfinished_tasks", 0)) <= 0:
+                return True
+            worker = self._persistence_thread
+            if worker is None or not worker.is_alive():
+                return False
+            if self._stop.wait(0.05):
+                return False
+        return int(getattr(self._persistence_queue, "unfinished_tasks", 0)) <= 0
+
+    def _cleanup_recorded_originals(self) -> None:
+        roots = self._recorded_storage_roots
+        if not roots:
+            return
+        monotonic_now = time.monotonic()
+        if monotonic_now - self._recorded_last_cleanup < 60.0:
+            return
+        self._recorded_last_cleanup = monotonic_now
+        now = datetime.now(timezone.utc)
+        self._reconcile_match_video_evidence(now)
+        for job_path, payload in list_segment_jobs_in_roots(
+            roots,
+            statuses={"done"},
+        ):
+            evidence_status = str(payload.get("evidence_status") or "")
+            evidence_path = Path(str(payload.get("evidence_video_path") or ""))
+            if evidence_status in {"candidate", "candidate_fallback", "retained"}:
+                if evidence_path.is_file():
+                    continue
+            if payload.get("original_deleted"):
+                updated_at = str(payload.get("updated_at") or "")
+                try:
+                    updated = datetime.fromisoformat(updated_at)
+                except ValueError:
+                    continue
+                if now - updated >= timedelta(days=7):
+                    job_path.unlink(missing_ok=True)
+                continue
+            delete_after = str(payload.get("delete_after") or "")
+            if not delete_after:
+                continue
+            try:
+                due = datetime.fromisoformat(delete_after)
+            except ValueError:
+                continue
+            if due > now:
+                continue
+            video_path = Path(str(payload.get("path") or ""))
+            video_path.unlink(missing_ok=True)
+            if not video_path.exists():
+                mjpeg_index_path(video_path).unlink(missing_ok=True)
+            update_segment_job(
+                job_path,
+                original_deleted=not video_path.exists(),
+                deleted_at=now.isoformat(),
+            )
+
+    def _reconcile_match_video_evidence(self, now: datetime) -> None:
+        roots = self._recorded_storage_roots
+        if not roots:
+            return
+        for job_path, payload in list_segment_jobs_in_roots(
+            roots,
+            statuses={"done"},
+        ):
+            status = str(payload.get("evidence_status") or "")
+            if status not in {"candidate", "candidate_fallback", "retained"}:
+                continue
+            evidence_path = Path(str(payload.get("evidence_video_path") or ""))
+            if status == "retained":
+                due_text = str(payload.get("evidence_delete_after") or "")
+                try:
+                    due = datetime.fromisoformat(due_text)
+                except ValueError:
+                    continue
+                if due > now:
+                    continue
+                evidence_path.unlink(missing_ok=True)
+                same_as_original = evidence_path == Path(
+                    str(payload.get("path") or "")
+                )
+                expired_payload = update_segment_job(
+                    job_path,
+                    evidence_status="expired",
+                    evidence_deleted_at=now.isoformat(),
+                    evidence_file_bytes=0,
+                    original_deleted=(
+                        not evidence_path.exists()
+                        if same_as_original
+                        else bool(payload.get("original_deleted"))
+                    ),
+                )
+                self._index_match_evidence_job(job_path, expired_payload)
+                continue
+
+            try:
+                started = datetime.fromisoformat(str(payload["started_at"])).astimezone(
+                    BUSINESS_TIME_ZONE
+                )
+            except (KeyError, ValueError):
+                continue
+            duration = max(0.0, float(payload.get("duration_seconds") or 0.0))
+            ends = started + timedelta(seconds=duration)
+            decision = self.store.match_video_decision(
+                started.date().isoformat(),
+                started.isoformat(),
+                ends.isoformat(),
+            )
+            if not decision.get("ready"):
+                continue
+            windows = list(decision.get("windows") or [])
+            if not windows:
+                evidence_path.unlink(missing_ok=True)
+                same_as_original = evidence_path == Path(
+                    str(payload.get("path") or "")
+                )
+                discarded_payload = update_segment_job(
+                    job_path,
+                    evidence_status="discarded",
+                    evidence_deleted_at=now.isoformat(),
+                    evidence_file_bytes=0,
+                    original_deleted=(
+                        not evidence_path.exists()
+                        if same_as_original
+                        else bool(payload.get("original_deleted"))
+                    ),
+                )
+                self._index_match_evidence_job(job_path, discarded_payload)
+                continue
+
+            retain_until = max(
+                datetime.fromisoformat(str(window["ends_at"]))
+                for window in windows
+            ) + timedelta(days=MATCH_EVIDENCE_RETENTION_DAYS)
+            retained_path = evidence_path
+            if status == "candidate" and evidence_path.is_file():
+                # A hot-tier job can point at a proxy already archived on F:.
+                # Keep the retained proxy on the tier that owns the evidence;
+                # Path.replace cannot cross Windows volumes and the original
+                # video job location is not authoritative for this file.
+                evidence_root = job_path.parents[2]
+                resolved_evidence = evidence_path.resolve()
+                for storage_root in roots:
+                    resolved_root = storage_root.resolve()
+                    try:
+                        resolved_evidence.relative_to(resolved_root)
+                    except ValueError:
+                        continue
+                    evidence_root = resolved_root
+                    break
+                retained_path = (
+                    evidence_root
+                    / "_match-evidence"
+                    / "retained"
+                    / started.date().isoformat()
+                    / str(payload.get("camera_key") or "camera")
+                    / evidence_path.name
+                )
+                retained_path.parent.mkdir(parents=True, exist_ok=True)
+                evidence_path.replace(retained_path)
+            retained_payload = update_segment_job(
+                job_path,
+                evidence_status="retained",
+                evidence_video_path=str(retained_path),
+                evidence_window_ids=[int(window["id"]) for window in windows],
+                evidence_delete_after=retain_until.isoformat(),
+                evidence_retained_at=now.isoformat(),
+                delete_after=(
+                    retain_until.isoformat()
+                    if status == "candidate_fallback"
+                    else str(payload.get("delete_after") or "")
+                ),
+            )
+            self._index_match_evidence_job(job_path, retained_payload)
 
     def _batch_detection_pause_requested(self) -> bool:
         return (
@@ -4026,6 +7209,32 @@ class StationRuntime:
     def _set_preview(self, payload: bytes, camera_key: str = "primary") -> None:
         with self._preview_lock:
             self._preview_jpegs[camera_key] = payload
+
+    def _publish_recorded_live_preview(
+        self,
+        camera_key: str,
+        jpeg_payload: bytes,
+    ) -> None:
+        frame = cv2.imdecode(
+            np.frombuffer(jpeg_payload, dtype=np.uint8),
+            cv2.IMREAD_COLOR,
+        )
+        if frame is None or frame.size == 0:
+            raise ValueError("FFmpeg entrego una vista previa JPEG invalida.")
+        config = self.config_manager.config
+        preview = resize_for_processing(frame, int(config.preview_width))
+        roi_left, roi_right = self._camera_roi(config, camera_key)
+        roi_x1 = max(0, min(preview.shape[1] - 1, int(round(preview.shape[1] * roi_left))))
+        roi_x2 = max(roi_x1 + 1, min(preview.shape[1], int(round(preview.shape[1] * roi_right))))
+        draw_detection_roi(
+            preview,
+            (roi_x1, 0, roi_x2, preview.shape[0]),
+        )
+        self._set_preview(
+            encode_preview(preview, int(config.preview_width)),
+            camera_key,
+        )
+        self._last_preview_at[camera_key] = time.monotonic()
 
     @staticmethod
     def _detection_for_source(detected: DetectedFace, detection_frame, source_frame) -> DetectedFace:

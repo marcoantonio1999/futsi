@@ -6987,6 +6987,293 @@ class LocalStore:
             "analysis_version": MATCH_ANALYSIS_VERSION,
         }
 
+    def match_video_decision(
+        self,
+        analysis_date: str,
+        segment_starts_at: str,
+        segment_ends_at: str,
+    ) -> dict:
+        """Decide whether a low-resolution segment is match evidence.
+
+        A candidate is never discarded while its local day is still open, the
+        crop queue has unresolved work, or match analysis is stale.
+        """
+        today = business_time(datetime.now(timezone.utc)).date().isoformat()
+        if analysis_date >= today:
+            return {"ready": False, "retain": False, "windows": []}
+        try:
+            segment_start = datetime.fromisoformat(segment_starts_at)
+            segment_end = datetime.fromisoformat(segment_ends_at)
+        except (TypeError, ValueError):
+            return {"ready": False, "retain": False, "windows": []}
+        with self.connection() as db:
+            day = db.execute(
+                """
+                select status,source_queue_count,unresolved_queue_count,
+                       analysis_version
+                from match_analysis_days where analysis_date=?
+                """,
+                (analysis_date,),
+            ).fetchone()
+            source = db.execute(
+                """
+                select coalesce(sum(item_count),0) as source_queue_count,
+                       coalesce(sum(
+                           case when status in ('pending','processing','error')
+                                then item_count else 0 end
+                       ),0) as unresolved_queue_count
+                from crop_processing_stats where capture_date=?
+                """,
+                (analysis_date,),
+            ).fetchone()
+            current_count = int(source["source_queue_count"] or 0)
+            unresolved = int(source["unresolved_queue_count"] or 0)
+            if day is None:
+                return {
+                    "ready": current_count == 0 and unresolved == 0,
+                    "retain": False,
+                    "windows": [],
+                }
+            if (
+                str(day["status"]) != "complete"
+                or str(day["analysis_version"]) != MATCH_ANALYSIS_VERSION
+                or int(day["source_queue_count"] or 0) != current_count
+                or int(day["unresolved_queue_count"] or 0) != 0
+                or unresolved != 0
+            ):
+                return {"ready": False, "retain": False, "windows": []}
+            windows = []
+            for row in db.execute(
+                """
+                select id,starts_at,ends_at,evidence_starts_at,evidence_ends_at
+                from match_analysis_windows
+                where analysis_date=? and window_type='unscheduled'
+                order by window_index
+                """,
+                (analysis_date,),
+            ):
+                try:
+                    window_start = datetime.fromisoformat(str(row["starts_at"]))
+                    window_end = datetime.fromisoformat(str(row["ends_at"]))
+                except ValueError:
+                    continue
+                if segment_start < window_end and segment_end > window_start:
+                    windows.append(dict(row))
+        return {
+            "ready": True,
+            "retain": bool(windows),
+            "windows": windows,
+        }
+
+    def match_window_context(self, window_id: int) -> dict | None:
+        with self.connection() as db:
+            row = db.execute(
+                """
+                select id,analysis_date,starts_at,ends_at,window_type,
+                       window_status
+                from match_analysis_windows where id=?
+                """,
+                (int(window_id),),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    @staticmethod
+    def _match_evidence_index_record(
+        job_path: str | Path,
+        payload: dict,
+    ) -> dict | None:
+        evidence_status = str(payload.get("evidence_status") or "").strip()
+        if not evidence_status:
+            return None
+        evidence_path = Path(
+            str(payload.get("evidence_video_path") or "")
+        )
+        camera_key = str(payload.get("camera_key") or "camera")
+        stem = evidence_path.stem or Path(
+            str(payload.get("filename") or "segment")
+        ).stem
+        started_at = str(payload.get("started_at") or "")
+        analysis_date = started_at[:10]
+        file_bytes = max(0, int(payload.get("evidence_file_bytes") or 0))
+        if file_bytes <= 0 and evidence_path.is_file():
+            try:
+                file_bytes = max(0, int(evidence_path.stat().st_size))
+            except OSError:
+                file_bytes = 0
+        window_ids = []
+        for value in payload.get("evidence_window_ids") or []:
+            try:
+                window_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if window_id > 0 and window_id not in window_ids:
+                window_ids.append(window_id)
+        return {
+            "job_path": str(Path(job_path).resolve()),
+            "video_id": f"{camera_key}--{stem}",
+            "analysis_date": analysis_date,
+            "camera_key": camera_key,
+            "camera_label": str(payload.get("camera_label") or camera_key),
+            "started_at": started_at,
+            "finished_at": str(payload.get("finished_at") or ""),
+            "duration_seconds": max(
+                0.0,
+                float(payload.get("duration_seconds") or 0.0),
+            ),
+            "evidence_status": evidence_status,
+            "evidence_video_path": str(evidence_path),
+            "evidence_file_bytes": file_bytes,
+            "evidence_delete_after": str(
+                payload.get("evidence_delete_after") or ""
+            ),
+            "fallback_original": int(
+                evidence_path.suffix.lower() != ".mp4"
+            ),
+            "updated_at": str(payload.get("updated_at") or utc_now()),
+            "window_ids": window_ids,
+        }
+
+    @staticmethod
+    def _upsert_match_evidence_index_record(
+        db: sqlite3.Connection,
+        record: dict,
+    ) -> int:
+        db.execute(
+            """
+            insert into match_evidence_videos
+                (job_path,video_id,analysis_date,camera_key,camera_label,
+                 started_at,finished_at,duration_seconds,evidence_status,
+                 evidence_video_path,evidence_file_bytes,
+                 evidence_delete_after,fallback_original,updated_at)
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            on conflict(job_path) do update set
+                video_id=excluded.video_id,
+                analysis_date=excluded.analysis_date,
+                camera_key=excluded.camera_key,
+                camera_label=excluded.camera_label,
+                started_at=excluded.started_at,
+                finished_at=excluded.finished_at,
+                duration_seconds=excluded.duration_seconds,
+                evidence_status=excluded.evidence_status,
+                evidence_video_path=excluded.evidence_video_path,
+                evidence_file_bytes=excluded.evidence_file_bytes,
+                evidence_delete_after=excluded.evidence_delete_after,
+                fallback_original=excluded.fallback_original,
+                updated_at=excluded.updated_at
+            """,
+            (
+                record["job_path"],
+                record["video_id"],
+                record["analysis_date"],
+                record["camera_key"],
+                record["camera_label"],
+                record["started_at"],
+                record["finished_at"],
+                record["duration_seconds"],
+                record["evidence_status"],
+                record["evidence_video_path"],
+                record["evidence_file_bytes"],
+                record["evidence_delete_after"],
+                record["fallback_original"],
+                record["updated_at"],
+            ),
+        )
+        row = db.execute(
+            "select id from match_evidence_videos where job_path=?",
+            (record["job_path"],),
+        ).fetchone()
+        evidence_video_id = int(row["id"])
+        db.execute(
+            "delete from match_evidence_window_links where evidence_video_id=?",
+            (evidence_video_id,),
+        )
+        for window_id in record["window_ids"]:
+            db.execute(
+                """
+                insert or ignore into match_evidence_window_links
+                    (evidence_video_id,window_id)
+                select ?,id from match_analysis_windows where id=?
+                """,
+                (evidence_video_id, int(window_id)),
+            )
+        return evidence_video_id
+
+    def upsert_match_evidence_video(
+        self,
+        job_path: str | Path,
+        payload: dict,
+    ) -> dict | None:
+        record = self._match_evidence_index_record(job_path, payload)
+        normalized_job_path = str(Path(job_path).resolve())
+        with self.connection(immediate=True) as db:
+            if record is None:
+                db.execute(
+                    "delete from match_evidence_videos where job_path=?",
+                    (normalized_job_path,),
+                )
+                return None
+            evidence_video_id = self._upsert_match_evidence_index_record(
+                db,
+                record,
+            )
+        return {**record, "id": evidence_video_id}
+
+    def rebuild_match_evidence_index(
+        self,
+        jobs: list[tuple[str | Path, dict]],
+    ) -> dict:
+        records = []
+        for job_path, payload in jobs:
+            record = self._match_evidence_index_record(job_path, payload)
+            if record is not None:
+                records.append(record)
+        with self.connection(immediate=True) as db:
+            db.execute("delete from match_evidence_videos")
+            for record in records:
+                self._upsert_match_evidence_index_record(db, record)
+        return {
+            "videos": len(records),
+            "links": sum(len(record["window_ids"]) for record in records),
+        }
+
+    def match_evidence_videos_for_window(self, window_id: int) -> list[dict]:
+        with self.connection() as db:
+            return [
+                dict(row)
+                for row in db.execute(
+                    """
+                    select video.*
+                    from match_evidence_window_links link
+                    join match_evidence_videos video
+                      on video.id=link.evidence_video_id
+                    where link.window_id=?
+                      and video.evidence_status='retained'
+                    order by video.started_at,video.camera_key,video.id
+                    """,
+                    (int(window_id),),
+                )
+            ]
+
+    def match_evidence_video_for_window(
+        self,
+        window_id: int,
+        video_id: str,
+    ) -> dict | None:
+        with self.connection() as db:
+            row = db.execute(
+                """
+                select video.*
+                from match_evidence_window_links link
+                join match_evidence_videos video
+                  on video.id=link.evidence_video_id
+                where link.window_id=? and video.video_id=?
+                  and video.evidence_status='retained'
+                order by video.id limit 1
+                """,
+                (int(window_id), str(video_id)),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     def start_match_analysis(self, *, force: bool = False) -> dict:
         with self._match_analysis_state_lock:
             if self._match_analysis_state["running"] or self._match_analysis_guard.locked():

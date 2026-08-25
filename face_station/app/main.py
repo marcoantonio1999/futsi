@@ -289,7 +289,17 @@ def match_window_participants(window_id: int):
     result = runtime.store.match_window_participants(window_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Ventana no encontrada.")
+    result["videos"] = runtime.match_window_videos(window_id) or []
     return result
+
+
+@app.get("/api/match-analysis/windows/{window_id}/videos/{video_id}")
+def match_window_video(window_id: int, video_id: str):
+    path = runtime.match_window_video_path(window_id, video_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Video de evidencia no disponible.")
+    media_type = "video/mp4" if path.suffix.lower() == ".mp4" else "video/x-matroska"
+    return FileResponse(path, media_type=media_type)
 
 
 @app.get("/api/match-analysis/evidence/{crop_id}")
