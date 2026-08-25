@@ -56,6 +56,17 @@ class StationConfig:
     preview_fps: int = 1
     target_fps: float = 30
     benchmark_seconds: int = 8
+    recorded_detection_enabled: bool = False
+    recorded_video_dir: str = ""
+    recorded_hot_video_dir: str = ""
+    recorded_hot_min_free_gb: float = 35.0
+    recorded_hot_resume_free_gb: float = 45.0
+    recorded_ffmpeg_path: str = ""
+    recorded_ffprobe_path: str = ""
+    recorded_segment_minutes: int = 5
+    recorded_sample_fps: float = 2.0
+    recorded_processing_width: int = 640
+    recorded_original_retention_hours: int = 0
     known_threshold: float = 0.45
     min_margin: float = 0.03
     unknown_threshold: float = 0.55
@@ -239,6 +250,46 @@ class StationConfig:
             raise ValueError("preview_fps debe estar entre 1 y 20.")
         if not 0 <= float(self.target_fps) <= 30:
             raise ValueError("target_fps debe estar entre 0 y 30; 0 activa el benchmark.")
+        self.recorded_detection_enabled = self._as_bool(
+            self.recorded_detection_enabled
+        )
+        self.recorded_video_dir = str(self.recorded_video_dir).strip()
+        self.recorded_hot_video_dir = str(self.recorded_hot_video_dir).strip()
+        self.recorded_hot_min_free_gb = float(self.recorded_hot_min_free_gb)
+        self.recorded_hot_resume_free_gb = float(
+            self.recorded_hot_resume_free_gb
+        )
+        if not 5 <= self.recorded_hot_min_free_gb <= 500:
+            raise ValueError(
+                "recorded_hot_min_free_gb debe estar entre 5 y 500."
+            )
+        if not self.recorded_hot_min_free_gb <= self.recorded_hot_resume_free_gb <= 750:
+            raise ValueError(
+                "recorded_hot_resume_free_gb debe ser mayor o igual a "
+                "recorded_hot_min_free_gb y no superar 750."
+            )
+        self.recorded_ffmpeg_path = str(self.recorded_ffmpeg_path).strip()
+        self.recorded_ffprobe_path = str(self.recorded_ffprobe_path).strip()
+        if not 1 <= int(self.recorded_segment_minutes) <= 30:
+            raise ValueError(
+                "recorded_segment_minutes debe estar entre 1 y 30."
+            )
+        self.recorded_segment_minutes = int(self.recorded_segment_minutes)
+        if not 0.5 <= float(self.recorded_sample_fps) <= 10.0:
+            raise ValueError("recorded_sample_fps debe estar entre 0.5 y 10.")
+        self.recorded_sample_fps = float(self.recorded_sample_fps)
+        if not 320 <= int(self.recorded_processing_width) <= 1280:
+            raise ValueError(
+                "recorded_processing_width debe estar entre 320 y 1280."
+            )
+        self.recorded_processing_width = int(self.recorded_processing_width)
+        if not 0 <= int(self.recorded_original_retention_hours) <= 168:
+            raise ValueError(
+                "recorded_original_retention_hours debe estar entre 0 y 168."
+            )
+        self.recorded_original_retention_hours = int(
+            self.recorded_original_retention_hours
+        )
         for name in (
             "known_threshold",
             "unknown_threshold",
