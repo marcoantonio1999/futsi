@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import gzip
 import json
 import os
 import sqlite3
@@ -3232,7 +3233,7 @@ class LocalStore:
         subject_id: str,
         reason: str,
         *,
-        create_backup: bool = True,
+        create_backup: bool = False,
         verify_integrity: bool = True,
     ) -> dict:
         requested_id = str(subject_id or "").strip()
@@ -3307,30 +3308,15 @@ class LocalStore:
                     "backup_path": "",
                 }
 
-            if create_backup:
-                backup_dir = self.data_dir / "backups"
-                backup_dir.mkdir(parents=True, exist_ok=True)
-                backup_path = backup_dir / (
-                    "unknown-quarantine-"
-                    f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-"
-                    f"{uuid4().hex[:8]}.sqlite3"
-                )
-                backup_db = sqlite3.connect(backup_path)
-                try:
-                    db.backup(backup_db)
-                finally:
-                    backup_db.close()
-                check_db = sqlite3.connect(backup_path)
-                try:
-                    backup_integrity = check_db.execute(
-                        "pragma integrity_check"
-                    ).fetchone()[0]
-                finally:
-                    check_db.close()
-                if backup_integrity != "ok":
-                    raise RuntimeError(
-                        "La copia SQLite previa a la cuarentena no paso integrity_check."
-                    )
+            # Quarantining changes a small, known set of rows. A complete copy
+            # of the multi-gigabyte station database is unnecessary and used
+            # to consume several gigabytes per operation. Keep only a compact,
+            # recoverable snapshot of the affected identity.
+            backup_path = self._create_unknown_quarantine_audit(
+                db,
+                canonical_id,
+                normalized_reason,
+            )
 
             now = utc_now()
             try:
@@ -3489,12 +3475,192 @@ class LocalStore:
             "limit": safe_limit,
         }
 
+    @staticmethod
+    def _merge_audit_row(row: sqlite3.Row | dict) -> dict:
+        encoded = {}
+        for key, value in dict(row).items():
+            if isinstance(value, bytes):
+                encoded[key] = {
+                    "encoding": "base64",
+                    "data": base64.b64encode(value).decode("ascii"),
+                }
+            else:
+                encoded[key] = value
+        return encoded
+
+    def _create_unknown_quarantine_audit(
+        self,
+        db: sqlite3.Connection,
+        subject_id: str,
+        reason: str,
+    ) -> Path:
+        """Persist the quarantined identity without copying the complete DB."""
+
+        def snapshot(query: str, params: tuple | list) -> list[dict]:
+            return [
+                self._merge_audit_row(row)
+                for row in db.execute(query, params)
+            ]
+
+        payload = {
+            "schema_version": 1,
+            "operation": "unknown_quarantine",
+            "created_at": utc_now(),
+            "subject_id": subject_id,
+            "reason": reason,
+            "unknown_subjects": snapshot(
+                "select * from unknown_subjects where subject_id=?",
+                (subject_id,),
+            ),
+            "unknown_references": snapshot(
+                "select * from unknown_references where subject_id=? order by id",
+                (subject_id,),
+            ),
+            "daily_presence": snapshot(
+                """
+                select * from daily_presence
+                where subject_kind='unknown' and subject_key=?
+                order by presence_date,session_id
+                """,
+                (subject_id,),
+            ),
+            "daily_detection_stats": snapshot(
+                """
+                select * from daily_detection_stats
+                where subject_kind='unknown' and subject_key=?
+                order by evidence_date
+                """,
+                (subject_id,),
+            ),
+            "face_crops": snapshot(
+                """
+                select id,subject_key,evidence_selected,evidence_reason,
+                       evidence_score,evidence_curated_at
+                from face_crops
+                where subject_kind='unknown' and subject_key=?
+                order by id
+                """,
+                (subject_id,),
+            ),
+            "crop_processing_queue": snapshot(
+                """
+                select id,result_key,result_name,updated_at
+                from crop_processing_queue
+                where result_kind='unknown' and result_key=?
+                order by id
+                """,
+                (subject_id,),
+            ),
+        }
+        audit_dir = self.data_dir / "backups" / "unknown-quarantine-audits"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        audit_path = audit_dir / (
+            f"unknown-quarantine-audit-{datetime.now().strftime('%Y%m%d-%H%M%S')}-"
+            f"{uuid4().hex[:8]}.json.gz"
+        )
+        temporary_path = audit_path.with_suffix(audit_path.suffix + ".tmp")
+        try:
+            with gzip.open(temporary_path, "wt", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=True, separators=(",", ":"))
+            os.replace(temporary_path, audit_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return audit_path
+
+    def _create_unknown_merge_audit(
+        self,
+        db: sqlite3.Connection,
+        target_subject_id: str,
+        source_subject_ids: list[str],
+    ) -> Path:
+        """Persist the affected rows without copying the multi-gigabyte DB."""
+
+        subject_ids = [target_subject_id, *source_subject_ids]
+        placeholders = ",".join("?" for _ in subject_ids)
+
+        def snapshot(query: str, params: tuple | list) -> list[dict]:
+            return [
+                self._merge_audit_row(row)
+                for row in db.execute(query, params)
+            ]
+
+        payload = {
+            "schema_version": 1,
+            "operation": "unknown_merge",
+            "created_at": utc_now(),
+            "target_subject_id": target_subject_id,
+            "source_subject_ids": source_subject_ids,
+            "unknown_subjects": snapshot(
+                f"select * from unknown_subjects where subject_id in ({placeholders})",
+                subject_ids,
+            ),
+            "unknown_references": snapshot(
+                f"select * from unknown_references where subject_id in ({placeholders}) order by id",
+                subject_ids,
+            ),
+            "daily_presence": snapshot(
+                f"""
+                select * from daily_presence
+                where subject_kind='unknown'
+                  and subject_key in ({placeholders})
+                order by subject_key,presence_date,session_id
+                """,
+                subject_ids,
+            ),
+            "daily_detection_stats": snapshot(
+                f"""
+                select * from daily_detection_stats
+                where subject_kind='unknown'
+                  and subject_key in ({placeholders})
+                order by subject_key,evidence_date
+                """,
+                subject_ids,
+            ),
+            # Compact crop state is sufficient to restore both ownership and
+            # evidence curation without duplicating crop images or embeddings.
+            "face_crops": snapshot(
+                f"""
+                select id,subject_key,evidence_selected,evidence_reason,
+                       evidence_score,evidence_curated_at
+                from face_crops
+                where subject_kind='unknown'
+                  and subject_key in ({placeholders})
+                order by id
+                """,
+                subject_ids,
+            ),
+            "crop_processing_queue": snapshot(
+                f"""
+                select id,result_key,result_name,updated_at
+                from crop_processing_queue
+                where result_kind='unknown'
+                  and result_key in ({placeholders})
+                order by id
+                """,
+                subject_ids,
+            ),
+        }
+        audit_dir = self.data_dir / "backups" / "unknown-merge-audits"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        audit_path = audit_dir / (
+            f"unknown-merge-audit-{datetime.now().strftime('%Y%m%d-%H%M%S')}-"
+            f"{uuid4().hex[:8]}.json.gz"
+        )
+        temporary_path = audit_path.with_suffix(audit_path.suffix + ".tmp")
+        try:
+            with gzip.open(temporary_path, "wt", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=True, separators=(",", ":"))
+            os.replace(temporary_path, audit_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return audit_path
+
     def merge_unknowns(
         self,
         target_subject_id: str,
         source_subject_ids: list[str],
         *,
-        create_backup: bool = True,
+        create_backup: bool = False,
         existing_backup_path: Path | None = None,
         verify_integrity: bool = True,
     ) -> dict:
@@ -3622,18 +3788,16 @@ class LocalStore:
             quality_hits = sum(int(row["quality_hits"] or 0) for row in rows)
             now = utc_now()
 
-            backup_path = existing_backup_path
-            if create_backup:
-                backup_dir = self.data_dir / "backups"
-                backup_dir.mkdir(parents=True, exist_ok=True)
-                backup_path = backup_dir / (
-                    f"unknown-merge-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}.sqlite3"
-                )
-                backup_db = sqlite3.connect(backup_path)
-                try:
-                    db.backup(backup_db)
-                finally:
-                    backup_db.close()
+            # A merge is atomic in SQLite and touches a bounded collection of
+            # rows. Persist those rows in a compressed logical audit instead of
+            # cloning the complete database. The legacy arguments remain in
+            # the signature for callers from older builds, but they can no
+            # longer trigger a full SQLite backup.
+            backup_path = self._create_unknown_merge_audit(
+                db,
+                target_subject_id,
+                canonical_sources,
+            )
 
             db.execute(
                 """
@@ -4825,6 +4989,7 @@ class LocalStore:
         db: sqlite3.Connection,
         *,
         cutoff_date: str,
+        include_audit_rows: bool = False,
     ) -> list[dict]:
         protected_paths = self._protected_crop_paths(db)
         incomplete_dates = {
@@ -4839,9 +5004,14 @@ class LocalStore:
         }
         candidates = []
         faces_root = self.faces_dir.resolve()
+        selected_columns = (
+            "*"
+            if include_audit_rows
+            else "id,subject_key,subject_kind,seen_at,crop_path"
+        )
         for row in db.execute(
-            """
-            select id,subject_key,subject_kind,seen_at,crop_path
+            f"""
+            select {selected_columns}
             from face_crops
             where evidence_selected=0
               and trim(evidence_curated_at)<>''
@@ -4850,7 +5020,13 @@ class LocalStore:
             """,
             (str(cutoff_date),),
         ):
-            item = dict(row)
+            row_payload = dict(row)
+            item = {
+                key: row_payload[key]
+                for key in ("id", "subject_key", "subject_kind", "seen_at", "crop_path")
+            }
+            if include_audit_rows:
+                item["audit_row"] = self._merge_audit_row(row)
             evidence_date = str(item["seen_at"])[:10]
             if evidence_date in incomplete_dates:
                 continue
@@ -4901,10 +5077,14 @@ class LocalStore:
     def _write_manifest(path: Path, payload: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        if path.suffix.lower() == ".gz":
+            with gzip.open(temporary, "wt", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=True, separators=(",", ":"))
+        else:
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
         temporary.replace(path)
 
     @staticmethod
@@ -4980,15 +5160,15 @@ class LocalStore:
         run_id = f"retention-{local_now.strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
         backup_dir = self.data_dir / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
-        backup_path = backup_dir / f"{run_id}.sqlite3"
         quarantine_root = (self.data_dir / "retention-trash" / run_id).resolve()
-        manifest_path = backup_dir / f"{run_id}.json"
+        manifest_path = backup_dir / f"{run_id}.json.gz"
         purge_after = (local_now + timedelta(hours=24)).isoformat()
 
         with self.connection() as db:
             candidates = self._retention_candidates(
                 db,
                 cutoff_date=str(preview["cutoff_date"]),
+                include_audit_rows=True,
             )
             if not candidates:
                 return {
@@ -4997,18 +5177,6 @@ class LocalStore:
                     "bytes": 0,
                     "dates": [],
                 }
-            backup_db = sqlite3.connect(backup_path)
-            try:
-                db.backup(backup_db)
-            finally:
-                backup_db.close()
-            check_db = sqlite3.connect(backup_path)
-            try:
-                if check_db.execute("pragma integrity_check").fetchone()[0] != "ok":
-                    raise RuntimeError("La copia SQLite de retencion no paso integrity_check.")
-            finally:
-                check_db.close()
-
         created_at = utc_now()
         with self.connection(immediate=True) as db:
             db.execute(
@@ -5024,7 +5192,7 @@ class LocalStore:
                     run_id,
                     str(preview["cutoff_date"]),
                     "staging",
-                    str(backup_path),
+                    "",
                     str(manifest_path),
                     str(quarantine_root),
                     purge_after,
@@ -5066,12 +5234,16 @@ class LocalStore:
             "status": "staging",
             "cutoff_date": preview["cutoff_date"],
             "safety_days": int(safety_days),
-            "backup_path": str(backup_path),
+            "backup_path": "",
             "quarantine_path": str(quarantine_root),
             "purge_after": purge_after,
             "items": [
                 {
                     "face_crop_id": int(row["id"]),
+                    "subject_key": str(row["subject_key"]),
+                    "subject_kind": str(row["subject_kind"]),
+                    "seen_at": str(row["seen_at"]),
+                    "face_crop_row": row["audit_row"],
                     "source_path": str(Path(str(row["crop_path"])).resolve()),
                     "quarantine_path": str(
                         (quarantine_root / str(row["relative_path"])).resolve()
@@ -5148,7 +5320,7 @@ class LocalStore:
                     "dry_run": False,
                     "run_id": run_id,
                     "status": "committed",
-                    "backup_path": str(backup_path),
+                    "backup_path": "",
                     "manifest_path": str(manifest_path),
                     "quarantine_path": str(quarantine_root),
                     "purge_after": purge_after,

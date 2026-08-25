@@ -852,7 +852,15 @@ class StationRuntime:
         return result
 
     def merge_unknowns(self, target_subject_id: str, source_subject_ids: list[str]) -> dict:
-        result = self.store.merge_unknowns(target_subject_id, source_subject_ids)
+        # A manual merge is already atomic in SQLite. Keep a compact logical
+        # audit of only the affected rows instead of copying the full multi-GB
+        # database and running a global integrity scan while cameras wait.
+        result = self.store.merge_unknowns(
+            target_subject_id,
+            source_subject_ids,
+            create_backup=False,
+            verify_integrity=False,
+        )
         # A pending frame may still reference one of the archived IDs. The
         # store redirects those writes to the canonical target, while clearing
         # the visual tracks prevents new frames from keeping the stale group.
@@ -884,22 +892,12 @@ class StationRuntime:
             )
             applied = []
             if apply:
-                batch_backup_path: Path | None = None
                 for proposal in plan.merge_proposals:
-                    create_batch_backup = not applied
                     result = self.store.merge_unknowns(
                         proposal.target_subject_id,
                         list(proposal.source_subject_ids),
-                        create_backup=create_batch_backup,
-                        existing_backup_path=batch_backup_path,
+                        create_backup=False,
                     )
-                    if create_batch_backup:
-                        backup_value = str(result.get("backup_path") or "").strip()
-                        if not backup_value:
-                            raise RuntimeError(
-                                "La reconciliacion no pudo confirmar su respaldo SQLite."
-                            )
-                        batch_backup_path = Path(backup_value)
                     applied.append(result)
                 if applied:
                     self._unknown_tracks.clear()
@@ -968,7 +966,12 @@ class StationRuntime:
         return result
 
     def quarantine_unknown(self, subject_id: str, reason: str) -> dict:
-        result = self.store.quarantine_unknown(subject_id, reason)
+        result = self.store.quarantine_unknown(
+            subject_id,
+            reason,
+            create_backup=False,
+            verify_integrity=False,
+        )
         self._unknown_tracks.clear()
         self._reload_unknown_database()
         self._refresh_recent()

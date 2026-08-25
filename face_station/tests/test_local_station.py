@@ -1,3 +1,4 @@
+import gzip
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
@@ -3139,6 +3140,8 @@ def test_store_merges_unknown_groups_and_redirects_pending_writes(tmp_path):
     assert result["target"]["detection_count"] == 3
     assert result["target"]["best_quality"] == 0.92
     assert Path(result["backup_path"]).is_file()
+    assert Path(result["backup_path"]).name.endswith(".json.gz")
+    assert not list((tmp_path / "backups").glob("unknown-merge-*.sqlite3"))
     assert result["crops_moved"] == 2
     assert result["queue_results_moved"] == 2
     assert result["attendance_rows_merged"] == 3
@@ -3182,6 +3185,63 @@ def test_store_merges_unknown_groups_and_redirects_pending_writes(tmp_path):
     assert redirected["subject_id"] == subjects[2]["subject_id"]
     assert redirected["detection_count"] == 4
     assert store.detection_summary("2026-07-22") == {"subjects": 1, "detections": 4}
+
+
+def test_manual_unknown_merge_uses_compact_recoverable_audit(tmp_path):
+    store = LocalStore(tmp_path)
+    observed_at = datetime(2026, 8, 11, 12, 0, tzinfo=timezone.utc)
+    subjects = []
+    for index in range(2):
+        crop = store.faces_dir / "2026-08-11" / "unknown" / f"audit-{index}.jpg"
+        crop.parent.mkdir(parents=True, exist_ok=True)
+        crop.write_bytes(f"audit-{index}".encode())
+        subject = store.create_unknown(
+            normalized(800 + index),
+            observed_at + timedelta(seconds=index),
+            str(crop),
+            0.8,
+            temporary_name=f"Desconocido Audit {index}",
+            subject_id=f"unknown-audit-{index}",
+            quality_pass=True,
+            quality_payload={"accepted": True},
+            analysis_version="audit-test",
+        )
+        store.record_crop(
+            subject["subject_id"],
+            "unknown",
+            observed_at + timedelta(seconds=index),
+            str(crop),
+            0.8,
+            0.8,
+            "ELP 1",
+            embedding=normalized(800 + index),
+            quality_pass=True,
+        )
+        subjects.append(subject)
+
+    result = store.merge_unknowns(
+        subjects[0]["subject_id"],
+        [subjects[1]["subject_id"]],
+        create_backup=False,
+        verify_integrity=False,
+    )
+
+    audit_path = Path(result["backup_path"])
+    assert audit_path.is_file()
+    assert audit_path.name.endswith(".json.gz")
+    assert not list((tmp_path / "backups").glob("unknown-merge-*.sqlite3"))
+    with gzip.open(audit_path, "rt", encoding="utf-8") as handle:
+        audit = json.load(handle)
+    assert audit["target_subject_id"] == subjects[0]["subject_id"]
+    assert audit["source_subject_ids"] == [subjects[1]["subject_id"]]
+    assert {row["subject_id"] for row in audit["unknown_subjects"]} == {
+        subjects[0]["subject_id"],
+        subjects[1]["subject_id"],
+    }
+    assert {row["subject_key"] for row in audit["face_crops"]} == {
+        subjects[0]["subject_id"],
+        subjects[1]["subject_id"],
+    }
 
 
 def test_store_excludes_unknown_from_attendance_but_keeps_recognition_reference(tmp_path):
@@ -3343,6 +3403,8 @@ def test_store_quarantines_invalid_unknown_without_deleting_audit_evidence(tmp_p
     assert result["crops_preserved"] == 1
     assert result["queue_rows_preserved"] == 1
     assert Path(result["backup_path"]).is_file()
+    assert Path(result["backup_path"]).name.endswith(".json.gz")
+    assert not list((tmp_path / "backups").glob("unknown-quarantine-*.sqlite3"))
     quarantined = store.get_unknown(subject["subject_id"])
     assert quarantined["status"] == "quarantined"
     assert json.loads(quarantined["quality_json"])["quarantine"]["previous_status"] == "consolidated"
@@ -3402,16 +3464,10 @@ def test_store_quarantines_invalid_unknown_without_deleting_audit_evidence(tmp_p
         0.99,
     ) is False
 
-    with sqlite3.connect(result["backup_path"]) as backup:
-        assert backup.execute(
-            "select status from unknown_subjects where subject_id=?",
-            (subject["subject_id"],),
-        ).fetchone()[0] == "consolidated"
-        assert backup.execute(
-            "select count(*) from daily_presence where subject_key=?",
-            (subject["subject_id"],),
-        ).fetchone()[0] == 1
-        assert backup.execute("pragma integrity_check").fetchone()[0] == "ok"
+    with gzip.open(result["backup_path"], "rt", encoding="utf-8") as handle:
+        quarantine_audit = json.load(handle)
+    assert quarantine_audit["unknown_subjects"][0]["status"] == "consolidated"
+    assert len(quarantine_audit["daily_presence"]) == 1
 
     repeated = store.quarantine_unknown(
         subject["subject_id"],
@@ -3430,6 +3486,43 @@ def test_store_quarantines_invalid_unknown_without_deleting_audit_evidence(tmp_p
     assert quarantined_listing["items"][0]["quarantine_reason"].startswith(
         "Landmarks imposibles"
     )
+
+
+def test_store_quarantine_can_write_compact_logical_audit(tmp_path):
+    store = LocalStore(tmp_path)
+    observed_at = datetime(2026, 7, 22, 17, 30, tzinfo=timezone.utc).astimezone()
+    crop = store.faces_dir / observed_at.date().isoformat() / "unknown" / "invalid.jpg"
+    crop.parent.mkdir(parents=True)
+    crop.write_bytes(b"invalid-face")
+    subject = store.create_unknown(
+        normalized(113),
+        observed_at,
+        str(crop),
+        0.88,
+        subject_id="unknown-compact-quarantine",
+        temporary_name="Desconocido Compacto",
+        quality_pass=True,
+        quality_payload={"accepted": True, "score": 0.88},
+        analysis_version="test-quality-v1",
+    )
+
+    result = store.quarantine_unknown(
+        subject["subject_id"],
+        "Recortes sin sentido.",
+        create_backup=False,
+        verify_integrity=False,
+    )
+
+    audit_path = Path(result["backup_path"])
+    assert audit_path.is_file()
+    assert audit_path.parent.name == "unknown-quarantine-audits"
+    assert audit_path.name.endswith(".json.gz")
+    with gzip.open(audit_path, "rt", encoding="utf-8") as handle:
+        audit = json.load(handle)
+    assert audit["operation"] == "unknown_quarantine"
+    assert audit["subject_id"] == subject["subject_id"]
+    assert audit["unknown_subjects"][0]["status"] == "consolidated"
+    assert store.get_unknown(subject["subject_id"])["status"] == "quarantined"
 
 
 def test_store_registers_unknown_as_student_with_selected_crop_and_moves_attendance(tmp_path):
@@ -5448,11 +5541,10 @@ def test_runtime_global_reconciliation_is_dry_run_then_safe_apply(tmp_path):
     assert applied["summary"]["applied_count"] == 2
     assert len(applied["applied"]) == 2
     backup_paths = {item["backup_path"] for item in applied["applied"]}
-    assert len(backup_paths) == 1
-    assert Path(next(iter(backup_paths))).is_file()
-    assert list((tmp_path / "backups").glob("unknown-merge-*.sqlite3")) == [
-        Path(next(iter(backup_paths)))
-    ]
+    assert len(backup_paths) == 2
+    assert all(Path(path).is_file() for path in backup_paths)
+    assert all(Path(path).name.endswith(".json.gz") for path in backup_paths)
+    assert not list((tmp_path / "backups").glob("unknown-merge-*.sqlite3"))
     with runtime.store.connection() as db:
         active = db.execute(
             """

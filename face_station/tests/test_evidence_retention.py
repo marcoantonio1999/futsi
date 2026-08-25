@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gzip
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -349,8 +351,19 @@ def test_pruning_quarantines_only_old_redundant_evidence(tmp_path):
     assert detail["summary"]["detections"] == 45
     assert detail["summary"]["crops"] == 30
     assert all(path.is_file() for path in boundary_paths)
-    assert Path(result["backup_path"]).is_file()
+    assert result["backup_path"] == ""
+    assert not list((tmp_path / "backups").glob("retention-*.sqlite3"))
     assert Path(result["manifest_path"]).is_file()
+    assert Path(result["manifest_path"]).name.endswith(".json.gz")
+    with gzip.open(result["manifest_path"], "rt", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    assert len(manifest["items"]) == 15
+    assert set(manifest["items"][0]["face_crop_row"]) >= {
+        "id",
+        "subject_key",
+        "crop_path",
+        "embedding",
+    }
     assert len(list(Path(result["quarantine_path"]).rglob("*.jpg"))) == 15
 
 
