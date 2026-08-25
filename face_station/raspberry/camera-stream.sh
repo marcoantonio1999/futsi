@@ -6,7 +6,8 @@ PORT="${2:-8080}"
 FPS="${3:-15}"
 REQUESTED_RESOLUTION="${4:-auto}"
 USTREAMER="${FUTSI_USTREAMER_BIN:-$(command -v ustreamer)}"
-FFMPEG="${FUTSI_FFMPEG_BIN:-$(command -v ffmpeg || true)}"
+MJPEG_RELAY="${FUTSI_MJPEG_RELAY_BIN:-/usr/local/bin/faceguard-mjpeg-relay}"
+MJPEG_RELAY_MAX_FPS="${FUTSI_MJPEG_RELAY_MAX_FPS:-0}"
 BACKEND="${FUTSI_CAMERA_BACKEND:-auto}"
 
 select_largest_mjpeg_resolution() {
@@ -33,8 +34,12 @@ select_largest_mjpeg_resolution() {
 
 select_backend() {
   case "${BACKEND}" in
-    ustreamer|v4l2-ffmpeg)
+    ustreamer)
       printf '%s\n' "${BACKEND}"
+      ;;
+    v4l2-relay|v4l2-ffmpeg)
+      # v4l2-ffmpeg remains accepted for existing Raspberry installations.
+      printf '%s\n' 'v4l2-relay'
       ;;
     auto)
       local properties=""
@@ -43,7 +48,7 @@ select_backend() {
       fi
       if grep -qx 'ID_VENDOR_ID=32e4' <<<"${properties}" \
         && grep -qx 'ID_MODEL_ID=6678' <<<"${properties}"; then
-        printf '%s\n' 'v4l2-ffmpeg'
+        printf '%s\n' 'v4l2-relay'
       else
         printf '%s\n' 'ustreamer'
       fi
@@ -68,26 +73,26 @@ fi
 SELECTED_BACKEND="$(select_backend)"
 echo "Faceguard camera: ${DEVICE}, MJPEG ${RESOLUTION}, hasta ${FPS} FPS, backend ${SELECTED_BACKEND}"
 
-if [[ "${SELECTED_BACKEND}" == "v4l2-ffmpeg" ]]; then
-  if [[ -z "${FFMPEG}" ]]; then
-    echo "El backend v4l2-ffmpeg requiere ffmpeg" >&2
+if [[ "${SELECTED_BACKEND}" == "v4l2-relay" ]]; then
+  if [[ ! -r "${MJPEG_RELAY}" ]]; then
+    echo "El backend v4l2-relay requiere ${MJPEG_RELAY}" >&2
     exit 1
   fi
   IFS=x read -r WIDTH HEIGHT <<<"${RESOLUTION}"
   RUNTIME_DIR="$(mktemp -d /tmp/futsi-camera.XXXXXX)"
   FRAME_PIPE="${RUNTIME_DIR}/camera.mjpg"
   CAPTURE_PID=""
-  FFMPEG_PID=""
+  RELAY_PID=""
 
   cleanup_bridge() {
     trap - EXIT INT TERM
-    if [[ -n "${FFMPEG_PID}" ]]; then
-      kill "${FFMPEG_PID}" 2>/dev/null || true
+    if [[ -n "${RELAY_PID}" ]]; then
+      kill "${RELAY_PID}" 2>/dev/null || true
     fi
     if [[ -n "${CAPTURE_PID}" ]]; then
       kill "${CAPTURE_PID}" 2>/dev/null || true
     fi
-    wait "${FFMPEG_PID}" 2>/dev/null || true
+    wait "${RELAY_PID}" 2>/dev/null || true
     wait "${CAPTURE_PID}" 2>/dev/null || true
     rm -f -- "${FRAME_PIPE}"
     rmdir -- "${RUNTIME_DIR}" 2>/dev/null || true
@@ -106,19 +111,15 @@ if [[ "${SELECTED_BACKEND}" == "v4l2-ffmpeg" ]]; then
     --stream-to="${FRAME_PIPE}" &
   CAPTURE_PID="$!"
 
-  "${FFMPEG}" \
-    -hide_banner \
-    -loglevel warning \
-    -f mjpeg \
-    -framerate "${FPS}" \
-    -i "${FRAME_PIPE}" \
-    -an \
-    -c:v copy \
-    -f mpjpeg \
-    -listen 1 \
-    "http://0.0.0.0:${PORT}/stream" &
-  FFMPEG_PID="$!"
-  wait "${FFMPEG_PID}"
+  python3 "${MJPEG_RELAY}" \
+    --fifo "${FRAME_PIPE}" \
+    --host 0.0.0.0 \
+    --port "${PORT}" \
+    --max-fps "${MJPEG_RELAY_MAX_FPS}" &
+  RELAY_PID="$!"
+  # If either the camera capture or the HTTP relay exits, let systemd restart
+  # the complete pair instead of leaving an apparently active, frozen stream.
+  wait -n "${CAPTURE_PID}" "${RELAY_PID}"
 else
   exec "${USTREAMER}" \
     --device="${DEVICE}" \

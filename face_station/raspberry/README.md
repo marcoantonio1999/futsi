@@ -25,6 +25,35 @@ La URL que se configura en Face Station es:
 http://IP_LOCAL_DE_LA_RASPBERRY:8080/stream
 ```
 
+Las ELP `32e4:6678` usan el backend `v4l2-relay`: la Raspberry captura una
+sola vez los JPEG originales y los distribuye a varios clientes sin volver a
+codificarlos. Esto conserva la resolucion completa y evita que una vista previa
+o una reconexion detenga la grabacion principal.
+
+Para el modo 8 MP probado en la ELP 1, solicita el modo nativo de 60 FPS. La
+camara entrega tantos frames como permite el enlace y el contenido de la escena:
+
+```bash
+sudo FUTSI_CAMERA_RESOLUTION=3840x2160 FUTSI_CAMERA_FPS=60 \
+  bash install-camera-stream.sh /dev/video0 8080
+```
+
+El estado del relay, incluidos los FPS capturados, esta disponible en:
+
+```text
+http://IP_LOCAL_DE_LA_RASPBERRY:8080/state
+```
+
+Si el almacenamiento no sostiene todos los frames, se puede limitar solamente
+la salida sin sacar a la ELP de su modo de captura estable:
+
+```ini
+Environment=FUTSI_MJPEG_RELAY_MAX_FPS=30
+```
+
+La resolucion y la calidad JPEG permanecen intactas; solo se omiten frames antes
+de enviarlos por red y escribirlos en la PC.
+
 Para reducir retraso conviene usar el enlace Ethernet local en vez de pasar el
 video por internet. Tailscale sirve para administracion remota, pero no es
 necesario para el flujo dentro de la cancha.

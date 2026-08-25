@@ -29,8 +29,9 @@ selected_backend() {
     systemctl show futsi-camera.service --property=Environment --value 2>/dev/null \
       || true
   )"
-  if [[ "${service_environment}" == *"FUTSI_CAMERA_BACKEND=v4l2-ffmpeg"* ]]; then
-    printf '%s\n' 'v4l2-ffmpeg'
+  if [[ "${service_environment}" == *"FUTSI_CAMERA_BACKEND=v4l2-relay"* ]] \
+    || [[ "${service_environment}" == *"FUTSI_CAMERA_BACKEND=v4l2-ffmpeg"* ]]; then
+    printf '%s\n' 'v4l2-relay'
     return
   fi
   if [[ "${service_environment}" == *"FUTSI_CAMERA_BACKEND=ustreamer"* ]]; then
@@ -43,7 +44,7 @@ selected_backend() {
   fi
   if grep -qx 'ID_VENDOR_ID=32e4' <<<"${properties}" \
     && grep -qx 'ID_MODEL_ID=6678' <<<"${properties}"; then
-    printf '%s\n' 'v4l2-ffmpeg'
+    printf '%s\n' 'v4l2-relay'
   else
     printf '%s\n' 'ustreamer'
   fi
@@ -110,7 +111,7 @@ if [[ ! -e "${DEVICE}" ]]; then
 fi
 
 apt-get update
-apt-get install -y v4l-utils ffmpeg curl ca-certificates
+apt-get install -y v4l-utils ffmpeg curl ca-certificates python3
 if ! apt-get install -y ustreamer; then
   apt-get install -y git build-essential libevent-dev libjpeg-dev libbsd-dev
   temp_dir="$(mktemp -d /tmp/futsi-ustreamer.XXXXXX)"
@@ -122,6 +123,7 @@ fi
 
 USTREAMER="$(command -v ustreamer)"
 install -m 0755 "${SCRIPT_DIR}/camera-stream.sh" /usr/local/bin/futsi-camera-stream
+install -m 0755 "${SCRIPT_DIR}/mjpeg-broadcast-relay.py" /usr/local/bin/faceguard-mjpeg-relay
 usermod -aG video "${SERVICE_USER}"
 cat >/etc/systemd/system/futsi-camera.service <<EOF
 [Unit]
@@ -134,6 +136,7 @@ Type=simple
 User=${SERVICE_USER}
 SupplementaryGroups=video
 Environment=FUTSI_USTREAMER_BIN=${USTREAMER}
+Environment=FUTSI_MJPEG_RELAY_BIN=/usr/local/bin/faceguard-mjpeg-relay
 ExecStart=/usr/local/bin/futsi-camera-stream ${DEVICE} ${PORT} ${FPS} ${RESOLUTION}
 Restart=always
 RestartSec=2
@@ -150,18 +153,6 @@ BACKEND="$(selected_backend)"
 if ! wait_for_camera_stream "${BACKEND}"; then
   show_service_failure
   exit 1
-fi
-
-# FFmpeg's listen mode serves one client and exits when that client closes.
-# The health probe above intentionally consumes that connection, so leave a
-# fresh listener ready for FaceGuard after proving that real frame bytes flow.
-if [[ "${BACKEND}" == "v4l2-ffmpeg" ]]; then
-  systemctl restart futsi-camera.service
-  sleep 1
-  if ! systemctl is-active --quiet futsi-camera.service; then
-    show_service_failure
-    exit 1
-  fi
 fi
 
 systemctl --no-pager --full status futsi-camera.service
