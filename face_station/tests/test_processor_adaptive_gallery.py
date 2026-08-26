@@ -383,3 +383,150 @@ def test_queued_unknown_match_propagates_validation_and_margin(
     assert len(persisted) == 1
     assert persisted[0].reference_validated is True
     assert persisted[0].match_margin == pytest.approx(0.19)
+
+
+def test_queued_known_match_below_reference_threshold_skips_quality_but_attends(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    person = {
+        "person_key": "student:comparison-first",
+        "person_type": "student",
+        "remote_id": 202,
+        "name": "Alumno Existente",
+    }
+    runtime._engine = SimpleNamespace(
+        match_known=lambda _embedding: SimpleNamespace(
+            matched=True,
+            person=person,
+            candidates=[person],
+            similarity=0.58,
+            margin=0.20,
+        )
+    )
+    monkeypatch.setattr(runtime.store, "find_session", lambda *_args: None)
+    monkeypatch.setattr(
+        runtime,
+        "_analyze_unknown_quality",
+        lambda *_args, **_kwargs: pytest.fail(
+            "Una coincidencia sin opcion de referencia no debe analizar calidad."
+        ),
+    )
+    persisted: list[PersistenceTask] = []
+    monkeypatch.setattr(runtime, "_persist_known_task", persisted.append)
+    detected = DetectedFace(
+        bbox=(0, 0, 100, 100),
+        embedding=normalized(21),
+        score=0.96,
+        quality=0.90,
+    )
+
+    result = runtime._process_queued_crop(
+        {
+            "id": 21,
+            "crop_path": str(tmp_path / "known-skip.jpg"),
+            "captured_at": datetime(
+                2026, 7, 27, 14, 20, tzinfo=timezone.utc
+            ).astimezone().isoformat(),
+            "camera_key": "primary",
+        },
+        image=np.full((100, 100, 3), 180, dtype=np.uint8),
+        detected=detected,
+        embedding_prepared=True,
+    )
+
+    assert result["result_kind"] == "known"
+    assert len(persisted) == 1
+    assert persisted[0].quality_pass is False
+    assert persisted[0].quality_payload["skipped"] is True
+    assert runtime._batch_quality_evaluated == 0
+    assert runtime._batch_quality_skipped_ineligible == 1
+
+
+def test_existing_reference_probe_evaluates_every_eligible_view(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    analyzed: list[bool] = []
+
+    def analyze(_crop, _detected_quality):
+        analyzed.append(True)
+        return True, 0.92, {"accepted": True, "score": 0.92}, "quality-test"
+
+    monkeypatch.setattr(runtime, "_analyze_unknown_quality", analyze)
+    crop = np.full((120, 100, 3), 180, dtype=np.uint8)
+    first = runtime._quality_for_existing_match(
+        crop=crop,
+        detected_quality=0.95,
+        reference_eligible=True,
+    )
+    second = runtime._quality_for_existing_match(
+        crop=crop,
+        detected_quality=0.95,
+        reference_eligible=True,
+    )
+
+    assert first[0] is True
+    assert second[0] is True
+    assert len(analyzed) == 2
+    assert runtime._batch_quality_evaluated == 2
+    assert runtime._batch_reference_probes == 2
+
+
+def test_unmatched_crop_still_runs_full_quality_before_new_identity(
+    tmp_path,
+    monkeypatch,
+):
+    runtime = StationRuntime(ConfigManager(tmp_path))
+    runtime._engine = SimpleNamespace(match_known=lambda _embedding: None)
+    monkeypatch.setattr(
+        runtime,
+        "_match_persistent_unknown",
+        lambda _embedding: (None, 0.31, {"reason": "below_threshold"}),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_match_batch_candidate",
+        lambda _embedding, _observed_at: (None, 0.28),
+    )
+    analyzed: list[bool] = []
+
+    def analyze(_crop, _detected_quality):
+        analyzed.append(True)
+        return False, 0.30, {"accepted": False, "score": 0.30}, "quality-test"
+
+    monkeypatch.setattr(runtime, "_analyze_unknown_quality", analyze)
+    captured: list[dict] = []
+    monkeypatch.setattr(
+        runtime,
+        "_persist_unassigned_night_crop",
+        lambda *_args, **kwargs: captured.append(kwargs)
+        or {"status": "processed", "result_kind": "unassigned"},
+    )
+    detected = DetectedFace(
+        bbox=(0, 0, 100, 100),
+        embedding=normalized(22),
+        score=0.96,
+        quality=0.90,
+    )
+
+    result = runtime._process_queued_crop(
+        {
+            "id": 22,
+            "crop_path": str(tmp_path / "new-face.jpg"),
+            "captured_at": datetime(
+                2026, 7, 27, 15, 10, tzinfo=timezone.utc
+            ).astimezone().isoformat(),
+            "camera_key": "primary",
+        },
+        image=np.full((100, 100, 3), 180, dtype=np.uint8),
+        detected=detected,
+        embedding_prepared=True,
+    )
+
+    assert result["result_kind"] == "unassigned"
+    assert analyzed == [True]
+    assert captured[0]["reason"] == "calidad_insuficiente"
+    assert runtime._batch_quality_evaluated == 1

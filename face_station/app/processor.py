@@ -216,6 +216,10 @@ class StationRuntime:
         self._quality_evaluator: FaceQualityEvaluator | None = None
         self._semantic_reference_gate: SemanticReferenceGate | None = None
         self._semantic_reference_status: dict = {}
+        self._batch_quality_evaluated = 0
+        self._batch_quality_skipped_ineligible = 0
+        self._batch_reference_probes = 0
+        self._batch_quality_latency_ms = 0.0
         self._started_at = ""
         self._state = "stopped"
         self._last_error = ""
@@ -989,6 +993,18 @@ class StationRuntime:
                     ),
                     "semantic": self._semantic_reference_metadata(),
                     "attendance_depends_on_visual_quality": False,
+                    "comparison_first": {
+                        "enabled": True,
+                        "quality_evaluated": self._batch_quality_evaluated,
+                        "reference_probes": self._batch_reference_probes,
+                        "skipped_below_reference_threshold": (
+                            self._batch_quality_skipped_ineligible
+                        ),
+                        "quality_latency_ms": round(
+                            self._batch_quality_latency_ms,
+                            1,
+                        ),
+                    },
                 },
                 "persistence": {
                     "queue_depth": self._persistence_queue.qsize(),
@@ -5046,6 +5062,60 @@ class StationRuntime:
             analysis_version,
         )
 
+    def _run_night_quality_analysis(
+        self,
+        crop: np.ndarray,
+        detected_quality: float,
+    ) -> tuple[bool, float, dict, str]:
+        started = time.perf_counter()
+        result = self._analyze_unknown_quality(crop, detected_quality)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        with self._state_lock:
+            self._batch_quality_evaluated += 1
+            self._batch_quality_latency_ms += elapsed_ms
+        return result
+
+    @staticmethod
+    def _skipped_reference_quality(
+        detected_quality: float,
+        reason: str,
+    ) -> tuple[bool, float, dict, str]:
+        score = float(max(0.0, detected_quality))
+        return (
+            False,
+            score,
+            {
+                "accepted": False,
+                "score": score,
+                "skipped": True,
+                "reasons": [reason],
+                "reference_probe": {
+                    "eligible": reason != "debajo_umbral_referencia",
+                    "reason": reason,
+                },
+            },
+            "comparison-first-reference-probe-v1",
+        )
+
+    def _quality_for_existing_match(
+        self,
+        *,
+        crop: np.ndarray,
+        detected_quality: float,
+        reference_eligible: bool,
+    ) -> tuple[bool, float, dict, str]:
+        if not reference_eligible:
+            with self._state_lock:
+                self._batch_quality_skipped_ineligible += 1
+            return self._skipped_reference_quality(
+                detected_quality,
+                "debajo_umbral_referencia",
+            )
+
+        with self._state_lock:
+            self._batch_reference_probes += 1
+        return self._run_night_quality_analysis(crop, detected_quality)
+
     def _quality_for_task(
         self,
         task: PersistenceTask,
@@ -5975,6 +6045,7 @@ class StationRuntime:
             self._batch_atomic_last_error = ""
             self._batch_embedding_batches = 0
             self._batch_embedding_batch_failures = 0
+            self._reset_comparison_first_metrics()
         self._persist_batch_write_state("atomic" if write_mode else "legacy")
 
     def _finish_manual_batch(self, status: str, error: str = "") -> None:
@@ -6024,6 +6095,7 @@ class StationRuntime:
             self._batch_detection_fallbacks = 0
             self._batch_embedding_batches = 0
             self._batch_embedding_batch_failures = 0
+            self._reset_comparison_first_metrics()
             self._batch_atomic_commit_active = write_mode
             self._batch_atomic_commits = 0
             self._batch_atomic_failures = 0
@@ -6035,6 +6107,12 @@ class StationRuntime:
             self._manual_detection_ready.clear()
             self._automatic_batch_requested.set()
         self._persist_batch_write_state("atomic" if write_mode else "legacy")
+
+    def _reset_comparison_first_metrics(self) -> None:
+        self._batch_quality_evaluated = 0
+        self._batch_quality_skipped_ineligible = 0
+        self._batch_reference_probes = 0
+        self._batch_quality_latency_ms = 0.0
 
     def _persist_batch_write_state(self, mode: str, error: str = "") -> None:
         try:
@@ -6498,12 +6576,6 @@ class StationRuntime:
         if detected.embedding is None:
             return {"status": "discarded", "result_name": "Sin embedding"}
         observed_at = datetime.fromisoformat(str(item["captured_at"]))
-        (
-            quality_pass,
-            quality_score,
-            quality_payload,
-            analysis_version,
-        ) = self._analyze_unknown_quality(image, detected.quality)
         known_match = self._engine.match_known(detected.embedding) if self._engine else None
         if known_match and known_match.matched:
             matched_person = next(
@@ -6514,6 +6586,23 @@ class StationRuntime:
                 ),
                 known_match.person,
             )
+            match_margin = float(getattr(known_match, "margin", 0.0))
+            config = self.config_manager.config
+            (
+                quality_pass,
+                quality_score,
+                quality_payload,
+                analysis_version,
+            ) = self._quality_for_existing_match(
+                crop=image,
+                detected_quality=detected.quality,
+                reference_eligible=bool(
+                    float(known_match.similarity)
+                    >= float(config.adaptive_known_min_similarity)
+                    and match_margin
+                    >= float(config.adaptive_known_min_margin)
+                ),
+            )
             task = PersistenceTask(
                 kind="known",
                 subject_key=matched_person["person_key"],
@@ -6522,7 +6611,7 @@ class StationRuntime:
                 similarity=known_match.similarity,
                 detected_quality=detected.quality,
                 camera_key=str(item["camera_key"]),
-                match_margin=float(getattr(known_match, "margin", 0.0)),
+                match_margin=match_margin,
                 embedding=detected.embedding,
                 person=dict(matched_person),
                 existing_crop_path=str(source_path),
@@ -6552,6 +6641,12 @@ class StationRuntime:
             unknown is None
             and str(unknown_match.get("reason") or "") == "ambiguous_margin"
         ):
+            (
+                quality_pass,
+                quality_score,
+                quality_payload,
+                analysis_version,
+            ) = self._run_night_quality_analysis(image, detected.quality)
             return self._persist_unassigned_night_crop(
                 int(item["id"]),
                 item,
@@ -6583,6 +6678,18 @@ class StationRuntime:
         if unknown and unknown.get("linked_person_key"):
             linked_person = self.store.get_person(unknown["linked_person_key"])
             if linked_person:
+                (
+                    quality_pass,
+                    quality_score,
+                    quality_payload,
+                    analysis_version,
+                ) = self._quality_for_existing_match(
+                    crop=image,
+                    detected_quality=detected.quality,
+                    # A manually linked unknown is already a trusted identity;
+                    # quality alone decides whether this view may improve it.
+                    reference_eligible=True,
+                )
                 task = PersistenceTask(
                     kind="known",
                     subject_key=linked_person["person_key"],
@@ -6613,6 +6720,30 @@ class StationRuntime:
                 }
 
         is_new_identity = unknown is None
+        if is_new_identity or str(unknown.get("status") or "") == "candidate":
+            (
+                quality_pass,
+                quality_score,
+                quality_payload,
+                analysis_version,
+            ) = self._run_night_quality_analysis(image, detected.quality)
+        else:
+            (
+                quality_pass,
+                quality_score,
+                quality_payload,
+                analysis_version,
+            ) = self._quality_for_existing_match(
+                crop=image,
+                detected_quality=detected.quality,
+                reference_eligible=bool(
+                    reference_validated
+                    and float(similarity)
+                    >= float(
+                        self.config_manager.config.adaptive_unknown_min_similarity
+                    )
+                ),
+            )
         if unknown:
             subject = dict(unknown)
             subject_id = unknown["subject_id"]
