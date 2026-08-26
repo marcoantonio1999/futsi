@@ -1131,6 +1131,47 @@ class StationRuntime:
         self._refresh_recent()
         return result
 
+    def rename_unknown(self, subject_id: str, temporary_name: str) -> dict:
+        result = self.store.rename_unknown(subject_id, temporary_name)
+        self._unknown_tracks.clear()
+        self._reload_unknown_database()
+        self._refresh_recent()
+        return result
+
+    def rename_registered_person(self, person_key: str, name: str) -> dict:
+        result = self.store.rename_registered_person(
+            person_key,
+            name,
+            queue_sync=True,
+        )
+        config = self.config_manager.config
+        if config.station_token:
+            try:
+                client = FutsiClient(
+                    config.api_url,
+                    config.station_token,
+                    config.reference_proxy_url,
+                )
+                response = client.rename_person(
+                    str(result["person_type"]),
+                    int(result["remote_id"]),
+                    str(result["name"]),
+                )
+                remote_person = response.get("person") or response
+                result = self.store.confirm_registered_person_name(
+                    person_key,
+                    str(remote_person.get("name") or result["name"]),
+                )
+            except Exception as exc:
+                LOGGER.warning(
+                    "La correccion de nombre %s quedo pendiente de sincronizacion: %s",
+                    person_key,
+                    exc,
+                )
+        self._reload_known_database()
+        self._refresh_recent()
+        return result
+
     def reconcile_unknowns(self, *, apply: bool = False) -> dict:
         """Build a conservative global plan and optionally apply its safe groups.
 

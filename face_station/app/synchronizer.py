@@ -59,6 +59,7 @@ class StationSynchronizer:
                 if now - last_heartbeat >= 60:
                     client.heartbeat()
                     last_heartbeat = now
+                self._sync_person_renames(client)
                 self._sync_known_events(client)
                 self._sync_unknown_registrations(client)
                 if (
@@ -120,6 +121,28 @@ class StationSynchronizer:
                     min(3600, 10 * 2**attempts),
                 )
         self.runtime.store.mark_queue_done(completed)
+
+    def _sync_person_renames(self, client: FutsiClient) -> None:
+        for row in self.runtime.store.pending_queue("person_rename", limit=10):
+            payload = row["payload"]
+            try:
+                response = client.rename_person(
+                    str(payload["person_type"]),
+                    int(payload["person_id"]),
+                    str(payload["name"]),
+                )
+                person = response.get("person") or response
+                self.runtime.store.confirm_registered_person_name(
+                    str(payload["person_key"]),
+                    str(person.get("name") or payload["name"]),
+                )
+            except Exception as exc:
+                attempts = int(row.get("attempts", 0)) + 1
+                self.runtime.store.mark_queue_failed(
+                    row["event_id"],
+                    str(exc),
+                    min(3600, 10 * 2**attempts),
+                )
 
     def _sync_unknown_registrations(self, client: FutsiClient) -> None:
         for row in self.runtime.store.pending_queue("unknown_register", limit=10):

@@ -618,6 +618,128 @@ def test_unknown_catalog_lists_every_status_with_search_pagination_and_image_fal
     assert store.unknown_catalog(status="all")["total"] == 5
 
 
+def test_rename_unknown_updates_catalog_and_processed_queue_name(tmp_path):
+    store = LocalStore(tmp_path)
+    observed_at = datetime(2026, 8, 18, 16, 0, tzinfo=timezone.utc)
+    crop = store.faces_dir / "2026-08-18" / "unknown" / "rename.jpg"
+    crop.parent.mkdir(parents=True, exist_ok=True)
+    crop.write_bytes(b"rename-crop")
+    subject = store.create_unknown(
+        normalized(901),
+        observed_at,
+        str(crop),
+        0.9,
+        subject_id="unknown-rename",
+        temporary_name="Nombre Equivocado",
+        quality_pass=True,
+        quality_payload={"accepted": True},
+        analysis_version="rename-test-v1",
+    )
+    queued = store.enqueue_crop_for_processing(
+        captured_at=observed_at,
+        camera_key="primary",
+        camera_label="ELP 1",
+        crop_path=str(crop),
+        file_bytes=crop.stat().st_size,
+        crop_width=160,
+        crop_height=160,
+        det_score=0.95,
+        bbox=(0, 0, 160, 160),
+        landmarks=None,
+    )
+    store.finish_crop_processing(
+        queued["id"],
+        status="processed",
+        result_kind="unknown",
+        result_key=subject["subject_id"],
+        result_name=subject["temporary_name"],
+        similarity=0.88,
+    )
+
+    renamed = store.rename_unknown(subject["subject_id"], "  Nombre   Correcto  ")
+
+    assert renamed["temporary_name"] == "Nombre Correcto"
+    catalog = store.unknown_catalog(status="all", query="nombre correcto")
+    assert catalog["total"] == 1
+    assert catalog["items"][0]["temporary_name"] == "Nombre Correcto"
+    with store.connection() as db:
+        queue_name = db.execute(
+            "select result_name from crop_processing_queue where id=?",
+            (queued["id"],),
+        ).fetchone()["result_name"]
+    assert queue_name == "Nombre Correcto"
+
+    second_crop = crop.with_name("duplicate-name.jpg")
+    second_crop.write_bytes(b"duplicate")
+    second = store.create_unknown(
+        normalized(902),
+        observed_at + timedelta(minutes=1),
+        str(second_crop),
+        0.9,
+        subject_id="unknown-rename-duplicate",
+        temporary_name="Otro Desconocido",
+        quality_pass=True,
+    )
+    with pytest.raises(ValueError, match="Ya existe otro desconocido"):
+        store.rename_unknown(second["subject_id"], "nombre correcto")
+
+
+def test_rename_registered_person_updates_reports_and_survives_bootstrap(tmp_path):
+    store = LocalStore(tmp_path)
+    original = {
+        "key": "student:77",
+        "type": "student",
+        "id": 77,
+        "name": "Nombre Equivocado",
+        "group_name": "Sub 12",
+        "reference_version": "",
+        "reference_available": False,
+    }
+    store.replace_bootstrap([original], [])
+    observed_at = datetime(2026, 8, 18, 16, 0, tzinfo=timezone.utc)
+    store.upsert_presence("student:77", "known", observed_at, 0.81)
+
+    renamed = store.rename_registered_person(
+        "student:77",
+        "  Nombre   Correcto  ",
+    )
+
+    assert renamed["name"] == "Nombre Correcto"
+    assert renamed["sync_pending"] is True
+    assert store.identity_catalog(query="nombre correcto")["items"][0]["name"] == "Nombre Correcto"
+    assert store.monthly_attendance("2026-08")["items"][0]["name"] == "Nombre Correcto"
+    queued = store.pending_queue("person_rename")
+    assert len(queued) == 1
+    assert queued[0]["payload"] == {
+        "person_key": "student:77",
+        "person_type": "student",
+        "person_id": 77,
+        "name": "Nombre Correcto",
+    }
+
+    # A periodic bootstrap still carrying the old central name must not undo
+    # an operator correction that is waiting to synchronize.
+    store.replace_bootstrap([original], [])
+    assert store.registered_person("student:77")["name"] == "Nombre Correcto"
+
+    confirmed = store.confirm_registered_person_name(
+        "student:77",
+        "Nombre Correcto",
+    )
+    assert confirmed["sync_pending"] is False
+    assert confirmed["name_override"] == ""
+    assert store.pending_queue("person_rename") == []
+
+    canonical = {**original, "name": "Nombre Correcto"}
+    store.replace_bootstrap([canonical], [])
+    assert store.registered_person("student:77")["name"] == "Nombre Correcto"
+
+    with pytest.raises(LookupError):
+        store.rename_registered_person("student:404", "Nombre Correcto")
+    with pytest.raises(ValueError, match="al menos 2"):
+        store.rename_registered_person("student:77", "X")
+
+
 def test_image_lookups_allow_external_faces_root_and_reject_arbitrary_files(
     tmp_path,
 ):

@@ -37,6 +37,7 @@ from core.api.face_station import (
     FaceStationCollaboratorQuickCreateView,
     FaceStationEventBatchView,
     FaceStationHeartbeatView,
+    FaceStationPersonNameView,
     FaceStationPersonPhotoView,
     FaceStationStudentQuickCreateView,
     FaceStationUnknownRegisterView,
@@ -108,5 +109,6 @@ urlpatterns = [
         FaceStationMonthlyReportView.as_view(),
     ),
     path("api/face-station/people/<str:person_type>/<int:person_id>/photo/", FaceStationPersonPhotoView.as_view()),
+    path("api/face-station/people/<str:person_type>/<int:person_id>/name/", FaceStationPersonNameView.as_view()),
     path("api/", include(router.urls)),
 ]

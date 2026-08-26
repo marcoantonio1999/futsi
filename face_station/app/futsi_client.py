@@ -65,6 +65,13 @@ class FutsiClient:
             json=payload,
         ).json()
 
+    def rename_person(self, person_type: str, person_id: int, name: str) -> dict:
+        return self._request(
+            "PATCH",
+            f"/api/face-station/people/{person_type}/{int(person_id)}/name/",
+            json={"name": name},
+        ).json()
+
     def download_reference(self, person: dict, target_dir: Path) -> Path:
         target_dir.mkdir(parents=True, exist_ok=True)
         safe_key = re.sub(r"[^a-zA-Z0-9_.-]", "_", person["person_key"])

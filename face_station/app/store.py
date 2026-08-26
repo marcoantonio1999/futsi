@@ -182,6 +182,7 @@ class LocalStore:
         with self.connection() as db:
             db.executescript(SCHEMA_SQL)
             self._ensure_column(db, "people", "reference_available", "integer not null default 0")
+            self._ensure_column(db, "people", "name_override", "text not null default ''")
             db.execute(
                 """
                 update people set reference_available=1
@@ -542,14 +543,30 @@ class LocalStore:
                         or not reference_available
                     )
                 )
+                incoming_name = str(person["name"])
+                previous_override = str(
+                    db.execute(
+                        "select name_override from people where person_key=?",
+                        (person["key"],),
+                    ).fetchone()["name_override"]
+                    if previous
+                    else ""
+                ).strip()
+                effective_override = (
+                    ""
+                    if previous_override == incoming_name
+                    else previous_override
+                )
+                effective_name = effective_override or incoming_name
                 db.execute(
                     """
                     insert into people
-                        (person_key, person_type, remote_id, name, group_name, team_name, photo_url,
+                        (person_key, person_type, remote_id, name, name_override, group_name, team_name, photo_url,
                          reference_version, reference_available, active, updated_at)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                     on conflict(person_key) do update set
                         person_type=excluded.person_type, remote_id=excluded.remote_id, name=excluded.name,
+                        name_override=excluded.name_override,
                         group_name=excluded.group_name, team_name=excluded.team_name, photo_url=excluded.photo_url,
                         reference_available=excluded.reference_available,
                         active=1, updated_at=excluded.updated_at,
@@ -569,7 +586,8 @@ class LocalStore:
                         end
                     """,
                     (
-                        person["key"], person["type"], person["id"], person["name"],
+                        person["key"], person["type"], person["id"], effective_name,
+                        effective_override,
                         person.get("group_name", ""), person.get("team_name", ""), photo_url,
                         reference_version, int(reference_available), now,
                     ),
@@ -729,6 +747,173 @@ class LocalStore:
         for row in rows:
             row.pop("embedding", None)
         return rows
+
+    def registered_person(self, person_key: str) -> dict:
+        requested_key = str(person_key or "").strip()
+        if not requested_key:
+            raise ValueError("Selecciona la persona que deseas renombrar.")
+        with self.connection() as db:
+            row = db.execute(
+                """
+                select person_key,person_type,remote_id,name,name_override,
+                       group_name,team_name,active,updated_at
+                from people where person_key=? and active=1
+                """,
+                (requested_key,),
+            ).fetchone()
+        if not row:
+            raise LookupError(requested_key)
+        return dict(row)
+
+    def rename_registered_person(
+        self,
+        person_key: str,
+        name: str,
+        *,
+        queue_sync: bool = True,
+    ) -> dict:
+        requested_key = str(person_key or "").strip()
+        normalized_name = " ".join(str(name or "").split())
+        if not requested_key:
+            raise ValueError("Selecciona la persona que deseas renombrar.")
+        if len(normalized_name) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres.")
+        if len(normalized_name) > 150:
+            raise ValueError("El nombre no puede superar 150 caracteres.")
+
+        with self.connection(immediate=True) as db:
+            row = db.execute(
+                """
+                select person_key,person_type,remote_id,name
+                from people where person_key=? and active=1
+                """,
+                (requested_key,),
+            ).fetchone()
+            if not row:
+                raise LookupError(requested_key)
+            if str(row["person_type"]) not in {
+                "student",
+                "player",
+                "collaborator",
+            }:
+                raise ValueError("Este tipo de registro no admite corrección de nombre.")
+
+            now = utc_now()
+            db.execute(
+                """
+                update people
+                set name=?,name_override=?,updated_at=?
+                where person_key=?
+                """,
+                (
+                    normalized_name,
+                    normalized_name if queue_sync else "",
+                    now,
+                    requested_key,
+                ),
+            )
+            db.execute(
+                """
+                update crop_processing_queue
+                set result_name=?,updated_at=?
+                where result_kind='known' and result_key=?
+                """,
+                (normalized_name, now, requested_key),
+            )
+            if queue_sync:
+                event_id = f"person_rename:{requested_key}"
+                payload = {
+                    "person_key": requested_key,
+                    "person_type": str(row["person_type"]),
+                    "person_id": int(row["remote_id"]),
+                    "name": normalized_name,
+                }
+                db.execute(
+                    """
+                    insert into sync_queue(
+                        event_id,event_type,payload_json,status,attempts,
+                        next_attempt_at,last_error,created_at,updated_at
+                    ) values (?,?,?,'pending',0,?,'',?,?)
+                    on conflict(event_id) do update set
+                        payload_json=excluded.payload_json,
+                        status='pending',attempts=0,
+                        next_attempt_at=excluded.next_attempt_at,
+                        last_error='',updated_at=excluded.updated_at
+                    """,
+                    (
+                        event_id,
+                        "person_rename",
+                        json.dumps(payload),
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+
+            updated = db.execute(
+                """
+                select person_key,person_type,remote_id,name,name_override,
+                       group_name,team_name,active,updated_at
+                from people where person_key=?
+                """,
+                (requested_key,),
+            ).fetchone()
+        result = dict(updated)
+        result["sync_pending"] = bool(queue_sync)
+        return result
+
+    def confirm_registered_person_name(self, person_key: str, name: str) -> dict:
+        requested_key = str(person_key or "").strip()
+        normalized_name = " ".join(str(name or "").split())
+        if not requested_key or not normalized_name:
+            raise ValueError("La confirmación del nombre no es válida.")
+        with self.connection(immediate=True) as db:
+            row = db.execute(
+                "select name_override from people where person_key=? and active=1",
+                (requested_key,),
+            ).fetchone()
+            if not row:
+                raise LookupError(requested_key)
+            current_override = str(row["name_override"] or "")
+            if current_override and current_override != normalized_name:
+                current = db.execute(
+                    """
+                    select person_key,person_type,remote_id,name,name_override,
+                           group_name,team_name,active,updated_at
+                    from people where person_key=?
+                    """,
+                    (requested_key,),
+                ).fetchone()
+                result = dict(current)
+                result["sync_pending"] = True
+                return result
+            now = utc_now()
+            db.execute(
+                """
+                update people
+                set name=?,name_override='',updated_at=?
+                where person_key=?
+                """,
+                (normalized_name, now, requested_key),
+            )
+            db.execute(
+                """
+                update sync_queue set status='done',last_error='',updated_at=?
+                where event_id=?
+                """,
+                (now, f"person_rename:{requested_key}"),
+            )
+            updated = db.execute(
+                """
+                select person_key,person_type,remote_id,name,name_override,
+                       group_name,team_name,active,updated_at
+                from people where person_key=?
+                """,
+                (requested_key,),
+            ).fetchone()
+        result = dict(updated)
+        result["sync_pending"] = False
+        return result
 
     def identity_catalog(
         self,
@@ -3136,6 +3321,61 @@ class LocalStore:
     def get_unknown(self, subject_id: str) -> dict:
         with self.connection() as db:
             return self._get_unknown(db, subject_id)
+
+    def rename_unknown(self, subject_id: str, temporary_name: str) -> dict:
+        requested_id = str(subject_id or "").strip()
+        normalized_name = " ".join(str(temporary_name or "").split())
+        if not requested_id:
+            raise ValueError("Selecciona la identidad que deseas renombrar.")
+        if len(normalized_name) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres.")
+        if len(normalized_name) > 120:
+            raise ValueError("El nombre no puede superar 120 caracteres.")
+
+        with self.connection(immediate=True) as db:
+            row = db.execute(
+                "select subject_id,status from unknown_subjects where subject_id=?",
+                (requested_id,),
+            ).fetchone()
+            if not row:
+                raise LookupError(requested_id)
+            if str(row["status"]) not in {
+                "candidate",
+                "consolidated",
+                "ignored",
+                "quarantined",
+            }:
+                raise ValueError(
+                    "Solo se pueden renombrar desconocidos activos o conservados para revisión."
+                )
+            duplicate = db.execute(
+                """
+                select subject_id from unknown_subjects
+                where lower(temporary_name)=lower(?) and subject_id<>?
+                """,
+                (normalized_name, requested_id),
+            ).fetchone()
+            if duplicate:
+                raise ValueError("Ya existe otro desconocido con ese nombre.")
+
+            now = utc_now()
+            db.execute(
+                """
+                update unknown_subjects
+                set temporary_name=?,updated_at=?
+                where subject_id=?
+                """,
+                (normalized_name, now, requested_id),
+            )
+            db.execute(
+                """
+                update crop_processing_queue
+                set result_name=?,updated_at=?
+                where result_kind='unknown' and result_key=?
+                """,
+                (normalized_name, now, requested_id),
+            )
+            return self._get_unknown(db, requested_id)
 
     @classmethod
     def _get_unknown(

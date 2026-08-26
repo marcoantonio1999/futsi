@@ -155,6 +155,56 @@ def test_bootstrap_is_scoped_to_station_site(api_client, station_context):
     assert f"player:{adult_player.id}" not in payload["sessions"][0]["roster"]
 
 
+def test_station_can_correct_registered_names_with_site_scope(
+    api_client,
+    station_context,
+):
+    student = make_student(
+        site=station_context["site"],
+        full_name="Alumno con error",
+    )
+    player = make_player(full_name="Jugador con error")
+    player.team.tournament.site = station_context["site"]
+    player.team.tournament.save(update_fields=["site"])
+    collaborator = make_user(
+        role="collaborator",
+        primary_site=station_context["site"],
+        first_name="Colaborador",
+        last_name="con error",
+    )
+
+    cases = (
+        ("student", student, "Alumno Nombre Correcto"),
+        ("player", player, "Jugador Nombre Correcto"),
+        ("collaborator", collaborator, "Colaborador Nombre Correcto"),
+    )
+    for person_type, person, corrected_name in cases:
+        response = api_client.patch(
+            f"/api/face-station/people/{person_type}/{person.id}/name/",
+            {"name": f"  {corrected_name}  "},
+            format="json",
+            **station_headers(station_context),
+        )
+        assert response.status_code == 200
+        assert response.json()["person"]["name"] == corrected_name
+        person.refresh_from_db()
+        if person_type == "collaborator":
+            assert person.get_full_name() == corrected_name
+        else:
+            assert person.full_name == corrected_name
+
+    external = make_student(site=make_site(), full_name="Alumno externo")
+    denied = api_client.patch(
+        f"/api/face-station/people/student/{external.id}/name/",
+        {"name": "No debe cambiar"},
+        format="json",
+        **station_headers(station_context),
+    )
+    assert denied.status_code == 404
+    external.refresh_from_db()
+    assert external.full_name == "Alumno externo"
+
+
 def test_known_student_event_marks_attendance_once(api_client, station_context):
     student = make_student(site=station_context["site"], group_name="Sub-10 QA")
     session = make_attendance_session(site=station_context["site"], group_name="Sub-10 QA")

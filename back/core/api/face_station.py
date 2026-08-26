@@ -14,6 +14,7 @@ from .face_station_service import (
     bootstrap_payload,
     person_for_device,
     person_photo_response,
+    rename_person_for_device,
     serialize_station_person,
     sync_detection_event,
 )
@@ -61,6 +62,39 @@ class FaceStationPersonPhotoView(FaceStationAPIView):
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as exc:
             return Response({"detail": f"No se pudo preparar la foto: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FaceStationPersonNameView(FaceStationAPIView):
+    @transaction.atomic
+    def patch(self, request, person_type: str, person_id: int):
+        try:
+            person = rename_person_for_device(
+                self.device,
+                person_type,
+                person_id,
+                request.data.get("name", ""),
+            )
+        except LookupError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                "updated": True,
+                "person": serialize_station_person(
+                    request,
+                    self.device,
+                    person_type,
+                    person,
+                ),
+            }
+        )
 
 
 class FaceStationEventBatchView(FaceStationAPIView):

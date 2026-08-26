@@ -300,6 +300,28 @@ def person_for_device(device, person_type: str, person_id: int):
     return None
 
 
+def rename_person_for_device(device, person_type: str, person_id: int, name: str):
+    normalized_name = " ".join(str(name or "").split())
+    if len(normalized_name) < 2:
+        raise ValueError("El nombre debe tener al menos 2 caracteres.")
+    if len(normalized_name) > 150:
+        raise ValueError("El nombre no puede superar 150 caracteres.")
+    person = person_for_device(device, person_type, person_id)
+    if not person:
+        raise LookupError("La persona no pertenece al padrón de esta sede.")
+    if person_type in {"student", "player"}:
+        person.full_name = normalized_name
+        person.save(update_fields=["full_name", "updated_at"])
+        return person
+    if person_type == "collaborator":
+        first_name, _, last_name = normalized_name.partition(" ")
+        person.first_name = first_name
+        person.last_name = last_name
+        person.save(update_fields=["first_name", "last_name"])
+        return person
+    raise ValueError("Este tipo de registro no admite corrección de nombre.")
+
+
 def person_in_session(person_type: str, person, session: AttendanceSession) -> bool:
     if person_type == "collaborator":
         return False

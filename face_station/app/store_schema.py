@@ -7,6 +7,7 @@ create table if not exists people (
     person_type text not null,
     remote_id integer not null,
     name text not null,
+    name_override text not null default '',
     group_name text not null default '',
     team_name text not null default '',
     photo_url text not null default '',

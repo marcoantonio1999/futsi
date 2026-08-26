@@ -403,6 +403,43 @@ def unknown_catalog_image(subject_id: str):
     )
 
 
+@app.patch("/api/unknowns/{subject_id}/name")
+async def rename_unknown(subject_id: str, request: Request):
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("La solicitud para renombrar debe ser un objeto JSON.")
+        temporary_name = str(payload.get("temporary_name", ""))
+        return runtime.rename_unknown(subject_id, temporary_name)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontro el rostro desconocido.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/api/people/{person_key}/name")
+async def rename_registered_person(person_key: str, request: Request):
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("La solicitud para corregir el nombre debe ser un objeto JSON.")
+        return await run_in_threadpool(
+            runtime.rename_registered_person,
+            person_key,
+            str(payload.get("name", "")),
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontró la persona registrada.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/unknowns/ignored")
 def ignored_unknowns(
     q: str = Query(default="", max_length=100),
