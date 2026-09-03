@@ -1414,15 +1414,19 @@ class WhatsAppConversation(TimestampedModel):
         db_table = "whatsapp_conversations"
         constraints = [
             models.UniqueConstraint(
-                fields=["contact_phone"],
+                fields=["contact_phone", "to_address"],
                 condition=Q(status=WhatsAppConversationStatus.ACTIVE),
-                name="uq_whatsapp_active_contact",
+                name="uq_whatsapp_active_contact_target",
             ),
         ]
         indexes = [
             models.Index(fields=["status", "last_message_at"], name="ix_wa_status_message"),
             models.Index(fields=["site", "created_at"], name="ix_wa_site_created"),
             models.Index(fields=["booking", "created_at"], name="ix_wa_booking_created"),
+            models.Index(
+                fields=["to_address", "status", "last_message_at"],
+                name="ix_wa_target_status_msg",
+            ),
             models.Index(
                 fields=["follow_up_required", "follow_up_updated_at"],
                 name="ix_wa_follow_up",

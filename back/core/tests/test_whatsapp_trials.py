@@ -50,6 +50,7 @@ def _payload(
 @pytest.fixture(autouse=True)
 def disable_interactive_messages(settings):
     settings.TWILIO_WHATSAPP_INTERACTIVE = False
+    settings.META_WHATSAPP_DISPLAY_NUMBER = WHATSAPP_NUMBER
 
 
 def _signed_post(client, payload, *, signature=None):
@@ -114,6 +115,40 @@ def test_whatsapp_requires_twilio_signature_and_replays_duplicate(api_client):
     assert "Elige una sede" in _reply_text(first)
     assert WhatsAppConversation.objects.count() == 1
     assert WhatsAppMessage.objects.count() == 2
+
+
+@override_settings(
+    TWILIO_ACCOUNT_SID=ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN=AUTH_TOKEN,
+    TWILIO_WHATSAPP_NUMBER=WHATSAPP_NUMBER,
+    TWILIO_PUBLIC_BASE_URL=PUBLIC_BASE_URL,
+    TWILIO_VALIDATE_SIGNATURES=True,
+    TRIAL_MIN_ADVANCE_HOURS=0,
+    TRIAL_BOOKING_HORIZON_DAYS=30,
+)
+def test_twilio_webhook_does_not_reuse_another_business_number(api_client):
+    _make_weekly_availability()
+    previous = WhatsAppConversation.objects.create(
+        contact_phone="+525500000001",
+        from_address="whatsapp:+525500000001",
+        to_address="whatsapp:+15556677180",
+        status="active",
+        current_step="faq",
+        context={"kind": "faq"},
+        last_message_at=timezone.now(),
+    )
+
+    response = _signed_post(api_client, _payload(sequence=2, body="Hola"))
+
+    assert response.status_code == 200
+    assert WhatsAppConversation.objects.filter(
+        contact_phone="+525500000001",
+        status="active",
+    ).count() == 2
+    current = WhatsAppConversation.objects.exclude(pk=previous.pk).get()
+    assert current.to_address == f"whatsapp:{WHATSAPP_NUMBER}"
+    previous.refresh_from_db()
+    assert previous.messages.count() == 0
 
 
 @override_settings(
@@ -354,6 +389,15 @@ def test_whatsapp_conversations_are_site_scoped_in_dashboard(auth_client):
         current_step="finished",
         last_message_at=timezone.now(),
     )
+    previous_business_account = WhatsAppConversation.objects.create(
+        contact_phone="+525500000099",
+        from_address="whatsapp:+525500000099",
+        to_address="whatsapp:+15556677180",
+        site=first_site,
+        status="completed",
+        current_step="finished",
+        last_message_at=timezone.now(),
+    )
     WhatsAppMessage.objects.create(
         conversation=visible,
         direction="inbound",
@@ -367,6 +411,9 @@ def test_whatsapp_conversations_are_site_scoped_in_dashboard(auth_client):
     assert [item["id"] for item in response.json()] == [visible.id]
     assert response.json()[0]["messages"][0]["body"] == "Quiero una prueba."
     assert hidden.id not in {item["id"] for item in response.json()}
+    assert previous_business_account.id not in {
+        item["id"] for item in response.json()
+    }
     assert "context" not in response.json()[0]
 
     update = client.patch(
@@ -405,12 +452,130 @@ def test_whatsapp_conversations_are_site_scoped_in_dashboard(auth_client):
     )
     assert forbidden.status_code == 404
 
+    previous_account_forbidden = client.get(
+        f"/api/whatsapp-conversations/{previous_business_account.id}/"
+    )
+    assert previous_account_forbidden.status_code == 404
+
     assignees = client.get("/api/whatsapp-conversations/assignees/")
     assert assignees.status_code == 200
     assert [item["id"] for item in assignees.json()] == [coordinator.id]
 
     delete = client.delete(f"/api/whatsapp-conversations/{visible.id}/")
     assert delete.status_code == 405
+
+
+def test_active_conversations_are_unique_per_business_number():
+    values = {
+        "contact_phone": "+525500000088",
+        "from_address": "whatsapp:+525500000088",
+        "status": "active",
+        "current_step": "faq",
+    }
+    first = WhatsAppConversation.objects.create(
+        **values,
+        to_address="whatsapp:+15556677180",
+    )
+    second = WhatsAppConversation.objects.create(
+        **values,
+        to_address=f"whatsapp:{WHATSAPP_NUMBER}",
+    )
+
+    assert first.pk != second.pk
+
+
+def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):
+    site = make_site()
+    coordinator = make_user(role="site_coordinator", primary_site=site)
+    conversation = WhatsAppConversation.objects.create(
+        contact_phone="+525500000013",
+        from_address="whatsapp:+525500000013",
+        to_address=f"whatsapp:{WHATSAPP_NUMBER}",
+        site=site,
+        status="active",
+        current_step="faq",
+        context={
+            "kind": "faq",
+            "contact_name": "Marco Ávila",
+            "human_response_wait": {"due_at": timezone.now().isoformat()},
+        },
+        last_message_at=timezone.now(),
+    )
+    WhatsAppMessage.objects.create(
+        conversation=conversation,
+        provider_sid="wamid.inbound-dashboard-reply",
+        direction="inbound",
+        body="¿Qué horarios tienen?",
+    )
+    client, _payload_data, _user = auth_client(user=coordinator)
+
+    with patch(
+        "core.api.trials.send_text",
+        return_value="wamid.manual-dashboard-reply",
+    ) as send_mock:
+        response = client.post(
+            f"/api/whatsapp-conversations/{conversation.id}/send-message/",
+            {"body": "¡Hola, Marco! Te comparto los horarios disponibles 😊"},
+            format="json",
+        )
+
+    assert response.status_code == 201
+    send_mock.assert_called_once_with(
+        to_phone=conversation.contact_phone,
+        body="¡Hola, Marco! Te comparto los horarios disponibles 😊",
+    )
+    conversation.refresh_from_db()
+    assert "human_response_wait" not in conversation.context
+    assert conversation.context["automation_paused_by_human"] is True
+    assert conversation.context["last_reply_source"] == "human"
+    assert conversation.context["human_last_reply_by_user_id"] == coordinator.id
+    assert WhatsAppMessage.objects.filter(
+        conversation=conversation,
+        provider_sid="wamid.manual-dashboard-reply",
+        direction="outbound",
+        body="¡Hola, Marco! Te comparto los horarios disponibles 😊",
+    ).exists()
+    assert response.json()["contact_name"] == "Marco Ávila"
+    assert response.json()["human_takeover_active"] is True
+    assert response.json()["bot_response_pending"] is False
+    assert response.json()["free_form_window_open"] is True
+    assert AuditLog.objects.filter(
+        action="whatsapp_manual_message_sent",
+        record_id=str(conversation.id),
+        actor=coordinator,
+    ).exists()
+
+
+def test_dashboard_reply_requires_an_open_customer_service_window(auth_client):
+    conversation = WhatsAppConversation.objects.create(
+        contact_phone="+525500000014",
+        from_address="whatsapp:+525500000014",
+        to_address=f"whatsapp:{WHATSAPP_NUMBER}",
+        status="active",
+        current_step="faq",
+        last_message_at=timezone.now() - timedelta(days=2),
+    )
+    inbound = WhatsAppMessage.objects.create(
+        conversation=conversation,
+        provider_sid="wamid.expired-dashboard-reply",
+        direction="inbound",
+        body="Hola",
+    )
+    WhatsAppMessage.objects.filter(pk=inbound.pk).update(
+        created_at=timezone.now() - timedelta(hours=25),
+    )
+    client, _payload_data, _user = auth_client(role="admin")
+
+    with patch("core.api.trials.send_text") as send_mock:
+        response = client.post(
+            f"/api/whatsapp-conversations/{conversation.id}/send-message/",
+            {"body": "Respuesta fuera de ventana"},
+            format="json",
+        )
+
+    assert response.status_code == 409
+    assert "plantilla aprobada" in response.json()["detail"]
+    send_mock.assert_not_called()
 
 
 @override_settings(

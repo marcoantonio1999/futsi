@@ -18,6 +18,20 @@ class MetaWhatsAppError(RuntimeError):
     """Raised when the Meta WhatsApp API cannot accept a message."""
 
 
+def configured_business_address() -> str:
+    """Return the stable inbox address for the configured WhatsApp number."""
+
+    display_digits = "".join(
+        character
+        for character in str(settings.META_WHATSAPP_DISPLAY_NUMBER or "")
+        if character.isdigit()
+    )
+    if display_digits:
+        return f"whatsapp:+{display_digits}"
+    phone_number_id = str(settings.META_WHATSAPP_PHONE_NUMBER_ID or "").strip()
+    return f"meta:{phone_number_id}" if phone_number_id else ""
+
+
 def _messages_url() -> str:
     version = str(settings.META_WHATSAPP_GRAPH_VERSION or "").strip()
     phone_number_id = str(settings.META_WHATSAPP_PHONE_NUMBER_ID or "").strip()

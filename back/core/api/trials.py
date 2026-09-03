@@ -1,6 +1,8 @@
+from datetime import timedelta
+
 from django.db import models, transaction
 from django.utils import timezone
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import BasePermission
@@ -13,6 +15,7 @@ from core.domain_serializers.trials import (
     VoiceCallReviewSerializer,
     VoiceCallSerializer,
     WhatsAppConversationSerializer,
+    WhatsAppSendMessageSerializer,
 )
 from core.models import (
     AuditLog,
@@ -21,9 +24,16 @@ from core.models import (
     TrialVisit,
     VoiceCall,
     WhatsAppConversation,
+    WhatsAppMessage,
+    WhatsAppMessageDirection,
     User,
 )
 from core.permissions import ADMIN_ROLES
+from core.whatsapp.meta_api import (
+    MetaWhatsAppError,
+    configured_business_address,
+    send_text,
+)
 
 
 TRIAL_DASHBOARD_ROLES = ADMIN_ROLES | {"site_coordinator"}
@@ -239,10 +249,14 @@ class WhatsAppConversationViewSet(
     )
     serializer_class = WhatsAppConversationSerializer
     permission_classes = [CanManageTrialDashboard]
-    http_method_names = ["get", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "head", "options"]
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        business_address = configured_business_address()
+        if not business_address:
+            return queryset.none()
+        queryset = queryset.filter(to_address=business_address)
         site = self.request.query_params.get("site")
         status_value = self.request.query_params.get("status")
         booking = self.request.query_params.get("booking")
@@ -288,6 +302,86 @@ class WhatsAppConversationViewSet(
                 "follow_up_updated_at": updated_at.isoformat(),
             },
             metadata={"contact_phone": conversation.contact_phone},
+        )
+
+    @action(detail=True, methods=["post"], url_path="send-message")
+    def send_message(self, request, pk=None):
+        conversation = self.get_object()
+        input_serializer = WhatsAppSendMessageSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        body = input_serializer.validated_data["body"]
+        now = timezone.now()
+        last_inbound = (
+            conversation.messages.filter(
+                direction=WhatsAppMessageDirection.INBOUND,
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if not last_inbound or last_inbound.created_at + timedelta(hours=24) <= now:
+            return Response(
+                {
+                    "detail": (
+                        "La ventana de 24 horas terminó. Para volver a contactar a esta "
+                        "persona debes enviar una plantilla aprobada."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        try:
+            with transaction.atomic():
+                locked = WhatsAppConversation.objects.select_for_update().get(
+                    pk=conversation.pk,
+                )
+                context = dict(locked.context or {})
+                context.pop("human_response_wait", None)
+                context["automation_paused_by_human"] = True
+                context["automation_paused_at"] = now.isoformat()
+                context["last_reply_source"] = "human"
+                context["human_last_reply_at"] = now.isoformat()
+                context["human_last_reply_by_user_id"] = request.user.pk
+
+                provider_sid = send_text(
+                    to_phone=locked.contact_phone,
+                    body=body,
+                )
+                WhatsAppMessage.objects.get_or_create(
+                    provider_sid=provider_sid,
+                    defaults={
+                        "conversation": locked,
+                        "direction": WhatsAppMessageDirection.OUTBOUND,
+                        "body": body,
+                    },
+                )
+                locked.context = context
+                locked.last_message_at = now
+                locked.save(update_fields=["context", "last_message_at", "updated_at"])
+                AuditLog.objects.create(
+                    actor=request.user,
+                    action="whatsapp_manual_message_sent",
+                    table_name=WhatsAppConversation._meta.db_table,
+                    record_id=str(locked.pk),
+                    new_values={
+                        "provider_sid": provider_sid,
+                        "message_length": len(body),
+                        "automation_paused_by_human": True,
+                    },
+                    metadata={"contact_phone": locked.contact_phone},
+                )
+        except MetaWhatsAppError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        refreshed = self.get_queryset().get(pk=conversation.pk)
+        return Response(
+            WhatsAppConversationSerializer(
+                refreshed,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_201_CREATED,
         )
 
     @action(detail=False, methods=["get"])

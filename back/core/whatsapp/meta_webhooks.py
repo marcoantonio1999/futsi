@@ -26,6 +26,7 @@ from core.models import (
 from core.whatsapp.ai_faq import OpenAIWhatsAppError, answer_faq
 from core.whatsapp.meta_api import (
     MetaWhatsAppError,
+    configured_business_address,
     send_buttons,
     send_list,
     send_location,
@@ -775,7 +776,7 @@ def _send_flow_reply(conversation: WhatsAppConversation, reply: str) -> str:
     return send_text(to_phone=conversation.contact_phone, body=reply)
 
 
-def _process_message(*, message: dict, metadata: dict) -> None:
+def _process_message(*, message: dict, metadata: dict, contact_name: str = "") -> None:
     message_id = str(message.get("id") or "")[:255]
     from_digits = str(message.get("from") or "")
     configured_phone_id = str(settings.META_WHATSAPP_PHONE_NUMBER_ID or "")
@@ -787,12 +788,7 @@ def _process_message(*, message: dict, metadata: dict) -> None:
 
     contact_phone = f"+{from_digits}"
     from_address = f"whatsapp:{contact_phone}"
-    display_number = "".join(
-        character
-        for character in str(settings.META_WHATSAPP_DISPLAY_NUMBER or "")
-        if character.isdigit()
-    )
-    to_address = f"whatsapp:+{display_number}" if display_number else f"meta:{received_phone_id}"
+    to_address = configured_business_address()
     body, selection = _message_text(message)
 
     with transaction.atomic():
@@ -806,6 +802,7 @@ def _process_message(*, message: dict, metadata: dict) -> None:
             WhatsAppConversation.objects.select_for_update()
             .filter(
                 contact_phone=contact_phone,
+                to_address=to_address,
                 status=WhatsAppConversationStatus.ACTIVE,
             )
             .first()
@@ -820,8 +817,14 @@ def _process_message(*, message: dict, metadata: dict) -> None:
         )
         reply = _bold_whatsapp_terms(reply)
 
+        clean_contact_name = str(contact_name or "").strip()[:200]
+        if clean_contact_name:
+            context = dict(conversation.context or {})
+            context["contact_name"] = clean_contact_name
+            conversation.context = context
+
         conversation.last_message_at = timezone.now()
-        conversation.save(update_fields=["last_message_at", "updated_at"])
+        conversation.save(update_fields=["context", "last_message_at", "updated_at"])
         WhatsAppMessage.objects.create(
             conversation=conversation,
             provider_sid=message_id,
@@ -854,8 +857,19 @@ def _process_payload(payload: dict) -> None:
                 continue
             value = change.get("value") or {}
             metadata = value.get("metadata") or {}
+            contact_names = {
+                str(contact.get("wa_id") or ""): str(
+                    (contact.get("profile") or {}).get("name") or ""
+                )
+                for contact in value.get("contacts") or []
+                if isinstance(contact, dict)
+            }
             for message in value.get("messages") or []:
-                _process_message(message=message, metadata=metadata)
+                _process_message(
+                    message=message,
+                    metadata=metadata,
+                    contact_name=contact_names.get(str(message.get("from") or ""), ""),
+                )
 
 
 @csrf_exempt

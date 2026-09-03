@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.utils import timezone
 from django.db.models import Q
 from rest_framework import serializers
@@ -11,6 +13,7 @@ from core.models import (
     VoiceCall,
     WhatsAppConversation,
     WhatsAppMessage,
+    WhatsAppMessageDirection,
     User,
     sanitize_voice_error,
 )
@@ -253,8 +256,25 @@ class WhatsAppMessageSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class WhatsAppSendMessageSerializer(serializers.Serializer):
+    body = serializers.CharField(max_length=4096, trim_whitespace=True)
+
+    def validate_body(self, value):
+        body = str(value or "").strip()
+        if not body:
+            raise serializers.ValidationError("Escribe un mensaje antes de enviarlo.")
+        return body
+
+
 class WhatsAppConversationSerializer(serializers.ModelSerializer):
     kind = serializers.SerializerMethodField()
+    contact_name = serializers.SerializerMethodField()
+    human_takeover_active = serializers.SerializerMethodField()
+    human_last_reply_at = serializers.SerializerMethodField()
+    bot_response_pending = serializers.SerializerMethodField()
+    last_inbound_at = serializers.SerializerMethodField()
+    free_form_window_expires_at = serializers.SerializerMethodField()
+    free_form_window_open = serializers.SerializerMethodField()
     site_name = serializers.CharField(source="site.name", read_only=True, allow_null=True)
     booking_child_first_name = serializers.CharField(
         source="booking.child_first_name",
@@ -292,6 +312,49 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         context = instance.context if isinstance(instance.context, dict) else {}
         return str(context.get("kind") or "trial_booking")
 
+    def get_contact_name(self, instance):
+        context = instance.context if isinstance(instance.context, dict) else {}
+        name = str(context.get("contact_name") or "").strip()
+        return name or None
+
+    def get_human_takeover_active(self, instance):
+        context = instance.context if isinstance(instance.context, dict) else {}
+        return bool(context.get("automation_paused_by_human"))
+
+    def get_human_last_reply_at(self, instance):
+        context = instance.context if isinstance(instance.context, dict) else {}
+        value = str(context.get("human_last_reply_at") or "").strip()
+        return value or None
+
+    def get_bot_response_pending(self, instance):
+        context = instance.context if isinstance(instance.context, dict) else {}
+        return bool(context.get("human_response_wait"))
+
+    @staticmethod
+    def _last_inbound_message(instance):
+        return next(
+            (
+                message
+                for message in reversed(list(instance.messages.all()))
+                if message.direction == WhatsAppMessageDirection.INBOUND
+            ),
+            None,
+        )
+
+    def get_last_inbound_at(self, instance):
+        message = self._last_inbound_message(instance)
+        return message.created_at.isoformat() if message else None
+
+    def get_free_form_window_expires_at(self, instance):
+        message = self._last_inbound_message(instance)
+        if not message:
+            return None
+        return (message.created_at + timedelta(hours=24)).isoformat()
+
+    def get_free_form_window_open(self, instance):
+        message = self._last_inbound_message(instance)
+        return bool(message and message.created_at + timedelta(hours=24) > timezone.now())
+
     def validate_follow_up_assigned_to(self, assignee):
         if assignee is None:
             return None
@@ -322,6 +385,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "kind",
+            "contact_name",
             "contact_phone",
             "status",
             "current_step",
@@ -337,6 +401,12 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
             "follow_up_assigned_to_name",
             "follow_up_notes",
             "follow_up_updated_at",
+            "human_takeover_active",
+            "human_last_reply_at",
+            "bot_response_pending",
+            "last_inbound_at",
+            "free_form_window_expires_at",
+            "free_form_window_open",
             "messages",
             "created_at",
             "updated_at",
@@ -344,6 +414,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "kind",
+            "contact_name",
             "contact_phone",
             "status",
             "current_step",
@@ -356,6 +427,12 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
             "last_message_at",
             "follow_up_assigned_to_name",
             "follow_up_updated_at",
+            "human_takeover_active",
+            "human_last_reply_at",
+            "bot_response_pending",
+            "last_inbound_at",
+            "free_form_window_expires_at",
+            "free_form_window_open",
             "messages",
             "created_at",
             "updated_at",

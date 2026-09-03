@@ -623,6 +623,7 @@ def incoming_message(request: HttpRequest) -> HttpResponse:
             WhatsAppConversation.objects.select_for_update()
             .filter(
                 contact_phone=contact_phone,
+                to_address=to_address,
                 status=WhatsAppConversationStatus.ACTIVE,
             )
             .first()

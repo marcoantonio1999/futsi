@@ -236,6 +236,39 @@ def test_meta_webhook_rejects_bad_signature_and_replays_duplicate_once(api_clien
     assert WhatsAppMessage.objects.filter(provider_sid="wamid.outbound-menu").exists()
 
 
+@override_settings(**META_SETTINGS)
+def test_meta_webhook_keeps_business_numbers_in_separate_conversations(api_client):
+    site = _make_weekly_availability()
+    previous = WhatsAppConversation.objects.create(
+        contact_phone="+525500000001",
+        from_address="whatsapp:+525500000001",
+        to_address="whatsapp:+15556677180",
+        status="active",
+        current_step="faq",
+        site=site,
+        context={"kind": "faq"},
+        last_message_at=timezone.now(),
+    )
+
+    with patch(
+        "core.whatsapp.meta_webhooks.send_buttons",
+        return_value="wamid.current-business-menu",
+    ):
+        response = _signed_post(api_client, _payload(sequence=77))
+
+    assert response.status_code == 200
+    assert WhatsAppConversation.objects.filter(
+        contact_phone="+525500000001",
+        status="active",
+    ).count() == 2
+    current = WhatsAppConversation.objects.exclude(pk=previous.pk).get()
+    assert current.to_address == "whatsapp:+15550001111"
+    assert current.current_step == "menu"
+    previous.refresh_from_db()
+    assert previous.current_step == "faq"
+    assert previous.messages.count() == 0
+
+
 @override_settings(**DUALHOOK_SETTINGS)
 def test_dualhook_webhook_validates_waba_and_phone_instead_of_private_app_secret(
     api_client,
