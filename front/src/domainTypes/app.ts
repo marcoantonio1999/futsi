@@ -108,7 +108,7 @@ export type DashboardSummary = {
   alerts: Array<{ id: string | number; title: string; subtitle: string }>;
 };
 
-export type TabKey = "dashboard" | "adult-dashboard" | "calendar" | "sports" | "tournaments" | "coaches" | "referees" | "uniforms" | "debts" | "sales-estimate" | "income-statement" | "daily-operation" | "attendance" | "unknowns" | "billing" | "expenses" | "students" | "guardians" | "sites" | "users" | "invoices" | "historical" | "discrepancies";
+export type TabKey = "dashboard" | "communications" | "adult-dashboard" | "calendar" | "sports" | "tournaments" | "coaches" | "referees" | "uniforms" | "debts" | "sales-estimate" | "income-statement" | "daily-operation" | "attendance" | "unknowns" | "billing" | "expenses" | "students" | "guardians" | "sites" | "users" | "invoices" | "historical" | "discrepancies";
 
 export type AccountingSiteRow = {
   id: number;

@@ -9,7 +9,7 @@ import type {
   User,
 } from "../../types";
 import { fullWidthTabs } from "./adminNavigation";
-import type { AttendanceSubsection, BillingSubsection, BusinessScope, StudentsSubsection } from "./adminShellModel";
+import type { AttendanceSubsection, BillingSubsection, BusinessScope, CommunicationsSubsection, StudentsSubsection } from "./adminShellModel";
 import { AutomaticAttendancePanel, VideoOccupancyPanel } from "../../features/automatic-attendance";
 import { BillingCollectionPanel, BillingPanel } from "../../features/billing";
 import { CoachDashboardPanel, CoachesConsolidatedPanel } from "../../features/coach";
@@ -24,6 +24,7 @@ import {
   AttendancePanel,
   CalendarPanel,
   DailyOperationPanel,
+  DashboardPanel,
   DebtsPanel,
   ExpensesPanel,
   GuardiansPanel,
@@ -55,6 +56,7 @@ type AdminShellContentProps = {
   error: string;
   attendanceSubsection: AttendanceSubsection;
   billingSection: BillingSubsection;
+  communicationsSection: CommunicationsSubsection;
   studentsSection: StudentsSubsection;
   tournamentSection: TournamentSection;
   unknownDetailDate: string;
@@ -104,6 +106,7 @@ function ActivePanel(props: AdminShellContentProps) {
     effectiveActiveTab,
     attendanceSubsection,
     billingSection,
+    communicationsSection,
     studentsSection,
     tournamentSection,
     unknownDetailDate,
@@ -140,14 +143,18 @@ function ActivePanel(props: AdminShellContentProps) {
             onDownloadFile={onDownloadFile}
           />
         ) : (
-          <VoiceDashboardPanel
-            user={user}
-            data={data}
-            onCreateRecord={onCreateRecord}
-            onUpdateRecord={onUpdateRecord}
-            onCreateAndReturn={onCreateAndReturn}
-          />
+          <DashboardPanel data={data} />
         )
+      )}
+      {effectiveActiveTab === "communications" && (
+        <VoiceDashboardPanel
+          user={user}
+          data={data}
+          section={communicationsSection}
+          onCreateRecord={onCreateRecord}
+          onUpdateRecord={onUpdateRecord}
+          onCreateAndReturn={onCreateAndReturn}
+        />
       )}
       {effectiveActiveTab === "adult-dashboard" && (
         <AdultLeagueDashboardPanel

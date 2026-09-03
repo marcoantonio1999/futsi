@@ -159,6 +159,7 @@ export type WhatsAppFollowUpAssignee = {
 export type WhatsAppConversation = {
   id: number;
   kind: "menu" | "faq" | "trial_booking" | "payment_reminder" | string;
+  contact_name?: string | null;
   contact_phone: string;
   status: WhatsAppConversationStatus;
   current_step: WhatsAppConversationStep;
@@ -174,6 +175,12 @@ export type WhatsAppConversation = {
   follow_up_assigned_to_name?: string | null;
   follow_up_notes: string;
   follow_up_updated_at: string | null;
+  human_takeover_active: boolean;
+  human_last_reply_at: string | null;
+  bot_response_pending: boolean;
+  last_inbound_at: string | null;
+  free_form_window_expires_at: string | null;
+  free_form_window_open: boolean;
   messages: WhatsAppMessage[];
   created_at: string;
   updated_at: string;

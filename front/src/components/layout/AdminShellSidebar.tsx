@@ -2,7 +2,7 @@ import { GraduationCap, LogOut, Menu, RefreshCw, UsersRound } from "lucide-react
 import type { RefObject } from "react";
 import type { TabKey } from "../../types";
 import type { TournamentSection } from "../../features/tournaments";
-import type { BillingSubsection, BusinessScope, ShellTone, SidebarTab, StudentsSubsection } from "./adminShellModel";
+import type { BillingSubsection, BusinessScope, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection } from "./adminShellModel";
 
 type AdminShellSidebarProps = {
   sidebarRef: RefObject<HTMLElement | null>;
@@ -12,7 +12,9 @@ type AdminShellSidebarProps = {
   sidebarTabs: SidebarTab[];
   effectiveActiveTab: TabKey;
   billingSection: BillingSubsection;
+  communicationsSection: CommunicationsSubsection;
   studentsSection: StudentsSubsection;
+  canReviewCommunicationCalls: boolean;
   canProgramBilling: boolean;
   showBillingSubsections: boolean;
   tournamentSection: TournamentSection;
@@ -21,6 +23,7 @@ type AdminShellSidebarProps = {
   onSwitchScope: (scope: BusinessScope) => void;
   onSelectTab: (tab: TabKey) => void;
   onSelectBillingSection: (section: BillingSubsection) => void;
+  onSelectCommunicationsSection: (section: CommunicationsSubsection) => void;
   onSelectStudentsSection: (section: StudentsSubsection) => void;
   onSelectTournamentSection: (section: TournamentSection) => void;
   onRefresh: () => void;
@@ -37,7 +40,9 @@ export function AdminShellSidebar({
   sidebarTabs,
   effectiveActiveTab,
   billingSection,
+  communicationsSection,
   studentsSection,
+  canReviewCommunicationCalls,
   canProgramBilling,
   showBillingSubsections,
   tournamentSection,
@@ -46,6 +51,7 @@ export function AdminShellSidebar({
   onSwitchScope,
   onSelectTab,
   onSelectBillingSection,
+  onSelectCommunicationsSection,
   onSelectStudentsSection,
   onSelectTournamentSection,
   onRefresh,
@@ -66,6 +72,7 @@ export function AdminShellSidebar({
         <div className={`flex items-center ${sidebarExpanded ? "justify-between gap-3" : "justify-center"}`}>
           {sidebarExpanded && <img className="h-auto w-36 object-contain" src="./logo-futsi.png" alt="Futsi Mini ERP" />}
           <button
+            data-testid="sidebar-toggle"
             className="grid size-10 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50"
             onClick={onToggleExpanded}
             type="button"
@@ -100,9 +107,9 @@ export function AdminShellSidebar({
       </div>
       <nav className={`mt-6 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto ${sidebarExpanded ? "pr-1" : "pr-0"}`}>
         {sidebarExpanded && <p className="px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">{shellTone.menuTitle}</p>}
-        <SidebarTabButtons tabs={sidebarTabs.slice(0, 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} studentsSection={studentsSection} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
+        <SidebarTabButtons tabs={sidebarTabs.slice(0, businessScope === "academy" ? 11 : 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} communicationsSection={communicationsSection} studentsSection={studentsSection} canReviewCommunicationCalls={canReviewCommunicationCalls} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectCommunicationsSection={onSelectCommunicationsSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
         {sidebarExpanded ? <p className="mt-5 px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">General</p> : <div className="my-3 h-px bg-zinc-200" />}
-        <SidebarTabButtons tabs={sidebarTabs.slice(10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} studentsSection={studentsSection} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
+        <SidebarTabButtons tabs={sidebarTabs.slice(businessScope === "academy" ? 11 : 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} communicationsSection={communicationsSection} studentsSection={studentsSection} canReviewCommunicationCalls={canReviewCommunicationCalls} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectCommunicationsSection={onSelectCommunicationsSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
       </nav>
       <div className={`mt-3 shrink-0 ${sidebarExpanded ? "grid gap-2" : "grid gap-2"}`}>
         {sidebarExpanded ? (
@@ -135,18 +142,21 @@ type SidebarTabButtonsProps = {
   sidebarExpanded: boolean;
   effectiveActiveTab: TabKey;
   billingSection: BillingSubsection;
+  communicationsSection: CommunicationsSubsection;
   studentsSection: StudentsSubsection;
+  canReviewCommunicationCalls: boolean;
   canProgramBilling: boolean;
   showBillingSubsections: boolean;
   tournamentSection: TournamentSection;
   shellTone: ShellTone;
   onSelectTab: (tab: TabKey) => void;
   onSelectBillingSection: (section: BillingSubsection) => void;
+  onSelectCommunicationsSection: (section: CommunicationsSubsection) => void;
   onSelectStudentsSection: (section: StudentsSubsection) => void;
   onSelectTournamentSection: (section: TournamentSection) => void;
 };
 
-function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingSection, studentsSection, canProgramBilling, showBillingSubsections, tournamentSection, shellTone, onSelectTab, onSelectBillingSection, onSelectStudentsSection, onSelectTournamentSection }: SidebarTabButtonsProps) {
+function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingSection, communicationsSection, studentsSection, canReviewCommunicationCalls, canProgramBilling, showBillingSubsections, tournamentSection, shellTone, onSelectTab, onSelectBillingSection, onSelectCommunicationsSection, onSelectStudentsSection, onSelectTournamentSection }: SidebarTabButtonsProps) {
   return (
     <>
       {tabs.map((tab) => (
@@ -156,7 +166,7 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
           className={`relative flex items-center rounded-md py-2.5 text-sm font-medium transition ${sidebarExpanded ? "gap-3 px-3 text-left" : "justify-center px-0"} ${
             effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
           }`}
-          onClick={() => tab.key === "tournaments" ? onSelectTournamentSection("overview") : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onSelectStudentsSection("registered") : onSelectTab(tab.key)}
+          onClick={() => tab.key === "communications" ? onSelectCommunicationsSection("summary") : tab.key === "tournaments" ? onSelectTournamentSection("overview") : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onSelectStudentsSection("registered") : onSelectTab(tab.key)}
           type="button"
           title={tab.label}
         >
@@ -164,6 +174,15 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
           <span className="grid size-5 shrink-0 place-items-center">{tab.icon}</span>
           {sidebarExpanded && <span className="truncate">{tab.label}</span>}
         </button>
+        {sidebarExpanded && tab.key === "communications" && effectiveActiveTab === "communications" && (
+          <div className="ml-8 mt-1 grid gap-1">
+            <CommunicationsSubButton active={communicationsSection === "summary"} label="Resumen" section="summary" onClick={onSelectCommunicationsSection} />
+            <CommunicationsSubButton active={communicationsSection === "bookings"} label="Pruebas gratuitas" section="bookings" onClick={onSelectCommunicationsSection} />
+            {canReviewCommunicationCalls && <CommunicationsSubButton active={communicationsSection === "calls"} label="Llamadas y transcripciones" section="calls" onClick={onSelectCommunicationsSection} />}
+            <CommunicationsSubButton active={communicationsSection === "whatsapp"} label="WhatsApp" section="whatsapp" onClick={onSelectCommunicationsSection} />
+            <CommunicationsSubButton active={communicationsSection === "availability"} label="Disponibilidad" section="availability" onClick={onSelectCommunicationsSection} />
+          </div>
+        )}
         {sidebarExpanded && showBillingSubsections && tab.key === "billing" && effectiveActiveTab === "billing" && (
           <div className="ml-8 mt-1 grid gap-1">
             {canProgramBilling && <BillingSubButton active={billingSection === "program"} label="Programar cobro" onClick={() => onSelectBillingSection("program")} />}
@@ -187,6 +206,14 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
         </div>
       ))}
     </>
+  );
+}
+
+function CommunicationsSubButton({ active, label, section, onClick }: { active: boolean; label: string; section: CommunicationsSubsection; onClick: (section: CommunicationsSubsection) => void }) {
+  return (
+    <button data-testid={`communications-subsection-${section}`} className={`rounded-md px-3 py-1.5 text-left text-xs font-semibold transition ${active ? "bg-emerald-700 text-white" : "text-zinc-500 hover:bg-zinc-50"}`} onClick={() => onClick(section)} type="button">
+      {label}
+    </button>
   );
 }
 

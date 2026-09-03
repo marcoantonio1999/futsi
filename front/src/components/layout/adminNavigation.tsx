@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   CreditCard,
   FileText,
+  MessageSquareText,
   Shield,
   Trophy,
   Upload,
@@ -18,6 +19,7 @@ import type { Role, TabKey } from "../../types";
 
 export const fullWidthTabs = new Set<TabKey>([
   "dashboard",
+  "communications",
   "adult-dashboard",
   "calendar",
   "sports",
@@ -42,6 +44,7 @@ export const fullWidthTabs = new Set<TabKey>([
 export function tabItems(): Array<{ key: TabKey; label: string; icon: React.ReactNode; adminOnly?: boolean }> {
   return [
     { key: "dashboard", label: "Dashboard", icon: <BarChart3 size={16} /> },
+    { key: "communications", label: "Comunicaciones", icon: <MessageSquareText size={16} /> },
     { key: "adult-dashboard", label: "Liga adultos", icon: <UsersRound size={16} /> },
     { key: "calendar", label: "Calendario", icon: <CalendarDays size={16} /> },
     { key: "sports", label: "Deportivo", icon: <BarChart3 size={16} /> },
@@ -73,7 +76,7 @@ export function defaultSectionsByRole(tabs: Array<{ key: TabKey }>): Record<Role
     dev: tabs.map((tab) => tab.key),
     owner: tabs.map((tab) => tab.key),
     accounting: ["dashboard", "billing", "debts", "expenses", "sales-estimate", "income-statement", "daily-operation", "invoices", "historical", "discrepancies"],
-    site_coordinator: ["dashboard", "calendar", "sports", "tournaments", "attendance", "unknowns", "billing", "debts", "expenses", "students", "guardians", "uniforms"],
+    site_coordinator: ["dashboard", "communications", "calendar", "sports", "tournaments", "attendance", "unknowns", "billing", "debts", "expenses", "students", "guardians", "uniforms"],
     cashier: ["billing", "students", "tournaments", "unknowns", "adult-dashboard"],
     coach: ["dashboard", "calendar", "attendance", "sports", "tournaments"],
     guardian: ["sports"],

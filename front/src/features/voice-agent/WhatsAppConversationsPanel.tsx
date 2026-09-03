@@ -1,14 +1,18 @@
 import { type FormEvent, useMemo, useState } from "react";
 import {
+  Bot,
   CalendarCheck2,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock3,
   CircleDashed,
   ClipboardPenLine,
   MessageCircle,
   Save,
   Search,
+  Send,
+  ShieldCheck,
   UserRound,
   X,
 } from "lucide-react";
@@ -43,10 +47,12 @@ const statusClasses: Record<WhatsAppConversationStatus, string> = {
 export function WhatsAppConversationsPanel({
   assignees,
   conversations,
+  onSendMessage,
   onUpdateConversation,
 }: {
   assignees: WhatsAppFollowUpAssignee[];
   conversations: WhatsAppConversation[];
+  onSendMessage: (conversation: WhatsAppConversation, body: string) => Promise<void>;
   onUpdateConversation: (
     conversation: WhatsAppConversation,
     payload: {
@@ -74,6 +80,7 @@ export function WhatsAppConversationsPanel({
       .filter((conversation) => {
         if (!needle) return true;
         return [
+          conversation.contact_name ?? "",
           conversation.contact_phone,
           conversation.site_name ?? "",
           conversation.booking_child_first_name ?? "",
@@ -139,6 +146,16 @@ export function WhatsAppConversationsPanel({
         {filtered.map((conversation) => {
           const expanded = expandedId === conversation.id;
           const whatsappNumber = conversation.contact_phone.replace(/\D/g, "");
+          const displayName = conversation.contact_name
+            || conversation.booking_responsible_name
+            || "Contacto de WhatsApp";
+          const initials = displayName
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0]?.toUpperCase())
+            .join("") || "WA";
+          const latestMessage = conversation.messages.at(-1);
           return (
             <article
               className="motion-card overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
@@ -146,27 +163,53 @@ export function WhatsAppConversationsPanel({
             >
               <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <a
-                      className="inline-flex items-center gap-2 font-semibold text-zinc-950 hover:text-emerald-700 dark:text-zinc-50 dark:hover:text-emerald-300"
-                      href={`https://wa.me/${whatsappNumber}`}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      <MessageCircle size={17} className="text-emerald-600" />
-                      {conversation.contact_phone}
-                    </a>
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusClasses[conversation.status]}`}>
-                      {statusLabels[conversation.status]}
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-11 shrink-0 place-items-center rounded-full bg-emerald-700 text-sm font-bold text-white">
+                      {initials}
                     </span>
-                    <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
-                      {kindLabels[conversation.kind] ?? "WhatsApp"}
-                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate font-semibold text-zinc-950 dark:text-zinc-50">{displayName}</p>
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusClasses[conversation.status]}`}>
+                          {statusLabels[conversation.status]}
+                        </span>
+                        <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                          {kindLabels[conversation.kind] ?? "WhatsApp"}
+                        </span>
+                        {conversation.human_takeover_active ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
+                            <ShieldCheck size={13} /> Control humano
+                          </span>
+                        ) : conversation.bot_response_pending ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                            <Clock3 size={13} /> Esperando respuesta humana
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                            <Bot size={13} /> Automatización activa
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
+                        <a
+                          className="font-medium hover:text-emerald-700 dark:hover:text-emerald-300"
+                          href={`https://wa.me/${whatsappNumber}`}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {conversation.contact_phone}
+                        </a>
+                        <span>Último mensaje {formatDateTime(conversation.last_message_at ?? conversation.created_at)}</span>
+                        {conversation.site_name ? <span>{conversation.site_name}</span> : null}
+                      </div>
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                    Último mensaje {formatDateTime(conversation.last_message_at ?? conversation.created_at)}
-                    {conversation.site_name ? ` · ${conversation.site_name}` : ""}
-                  </p>
+                  {latestMessage ? (
+                    <p className="mt-3 line-clamp-2 rounded-md bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                      <span className="font-semibold">{latestMessage.direction === "outbound" ? "Equipo: " : "Contacto: "}</span>
+                      {latestMessage.body || "Mensaje sin texto"}
+                    </p>
+                  ) : null}
                   {conversation.booking ? (
                     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
                       <span className="inline-flex items-center gap-1">
@@ -216,7 +259,10 @@ export function WhatsAppConversationsPanel({
                     onClick={() => setExpandedId(expanded ? null : conversation.id)}
                     type="button"
                   >
-                    <MessageCircle size={15} /> {conversation.messages.length} mensajes
+                    <MessageCircle size={15} /> {expanded ? "Cerrar conversación" : "Abrir conversación"}
+                    <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                      {conversation.messages.length}
+                    </span>
                     {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                   </button>
                 </div>
@@ -233,7 +279,12 @@ export function WhatsAppConversationsPanel({
                   }}
                 />
               ) : null}
-              {expanded ? <ConversationMessages conversation={conversation} /> : null}
+              {expanded ? (
+                <ConversationMessages
+                  conversation={conversation}
+                  onSendMessage={onSendMessage}
+                />
+              ) : null}
             </article>
           );
         })}
@@ -242,10 +293,10 @@ export function WhatsAppConversationsPanel({
           <div className="rounded-md border border-dashed border-zinc-300 bg-white px-4 py-12 text-center dark:border-zinc-700 dark:bg-zinc-950">
             <MessageCircle className="mx-auto text-zinc-400" size={30} />
             <p className="mt-3 font-semibold text-zinc-800 dark:text-zinc-100">
-              {conversations.length ? "No hay conversaciones con este filtro" : "Aún no hay mensajes de WhatsApp"}
+              {conversations.length ? "No hay conversaciones con este filtro" : "Aún no hay mensajes para este número de WhatsApp"}
             </p>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              Las conversaciones del asistente aparecerán aquí automáticamente.
+              Sólo aparecerán las conversaciones recibidas por el número empresarial configurado.
             </p>
           </div>
         ) : null}
@@ -348,29 +399,113 @@ function FollowUpEditor({
   );
 }
 
-function ConversationMessages({ conversation }: { conversation: WhatsAppConversation }) {
+function ConversationMessages({
+  conversation,
+  onSendMessage,
+}: {
+  conversation: WhatsAppConversation;
+  onSendMessage: (conversation: WhatsAppConversation, body: string) => Promise<void>;
+}) {
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const cleanBody = body.trim();
+    if (!cleanBody || sending || !conversation.free_form_window_open) return;
+    setSending(true);
+    setSent(false);
+    try {
+      await onSendMessage(conversation, cleanBody);
+      setBody("");
+      setSent(true);
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
-    <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-4 dark:border-zinc-800 dark:bg-zinc-900/50">
-      <div className="mx-auto grid max-h-[560px] max-w-3xl gap-3 overflow-y-auto pr-1">
-        {conversation.messages.map((message) => {
-          const outbound = message.direction === "outbound";
-          return (
-            <div className={`flex ${outbound ? "justify-start" : "justify-end"}`} key={message.id}>
-              <div
-                className={`max-w-[86%] rounded-xl px-3 py-2 text-sm shadow-sm ${
-                  outbound
-                    ? "rounded-tl-sm border border-zinc-200 bg-white text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                    : "rounded-tr-sm bg-emerald-700 text-white"
-                }`}
-              >
-                <p className="whitespace-pre-wrap leading-6">{message.body || "Mensaje sin texto"}</p>
-                <p className={`mt-1 text-[11px] ${outbound ? "text-zinc-400" : "text-emerald-100"}`}>
-                  {outbound ? "FUTSI" : "Contacto"} · {formatDateTime(message.created_at)}
-                </p>
+    <div className="border-t border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50">
+      <div className="mx-auto max-w-4xl px-4 py-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-semibold text-zinc-900 dark:text-zinc-100">Historial completo</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Los mensajes entrantes aparecen a la izquierda y las respuestas del equipo a la derecha.
+            </p>
+          </div>
+          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
+            conversation.free_form_window_open
+              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+              : "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+          }`}>
+            {conversation.free_form_window_open ? "Ventana de respuesta abierta" : "Requiere plantilla"}
+          </span>
+        </div>
+
+        <div className="grid max-h-[560px] gap-3 overflow-y-auto rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+          {conversation.messages.map((message) => {
+            const outbound = message.direction === "outbound";
+            return (
+              <div className={`flex ${outbound ? "justify-end" : "justify-start"}`} key={message.id}>
+                <div
+                  className={`max-w-[86%] rounded-xl px-3 py-2 text-sm shadow-sm ${
+                    outbound
+                      ? "rounded-tr-sm bg-emerald-700 text-white"
+                      : "rounded-tl-sm border border-zinc-200 bg-zinc-50 text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap leading-6">{message.body || "Mensaje sin texto"}</p>
+                  <p className={`mt-1 text-[11px] ${outbound ? "text-emerald-100" : "text-zinc-400"}`}>
+                    {outbound ? "Equipo" : "Contacto"} · {formatDateTime(message.created_at)}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <form className="mt-3 grid gap-2" onSubmit={submit}>
+          <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-100" htmlFor={`whatsapp-reply-${conversation.id}`}>
+            Responder como administrador
+          </label>
+          <textarea
+            className={`${inputClass} min-h-24 resize-y`}
+            disabled={!conversation.free_form_window_open || sending}
+            id={`whatsapp-reply-${conversation.id}`}
+            maxLength={4096}
+            onChange={(event) => {
+              setBody(event.target.value);
+              setSent(false);
+            }}
+            placeholder={
+              conversation.free_form_window_open
+                ? "Escribe una respuesta cálida y clara…"
+                : "La ventana de 24 horas terminó; utiliza una plantilla aprobada."
+            }
+            value={body}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              {conversation.free_form_window_open
+                ? "Al enviar, el bot se pausará y el equipo conservará el control de esta conversación."
+                : `El último mensaje del cliente fue ${conversation.last_inbound_at ? formatDateTime(conversation.last_inbound_at) : "hace más de 24 horas"}.`}
+            </p>
+            <button
+              className={primaryButtonClass}
+              disabled={!body.trim() || !conversation.free_form_window_open || sending}
+              type="submit"
+            >
+              <Send size={15} /> {sending ? "Enviando…" : "Enviar por WhatsApp"}
+            </button>
+          </div>
+          {sent ? (
+            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+              Mensaje enviado. El bot quedó pausado para este contacto.
+            </p>
+          ) : null}
+        </form>
       </div>
     </div>
   );

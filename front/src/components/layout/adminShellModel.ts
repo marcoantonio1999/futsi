@@ -1,4 +1,5 @@
 import type { AppData, TabKey } from "../../types";
+import type { VoiceDashboardSection } from "../../features/voice-agent";
 import { tabItems } from "./adminNavigation";
 
 export type AttendanceSubsection =
@@ -12,11 +13,13 @@ export type AttendanceSubsection =
   | "faceguard-monthly";
 export type BillingSubsection = "program" | "scheduled";
 export type StudentsSubsection = "create" | "registered";
+export type CommunicationsSubsection = VoiceDashboardSection;
 export type BusinessScope = "academy" | "adult";
 export type SidebarTab = ReturnType<typeof tabItems>[number];
 
 export const academyMenuTabs: TabKey[] = [
   "dashboard",
+  "communications",
   "calendar",
   "sports",
   "tournaments",

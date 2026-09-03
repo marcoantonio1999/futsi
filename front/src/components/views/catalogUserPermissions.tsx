@@ -4,6 +4,7 @@ import type { TabKey, User } from "../../types";
 
 export const sectionPermissionOptions: Array<{ key: TabKey; label: string }> = [
   { key: "dashboard", label: "Dashboard" },
+  { key: "communications", label: "Comunicaciones" },
   { key: "billing", label: "Cobranza" },
   { key: "debts", label: "Adeudos" },
   { key: "attendance", label: "Asistencia" },

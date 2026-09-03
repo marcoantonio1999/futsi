@@ -24,6 +24,7 @@ import {
   type AttendanceSubsection,
   type BillingSubsection,
   type BusinessScope,
+  type CommunicationsSubsection,
   type StudentsSubsection,
 } from "./adminShellModel";
 import { ThemeToggle } from "./ThemeToggle";
@@ -56,6 +57,7 @@ export function AdminShell({
   const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
   const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
+  const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>("summary");
   const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("registered");
   const [tournamentSection, setTournamentSection] = useState<TournamentSection>("overview");
   const [unknownDetailDate, setUnknownDetailDate] = useState("");
@@ -71,12 +73,18 @@ export function AdminShell({
   const latestPointerPosition = useRef<{ x: number; y: number } | null>(null);
 
   const isAdmin = user.role === "admin" || user.role === "owner" || user.role === "dev";
+  const canManageCommunications = ["admin", "owner", "dev", "site_coordinator"].includes(user.role);
+  const canReviewCommunicationCalls = isAdmin;
   const tabs = tabItems();
   const allowedSections = new Set<TabKey>([
     ...(defaultSectionsByRole(tabs)[user.role] || ["dashboard"]),
     ...((user.section_permissions || []) as TabKey[]),
   ]);
-  const visibleTabs = tabs.filter((tab) => isAdmin || allowedSections.has(tab.key));
+  const visibleTabs = tabs.filter(
+    (tab) =>
+      (isAdmin || allowedSections.has(tab.key))
+      && (tab.key !== "communications" || canManageCommunications),
+  );
   const menuOrder = businessScope === "adult" ? adultMenuTabs : academyMenuTabs;
   const sidebarTabs = menuOrder
     .map((key) => visibleTabs.find((tab) => tab.key === key))
@@ -207,6 +215,13 @@ export function AdminShell({
     scrollToTop();
   }
 
+  function selectCommunicationsSection(section: CommunicationsSubsection) {
+    setCommunicationsSection(section);
+    setActiveTab("communications");
+    setMobileMenuOpen(false);
+    scrollToTop();
+  }
+
   function selectBillingSection(section: BillingSubsection) {
     setBillingSection(section);
     setActiveTab("billing");
@@ -298,7 +313,9 @@ export function AdminShell({
         sidebarTabs={sidebarTabs}
         effectiveActiveTab={effectiveActiveTab}
         billingSection={billingSection}
+        communicationsSection={communicationsSection}
         studentsSection={studentsSection}
+        canReviewCommunicationCalls={canReviewCommunicationCalls}
         canProgramBilling={canProgramBilling}
         showBillingSubsections={showBillingSubsections}
         tournamentSection={tournamentSection}
@@ -310,6 +327,7 @@ export function AdminShell({
           setMobileMenuOpen(false);
         }}
         onSelectBillingSection={selectBillingSection}
+        onSelectCommunicationsSection={selectCommunicationsSection}
         onSelectStudentsSection={selectStudentsSection}
         onSelectTournamentSection={selectTournamentSection}
       />
@@ -322,7 +340,9 @@ export function AdminShell({
           sidebarTabs={sidebarTabs}
           effectiveActiveTab={effectiveActiveTab}
           billingSection={billingSection}
+          communicationsSection={communicationsSection}
           studentsSection={studentsSection}
+          canReviewCommunicationCalls={canReviewCommunicationCalls}
           canProgramBilling={canProgramBilling}
           showBillingSubsections={showBillingSubsections}
           tournamentSection={tournamentSection}
@@ -331,6 +351,7 @@ export function AdminShell({
           onSwitchScope={switchBusinessScope}
           onSelectTab={selectTab}
           onSelectBillingSection={selectBillingSection}
+          onSelectCommunicationsSection={selectCommunicationsSection}
           onSelectStudentsSection={selectStudentsSection}
           onSelectTournamentSection={selectTournamentSection}
           onRefresh={refreshActiveSection}
@@ -368,6 +389,7 @@ export function AdminShell({
             error={error}
             attendanceSubsection={attendanceSubsection}
             billingSection={billingSection}
+            communicationsSection={communicationsSection}
             studentsSection={studentsSection}
             tournamentSection={tournamentSection}
             unknownDetailDate={unknownDetailDate}

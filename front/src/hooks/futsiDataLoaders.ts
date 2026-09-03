@@ -64,11 +64,18 @@ export function initialTabForUser(user: User): TabKey {
   return "dashboard";
 }
 
-async function loadDashboardData(authToken: string, user: User): Promise<AppDataPatch> {
+async function loadDashboardData(authToken: string): Promise<AppDataPatch> {
+  const [dashboardSummary, sites] = await Promise.all([
+    apiRequest<DashboardSummary>("/dashboard/summary/", authToken),
+    apiRequest<Site[]>("/sites/", authToken),
+  ]);
+  return { dashboardSummary, sites };
+}
+
+async function loadCommunicationsData(authToken: string, user: User): Promise<AppDataPatch> {
   const canManageTrials = ["admin", "owner", "dev", "site_coordinator"].includes(user.role);
   const canReviewCalls = ["admin", "owner", "dev"].includes(user.role);
-  const [dashboardSummary, sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules] = await Promise.all([
-    apiRequest<DashboardSummary>("/dashboard/summary/", authToken),
+  const [sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules] = await Promise.all([
     apiRequest<Site[]>("/sites/", authToken),
     canManageTrials ? optionalRestrictedApi<Court[]>("/courts/", authToken, []) : Promise.resolve<Court[]>([]),
     canManageTrials ? optionalRestrictedApi<TrialBooking[]>("/trial-bookings/", authToken, []) : Promise.resolve<TrialBooking[]>([]),
@@ -77,11 +84,12 @@ async function loadDashboardData(authToken: string, user: User): Promise<AppData
     canManageTrials ? optionalRestrictedApi<WhatsAppFollowUpAssignee[]>("/whatsapp-conversations/assignees/", authToken, []) : Promise.resolve<WhatsAppFollowUpAssignee[]>([]),
     canManageTrials ? optionalRestrictedApi<TrialAvailabilityRule[]>("/trial-availability-rules/", authToken, []) : Promise.resolve<TrialAvailabilityRule[]>([]),
   ]);
-  return { dashboardSummary, sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules };
+  return { sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules };
 }
 
 export async function loadSectionData(authToken: string, user: User, tab: TabKey): Promise<AppDataPatch> {
-  if (tab === "dashboard") return loadDashboardData(authToken, user);
+  if (tab === "dashboard") return loadDashboardData(authToken);
+  if (tab === "communications") return loadCommunicationsData(authToken, user);
 
   if (tab === "adult-dashboard") {
     const [sites, attendanceSessions, charges, payments, tournaments, teams, studentTournamentRegistrations, players, matches, standings, playerAttendanceRecords, invoices] = await Promise.all([

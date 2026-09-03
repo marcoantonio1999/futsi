@@ -1,14 +1,16 @@
 import { LogOut, X } from "lucide-react";
 import type { TabKey } from "../../types";
 import type { TournamentSection } from "../../features/tournaments";
-import type { BillingSubsection, ShellTone, SidebarTab, StudentsSubsection } from "./adminShellModel";
+import type { BillingSubsection, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection } from "./adminShellModel";
 
 type AdminShellMobileMenuProps = {
   isOpen: boolean;
   sidebarTabs: SidebarTab[];
   effectiveActiveTab: TabKey;
   billingSection: BillingSubsection;
+  communicationsSection: CommunicationsSubsection;
   studentsSection: StudentsSubsection;
+  canReviewCommunicationCalls: boolean;
   canProgramBilling: boolean;
   showBillingSubsections: boolean;
   tournamentSection: TournamentSection;
@@ -17,6 +19,7 @@ type AdminShellMobileMenuProps = {
   onLogout: () => void;
   onSelectTab: (tab: TabKey) => void;
   onSelectBillingSection: (section: BillingSubsection) => void;
+  onSelectCommunicationsSection: (section: CommunicationsSubsection) => void;
   onSelectStudentsSection: (section: StudentsSubsection) => void;
   onSelectTournamentSection: (section: TournamentSection) => void;
 };
@@ -26,7 +29,9 @@ export function AdminShellMobileMenu({
   sidebarTabs,
   effectiveActiveTab,
   billingSection,
+  communicationsSection,
   studentsSection,
+  canReviewCommunicationCalls,
   canProgramBilling,
   showBillingSubsections,
   tournamentSection,
@@ -35,6 +40,7 @@ export function AdminShellMobileMenu({
   onLogout,
   onSelectTab,
   onSelectBillingSection,
+  onSelectCommunicationsSection,
   onSelectStudentsSection,
   onSelectTournamentSection,
 }: AdminShellMobileMenuProps) {
@@ -67,12 +73,21 @@ export function AdminShellMobileMenu({
                 className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
                   effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
                 }`}
-                onClick={() => tab.key === "tournaments" ? onSelectTournamentSection("overview") : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onSelectStudentsSection("registered") : onSelectTab(tab.key)}
+                onClick={() => tab.key === "communications" ? onSelectCommunicationsSection("summary") : tab.key === "tournaments" ? onSelectTournamentSection("overview") : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onSelectStudentsSection("registered") : onSelectTab(tab.key)}
                 type="button"
               >
                 {tab.icon}
                 {tab.label}
               </button>
+              {tab.key === "communications" && (
+                <div className="ml-9 mt-1 grid gap-1">
+                  <CommunicationsMobileSubButton active={communicationsSection === "summary"} label="Resumen" section="summary" onClick={onSelectCommunicationsSection} />
+                  <CommunicationsMobileSubButton active={communicationsSection === "bookings"} label="Pruebas gratuitas" section="bookings" onClick={onSelectCommunicationsSection} />
+                  {canReviewCommunicationCalls && <CommunicationsMobileSubButton active={communicationsSection === "calls"} label="Llamadas y transcripciones" section="calls" onClick={onSelectCommunicationsSection} />}
+                  <CommunicationsMobileSubButton active={communicationsSection === "whatsapp"} label="WhatsApp" section="whatsapp" onClick={onSelectCommunicationsSection} />
+                  <CommunicationsMobileSubButton active={communicationsSection === "availability"} label="Disponibilidad" section="availability" onClick={onSelectCommunicationsSection} />
+                </div>
+              )}
               {showBillingSubsections && tab.key === "billing" && effectiveActiveTab === "billing" && (
                 <div className="ml-9 mt-1 grid gap-1">
                   {canProgramBilling && <BillingMobileSubButton active={billingSection === "program"} label="Programar cobro" onClick={() => onSelectBillingSection("program")} />}
@@ -102,6 +117,14 @@ export function AdminShellMobileMenu({
         </button>
       </aside>
     </div>
+  );
+}
+
+function CommunicationsMobileSubButton({ active, label, section, onClick }: { active: boolean; label: string; section: CommunicationsSubsection; onClick: (section: CommunicationsSubsection) => void }) {
+  return (
+    <button data-testid={`communications-subsection-${section}`} className={`rounded-md px-3 py-2 text-left text-xs font-semibold ${active ? "bg-emerald-700 text-white" : "text-zinc-500 hover:bg-zinc-50"}`} onClick={() => onClick(section)} type="button">
+      {label}
+    </button>
   );
 }
 
