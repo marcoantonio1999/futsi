@@ -28,6 +28,13 @@ from core.api.finance import (
 from core.api.historical import HistoricalImportViewSet
 from core.api.invoices import InvoiceViewSet
 from core.api.sports import MatchViewSet, StudentAssessmentViewSet, StudentValueAssessmentViewSet
+from core.api.trials import (
+    TrialAvailabilityRuleViewSet,
+    TrialBookingViewSet,
+    TrialVisitViewSet,
+    VoiceCallViewSet,
+    WhatsAppConversationViewSet,
+)
 
 
 router = DefaultRouter()
@@ -58,3 +65,8 @@ router.register("invoices", InvoiceViewSet)
 router.register("historical-imports", HistoricalImportViewSet)
 router.register("daily-closures", DailyClosureViewSet)
 router.register("audit-logs", AuditLogViewSet)
+router.register("trial-bookings", TrialBookingViewSet)
+router.register("trial-visits", TrialVisitViewSet)
+router.register("voice-calls", VoiceCallViewSet)
+router.register("whatsapp-conversations", WhatsAppConversationViewSet)
+router.register("trial-availability-rules", TrialAvailabilityRuleViewSet)

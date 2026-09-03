@@ -4,3 +4,4 @@ from core.domain_serializers.documents import AuditLogSerializer, DailyClosureSe
 from core.domain_serializers.finance import CashMovementSerializer, ChargeSerializer, DiscountSerializer, ExpenseSerializer, PaymentSerializer, StaffPaymentRequestSerializer
 from core.domain_serializers.money import charge_balance, sync_charge_status
 from core.domain_serializers.sports import MatchSerializer, PlayerAttendanceRecordSerializer, PlayerSerializer, RoundSerializer, StudentAssessmentSerializer, StudentTournamentRegistrationSerializer, StudentValueAssessmentSerializer, TeamSerializer, TournamentSerializer
+from core.domain_serializers.trials import CallTranscriptSegmentSerializer, TrialAvailabilityRuleSerializer, TrialBookingSerializer, TrialVisitSerializer, VoiceCallReviewSerializer, VoiceCallSerializer, WhatsAppConversationSerializer, WhatsAppMessageSerializer

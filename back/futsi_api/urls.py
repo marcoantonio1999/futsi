@@ -49,17 +49,41 @@ from core.api.face_station_reports import (
 from core.api.dashboard import DashboardSummaryView
 from core.api.router import AccountingExportView, FaceAttendanceView, router
 from core.auth_views import LoginView, LogoutView, MeView
-from futsi_api.health import db_health, health, index
+from core.voice.twilio_webhooks import (
+    call_status as twilio_call_status,
+    consent_call as twilio_consent_call,
+    incoming_call as twilio_incoming_call,
+    stream_status as twilio_stream_status,
+)
+from core.whatsapp.twilio_webhooks import incoming_message as twilio_whatsapp_incoming
+from core.whatsapp.meta_webhooks import meta_webhook
+from futsi_api.health import (
+    db_health,
+    health,
+    index,
+    meta_whatsapp_health,
+    voice_health,
+    whatsapp_health,
+)
 
 
 urlpatterns = [
     path("", index),
     path("health/", health),
     path("health/db/", db_health),
+    path("health/voice/", voice_health),
+    path("health/whatsapp/", whatsapp_health),
+    path("health/whatsapp/meta/", meta_whatsapp_health),
     path("admin/", admin.site.urls),
     path("api/auth/login/", LoginView.as_view()),
     path("api/auth/logout/", LogoutView.as_view()),
     path("api/auth/me/", MeView.as_view()),
+    path("api/voice/twilio/incoming/", twilio_incoming_call),
+    path("api/voice/twilio/consent/", twilio_consent_call),
+    path("api/voice/twilio/status/", twilio_call_status),
+    path("api/voice/twilio/stream-status/", twilio_stream_status),
+    path("api/whatsapp/twilio/incoming/", twilio_whatsapp_incoming),
+    path("api/whatsapp/meta/webhook/", meta_webhook),
     path("api/dashboard/summary/", DashboardSummaryView.as_view()),
     path("api/reports/accounting.xlsx", AccountingExportView.as_view()),
     path("api/face-attendance/recognize/", FaceAttendanceView.as_view()),

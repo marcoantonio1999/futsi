@@ -31,13 +31,21 @@ def env_origin_list(name, default=""):
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 FUTSI_ENV = os.getenv("FUTSI_ENV", "local" if DEBUG else "production").lower()
+if not DEBUG and (
+    not SECRET_KEY
+    or SECRET_KEY in {"dev-only-change-me", "change-me", "change-this-to-a-long-random-secret"}
+    or len(SECRET_KEY) < 50
+    or len(set(SECRET_KEY)) < 5
+):
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY debe ser un secreto aleatorio y diverso de al menos "
+        "50 caracteres en producción."
+    )
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.2.2,testserver")
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
 IS_RENDER = bool(os.getenv("RENDER_SERVICE_ID") or RENDER_EXTERNAL_HOSTNAME)
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
-if not DEBUG and ".onrender.com" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(".onrender.com")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -82,6 +90,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "futsi_api.wsgi.application"
+ASGI_APPLICATION = "futsi_api.asgi.application"
 
 DB_ENGINE = os.getenv("DB_ENGINE", "postgres").lower()
 DATABASE_URL = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
@@ -263,6 +272,238 @@ FILE_INVOICE_MAX_XML_BYTES = int(os.getenv("FILE_INVOICE_MAX_XML_BYTES", str(2 *
 FILE_UPLOAD_MAX_EXCEL_BYTES = int(os.getenv("FILE_UPLOAD_MAX_EXCEL_BYTES", str(25 * 1024 * 1024)))
 FILE_EXPORT_MAX_EXCEL_BYTES = int(os.getenv("FILE_EXPORT_MAX_EXCEL_BYTES", str(25 * 1024 * 1024)))
 FILE_EVIDENCE_RETENTION_DAYS = int(os.getenv("FILE_EVIDENCE_RETENTION_DAYS", "30"))
+
+# Voice agent. Provider credentials are server-side only and must be injected by
+# the deployment secret manager; they must never be exposed through Vite.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_WHATSAPP_MODEL = os.getenv("OPENAI_WHATSAPP_MODEL", "gpt-5.6-luna").strip()
+OPENAI_WHATSAPP_FAQ_ENABLED = os.getenv(
+    "OPENAI_WHATSAPP_FAQ_ENABLED",
+    "true",
+).lower() in {"1", "true", "yes", "si", "on"}
+OPENAI_WHATSAPP_TIMEOUT_SECONDS = int(
+    os.getenv("OPENAI_WHATSAPP_TIMEOUT_SECONDS", "20")
+)
+if not 5 <= OPENAI_WHATSAPP_TIMEOUT_SECONDS <= 60:
+    raise RuntimeError("OPENAI_WHATSAPP_TIMEOUT_SECONDS debe estar entre 5 y 60.")
+
+# Cuando está configurado, Futsi delega los mensajes salientes de WhatsApp al
+# microservicio siempre activo. El dashboard conserva la misma base Supabase.
+WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "").strip().rstrip("/")
+WHATSAPP_SERVICE_TOKEN = os.getenv("WHATSAPP_SERVICE_TOKEN", "").strip()
+WHATSAPP_SERVICE_TIMEOUT_SECONDS = int(
+    os.getenv("WHATSAPP_SERVICE_TIMEOUT_SECONDS", "20")
+)
+OPENAI_REALTIME_MODEL = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2.1")
+OPENAI_TRANSCRIPTION_MODEL = os.getenv(
+    "OPENAI_TRANSCRIPTION_MODEL",
+    "gpt-realtime-whisper",
+)
+OPENAI_REALTIME_VOICE = os.getenv("OPENAI_REALTIME_VOICE", "cedar")
+OPENAI_REALTIME_VAD_THRESHOLD = float(
+    os.getenv("OPENAI_REALTIME_VAD_THRESHOLD", "0.75")
+)
+OPENAI_REALTIME_VAD_PREFIX_PADDING_MS = int(
+    os.getenv("OPENAI_REALTIME_VAD_PREFIX_PADDING_MS", "400")
+)
+OPENAI_REALTIME_VAD_SILENCE_DURATION_MS = int(
+    os.getenv("OPENAI_REALTIME_VAD_SILENCE_DURATION_MS", "700")
+)
+if not 0 < OPENAI_REALTIME_VAD_THRESHOLD <= 1:
+    raise RuntimeError("OPENAI_REALTIME_VAD_THRESHOLD debe estar entre 0 y 1.")
+if not 0 <= OPENAI_REALTIME_VAD_PREFIX_PADDING_MS <= 5000:
+    raise RuntimeError(
+        "OPENAI_REALTIME_VAD_PREFIX_PADDING_MS debe estar entre 0 y 5000."
+    )
+if not 100 <= OPENAI_REALTIME_VAD_SILENCE_DURATION_MS <= 5000:
+    raise RuntimeError(
+        "OPENAI_REALTIME_VAD_SILENCE_DURATION_MS debe estar entre 100 y 5000."
+    )
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
+TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "").strip()
+if TWILIO_WHATSAPP_NUMBER.lower().startswith("whatsapp:"):
+    TWILIO_WHATSAPP_NUMBER = TWILIO_WHATSAPP_NUMBER[len("whatsapp:") :]
+TWILIO_WHATSAPP_INTERACTIVE = os.getenv(
+    "TWILIO_WHATSAPP_INTERACTIVE",
+    "true",
+).lower() in {"1", "true", "yes", "si", "on"}
+
+# WhatsApp Cloud API (Meta). This is intentionally independent from Twilio:
+# Twilio continues to handle phone calls while Meta owns WhatsApp messaging.
+META_WHATSAPP_PROVIDER = os.getenv("META_WHATSAPP_PROVIDER", "meta").strip().lower()
+META_WHATSAPP_ACCESS_TOKEN = os.getenv("META_WHATSAPP_ACCESS_TOKEN", "").strip()
+META_WHATSAPP_PHONE_NUMBER_ID = os.getenv("META_WHATSAPP_PHONE_NUMBER_ID", "").strip()
+META_WHATSAPP_DISPLAY_NUMBER = os.getenv("META_WHATSAPP_DISPLAY_NUMBER", "").strip()
+META_WHATSAPP_VERIFY_TOKEN = os.getenv("META_WHATSAPP_VERIFY_TOKEN", "").strip()
+META_WHATSAPP_APP_SECRET = os.getenv("META_WHATSAPP_APP_SECRET", "").strip()
+DUALHOOK_API_KEY = os.getenv("DUALHOOK_API_KEY", "").strip()
+DUALHOOK_WABA_ID = os.getenv("DUALHOOK_WABA_ID", "").strip()
+DUALHOOK_API_BASE_URL = os.getenv(
+    "DUALHOOK_API_BASE_URL",
+    "https://api.dualhook.com",
+).strip().rstrip("/")
+META_WHATSAPP_GRAPH_VERSION = os.getenv(
+    "META_WHATSAPP_GRAPH_VERSION",
+    "v23.0",
+).strip()
+META_WHATSAPP_INTERACTIVE = os.getenv(
+    "META_WHATSAPP_INTERACTIVE",
+    "true",
+).lower() in {"1", "true", "yes", "si", "on"}
+META_WHATSAPP_VALIDATE_SIGNATURES = os.getenv(
+    "META_WHATSAPP_VALIDATE_SIGNATURES",
+    "true",
+).lower() in {"1", "true", "yes", "si", "on"}
+META_WHATSAPP_PAYMENT_TEMPLATE = os.getenv(
+    "META_WHATSAPP_PAYMENT_TEMPLATE",
+    "futsi_recordatorio_pago",
+).strip()
+META_WHATSAPP_TEMPLATE_LANGUAGE = os.getenv(
+    "META_WHATSAPP_TEMPLATE_LANGUAGE",
+    "es_MX",
+).strip()
+META_WHATSAPP_DEFAULT_SITE_CODE = os.getenv(
+    "META_WHATSAPP_DEFAULT_SITE_CODE",
+    "cuajimalpa",
+).strip()
+META_WHATSAPP_LOCATION_NAME = os.getenv(
+    "META_WHATSAPP_LOCATION_NAME",
+    "Power Soccer Academy",
+).strip()
+META_WHATSAPP_LOCATION_ADDRESS = os.getenv(
+    "META_WHATSAPP_LOCATION_ADDRESS",
+    (
+        "Antiguo Camino a Tecamachalco 686, Lomas de Vista Hermosa, "
+        "Cuajimalpa de Morelos, 05100 Ciudad de México"
+    ),
+).strip()
+META_WHATSAPP_CONTACT_PHONE = os.getenv(
+    "META_WHATSAPP_CONTACT_PHONE",
+    "+52 55 7895 0758",
+).strip()
+META_WHATSAPP_LOCATION_LATITUDE = float(
+    os.getenv("META_WHATSAPP_LOCATION_LATITUDE", "19.3824617")
+)
+META_WHATSAPP_LOCATION_LONGITUDE = float(
+    os.getenv("META_WHATSAPP_LOCATION_LONGITUDE", "-99.2780863")
+)
+if not -90 <= META_WHATSAPP_LOCATION_LATITUDE <= 90:
+    raise RuntimeError("META_WHATSAPP_LOCATION_LATITUDE no es válida.")
+if not -180 <= META_WHATSAPP_LOCATION_LONGITUDE <= 180:
+    raise RuntimeError("META_WHATSAPP_LOCATION_LONGITUDE no es válida.")
+TWILIO_PUBLIC_BASE_URL = os.getenv(
+    "TWILIO_PUBLIC_BASE_URL",
+    f"https://{RENDER_EXTERNAL_HOSTNAME}" if RENDER_EXTERNAL_HOSTNAME else "",
+).rstrip("/")
+TWILIO_STREAM_URL = os.getenv("TWILIO_STREAM_URL", "").strip()
+if not TWILIO_STREAM_URL and TWILIO_PUBLIC_BASE_URL:
+    TWILIO_STREAM_URL = (
+        TWILIO_PUBLIC_BASE_URL.replace("https://", "wss://", 1)
+        .replace("http://", "ws://", 1)
+        .rstrip("/")
+        + "/ws/voice/twilio/"
+    )
+if not DEBUG:
+    if TWILIO_PUBLIC_BASE_URL:
+        public_voice_url = urlparse(TWILIO_PUBLIC_BASE_URL)
+        if (
+            public_voice_url.scheme != "https"
+            or not public_voice_url.netloc
+            or public_voice_url.path not in {"", "/"}
+            or public_voice_url.params
+            or public_voice_url.query
+            or public_voice_url.fragment
+            or public_voice_url.username
+        ):
+            raise RuntimeError(
+                "TWILIO_PUBLIC_BASE_URL debe ser un origen HTTPS sin ruta, query ni credenciales."
+            )
+    if TWILIO_STREAM_URL:
+        stream_voice_url = urlparse(TWILIO_STREAM_URL)
+        if (
+            stream_voice_url.scheme != "wss"
+            or not stream_voice_url.netloc
+            or stream_voice_url.path != "/ws/voice/twilio/"
+            or stream_voice_url.params
+            or stream_voice_url.query
+            or stream_voice_url.fragment
+            or stream_voice_url.username
+        ):
+            raise RuntimeError(
+                "TWILIO_STREAM_URL debe ser WSS y terminar exactamente en /ws/voice/twilio/."
+            )
+        if (
+            TWILIO_PUBLIC_BASE_URL
+            and stream_voice_url.hostname
+            != urlparse(TWILIO_PUBLIC_BASE_URL).hostname
+        ):
+            raise RuntimeError(
+                "TWILIO_PUBLIC_BASE_URL y TWILIO_STREAM_URL deben usar el mismo hostname."
+            )
+TWILIO_VALIDATE_SIGNATURES = os.getenv(
+    "TWILIO_VALIDATE_SIGNATURES",
+    "true",
+).lower() in {"1", "true", "yes", "si", "on"}
+if not DEBUG:
+    TWILIO_VALIDATE_SIGNATURES = True
+
+if TWILIO_WHATSAPP_NUMBER and not (
+    TWILIO_WHATSAPP_NUMBER.startswith("+")
+    and TWILIO_WHATSAPP_NUMBER[1:].isdigit()
+    and 8 <= len(TWILIO_WHATSAPP_NUMBER[1:]) <= 15
+):
+    raise RuntimeError(
+        "TWILIO_WHATSAPP_NUMBER debe estar en formato E.164, por ejemplo +14155238886."
+    )
+
+TRIAL_MIN_ADVANCE_HOURS = max(0, int(os.getenv("TRIAL_MIN_ADVANCE_HOURS", "2")))
+TRIAL_BOOKING_HORIZON_DAYS = max(
+    1,
+    min(int(os.getenv("TRIAL_BOOKING_HORIZON_DAYS", "30")), 180),
+)
+TRIAL_MIN_DAYS_BETWEEN_VISITS = max(
+    0,
+    int(os.getenv("TRIAL_MIN_DAYS_BETWEEN_VISITS", "1")),
+)
+TRIAL_MAX_DAYS_BETWEEN_VISITS = max(
+    TRIAL_MIN_DAYS_BETWEEN_VISITS,
+    int(os.getenv("TRIAL_MAX_DAYS_BETWEEN_VISITS", "21")),
+)
+VOICE_MAX_CALL_SECONDS = max(
+    60,
+    min(int(os.getenv("VOICE_MAX_CALL_SECONDS", "900")), 3540),
+)
+VOICE_IDLE_TIMEOUT_SECONDS = max(
+    20,
+    min(int(os.getenv("VOICE_IDLE_TIMEOUT_SECONDS", "90")), 300),
+)
+VOICE_CALLS_PER_NUMBER_PER_HOUR = max(
+    1,
+    min(int(os.getenv("VOICE_CALLS_PER_NUMBER_PER_HOUR", "5")), 100),
+)
+VOICE_MAX_CONCURRENT_STREAMS = max(
+    1,
+    min(int(os.getenv("VOICE_MAX_CONCURRENT_STREAMS", "5")), 100),
+)
+VOICE_TRANSCRIPT_RETENTION_DAYS = max(
+    1,
+    min(int(os.getenv("VOICE_TRANSCRIPT_RETENTION_DAYS", "90")), 3650),
+)
+VOICE_CALL_RETENTION_DAYS = max(
+    1,
+    min(int(os.getenv("VOICE_CALL_RETENTION_DAYS", "365")), 3650),
+)
+TRIAL_PII_RETENTION_DAYS = max(
+    1,
+    min(int(os.getenv("TRIAL_PII_RETENTION_DAYS", "365")), 3650),
+)
+VOICE_RETENTION_BATCH_SIZE = max(
+    1,
+    min(int(os.getenv("VOICE_RETENTION_BATCH_SIZE", "1000")), 10000),
+)
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [

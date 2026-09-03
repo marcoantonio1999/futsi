@@ -1,6 +1,8 @@
+import re
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -1098,3 +1100,434 @@ class AuditLog(TimestampedModel):
             models.Index(fields=["table_name", "record_id"], name="ix_audit_table_record"),
             models.Index(fields=["actor", "created_at"], name="ix_audit_actor_created"),
         ]
+
+
+class TrialBookingSource(models.TextChoices):
+    VOICE = "voice", "Llamada"
+    WHATSAPP = "whatsapp", "WhatsApp"
+    MANUAL = "manual", "Manual"
+    WEB = "web", "Web"
+
+
+class TrialBookingStatus(models.TextChoices):
+    SCHEDULED = "scheduled", "Agendada"
+    IN_PROGRESS = "in_progress", "En curso"
+    COMPLETED = "completed", "Completada"
+    CANCELED = "canceled", "Cancelada"
+
+
+class TrialVisitStatus(models.TextChoices):
+    SCHEDULED = "scheduled", "Agendada"
+    COMPLETED = "completed", "Completada"
+    NO_SHOW = "no_show", "No asistio"
+    CANCELED = "canceled", "Cancelada"
+
+
+class VoiceCallTechnicalStatus(models.TextChoices):
+    QUEUED = "queued", "En cola"
+    RINGING = "ringing", "Sonando"
+    IN_PROGRESS = "in-progress", "En curso"
+    COMPLETED = "completed", "Completada"
+    BUSY = "busy", "Ocupado"
+    FAILED = "failed", "Fallida"
+    NO_ANSWER = "no-answer", "Sin respuesta"
+    CANCELED = "canceled", "Cancelada"
+
+
+class CallOutcome(models.TextChoices):
+    PENDING = "pending", "Pendiente"
+    SUCCESSFUL = "successful", "Exitosa"
+    UNSUCCESSFUL = "unsuccessful", "No exitosa"
+
+
+class TranscriptSpeaker(models.TextChoices):
+    CALLER = "caller", "Persona que llama"
+    ASSISTANT = "assistant", "Asistente"
+    SYSTEM = "system", "Sistema"
+
+
+class WhatsAppConversationStatus(models.TextChoices):
+    ACTIVE = "active", "Activa"
+    COMPLETED = "completed", "Completada"
+    CANCELED = "canceled", "Cancelada"
+    FAILED = "failed", "Fallida"
+
+
+class WhatsAppConversationStep(models.TextChoices):
+    MENU = "menu", "Menú principal"
+    FAQ = "faq", "Preguntas y respuestas"
+    CHOOSE_SITE = "choose_site", "Elegir sede"
+    RESPONSIBLE_NAME = "responsible_name", "Nombre del responsable"
+    CHILD_NAME = "child_name", "Nombre del alumno"
+    CONTACT_PHONE = "contact_phone", "Teléfono de contacto"
+    CHILD_AGE = "child_age", "Edad del alumno"
+    CHOOSE_FIRST_VISIT = "choose_first_visit", "Elegir primera visita"
+    CHOOSE_SECOND_VISIT = "choose_second_visit", "Elegir segunda visita"
+    CONFIRM = "confirm", "Confirmar"
+    FINISHED = "finished", "Finalizada"
+
+
+class WhatsAppMessageDirection(models.TextChoices):
+    INBOUND = "inbound", "Entrante"
+    OUTBOUND = "outbound", "Saliente"
+
+
+_SENSITIVE_ERROR_PATTERNS = (
+    re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}\b", re.IGNORECASE),
+    re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
+    re.compile(
+        r"(?i)\b(api[_ -]?key|auth(?:orization)?|token|secret|signature)"
+        r"(\s*[:=]\s*)[^\s,;]+"
+    ),
+)
+
+
+def sanitize_voice_error(value):
+    """Keep operational errors useful without persisting credentials or tokens."""
+    sanitized = str(value or "")
+    for pattern in _SENSITIVE_ERROR_PATTERNS:
+        if pattern.groups:
+            sanitized = pattern.sub(r"\1\2[REDACTED]", sanitized)
+        else:
+            sanitized = pattern.sub("[REDACTED]", sanitized)
+    return sanitized[:4000]
+
+
+class TrialBooking(TimestampedModel):
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="trial_bookings")
+    responsible_name = models.CharField(max_length=160)
+    responsible_phone = models.CharField(max_length=30)
+    responsible_email = models.EmailField(blank=True)
+    child_first_name = models.CharField(max_length=100)
+    child_age = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(3), MaxValueValidator(17)],
+    )
+    source = models.CharField(
+        max_length=16,
+        choices=TrialBookingSource.choices,
+        default=TrialBookingSource.MANUAL,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=TrialBookingStatus.choices,
+        default=TrialBookingStatus.SCHEDULED,
+    )
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_trial_bookings",
+    )
+
+    class Meta:
+        db_table = "trial_bookings"
+        indexes = [
+            models.Index(fields=["site", "status"], name="ix_trial_booking_site_status"),
+            models.Index(fields=["source", "created_at"], name="ix_trial_booking_source_date"),
+            models.Index(fields=["responsible_phone"], name="ix_trial_booking_phone"),
+        ]
+
+    def __str__(self):
+        identifier = self.pk if self.pk is not None else "nueva"
+        return f"Prueba {identifier} - {self.site.name}"
+
+
+class TrialVisit(TimestampedModel):
+    booking = models.ForeignKey(TrialBooking, on_delete=models.CASCADE, related_name="visits")
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="trial_visits")
+    court = models.ForeignKey(
+        Court,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="trial_visits",
+    )
+    visit_number = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(2)]
+    )
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=20,
+        choices=TrialVisitStatus.choices,
+        default=TrialVisitStatus.SCHEDULED,
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "trial_visits"
+        ordering = ["starts_at", "visit_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["booking", "visit_number"],
+                name="uq_trial_visit_booking_number",
+            ),
+            models.CheckConstraint(
+                condition=Q(visit_number__gte=1, visit_number__lte=2),
+                name="ck_trial_visit_number",
+            ),
+            models.CheckConstraint(
+                condition=Q(ends_at__gt=models.F("starts_at")),
+                name="ck_trial_visit_end_after_start",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["site", "starts_at"], name="ix_trial_visit_site_start"),
+            models.Index(fields=["site", "status"], name="ix_trial_visit_site_status"),
+            models.Index(fields=["court", "starts_at"], name="ix_trial_visit_court_start"),
+        ]
+
+    def __str__(self):
+        return f"{self.booking} - visita {self.visit_number}"
+
+
+class VoiceCall(TimestampedModel):
+    call_sid = models.CharField(max_length=64, unique=True)
+    stream_sid = models.CharField(max_length=80, blank=True)
+    from_number = models.CharField(max_length=32)
+    to_number = models.CharField(max_length=32)
+    technical_status = models.CharField(
+        max_length=24,
+        choices=VoiceCallTechnicalStatus.choices,
+        default=VoiceCallTechnicalStatus.QUEUED,
+    )
+    booking = models.ForeignKey(
+        TrialBooking,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="voice_calls",
+    )
+    summary = models.TextField(blank=True)
+    extracted_data = models.JSONField(default=dict, blank=True)
+    ai_outcome = models.CharField(
+        max_length=16,
+        choices=CallOutcome.choices,
+        default=CallOutcome.PENDING,
+    )
+    review_outcome = models.CharField(
+        max_length=16,
+        choices=CallOutcome.choices,
+        default=CallOutcome.PENDING,
+    )
+    failure_reason = models.TextField(blank=True)
+    sanitized_error = models.TextField(blank=True)
+    consent_granted = models.BooleanField(default=False)
+    consent_granted_at = models.DateTimeField(null=True, blank=True)
+    consent_withdrawn_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(default=0)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="reviewed_voice_calls",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "voice_calls"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        review_outcome=CallOutcome.PENDING,
+                        reviewed_by__isnull=True,
+                        reviewed_at__isnull=True,
+                    )
+                    | Q(
+                        review_outcome__in=[
+                            CallOutcome.SUCCESSFUL,
+                            CallOutcome.UNSUCCESSFUL,
+                        ],
+                        reviewed_by__isnull=False,
+                        reviewed_at__isnull=False,
+                    )
+                ),
+                name="ck_voice_call_review_audit",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["technical_status", "created_at"], name="ix_voice_call_status_date"),
+            models.Index(fields=["review_outcome", "created_at"], name="ix_voice_call_review_date"),
+            models.Index(fields=["booking", "created_at"], name="ix_voice_call_booking_date"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.sanitized_error = sanitize_voice_error(self.sanitized_error)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        identifier = self.pk if self.pk is not None else "nueva"
+        return f"Llamada {identifier}"
+
+
+class WhatsAppConversation(TimestampedModel):
+    contact_phone = models.CharField(max_length=32)
+    from_address = models.CharField(max_length=64)
+    to_address = models.CharField(max_length=64)
+    status = models.CharField(
+        max_length=16,
+        choices=WhatsAppConversationStatus.choices,
+        default=WhatsAppConversationStatus.ACTIVE,
+    )
+    current_step = models.CharField(
+        max_length=32,
+        choices=WhatsAppConversationStep.choices,
+        default=WhatsAppConversationStep.CHOOSE_SITE,
+    )
+    site = models.ForeignKey(
+        Site,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="whatsapp_conversations",
+    )
+    booking = models.ForeignKey(
+        TrialBooking,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="whatsapp_conversations",
+    )
+    context = models.JSONField(default=dict, blank=True)
+    failure_reason = models.TextField(blank=True)
+    last_message_at = models.DateTimeField(null=True, blank=True)
+    follow_up_required = models.BooleanField(default=False)
+    follow_up_assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_whatsapp_follow_ups",
+    )
+    follow_up_notes = models.TextField(blank=True)
+    follow_up_updated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "whatsapp_conversations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contact_phone"],
+                condition=Q(status=WhatsAppConversationStatus.ACTIVE),
+                name="uq_whatsapp_active_contact",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "last_message_at"], name="ix_wa_status_message"),
+            models.Index(fields=["site", "created_at"], name="ix_wa_site_created"),
+            models.Index(fields=["booking", "created_at"], name="ix_wa_booking_created"),
+            models.Index(
+                fields=["follow_up_required", "follow_up_updated_at"],
+                name="ix_wa_follow_up",
+            ),
+        ]
+
+    def __str__(self):
+        return f"WhatsApp {self.contact_phone} - {self.get_status_display()}"
+
+
+class WhatsAppMessage(TimestampedModel):
+    conversation = models.ForeignKey(
+        WhatsAppConversation,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    # Meta's ``wamid`` identifiers are longer than Twilio Message SIDs.
+    provider_sid = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    in_reply_to_sid = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    direction = models.CharField(max_length=12, choices=WhatsAppMessageDirection.choices)
+    body = models.TextField()
+
+    class Meta:
+        db_table = "whatsapp_messages"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["conversation", "created_at"], name="ix_wa_msg_conversation"),
+            models.Index(fields=["direction", "created_at"], name="ix_wa_msg_direction"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_direction_display()} - {self.conversation.contact_phone}"
+
+
+class CallTranscriptSegment(TimestampedModel):
+    call = models.ForeignKey(VoiceCall, on_delete=models.CASCADE, related_name="transcript_segments")
+    sequence = models.PositiveIntegerField()
+    speaker = models.CharField(max_length=16, choices=TranscriptSpeaker.choices)
+    text = models.TextField()
+    item_id = models.CharField(max_length=128, blank=True)
+
+    class Meta:
+        db_table = "call_transcript_segments"
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["call", "sequence"],
+                name="uq_call_transcript_sequence",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.call.call_sid} #{self.sequence}"
+
+
+class TrialAvailabilityRule(TimestampedModel):
+    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="trial_availability_rules")
+    court = models.ForeignKey(
+        Court,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="trial_availability_rules",
+    )
+    weekday = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        help_text="0=lunes, 6=domingo",
+    )
+    starts_at = models.TimeField()
+    ends_at = models.TimeField()
+    slot_minutes = models.PositiveSmallIntegerField(validators=[MinValueValidator(1)])
+    capacity = models.PositiveSmallIntegerField(default=1, validators=[MinValueValidator(1)])
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "trial_availability_rules"
+        ordering = ["site", "weekday", "starts_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(weekday__gte=0, weekday__lte=6),
+                name="ck_trial_availability_weekday",
+            ),
+            models.CheckConstraint(
+                condition=Q(ends_at__gt=models.F("starts_at")),
+                name="ck_trial_availability_end_after_start",
+            ),
+            models.CheckConstraint(
+                condition=Q(slot_minutes__gte=1),
+                name="ck_trial_availability_slot_minutes",
+            ),
+            models.CheckConstraint(
+                condition=Q(capacity__gte=1),
+                name="ck_trial_availability_capacity",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["site", "weekday", "is_active"],
+                name="ix_trial_avail_site_day_active",
+            ),
+            models.Index(
+                fields=["court", "weekday", "is_active"],
+                name="ix_trial_avail_court_active",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.site.name} - {self.weekday} {self.starts_at}"

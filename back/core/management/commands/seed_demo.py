@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, time, timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -10,6 +10,8 @@ from django.utils import timezone
 from core.models import (
     AttendanceRecord,
     AttendanceSession,
+    CallOutcome,
+    CallTranscriptSegment,
     CashMovement,
     Charge,
     CoachWorkLog,
@@ -35,7 +37,16 @@ from core.models import (
     StudentTournamentRegistration,
     Team,
     Tournament,
+    TranscriptSpeaker,
+    TrialAvailabilityRule,
+    TrialBooking,
+    TrialBookingSource,
+    TrialBookingStatus,
+    TrialVisit,
+    TrialVisitStatus,
     User,
+    VoiceCall,
+    VoiceCallTechnicalStatus,
 )
 
 
@@ -67,6 +78,11 @@ class Command(BaseCommand):
             allow_destructive_seed = os.getenv("ALLOW_DESTRUCTIVE_SEED", "").lower() in {"1", "true", "yes", "si", "on"}
             if not allow_destructive_seed:
                 raise CommandError("seed_demo --reset requiere ALLOW_DESTRUCTIVE_SEED=true.")
+            CallTranscriptSegment.objects.all().delete()
+            VoiceCall.objects.all().delete()
+            TrialVisit.objects.all().delete()
+            TrialBooking.objects.all().delete()
+            TrialAvailabilityRule.objects.all().delete()
             CashMovement.objects.all().delete()
             StaffPaymentRequest.objects.all().delete()
             FaceRecognitionAttempt.objects.all().delete()
@@ -1352,10 +1368,195 @@ class Command(BaseCommand):
                     },
                 )
 
+        self._seed_voice_dashboard(site=site_map["roma"], admin=admin)
+
         self.stdout.write(
             self.style.SUCCESS(
-                "Datos demo listos. Usuarios: admin/admin12345, dev/dev12345, contador/demo12345, coordinador.roma/demo12345, caja.roma/demo12345, coach.roma/demo12345 y coaches por sede con demo12345"
+                "Datos demo listos. Dashboard de voz: 1 reserva, 2 visitas y "
+                "2 llamadas ficticias. Usuarios: admin/admin12345, dev/dev12345, "
+                "contador/demo12345, coordinador.roma/demo12345, "
+                "caja.roma/demo12345, coach.roma/demo12345 y coaches por sede "
+                "con demo12345"
             )
+        )
+
+    def _seed_voice_dashboard(self, *, site, admin):
+        """Create an unmistakably fictional, idempotent local voice-agent demo."""
+        court, _ = Court.objects.update_or_create(
+            site=site,
+            name="Cancha Demo Voz",
+            defaults={"is_active": True},
+        )
+        availability_specs = [
+            (0, time(16, 0), time(19, 0)),
+            (2, time(16, 0), time(19, 0)),
+        ]
+        for weekday, starts_at, ends_at in availability_specs:
+            TrialAvailabilityRule.objects.update_or_create(
+                site=site,
+                court=court,
+                weekday=weekday,
+                starts_at=starts_at,
+                defaults={
+                    "ends_at": ends_at,
+                    "slot_minutes": 60,
+                    "capacity": 3,
+                    "is_active": True,
+                },
+            )
+
+        booking, _ = TrialBooking.objects.update_or_create(
+            responsible_phone="+10000000001",
+            child_first_name="Alex Demo",
+            source=TrialBookingSource.VOICE,
+            defaults={
+                "site": site,
+                "responsible_name": "Mariana Demo",
+                "responsible_email": "mariana.demo@example.invalid",
+                "child_age": 14,
+                "status": TrialBookingStatus.SCHEDULED,
+                "notes": "Reserva ficticia creada por seed_demo para la presentacion local.",
+                "created_by": admin,
+            },
+        )
+
+        today = timezone.localdate()
+        next_monday = today + timedelta(days=7 - today.weekday())
+        visit_dates = [next_monday, next_monday + timedelta(days=2)]
+        current_tz = timezone.get_current_timezone()
+        for visit_number, visit_date in enumerate(visit_dates, start=1):
+            starts_at = timezone.make_aware(
+                datetime.combine(visit_date, time(17, 0)),
+                current_tz,
+            )
+            TrialVisit.objects.update_or_create(
+                booking=booking,
+                visit_number=visit_number,
+                defaults={
+                    "site": site,
+                    "court": court,
+                    "starts_at": starts_at,
+                    "ends_at": starts_at + timedelta(hours=1),
+                    "status": TrialVisitStatus.SCHEDULED,
+                    "notes": "Visita gratuita ficticia para demo local.",
+                },
+            )
+
+        unsuccessful_started_at = timezone.make_aware(
+            datetime.combine(today - timedelta(days=2), time(10, 0)),
+            current_tz,
+        )
+        unsuccessful_call, _ = VoiceCall.objects.update_or_create(
+            call_sid="CA_DEMO_VOICE_UNSUCCESSFUL",
+            defaults={
+                "stream_sid": "MZ_DEMO_VOICE_UNSUCCESSFUL",
+                "from_number": "+10000000001",
+                "to_number": "+10000000000",
+                "technical_status": VoiceCallTechnicalStatus.COMPLETED,
+                "booking": None,
+                "summary": (
+                    "Primer intento ficticio: el audio fue inestable y se acordo "
+                    "realizar una nueva llamada."
+                ),
+                "extracted_data": {"demo": True},
+                "ai_outcome": CallOutcome.UNSUCCESSFUL,
+                "review_outcome": CallOutcome.UNSUCCESSFUL,
+                "failure_reason": "Audio inestable durante el primer intento ficticio.",
+                "consent_granted": True,
+                "consent_granted_at": unsuccessful_started_at,
+                "started_at": unsuccessful_started_at,
+                "ended_at": unsuccessful_started_at + timedelta(seconds=48),
+                "duration_seconds": 48,
+                "reviewed_by": admin,
+                "reviewed_at": unsuccessful_started_at + timedelta(minutes=5),
+            },
+        )
+        self._replace_demo_transcript(
+            unsuccessful_call,
+            [
+                (
+                    TranscriptSpeaker.ASSISTANT,
+                    "Hola, soy el asistente virtual de Futsi. ¿En que puedo ayudarte?",
+                ),
+                (
+                    TranscriptSpeaker.CALLER,
+                    "Quiero conocer los horarios, pero la llamada se escucha entrecortada.",
+                ),
+                (
+                    TranscriptSpeaker.SYSTEM,
+                    "Llamada ficticia finalizada por audio inestable.",
+                ),
+            ],
+        )
+
+        successful_started_at = timezone.make_aware(
+            datetime.combine(today - timedelta(days=1), time(11, 0)),
+            current_tz,
+        )
+        successful_call, _ = VoiceCall.objects.update_or_create(
+            call_sid="CA_DEMO_VOICE_SUCCESSFUL",
+            defaults={
+                "stream_sid": "MZ_DEMO_VOICE_SUCCESSFUL",
+                "from_number": "+10000000001",
+                "to_number": "+10000000000",
+                "technical_status": VoiceCallTechnicalStatus.COMPLETED,
+                "booking": booking,
+                "summary": (
+                    "Llamada ficticia exitosa: se agendaron dos visitas gratuitas "
+                    "en la sede Roma."
+                ),
+                "extracted_data": {"demo": True, "requested_site": site.code},
+                "ai_outcome": CallOutcome.SUCCESSFUL,
+                "review_outcome": CallOutcome.SUCCESSFUL,
+                "failure_reason": "",
+                "consent_granted": True,
+                "consent_granted_at": successful_started_at,
+                "started_at": successful_started_at,
+                "ended_at": successful_started_at + timedelta(seconds=195),
+                "duration_seconds": 195,
+                "reviewed_by": admin,
+                "reviewed_at": successful_started_at + timedelta(minutes=5),
+            },
+        )
+        self._replace_demo_transcript(
+            successful_call,
+            [
+                (
+                    TranscriptSpeaker.ASSISTANT,
+                    "Hola, soy el asistente virtual de Futsi. ¿En que puedo ayudarte?",
+                ),
+                (
+                    TranscriptSpeaker.CALLER,
+                    "Quiero agendar las dos visitas gratuitas para Alex.",
+                ),
+                (
+                    TranscriptSpeaker.ASSISTANT,
+                    "Tengo espacio en la Cancha Demo Voz de Roma el lunes y el miercoles.",
+                ),
+                (
+                    TranscriptSpeaker.CALLER,
+                    "Si, ambos horarios me funcionan.",
+                ),
+                (
+                    TranscriptSpeaker.ASSISTANT,
+                    "Perfecto. Las dos visitas ficticias quedaron agendadas.",
+                ),
+            ],
+        )
+
+    def _replace_demo_transcript(self, call, segments):
+        call.transcript_segments.all().delete()
+        CallTranscriptSegment.objects.bulk_create(
+            [
+                CallTranscriptSegment(
+                    call=call,
+                    sequence=sequence,
+                    speaker=speaker,
+                    text=text,
+                    item_id=f"demo-{call.call_sid.lower()}-{sequence}",
+                )
+                for sequence, (speaker, text) in enumerate(segments, start=1)
+            ]
         )
 
     def _delete_if_table_exists(self, table_name):

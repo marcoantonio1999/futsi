@@ -4,6 +4,8 @@ from django.db.models import Prefetch
 
 from .common import *
 from .billing_generators import generate_scheduled_charges_for_user, generate_student_tournament_charges_for_user
+from core.whatsapp.meta_api import MetaWhatsAppError
+from core.whatsapp.payment_reminders import send_charge_payment_reminder
 
 class ChargeViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -18,6 +20,8 @@ class ChargeViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOperationsCashierOrGuardianRole]
 
     def get_permissions(self):
+        if self.action == "send_whatsapp_reminder":
+            return [IsOperationsRole()]
         if self.action == "generate_scheduled":
             return [IsOperationsCashierOrGuardianRole()]
         if self.request.user.is_authenticated and self.request.user.role in {"guardian", "cashier", "adult_representative", "adult_player"} and self.request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -57,6 +61,23 @@ class ChargeViewSet(viewsets.ModelViewSet):
                 "created_ids": [charge.id for charge in created],
                 "due_soon": due_soon,
                 "message": "Cobros recurrentes y avisos simulados actualizados.",
+            }
+        )
+
+    @action(detail=True, methods=["post"], url_path="send-whatsapp-reminder")
+    def send_whatsapp_reminder(self, request, pk=None):
+        charge = self.get_object()
+        try:
+            result = send_charge_payment_reminder(charge)
+        except MetaWhatsAppError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(
+            {
+                **result,
+                "detail": "Recordatorio enviado por WhatsApp.",
             }
         )
 
