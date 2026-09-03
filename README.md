@@ -2,6 +2,11 @@
 
 Proyecto base para un mini ERP operativo-financiero de academias y torneos de futbol.
 
+La configuración del agente de llamadas y su Dashboard está en
+[`docs/VOICE_AGENT.md`](docs/VOICE_AGENT.md).
+La prueba de reservas por WhatsApp está en
+[`docs/WHATSAPP_TRIALS.md`](docs/WHATSAPP_TRIALS.md).
+
 ## Estructura
 
 - `back/`: API REST con Python, Django y Django REST Framework.
