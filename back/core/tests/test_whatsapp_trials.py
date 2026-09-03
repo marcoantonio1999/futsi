@@ -403,13 +403,21 @@ def test_whatsapp_conversations_are_site_scoped_in_dashboard(auth_client):
         direction="inbound",
         body="Quiero una prueba.",
     )
+    WhatsAppMessage.objects.create(
+        conversation=visible,
+        direction="outbound",
+        body="[revoke]",
+    )
 
     client, _payload_data, _user = auth_client(user=coordinator)
     response = client.get("/api/whatsapp-conversations/")
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [visible.id]
-    assert response.json()[0]["messages"][0]["body"] == "Quiero una prueba."
+    assert [message["body"] for message in response.json()[0]["messages"]] == [
+        "Quiero una prueba."
+    ]
+    assert visible.messages.count() == 2
     assert hidden.id not in {item["id"] for item in response.json()}
     assert previous_business_account.id not in {
         item["id"] for item in response.json()

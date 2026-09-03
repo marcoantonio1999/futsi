@@ -20,6 +20,9 @@ from core.models import (
 from core.permissions import ADMIN_ROLES
 
 
+TECHNICAL_WHATSAPP_MESSAGE_BODIES = {"[revoke]"}
+
+
 class TrialVisitSerializer(serializers.ModelSerializer):
     site_name = serializers.CharField(source="site.name", read_only=True)
     court_name = serializers.CharField(source="court.name", read_only=True)
@@ -300,7 +303,16 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         allow_blank=True,
         max_length=4000,
     )
-    messages = WhatsAppMessageSerializer(many=True, read_only=True)
+    messages = serializers.SerializerMethodField()
+
+    def get_messages(self, instance):
+        messages = [
+            message
+            for message in instance.messages.all()
+            if str(message.body or "").strip().casefold()
+            not in TECHNICAL_WHATSAPP_MESSAGE_BODIES
+        ]
+        return WhatsAppMessageSerializer(messages, many=True).data
 
     def get_follow_up_assigned_to_name(self, instance):
         assignee = instance.follow_up_assigned_to
