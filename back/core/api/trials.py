@@ -254,6 +254,19 @@ class WhatsAppConversationViewSet(
     def get_queryset(self):
         queryset = super().get_queryset()
         business_address = configured_business_address()
+        if business_address and queryset.filter(to_address=business_address).exists():
+            queryset = queryset.filter(to_address=business_address)
+        else:
+            # The standalone WhatsApp service writes to the shared database, while
+            # this API may run without provider credentials. In that deployment
+            # shape, select the inbox that most recently received activity instead
+            # of presenting an empty dashboard.
+            business_address = (
+                queryset.filter(to_address__startswith="whatsapp:+")
+                .order_by("-last_message_at", "-created_at")
+                .values_list("to_address", flat=True)
+                .first()
+            )
         if not business_address:
             return queryset.none()
         queryset = queryset.filter(to_address=business_address)

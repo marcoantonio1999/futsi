@@ -484,6 +484,40 @@ def test_active_conversations_are_unique_per_business_number():
     assert first.pk != second.pk
 
 
+def test_dashboard_uses_most_recent_business_inbox_when_provider_is_not_configured(
+    auth_client,
+    settings,
+):
+    site = make_site()
+    older = WhatsAppConversation.objects.create(
+        contact_phone="+525500000081",
+        from_address="whatsapp:+525500000081",
+        to_address="whatsapp:+15556677180",
+        site=site,
+        status="completed",
+        current_step="finished",
+        last_message_at=timezone.now() - timedelta(days=2),
+    )
+    current = WhatsAppConversation.objects.create(
+        contact_phone="+525500000082",
+        from_address="whatsapp:+525500000082",
+        to_address="whatsapp:+525574858165",
+        site=site,
+        status="active",
+        current_step="faq",
+        last_message_at=timezone.now(),
+    )
+    settings.META_WHATSAPP_DISPLAY_NUMBER = ""
+    settings.META_WHATSAPP_PHONE_NUMBER_ID = ""
+    client, _payload_data, _user = auth_client(role="admin")
+
+    response = client.get("/api/whatsapp-conversations/")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [current.id]
+    assert client.get(f"/api/whatsapp-conversations/{older.id}/").status_code == 404
+
+
 def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):
     site = make_site()
     coordinator = make_user(role="site_coordinator", primary_site=site)
