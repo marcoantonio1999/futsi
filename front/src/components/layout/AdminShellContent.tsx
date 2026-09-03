@@ -17,13 +17,13 @@ import { FaceGuardMonthlyReport } from "../../features/faceguard-monthly";
 import { TournamentsPanel, type TournamentSection } from "../../features/tournaments";
 import { UnknownAttendanceDetailPanel, UnknownAttendancePanel } from "../../features/unknown-attendance";
 import { UnknownPeoplePanel } from "../../features/unknown-people";
+import { VoiceDashboardPanel } from "../../features/voice-agent";
 import {
   AdultLeagueDashboardPanel,
   AttendanceGeneralPanel,
   AttendancePanel,
   CalendarPanel,
   DailyOperationPanel,
-  DashboardPanel,
   DebtsPanel,
   ExpensesPanel,
   GuardiansPanel,
@@ -140,7 +140,13 @@ function ActivePanel(props: AdminShellContentProps) {
             onDownloadFile={onDownloadFile}
           />
         ) : (
-          <DashboardPanel data={data} />
+          <VoiceDashboardPanel
+            user={user}
+            data={data}
+            onCreateRecord={onCreateRecord}
+            onUpdateRecord={onUpdateRecord}
+            onCreateAndReturn={onCreateAndReturn}
+          />
         )
       )}
       {effectiveActiveTab === "adult-dashboard" && (
@@ -175,7 +181,7 @@ function ActivePanel(props: AdminShellContentProps) {
       {effectiveActiveTab === "sales-estimate" && <SalesEstimationPanel data={scopedData} />}
       {effectiveActiveTab === "income-statement" && <IncomeStatementPanel data={scopedData} />}
       {effectiveActiveTab === "daily-operation" && <DailyOperationPanel data={scopedData} />}
-      {effectiveActiveTab === "debts" && <DebtsPanel data={scopedData} />}
+      {effectiveActiveTab === "debts" && <DebtsPanel data={scopedData} token={token} />}
       {effectiveActiveTab === "attendance" && (
         <AttendanceContent
           token={token}

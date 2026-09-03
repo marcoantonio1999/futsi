@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Eye, MessageCircle, Phone } from "lucide-react";
+import { apiRequest } from "../../api";
 import { money } from "../../utils/format";
 import {
   cleanPhone,
@@ -13,8 +14,19 @@ import {
   type OutreachState,
 } from "./debtsLogic";
 
-export function DebtOutreachPanel({ debts, today }: { debts: DebtRow[]; today: Date }) {
+export function DebtOutreachPanel({
+  debts,
+  today,
+  token,
+}: {
+  debts: DebtRow[];
+  today: Date;
+  token: string;
+}) {
   const [outreachByCharge, setOutreachByCharge] = useState<Record<number, OutreachState>>({});
+  const [sendingChargeId, setSendingChargeId] = useState<number | null>(null);
+  const [sendMessage, setSendMessage] = useState("");
+  const [sendError, setSendError] = useState("");
   const rows = debts.slice(0, 12);
   const outreachFor = (debt: DebtRow) => outreachByCharge[debt.charge.id] || defaultOutreach(debt, today);
   const pendingCalls = rows.filter((debt) => {
@@ -37,7 +49,7 @@ export function DebtOutreachPanel({ debts, today }: { debts: DebtRow[]; today: D
           <p className="text-xs font-medium uppercase text-emerald-700">Seguimiento de cobranza</p>
           <h2 className="font-semibold">WhatsApp personalizado y llamadas</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Simula mensajes por adeudo. Si no se marca como visto en 3 dias, el sistema recomienda llamada telefonica.
+            Envía la plantilla aprobada de WhatsApp por adeudo. Si no se marca como visto en 3 días, el sistema recomienda llamada telefónica.
           </p>
         </div>
         <span className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
@@ -45,6 +57,8 @@ export function DebtOutreachPanel({ debts, today }: { debts: DebtRow[]; today: D
         </span>
       </div>
       <div className="divide-y divide-zinc-100">
+        {sendMessage && <p className="m-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{sendMessage}</p>}
+        {sendError && <p className="m-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{sendError}</p>}
         {rows.map((debt) => {
           const outreach = outreachFor(debt);
           const phone = cleanPhone(debt.phone);
@@ -92,13 +106,30 @@ export function DebtOutreachPanel({ debts, today }: { debts: DebtRow[]; today: D
               <div className="flex flex-wrap items-start gap-2 xl:w-44 xl:flex-col">
                 <button
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50"
-                  disabled={!phone}
-                  onClick={() => updateOutreach(debt, { sentAt: formatDate(today), seenAt: null, calledAt: null })}
+                  disabled={!phone || sendingChargeId === debt.charge.id}
+                  onClick={async () => {
+                    setSendingChargeId(debt.charge.id);
+                    setSendMessage("");
+                    setSendError("");
+                    try {
+                      await apiRequest(
+                        `/charges/${debt.charge.id}/send-whatsapp-reminder/`,
+                        token,
+                        { method: "POST" },
+                      );
+                      updateOutreach(debt, { sentAt: formatDate(today), seenAt: null, calledAt: null });
+                      setSendMessage(`Recordatorio enviado a ${phone}.`);
+                    } catch (error) {
+                      setSendError(error instanceof Error ? error.message : "No se pudo enviar el recordatorio.");
+                    } finally {
+                      setSendingChargeId(null);
+                    }
+                  }}
                   type="button"
-                  title={phone ? `Simular envio a ${phone}` : "Sin telefono"}
+                  title={phone ? `Enviar recordatorio a ${phone}` : "Sin teléfono"}
                 >
                   <MessageCircle size={16} />
-                  WhatsApp
+                  {sendingChargeId === debt.charge.id ? "Enviando..." : "WhatsApp"}
                 </button>
                 <button
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold hover:bg-zinc-50 disabled:opacity-50"

@@ -7,6 +7,7 @@ import type {
   CashMovement,
   Charge,
   CoachWorkLog,
+  Court,
   DashboardSummary,
   Discount,
   Expense,
@@ -26,9 +27,14 @@ import type {
   StudentTournamentRegistration,
   TabKey,
   Team,
+  TrialAvailabilityRule,
+  TrialBooking,
   Tournament,
   UnknownAttendanceRecord,
   User,
+  VoiceCall,
+  WhatsAppConversation,
+  WhatsAppFollowUpAssignee,
 } from "../types";
 
 export type AppDataPatch = Partial<AppData>;
@@ -36,6 +42,13 @@ export type AppDataPatch = Partial<AppData>;
 function optionalApi<T>(path: string, authToken: string, fallback: T): Promise<T> {
   return apiRequest<T>(path, authToken).catch((err) => {
     if (err instanceof ApiError && err.status === 404) return fallback;
+    throw err;
+  });
+}
+
+function optionalRestrictedApi<T>(path: string, authToken: string, fallback: T): Promise<T> {
+  return apiRequest<T>(path, authToken).catch((err) => {
+    if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return fallback;
     throw err;
   });
 }
@@ -52,11 +65,19 @@ export function initialTabForUser(user: User): TabKey {
 }
 
 async function loadDashboardData(authToken: string, user: User): Promise<AppDataPatch> {
-  const [dashboardSummary, sites] = await Promise.all([
+  const canManageTrials = ["admin", "owner", "dev", "site_coordinator"].includes(user.role);
+  const canReviewCalls = ["admin", "owner", "dev"].includes(user.role);
+  const [dashboardSummary, sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules] = await Promise.all([
     apiRequest<DashboardSummary>("/dashboard/summary/", authToken),
     apiRequest<Site[]>("/sites/", authToken),
+    canManageTrials ? optionalRestrictedApi<Court[]>("/courts/", authToken, []) : Promise.resolve<Court[]>([]),
+    canManageTrials ? optionalRestrictedApi<TrialBooking[]>("/trial-bookings/", authToken, []) : Promise.resolve<TrialBooking[]>([]),
+    canReviewCalls ? optionalRestrictedApi<VoiceCall[]>("/voice-calls/", authToken, []) : Promise.resolve<VoiceCall[]>([]),
+    canManageTrials ? optionalRestrictedApi<WhatsAppConversation[]>("/whatsapp-conversations/", authToken, []) : Promise.resolve<WhatsAppConversation[]>([]),
+    canManageTrials ? optionalRestrictedApi<WhatsAppFollowUpAssignee[]>("/whatsapp-conversations/assignees/", authToken, []) : Promise.resolve<WhatsAppFollowUpAssignee[]>([]),
+    canManageTrials ? optionalRestrictedApi<TrialAvailabilityRule[]>("/trial-availability-rules/", authToken, []) : Promise.resolve<TrialAvailabilityRule[]>([]),
   ]);
-  return { dashboardSummary, sites };
+  return { dashboardSummary, sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules };
 }
 
 export async function loadSectionData(authToken: string, user: User, tab: TabKey): Promise<AppDataPatch> {

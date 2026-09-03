@@ -3,12 +3,19 @@ import type { Guardian, Student, AttendanceSession, AttendanceRecord } from "./a
 import type { Tournament, Team, StudentTournamentRegistration, Player, Match, StandingRow, StudentAssessment, StudentValueAssessment, PlayerAttendanceRecord } from "./sports";
 import type { Charge, Payment, Discount, Expense, StaffPaymentRequest, CashMovement, CoachWorkLog, Invoice } from "./finance";
 import type { HistoricalImport, HistoricalDiscrepancyReport } from "./historical";
+import type { Court, TrialAvailabilityRule, TrialBooking, VoiceCall, WhatsAppConversation, WhatsAppFollowUpAssignee } from "./trials";
 
 
 export type AppData = {
   dashboardSummary: DashboardSummary | null;
   users: User[];
   sites: Site[];
+  courts: Court[];
+  trialBookings: TrialBooking[];
+  voiceCalls: VoiceCall[];
+  whatsappConversations: WhatsAppConversation[];
+  whatsappFollowUpAssignees: WhatsAppFollowUpAssignee[];
+  trialAvailabilityRules: TrialAvailabilityRule[];
   guardians: Guardian[];
   students: Student[];
   attendanceSessions: AttendanceSession[];

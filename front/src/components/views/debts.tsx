@@ -182,7 +182,13 @@ function ReasonsDonut({ rows }: { rows: { label: string; value: number }[] }) {
   );
 }
 
-export function DebtsPanel({ data }: { data: AppData }) {
+export function DebtsPanel({
+  data,
+  token,
+}: {
+  data: AppData;
+  token: string;
+}) {
   const operationalMonth = currentOperationalMonth(data);
   const today = parseDate(`${operationalMonth}-15`) || new Date();
   const debts = buildDebtRows(data, today);
@@ -213,7 +219,11 @@ export function DebtsPanel({ data }: { data: AppData }) {
         <Metric label="Ingreso esperado del mes" value={`$${money(monthExpected)}`} helper={monthLabel(operationalMonth)} />
       </section>
 
-      <DebtOutreachPanel debts={debts} today={today} />
+      <DebtOutreachPanel
+        debts={debts}
+        today={today}
+        token={token}
+      />
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[1.4fr_1fr]">
         <BurndownChart rows={burndown} month={operationalMonth} />
