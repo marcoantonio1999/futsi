@@ -5,6 +5,8 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    replaces = [("core", "0036_whatsapp_follow_up")]
+
     dependencies = [
         ("core", "0038_alter_trialbooking_source_whatsappconversation_and_more"),
     ]

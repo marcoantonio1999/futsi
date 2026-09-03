@@ -2,6 +2,8 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
+    replaces = [("core", "0039_alter_whatsappconversation_current_step")]
+
     dependencies = [
         ("core", "0041_alter_whatsappconversation_current_step"),
     ]

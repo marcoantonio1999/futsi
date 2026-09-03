@@ -6,6 +6,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    replaces = [
+        ("core", "0035_alter_trialbooking_source_whatsappconversation_and_more")
+    ]
+
     dependencies = [
         ("core", "0037_voice_call_consent_withdrawal"),
     ]

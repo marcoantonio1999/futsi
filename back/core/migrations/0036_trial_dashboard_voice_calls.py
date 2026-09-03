@@ -59,6 +59,10 @@ def unprotect_trial_tables(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
+    # This migration originally shipped as 0033 before the FaceGuard branch was
+    # merged. Keep the old database history valid without recreating its tables.
+    replaces = [("core", "0033_trial_dashboard_voice_calls")]
+
     dependencies = [
         ("core", "0035_face_station_monthly_policies"),
     ]

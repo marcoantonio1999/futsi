@@ -5,6 +5,8 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    replaces = [("core", "0038_alter_whatsappconversation_current_step")]
+
     dependencies = [
         ('core', '0040_whatsapp_message_meta_ids'),
     ]
