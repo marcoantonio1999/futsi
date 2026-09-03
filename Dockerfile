@@ -20,4 +20,4 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "echo Running Django migrations && python manage.py migrate --noinput && echo Starting Futsi API on port ${PORT:-10000} && gunicorn futsi_api.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers ${WEB_CONCURRENCY:-2} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-120} --log-file -"]
+CMD ["sh", "-c", "echo Running Django migrations && python manage.py migrate --noinput && echo Starting Futsi ASGI API on port ${PORT:-10000} && uvicorn futsi_api.asgi:application --host 0.0.0.0 --port ${PORT:-10000} --workers ${WEB_CONCURRENCY:-2} --timeout-keep-alive 75"]

@@ -32,7 +32,7 @@ Local y produccion deben apuntar a Supabase/Postgres. El backend ya no cae a SQL
 DJANGO_SECRET_KEY=valor-largo-y-secreto
 DJANGO_DEBUG=false
 FUTSI_ENV=production
-DJANGO_ALLOWED_HOSTS=futsi.onrender.com,.onrender.com
+DJANGO_ALLOWED_HOSTS=futsi.onrender.com
 CORS_ALLOWED_ORIGINS=https://marcoantonio1999.github.io
 CSRF_TRUSTED_ORIGINS=https://marcoantonio1999.github.io
 DB_ENGINE=postgres

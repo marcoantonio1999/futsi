@@ -7,8 +7,8 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     preDeployCommand: python manage.py migrate
-    startCommand: gunicorn futsi_api.wsgi:application --bind 0.0.0.0:$PORT --log-file -
-    healthCheckPath: /health/
+    startCommand: uvicorn futsi_api.asgi:application --host 0.0.0.0 --port $PORT --workers ${WEB_CONCURRENCY:-2} --timeout-keep-alive 75
+    healthCheckPath: /health/db/
     envVars:
       - key: DJANGO_DEBUG
         value: "false"
@@ -40,3 +40,133 @@ services:
         value: "true"
       - key: DJANGO_SECURE_HSTS_SECONDS
         value: "31536000"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_REALTIME_MODEL
+        value: gpt-realtime-2.1
+      - key: OPENAI_TRANSCRIPTION_MODEL
+        value: gpt-realtime-whisper
+      - key: OPENAI_REALTIME_VOICE
+        value: cedar
+      - key: OPENAI_REALTIME_VAD_THRESHOLD
+        value: "0.75"
+      - key: OPENAI_REALTIME_VAD_PREFIX_PADDING_MS
+        value: "400"
+      - key: OPENAI_REALTIME_VAD_SILENCE_DURATION_MS
+        value: "700"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      - key: TWILIO_WHATSAPP_INTERACTIVE
+        value: true
+      - key: META_WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: META_WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: META_WHATSAPP_DISPLAY_NUMBER
+        sync: false
+      - key: META_WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: META_WHATSAPP_APP_SECRET
+        sync: false
+      - key: META_WHATSAPP_GRAPH_VERSION
+        value: v23.0
+      - key: META_WHATSAPP_INTERACTIVE
+        value: true
+      - key: META_WHATSAPP_VALIDATE_SIGNATURES
+        value: true
+      - key: META_WHATSAPP_PAYMENT_TEMPLATE
+        value: futsi_recordatorio_pago
+      - key: META_WHATSAPP_TEMPLATE_LANGUAGE
+        value: es_MX
+      - key: TWILIO_PUBLIC_BASE_URL
+        sync: false
+      - key: TWILIO_STREAM_URL
+        sync: false
+      - key: TWILIO_VALIDATE_SIGNATURES
+        value: "true"
+      - key: TRIAL_MIN_ADVANCE_HOURS
+        value: "2"
+      - key: TRIAL_BOOKING_HORIZON_DAYS
+        value: "30"
+      - key: TRIAL_MIN_DAYS_BETWEEN_VISITS
+        value: "1"
+      - key: TRIAL_MAX_DAYS_BETWEEN_VISITS
+        value: "21"
+      - key: VOICE_MAX_CALL_SECONDS
+        value: "900"
+      - key: VOICE_IDLE_TIMEOUT_SECONDS
+        value: "90"
+      - key: VOICE_CALLS_PER_NUMBER_PER_HOUR
+        value: "5"
+      - key: VOICE_MAX_CONCURRENT_STREAMS
+        value: "5"
+      - key: VOICE_TRANSCRIPT_RETENTION_DAYS
+        value: "90"
+      - key: VOICE_CALL_RETENTION_DAYS
+        value: "365"
+      - key: TRIAL_PII_RETENTION_DAYS
+        value: "365"
+      - key: VOICE_RETENTION_BATCH_SIZE
+        value: "1000"
+
+  - type: cron
+    name: futsi-voice-retention
+    runtime: python
+    rootDir: back
+    plan: starter
+    schedule: "15 9 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py purge_voice_data
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: FUTSI_ENV
+        value: production
+      - key: DJANGO_SECRET_KEY
+        fromService:
+          type: web
+          name: futsi-api
+          envVarKey: DJANGO_SECRET_KEY
+      - key: DB_ENGINE
+        value: postgres
+      - key: POSTGRES_DB
+        fromService:
+          type: web
+          name: futsi-api
+          envVarKey: POSTGRES_DB
+      - key: POSTGRES_USER
+        fromService:
+          type: web
+          name: futsi-api
+          envVarKey: POSTGRES_USER
+      - key: POSTGRES_PASSWORD
+        fromService:
+          type: web
+          name: futsi-api
+          envVarKey: POSTGRES_PASSWORD
+      - key: POSTGRES_HOST
+        fromService:
+          type: web
+          name: futsi-api
+          envVarKey: POSTGRES_HOST
+      - key: POSTGRES_PORT
+        fromService:
+          type: web
+          name: futsi-api
+          envVarKey: POSTGRES_PORT
+      - key: POSTGRES_SSLMODE
+        value: require
+      - key: VOICE_TRANSCRIPT_RETENTION_DAYS
+        value: "90"
+      - key: VOICE_CALL_RETENTION_DAYS
+        value: "365"
+      - key: TRIAL_PII_RETENTION_DAYS
+        value: "365"
+      - key: VOICE_RETENTION_BATCH_SIZE
+        value: "1000"

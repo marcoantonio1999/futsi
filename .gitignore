@@ -9,8 +9,12 @@ reports/
 qa/artifacts/
 media/
 *.log
-back/.env
-back/.env.local
+back/.env*
+!back/.env.example
+!back/.env.production.example
+back/.twilio-local-demo-backup.json
+back/.twilio-local-demo-backups/
+back/.twilio-whatsapp-content-cache.json
 back/staticfiles/
 
 # Frontend

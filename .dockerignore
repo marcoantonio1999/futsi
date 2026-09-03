@@ -1,0 +1,19 @@
+.git
+.gitignore
+.pytest_cache
+**/__pycache__
+**/*.py[cod]
+
+# Server secrets and local runtime state must never enter an image layer.
+back/.env
+back/.env.*
+!back/.env.example
+!back/.env.production.example
+back/.venv
+back/*.sqlite3
+back/media
+back/staticfiles
+
+# Frontend artifacts are not used by the backend image.
+front/node_modules
+front/dist
