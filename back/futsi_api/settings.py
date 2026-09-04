@@ -105,7 +105,10 @@ HAS_POSTGRES_PARTS = any(
         "SUPABASE_DB_PASSWORD",
     )
 )
-DB_CONN_MAX_AGE = int(os.getenv("DB_CONN_MAX_AGE", "60"))
+# The Supabase session pool on the current plan accepts only a small number of
+# clients. Render runs more than one service against it, so holding a connection
+# open after every request eventually exhausts the pool even when traffic is low.
+DB_CONN_MAX_AGE = int(os.getenv("DB_CONN_MAX_AGE", "0"))
 DB_CONN_HEALTH_CHECKS = os.getenv("DB_CONN_HEALTH_CHECKS", "true").lower() in {"1", "true", "yes", "si", "on"}
 
 

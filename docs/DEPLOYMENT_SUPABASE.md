@@ -42,6 +42,7 @@ POSTGRES_PASSWORD=PASSWORD_REAL_DE_DATABASE
 POSTGRES_HOST=aws-1-us-west-2.pooler.supabase.com
 POSTGRES_PORT=5432
 POSTGRES_SSLMODE=require
+DB_CONN_MAX_AGE=0
 DJANGO_SECURE_SSL_REDIRECT=true
 DJANGO_SECURE_HSTS_SECONDS=31536000
 API_TOKEN_TTL_MINUTES=720
@@ -55,6 +56,8 @@ FILE_EVIDENCE_RETENTION_DAYS=30
 ```
 
 No usar `SUPABASE_DATABASE_URL` si el password tiene caracteres especiales y no esta URL encoded. La configuracion actual de Django prioriza `POSTGRES_*` cuando existen.
+
+`DB_CONN_MAX_AGE=0` evita que los procesos de Render reserven conexiones inactivas en el pool compartido de Supabase. Es importante porque Futsi y el servicio independiente de WhatsApp usan la misma base y el pool en modo sesion tiene un limite reducido en el plan actual.
 
 `API_TOKEN_TTL_MINUTES` controla la duracion maxima de sesion de la API. El valor recomendado inicial es 720 minutos; al expirar, el token se borra en backend y el frontend obliga a iniciar sesion nuevamente.
 

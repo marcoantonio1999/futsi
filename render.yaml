@@ -36,6 +36,8 @@ services:
         sync: false
       - key: POSTGRES_SSLMODE
         value: require
+      - key: DB_CONN_MAX_AGE
+        value: "0"
       - key: DJANGO_SECURE_SSL_REDIRECT
         value: "true"
       - key: DJANGO_SECURE_HSTS_SECONDS
@@ -162,6 +164,8 @@ services:
           envVarKey: POSTGRES_PORT
       - key: POSTGRES_SSLMODE
         value: require
+      - key: DB_CONN_MAX_AGE
+        value: "0"
       - key: VOICE_TRANSCRIPT_RETENTION_DAYS
         value: "90"
       - key: VOICE_CALL_RETENTION_DAYS
