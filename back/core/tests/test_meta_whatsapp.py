@@ -14,10 +14,18 @@ from core.models import (
     TrialBooking,
     WhatsAppConversation,
     WhatsAppMessage,
+    WhatsAppOutboundDispatch,
+    WhatsAppOutboundDispatchStatus,
 )
 from core.tests.factories import make_charge, make_guardian, make_site, make_student
 from core.whatsapp.ai_faq import FAQAnswer
-from core.whatsapp.meta_api import _access_token, _base_payload, _messages_url, send_location
+from core.whatsapp.meta_api import (
+    MetaWhatsAppError,
+    _access_token,
+    _base_payload,
+    _messages_url,
+    send_location,
+)
 from core.whatsapp.meta_webhooks import _bold_whatsapp_terms
 from core.whatsapp.payment_reminders import send_charge_payment_reminder
 
@@ -230,10 +238,71 @@ def test_meta_webhook_rejects_bad_signature_and_replays_duplicate_once(api_clien
     assert send_buttons.call_count == 1
     assert WhatsAppConversation.objects.count() == 1
     assert WhatsAppMessage.objects.count() == 2
+    dispatch = WhatsAppOutboundDispatch.objects.get()
+    assert dispatch.status == WhatsAppOutboundDispatchStatus.SENT
+    assert dispatch.provider_sid == "wamid.outbound-menu"
     conversation = WhatsAppConversation.objects.get()
     assert conversation.current_step == "menu"
     assert conversation.context["kind"] == "menu"
     assert WhatsAppMessage.objects.filter(provider_sid="wamid.outbound-menu").exists()
+
+
+@override_settings(**META_SETTINGS)
+def test_meta_does_not_retry_an_uncertain_interactive_delivery(api_client):
+    _make_weekly_availability()
+    payload = _payload(sequence=81)
+
+    with (
+        patch(
+            "core.whatsapp.meta_webhooks.send_buttons",
+            side_effect=MetaWhatsAppError(
+                "No fue posible confirmar la entrega.",
+                delivery_uncertain=True,
+            ),
+        ) as send_buttons,
+        patch("core.whatsapp.meta_webhooks.send_text") as send_text,
+    ):
+        accepted = _signed_post(api_client, payload)
+        repeated = _signed_post(api_client, payload)
+
+    assert accepted.status_code == 200
+    assert repeated.status_code == 200
+    send_buttons.assert_called_once()
+    send_text.assert_not_called()
+    dispatch = WhatsAppOutboundDispatch.objects.get()
+    assert dispatch.status == WhatsAppOutboundDispatchStatus.UNCERTAIN
+    assert WhatsAppMessage.objects.count() == 1
+    conversation = WhatsAppConversation.objects.get()
+    assert conversation.follow_up_required is True
+    assert (
+        conversation.context["outbound_delivery_attention"]["status"]
+        == WhatsAppOutboundDispatchStatus.UNCERTAIN
+    )
+
+
+@override_settings(**META_SETTINGS)
+def test_meta_uses_text_fallback_after_definite_interactive_rejection(api_client):
+    _make_weekly_availability()
+
+    with (
+        patch(
+            "core.whatsapp.meta_webhooks.send_buttons",
+            side_effect=MetaWhatsAppError("El proveedor rechazó el mensaje (HTTP 400)."),
+        ) as send_buttons,
+        patch(
+            "core.whatsapp.meta_webhooks.send_text",
+            return_value="wamid.text-fallback",
+        ) as send_text,
+    ):
+        response = _signed_post(api_client, _payload(sequence=82))
+
+    assert response.status_code == 200
+    send_buttons.assert_called_once()
+    send_text.assert_called_once()
+    dispatch = WhatsAppOutboundDispatch.objects.get()
+    assert dispatch.status == WhatsAppOutboundDispatchStatus.SENT
+    assert dispatch.provider_sid == "wamid.text-fallback"
+    assert WhatsAppMessage.objects.count() == 2
 
 
 @override_settings(**META_SETTINGS)

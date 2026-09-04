@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.test import override_settings
 
-from core.models import WhatsAppConversation
+from core.models import WhatsAppAutomationSettings, WhatsAppConversation
 from core.whatsapp.ai_faq import FOLLOW_UP_MARKER, answer_faq
 
 
@@ -83,6 +83,8 @@ def test_openai_faq_uses_responses_api_and_strips_internal_follow_up_marker():
     assert len(payload["safety_identifier"]) == 64
     assert "No inventes precios" in payload["instructions"]
     assert "niños y niñas" in payload["instructions"]
+    assert "no preguntes qué sede" in payload["instructions"]
+    assert "Mat se fue de viaje" in payload["instructions"]
     assert answer.needs_human is True
     assert FOLLOW_UP_MARKER not in answer.text
     assert answer.usage["total_tokens"] == 145
@@ -145,3 +147,50 @@ def test_local_fallback_uses_business_tournament_answers():
     assert "Fut 8" in answer.text
     assert "⚽" in answer.text
     assert answer.needs_human is False
+
+
+@override_settings(
+    OPENAI_API_KEY="",
+    OPENAI_WHATSAPP_MODEL="gpt-5.6-luna",
+    OPENAI_WHATSAPP_FAQ_ENABLED=True,
+)
+def test_local_fallback_uses_confirmed_academy_price_and_uniform():
+    conversation = _conversation()
+    price = answer_faq(
+        conversation=conversation,
+        user_message="¿Cuánto cuesta la mensualidad?",
+    )
+    uniform = answer_faq(
+        conversation=conversation,
+        user_message="¿Qué incluye el uniforme?",
+    )
+
+    assert "$1,250 MXN" in price.text
+    assert "$980 MXN" in price.text
+    assert price.needs_human is False
+    assert "$1,980 MXN" in uniform.text
+    assert "entrenamiento" in uniform.text
+
+
+@override_settings(
+    OPENAI_API_KEY="sk-test-futsi-whatsapp",
+    OPENAI_WHATSAPP_MODEL="gpt-5.6-luna",
+    OPENAI_WHATSAPP_FAQ_ENABLED=True,
+    OPENAI_WHATSAPP_TIMEOUT_SECONDS=20,
+)
+def test_openai_faq_includes_admin_configured_instructions():
+    conversation = _conversation()
+    WhatsAppAutomationSettings.objects.create(
+        business_address=conversation.to_address,
+        assistant_instructions="Dato editable: la recepción cierra a las 19:30.",
+    )
+    api_result = {"model": "gpt-5.6-luna", "output_text": "Con gusto te ayudo 😊"}
+
+    with patch(
+        "core.whatsapp.ai_faq.urlopen",
+        return_value=FakeOpenAIResponse(api_result),
+    ) as open_url:
+        answer_faq(conversation=conversation, user_message="¿A qué hora cierran?")
+
+    payload = json.loads(open_url.call_args.args[0].data.decode("utf-8"))
+    assert "Dato editable: la recepción cierra a las 19:30." in payload["instructions"]

@@ -33,6 +33,7 @@ from core.api.trials import (
     TrialBookingViewSet,
     TrialVisitViewSet,
     VoiceCallViewSet,
+    WhatsAppAutomationSettingsViewSet,
     WhatsAppConversationViewSet,
 )
 
@@ -69,4 +70,9 @@ router.register("trial-bookings", TrialBookingViewSet)
 router.register("trial-visits", TrialVisitViewSet)
 router.register("voice-calls", VoiceCallViewSet)
 router.register("whatsapp-conversations", WhatsAppConversationViewSet)
+router.register(
+    "whatsapp-automation-settings",
+    WhatsAppAutomationSettingsViewSet,
+    basename="whatsapp-automation-settings",
+)
 router.register("trial-availability-rules", TrialAvailabilityRuleViewSet)

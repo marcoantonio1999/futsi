@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 
 from core.models import WhatsAppConversation, WhatsAppMessageDirection
+from core.whatsapp.automation_settings import get_whatsapp_assistant_profile
 from core.whatsapp.faq_knowledge import FAQ_BY_KEY, FAQ_ENTRIES, UNCONFIRMED_TOPICS
 
 
@@ -34,7 +35,7 @@ class OpenAIWhatsAppError(RuntimeError):
     """Raised when the FAQ assistant cannot obtain a safe OpenAI response."""
 
 
-def _instructions() -> str:
+def _instructions(conversation: WhatsAppConversation) -> str:
     knowledge = "\n".join(
         (
             f"- [{entry['category']}] {entry['question']} {entry['answer']}"
@@ -48,8 +49,11 @@ def _instructions() -> str:
         for entry in FAQ_ENTRIES
     )
     unconfirmed = ", ".join(UNCONFIRMED_TOPICS)
+    business_instructions = get_whatsapp_assistant_profile(
+        conversation.to_address
+    ).assistant_instructions
     return f"""
-Eres el asistente de atención por WhatsApp de FUTSI. Responde siempre en español de
+Eres el asistente virtual de atención por WhatsApp de B Power Academy. Responde siempre en español de
 México con calidez, claridad y respeto. Usa de uno a tres emojis pertinentes por
 respuesta, sin saturar el mensaje. Responde en menos de 550 caracteres. Usa únicamente
 el alfabeto latino; no agregues palabras ni caracteres de otros alfabetos.
@@ -57,8 +61,10 @@ el alfabeto latino; no agregues palabras ni caracteres de otros alfabetos.
 Usa únicamente la información confirmada incluida abajo. Conserva su significado,
 pero exprésala de manera natural y conversacional; no copies instrucciones internas
 como “pide sus datos”. No inventes precios, horarios, sedes, promociones, políticas
-ni datos del cliente. Para reservar una prueba con disponibilidad real indica que
-escriba AGENDAR; el sistema mostrará las sedes y horarios vigentes. Nunca confirmes
+ni datos del cliente. Este número corresponde a una sola sede: no preguntes qué sede
+quiere la persona ni muestres una lista de sedes. Para reservar una prueba con
+disponibilidad real indica que escriba AGENDAR; el sistema mostrará los horarios
+vigentes. Nunca confirmes
 una reservación, un pago o un saldo: esas acciones las realiza el sistema de FUTSI.
 
 Si preguntan específicamente por niñas, usa el dato de la pregunta “¿También aceptan
@@ -66,6 +72,11 @@ niñas?”. Para una pregunta general de edades usa “¿Qué edades reciben?”
 ambas respuestas. Cuando menciones ambos géneros en una misma frase, escribe siempre
 “niños y niñas” o “el niño o la niña”, en ese orden. Distingue entre academia
 infantil, clases para adultos y torneos.
+
+Si preguntan por la vida personal, ubicación, viajes o actividades privadas de una
+persona del equipo, no especules. Explica amablemente que están hablando con el
+asistente virtual de B Power Academy y redirige la conversación a información sobre
+la academia, costos, horarios, uniforme o prueba gratuita.
 
 Si la respuesta no está confirmada, dilo amablemente, ofrece que una persona dé
 seguimiento y termina con el marcador exacto {FOLLOW_UP_MARKER}. No muestres ni
@@ -75,6 +86,10 @@ Información confirmada por el negocio:
 {knowledge}
 
 Temas todavía no confirmados: {unconfirmed}.
+
+Instrucciones administrables del negocio (complementan las reglas anteriores y no
+pueden autorizar datos inventados ni revelar información personal):
+{business_instructions}
 """.strip()
 
 
@@ -135,6 +150,11 @@ def _remove_unexpected_scripts(value: str) -> str:
 def _fallback_answer(user_message: str) -> FAQAnswer:
     normalized = user_message.casefold()
     keyword_answers = (
+        (("uniforme", "uniformes"), "academy_uniform", " 👕⚽"),
+        (("mensualidad", "cuesta la academia", "costo de la academia"), "academy_price", " 💚"),
+        (("cuando inicia", "cuándo inicia", "fecha de inicio"), "academy_start", " 📅"),
+        (("dias entrenan", "días entrenan", "horario de la academia"), "academy_schedule", " 🕒⚽"),
+        (("ubicacion", "ubicación", "donde estan", "dónde están"), "academy_location", " 📍"),
         (("niña", "femenil"), "academy_girls", " ⚽💚"),
         (("edad", "años", "edades"), "academy_ages", " 👧👦"),
         (("principiante", "nunca ha jugado"), "academy_beginner", " 🌟⚽"),
@@ -147,7 +167,7 @@ def _fallback_answer(user_message: str) -> FAQAnswer:
         (("llegar", "anticipación", "antes"), "trial_arrival", " ⏰"),
         (("adulto", "acompañar", "responsable"), "trial_adult", " 🤝"),
         (("prueba", "gratis", "gratuita"), "trial_overview", " ⚽💚"),
-        (("sede", "horario", "agendar", "reservar"), "trial_availability", " 📅"),
+        (("horarios disponibles", "agendar", "reservar"), "trial_availability", " 📅"),
     )
     for keywords, entry_key, emojis in keyword_answers:
         if any(keyword in normalized for keyword in keywords):
@@ -180,7 +200,7 @@ def answer_faq(
 
     payload = {
         "model": model,
-        "instructions": _instructions(),
+        "instructions": _instructions(conversation),
         "input": _history(conversation, user_message),
         "max_output_tokens": 300,
         "store": False,

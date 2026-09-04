@@ -1,9 +1,16 @@
 import re
+from datetime import time
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+
+from core.whatsapp.defaults import (
+    DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS,
+    DEFAULT_WHATSAPP_RESPONSE_DELAY_SECONDS,
+    DEFAULT_WHATSAPP_WELCOME_MESSAGE,
+)
 from django.db.models import Q
 from django.utils import timezone
 from uuid import uuid4
@@ -19,6 +26,10 @@ class TimestampedModel(models.Model):
 
 def generate_virtual_clabe():
     return f"646180{uuid4().int % 10**12:012d}"
+
+
+def default_whatsapp_business_days():
+    return [0, 1, 2, 3, 4]
 
 
 class UserRole(models.TextChoices):
@@ -1459,6 +1470,71 @@ class WhatsAppMessage(TimestampedModel):
 
     def __str__(self):
         return f"{self.get_direction_display()} - {self.conversation.contact_phone}"
+
+
+class WhatsAppOutboundDispatchStatus(models.TextChoices):
+    RESERVED = "reserved", "Reservado"
+    SENDING = "sending", "Enviando"
+    SENT = "sent", "Enviado"
+    FAILED = "failed", "Fallido"
+    UNCERTAIN = "uncertain", "Entrega no confirmada"
+
+
+class WhatsAppOutboundDispatch(TimestampedModel):
+    conversation = models.ForeignKey(
+        WhatsAppConversation,
+        on_delete=models.CASCADE,
+        related_name="outbound_dispatches",
+    )
+    in_reply_to_sid = models.CharField(max_length=255, unique=True)
+    status = models.CharField(
+        max_length=16,
+        choices=WhatsAppOutboundDispatchStatus.choices,
+        default=WhatsAppOutboundDispatchStatus.RESERVED,
+    )
+    delivery_kind = models.CharField(max_length=16)
+    payload = models.JSONField(default=dict)
+    body = models.TextField()
+    provider_sid = models.CharField(max_length=255, blank=True)
+    error_message = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        db_table = "whatsapp_outbound_dispatches"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="ix_wa_dispatch_status"),
+        ]
+
+    def __str__(self):
+        return f"Respuesta WhatsApp {self.in_reply_to_sid} - {self.get_status_display()}"
+
+
+class WhatsAppAutomationSettings(TimestampedModel):
+    business_address = models.CharField(max_length=64, unique=True)
+    human_first_enabled = models.BooleanField(default=True)
+    business_days = models.JSONField(default=default_whatsapp_business_days)
+    business_hours_start = models.TimeField(default=time(9, 0))
+    business_hours_end = models.TimeField(default=time(18, 0))
+    human_response_delay_seconds = models.PositiveIntegerField(
+        default=DEFAULT_WHATSAPP_RESPONSE_DELAY_SECONDS,
+        validators=[MinValueValidator(1), MaxValueValidator(3600)],
+    )
+    welcome_message = models.TextField(
+        default=DEFAULT_WHATSAPP_WELCOME_MESSAGE,
+        max_length=2000,
+    )
+    assistant_instructions = models.TextField(
+        default=DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS,
+        max_length=12000,
+    )
+
+    class Meta:
+        db_table = "whatsapp_automation_settings"
+        verbose_name = "configuración de automatización de WhatsApp"
+        verbose_name_plural = "configuraciones de automatización de WhatsApp"
+
+    def __str__(self):
+        return f"Automatización de WhatsApp {self.business_address}"
 
 
 class CallTranscriptSegment(TimestampedModel):

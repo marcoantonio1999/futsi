@@ -14,6 +14,7 @@ from core.domain_serializers.trials import (
     TrialVisitSerializer,
     VoiceCallReviewSerializer,
     VoiceCallSerializer,
+    WhatsAppAutomationSettingsSerializer,
     WhatsAppConversationSerializer,
     WhatsAppSendMessageSerializer,
 )
@@ -23,12 +24,13 @@ from core.models import (
     TrialBooking,
     TrialVisit,
     VoiceCall,
+    WhatsAppAutomationSettings,
     WhatsAppConversation,
     WhatsAppMessage,
     WhatsAppMessageDirection,
     User,
 )
-from core.permissions import ADMIN_ROLES
+from core.permissions import ADMIN_ROLES, IsAdminRole
 from core.whatsapp.meta_api import (
     MetaWhatsAppError,
     configured_business_address,
@@ -37,6 +39,30 @@ from core.whatsapp.meta_api import (
 
 
 TRIAL_DASHBOARD_ROLES = ADMIN_ROLES | {"site_coordinator"}
+
+
+def _current_whatsapp_business_address() -> str:
+    configured_address = configured_business_address()
+    if configured_address and WhatsAppConversation.objects.filter(
+        to_address=configured_address,
+    ).exists():
+        return configured_address
+    recent_address = (
+        WhatsAppConversation.objects.filter(to_address__startswith="whatsapp:+")
+        .order_by("-last_message_at", "-created_at")
+        .values_list("to_address", flat=True)
+        .first()
+    )
+    if recent_address:
+        return recent_address
+    if configured_address:
+        return configured_address
+    return (
+        WhatsAppAutomationSettings.objects.order_by("-updated_at")
+        .values_list("business_address", flat=True)
+        .first()
+        or ""
+    )
 
 
 class CanManageTrialDashboard(BasePermission):
@@ -423,6 +449,58 @@ class WhatsAppConversationViewSet(
                 for user in queryset
             ]
         )
+
+
+class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminRole]
+    http_method_names = ["get", "patch", "head", "options"]
+
+    @action(detail=False, methods=["get", "patch"], url_path="current")
+    def current(self, request):
+        business_address = _current_whatsapp_business_address()
+        if not business_address:
+            return Response(
+                {
+                    "detail": (
+                        "Todavía no hay un número empresarial de WhatsApp configurado."
+                    )
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        if request.method == "GET":
+            instance = WhatsAppAutomationSettings.objects.filter(
+                business_address=business_address,
+            ).first()
+            if instance is None:
+                instance = WhatsAppAutomationSettings(
+                    business_address=business_address,
+                )
+            return Response(WhatsAppAutomationSettingsSerializer(instance).data)
+
+        with transaction.atomic():
+            instance, _created = WhatsAppAutomationSettings.objects.get_or_create(
+                business_address=business_address,
+            )
+            previous_values = WhatsAppAutomationSettingsSerializer(instance).data
+            serializer = WhatsAppAutomationSettingsSerializer(
+                instance,
+                data=request.data,
+                partial=True,
+            )
+            serializer.is_valid(raise_exception=True)
+            instance = serializer.save()
+            new_values = WhatsAppAutomationSettingsSerializer(instance).data
+            AuditLog.objects.create(
+                actor=request.user,
+                action="whatsapp_automation_settings_updated",
+                table_name=WhatsAppAutomationSettings._meta.db_table,
+                record_id=str(instance.pk),
+                previous_values=previous_values,
+                new_values=new_values,
+                metadata={"business_address": business_address},
+            )
+        return Response(new_values)
 
 
 class TrialAvailabilityRuleViewSet(SiteScopedTrialViewSetMixin, viewsets.ModelViewSet):

@@ -17,6 +17,10 @@ MAX_REPLY_BUTTONS = 3
 class MetaWhatsAppError(RuntimeError):
     """Raised when the Meta WhatsApp API cannot accept a message."""
 
+    def __init__(self, message: str, *, delivery_uncertain: bool = False):
+        super().__init__(message)
+        self.delivery_uncertain = delivery_uncertain
+
 
 def configured_business_address() -> str:
     """Return the stable inbox address for the configured WhatsApp number."""
@@ -71,16 +75,21 @@ def _post_message(payload: dict) -> str:
     except HTTPError as exc:
         logger.warning("WhatsApp provider rejected a message with HTTP %s", exc.code)
         raise MetaWhatsAppError(
-            f"El proveedor rechazó el mensaje de WhatsApp (HTTP {exc.code})."
+            f"El proveedor rechazó el mensaje de WhatsApp (HTTP {exc.code}).",
+            delivery_uncertain=exc.code >= 500,
         ) from exc
     except (URLError, TimeoutError, ValueError, OSError) as exc:
         raise MetaWhatsAppError(
-            "No fue posible conectar con el proveedor de WhatsApp."
+            "No fue posible confirmar la entrega con el proveedor de WhatsApp.",
+            delivery_uncertain=True,
         ) from exc
     messages = result.get("messages") if isinstance(result, dict) else None
     message_id = messages[0].get("id") if messages and isinstance(messages[0], dict) else ""
     if not message_id:
-        raise MetaWhatsAppError("El proveedor no devolvió el identificador del mensaje.")
+        raise MetaWhatsAppError(
+            "El proveedor no devolvió el identificador del mensaje.",
+            delivery_uncertain=True,
+        )
     return str(message_id)[:255]
 
 

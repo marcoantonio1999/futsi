@@ -371,24 +371,24 @@ META_WHATSAPP_DEFAULT_SITE_CODE = os.getenv(
 ).strip()
 META_WHATSAPP_LOCATION_NAME = os.getenv(
     "META_WHATSAPP_LOCATION_NAME",
-    "Power Soccer Academy",
+    "B Power Academy · UVM Lomas Verdes",
 ).strip()
 META_WHATSAPP_LOCATION_ADDRESS = os.getenv(
     "META_WHATSAPP_LOCATION_ADDRESS",
     (
-        "Antiguo Camino a Tecamachalco 686, Lomas de Vista Hermosa, "
-        "Cuajimalpa de Morelos, 05100 Ciudad de México"
+        "Paseo de las Aves 1, San Mateo Nopala, Naucalpan de Juárez, "
+        "Estado de México, C.P. 53220"
     ),
 ).strip()
 META_WHATSAPP_CONTACT_PHONE = os.getenv(
     "META_WHATSAPP_CONTACT_PHONE",
-    "+52 55 7895 0758",
+    "+52 55 7485 8165",
 ).strip()
 META_WHATSAPP_LOCATION_LATITUDE = float(
-    os.getenv("META_WHATSAPP_LOCATION_LATITUDE", "19.3824617")
+    os.getenv("META_WHATSAPP_LOCATION_LATITUDE", "19.507465")
 )
 META_WHATSAPP_LOCATION_LONGITUDE = float(
-    os.getenv("META_WHATSAPP_LOCATION_LONGITUDE", "-99.2780863")
+    os.getenv("META_WHATSAPP_LOCATION_LONGITUDE", "-99.262555")
 )
 if not -90 <= META_WHATSAPP_LOCATION_LATITUDE <= 90:
     raise RuntimeError("META_WHATSAPP_LOCATION_LATITUDE no es válida.")

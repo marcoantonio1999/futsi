@@ -44,10 +44,10 @@ FAQ_ENTRIES = (
     {
         "key": "trial_availability",
         "category": "Prueba gratuita",
-        "question": "¿Cómo consulto sedes y horarios disponibles?",
+        "question": "¿Cómo consulto los horarios disponibles?",
         "answer": (
-            "Escribe AGENDAR y te mostraremos únicamente las sedes y los horarios "
-            "que estén disponibles en ese momento."
+            "Escribe AGENDAR y te mostraremos únicamente los horarios que estén "
+            "disponibles en ese momento."
         ),
     },
     {
@@ -67,34 +67,43 @@ FAQ_ENTRIES = (
         ),
     },
     {
+        "key": "academy_start",
+        "category": "Academia",
+        "question": "¿Cuándo inicia la academia?",
+        "answer": "Las actividades comienzan a partir del 31 de agosto.",
+    },
+    {
         "key": "academy_schedule",
         "category": "Academia",
         "question": "¿Qué días y horarios entrenan?",
         "answer": (
-            "Los horarios dependen de la edad y categoría. Pide el año de nacimiento "
-            "para compartir las opciones disponibles. Normalmente entrenan lunes y "
-            "miércoles o martes y jueves por la tarde."
+            "Los entrenamientos son de lunes a jueves, de 5:30 p. m. a 8:00 p. m. "
+            "El horario específico depende de la categoría."
         ),
     },
     {
         "key": "academy_location",
         "category": "Academia",
         "question": "¿Dónde están ubicados?",
-        "answer": (
-            "Los entrenamientos son en Power Soccer Academy. Se puede ofrecer "
-            "la ubicación exacta y los datos para llegar."
-        ),
+        "answer": "Los entrenamientos de la academia son en UVM Lomas Verdes.",
     },
     {
         "key": "academy_price",
         "category": "Academia",
         "question": "¿Cuánto cuesta la academia?",
         "answer": (
-            "El precio depende de la forma de pago y de si aplica alguna promoción. "
-            "Invita a la familia a tomar una clase muestra gratis y coméntale que el "
-            "equipo puede explicarle personalmente las opciones disponibles."
+            "La mensualidad es de $1,250 MXN. Con el descuento de hermanos, la "
+            "mensualidad es de $980 MXN."
         ),
-        "requires_human": True,
+    },
+    {
+        "key": "academy_uniform",
+        "category": "Academia",
+        "question": "¿Cuánto cuesta el uniforme y qué incluye?",
+        "answer": (
+            "El uniforme cuesta $1,980 MXN e incluye dos uniformes: uno de "
+            "entrenamiento y uno de juego."
+        ),
     },
     {
         "key": "academy_trial",
@@ -176,8 +185,8 @@ FAQ_ENTRIES = (
         "category": "Academia",
         "question": "¿Tienen clases de adultos?",
         "answer": (
-            "Sí, hay clases para adultos en varias sedes. Pide sus datos para que el "
-            "equipo le comparta la información correspondiente."
+            "Sí hay clases para adultos. Pide sus datos para que el equipo le "
+            "comparta la información correspondiente."
         ),
         "requires_human": True,
     },
@@ -306,7 +315,7 @@ FAQ_BY_KEY = {entry["key"]: entry for entry in FAQ_ENTRIES}
 
 
 UNCONFIRMED_TOPICS = (
-    "montos exactos de mensualidades, inscripciones, arbitraje y otros precios",
+    "montos de inscripción o arbitraje de torneos y otros precios no indicados",
     "promociones o descuentos vigentes",
     "duración exacta de los partidos",
     "ubicaciones o enlaces no incluidos expresamente",

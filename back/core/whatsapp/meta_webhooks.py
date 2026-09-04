@@ -22,8 +22,11 @@ from core.models import (
     WhatsAppConversationStep,
     WhatsAppMessage,
     WhatsAppMessageDirection,
+    WhatsAppOutboundDispatch,
+    WhatsAppOutboundDispatchStatus,
 )
 from core.whatsapp.ai_faq import OpenAIWhatsAppError, answer_faq
+from core.whatsapp.automation_settings import get_whatsapp_assistant_profile
 from core.whatsapp.meta_api import (
     MetaWhatsAppError,
     configured_business_address,
@@ -56,18 +59,19 @@ BOLD_TERM_PATTERN = re.compile(
     r"(?<!\*)\b(prueba gratuita|academia|torneos)\b(?!\*)",
     re.IGNORECASE,
 )
-MENU_PROMPT = (
-    "¡Hola! 👋 Soy el asistente de Power Soccer Academy. "
-    "¿Quieres una prueba gratuita? ⚽💚"
-)
 NO_SCHEDULE_PROMPT = (
-    "¡Hola! 👋 Por ahora no tenemos horarios disponibles para la prueba gratuita "
-    "en Power Soccer Academy. Si tienes alguna pregunta, escríbela aquí 😊"
+    "¡Hola! 👋 Estás hablando con el asistente virtual de *B Power Academy*. "
+    "Por ahora no tenemos horarios disponibles para la *prueba gratuita*, pero "
+    "puedo ayudarte con información sobre la *academia*, costos y uniforme. 😊"
 )
 FAQ_PROMPT = (
-    "¡Claro! 😊 Escríbeme tu pregunta sobre FUTSI. Si después quieres reservar la "
-    "prueba gratuita, escribe AGENDAR."
+    "¡Claro! 😊 Escríbeme tu pregunta sobre *B Power Academy*. Puedo ayudarte con "
+    "la *academia*, costos, horarios, uniforme o la *prueba gratuita*."
 )
+
+
+def _welcome_prompt(business_address: str) -> str:
+    return get_whatsapp_assistant_profile(business_address).welcome_message
 
 
 def _normalize_text(value: str) -> str:
@@ -297,7 +301,11 @@ def _move_to_menu(conversation: WhatsAppConversation) -> str:
     conversation.save(
         update_fields=["current_step", "site", "context", "failure_reason", "updated_at"]
     )
-    return MENU_PROMPT if conversation.context["booking_available"] else NO_SCHEDULE_PROMPT
+    return (
+        _welcome_prompt(conversation.to_address)
+        if conversation.context["booking_available"]
+        else NO_SCHEDULE_PROMPT
+    )
 
 
 def _normalize_contact_phone(value: str, fallback: str) -> str | None:
@@ -330,7 +338,7 @@ def _fast_current_prompt(conversation: WhatsAppConversation) -> str:
         return "¿Cuál es el nombre del niño o niña?"
     if step == WhatsAppConversationStep.CONTACT_PHONE:
         return "¿Cuál es el número de teléfono de contacto?"
-    return MENU_PROMPT
+    return _welcome_prompt(conversation.to_address)
 
 
 def _finish_booking(conversation: WhatsAppConversation) -> str:
@@ -372,7 +380,7 @@ def _finish_booking(conversation: WhatsAppConversation) -> str:
         f"{context['child_first_name']} quedó agendada.\n"
         f"1ª visita: {_format_slot(context['first_visit'])}\n"
         f"2ª visita: {_format_slot(context['second_visit'])}\n\n"
-        "¡Les esperamos en Power Soccer Academy! ⚽💚"
+        "¡Les esperamos en *B Power Academy*! ⚽💚"
     )
 
 
@@ -536,7 +544,7 @@ def _route_message(
                 contact_phone=contact_phone,
             )
             reply = (
-                MENU_PROMPT
+                _welcome_prompt(to_address)
                 if conversation.context.get("booking_available")
                 else NO_SCHEDULE_PROMPT
             )
@@ -554,7 +562,7 @@ def _route_message(
         if _booking_requested(intent_value) or _affirmative_requested(intent_value):
             return conversation, _start_booking_for_existing(conversation)
         if _is_greeting(intent_value):
-            return conversation, MENU_PROMPT
+            return conversation, _welcome_prompt(conversation.to_address)
         conversation.current_step = WhatsAppConversationStep.FAQ
         conversation.context = {"kind": "faq", "openai_usage": {}}
         conversation.save(update_fields=["current_step", "context", "updated_at"])
@@ -700,42 +708,43 @@ def _message_text(message: dict) -> tuple[str, str]:
     return f"[{message_type or 'mensaje no compatible'}]", "ayuda"
 
 
-def _send_flow_reply(conversation: WhatsAppConversation, reply: str) -> str:
+def _prepare_flow_delivery(
+    conversation: WhatsAppConversation,
+    reply: str,
+) -> tuple[str, dict]:
     if (
         not settings.META_WHATSAPP_INTERACTIVE
         or conversation.status != WhatsAppConversationStatus.ACTIVE
     ):
-        return send_text(to_phone=conversation.contact_phone, body=reply)
+        return "text", {"body": reply}
 
     context = dict(conversation.context or {})
     step = conversation.current_step
     if context.pop("_send_location", False):
         conversation.context = context
         conversation.save(update_fields=["context", "updated_at"])
-        return send_location(
-            to_phone=conversation.contact_phone,
-            latitude=settings.META_WHATSAPP_LOCATION_LATITUDE,
-            longitude=settings.META_WHATSAPP_LOCATION_LONGITUDE,
-            name=settings.META_WHATSAPP_LOCATION_NAME,
-            address=(
+        return "location", {
+            "latitude": settings.META_WHATSAPP_LOCATION_LATITUDE,
+            "longitude": settings.META_WHATSAPP_LOCATION_LONGITUDE,
+            "name": settings.META_WHATSAPP_LOCATION_NAME,
+            "address": (
                 f"{settings.META_WHATSAPP_LOCATION_ADDRESS}\n"
                 f"Teléfono {settings.META_WHATSAPP_CONTACT_PHONE}"
             ),
-        )
+        }
     if context.pop("_reply_as_text", False):
         conversation.context = context
         conversation.save(update_fields=["context", "updated_at"])
-        return send_text(to_phone=conversation.contact_phone, body=reply)
+        return "text", {"body": reply}
     if step == WhatsAppConversationStep.MENU:
         if not context.get("booking_available"):
-            return send_text(to_phone=conversation.contact_phone, body=reply)
-        return send_buttons(
-            to_phone=conversation.contact_phone,
-            body=_bold_whatsapp_terms(MENU_PROMPT),
-            buttons=[
+            return "text", {"body": reply}
+        return "buttons", {
+            "body": _bold_whatsapp_terms(reply),
+            "buttons": [
                 {"id": "menu:book", "title": "Sí, quiero"},
             ],
-        )
+        }
     if step == WhatsAppConversationStep.CHOOSE_FIRST_VISIT:
         schedules = context.get("schedule_options") or []
         if context.get("show_schedule_options") and schedules:
@@ -751,29 +760,137 @@ def _send_flow_reply(conversation: WhatsAppConversation, reply: str) -> str:
                         )[:72],
                     }
                 )
-            return send_list(
-                to_phone=conversation.contact_phone,
-                body="Elige otro paquete para tus dos visitas gratuitas.",
-                button="Ver horarios",
-                options=options,
-            )
-        return send_buttons(
-            to_phone=conversation.contact_phone,
-            body=reply,
-            buttons=[
+            return "list", {
+                "body": "Elige otro paquete para tus dos visitas gratuitas.",
+                "button": "Ver horarios",
+                "options": options,
+            }
+        return "buttons", {
+            "body": reply,
+            "buttons": [
                 {"id": "schedule:default", "title": "Sí, continuar"},
                 {"id": "schedule:other", "title": "Elegir otro"},
             ],
-        )
+        }
     if step == WhatsAppConversationStep.CONTACT_PHONE:
-        return send_buttons(
-            to_phone=conversation.contact_phone,
-            body=reply,
-            buttons=[
+        return "buttons", {
+            "body": reply,
+            "buttons": [
                 {"id": "contact:same", "title": "Usar este número"},
             ],
+        }
+    return "text", {"body": reply}
+
+
+def _deliver_flow_reply(*, contact_phone: str, delivery_kind: str, payload: dict) -> str:
+    if delivery_kind == "buttons":
+        return send_buttons(to_phone=contact_phone, **payload)
+    if delivery_kind == "list":
+        return send_list(to_phone=contact_phone, **payload)
+    if delivery_kind == "location":
+        return send_location(to_phone=contact_phone, **payload)
+    return send_text(to_phone=contact_phone, body=str(payload.get("body") or ""))
+
+
+def _claim_outbound_dispatch(dispatch_id: int) -> dict | None:
+    with transaction.atomic():
+        dispatch = WhatsAppOutboundDispatch.objects.select_for_update().get(pk=dispatch_id)
+        if dispatch.status != WhatsAppOutboundDispatchStatus.RESERVED:
+            return None
+        dispatch.status = WhatsAppOutboundDispatchStatus.SENDING
+        dispatch.save(update_fields=["status", "updated_at"])
+        return {
+            "contact_phone": dispatch.conversation.contact_phone,
+            "delivery_kind": dispatch.delivery_kind,
+            "payload": dict(dispatch.payload or {}),
+            "body": dispatch.body,
+        }
+
+
+def _finish_outbound_dispatch(dispatch_id: int, outgoing_id: str) -> None:
+    with transaction.atomic():
+        dispatch = WhatsAppOutboundDispatch.objects.select_for_update().get(pk=dispatch_id)
+        if dispatch.status != WhatsAppOutboundDispatchStatus.SENDING:
+            return
+        WhatsAppMessage.objects.create(
+            conversation_id=dispatch.conversation_id,
+            provider_sid=outgoing_id,
+            in_reply_to_sid=dispatch.in_reply_to_sid,
+            direction=WhatsAppMessageDirection.OUTBOUND,
+            body=dispatch.body,
         )
-    return send_text(to_phone=conversation.contact_phone, body=reply)
+        dispatch.status = WhatsAppOutboundDispatchStatus.SENT
+        dispatch.provider_sid = outgoing_id
+        dispatch.error_message = ""
+        dispatch.save(
+            update_fields=["status", "provider_sid", "error_message", "updated_at"]
+        )
+
+
+def _fail_outbound_dispatch(dispatch_id: int, *, error: MetaWhatsAppError) -> None:
+    status_value = (
+        WhatsAppOutboundDispatchStatus.UNCERTAIN
+        if error.delivery_uncertain
+        else WhatsAppOutboundDispatchStatus.FAILED
+    )
+    with transaction.atomic():
+        dispatch = WhatsAppOutboundDispatch.objects.select_for_update().select_related(
+            "conversation"
+        ).get(pk=dispatch_id)
+        if dispatch.status != WhatsAppOutboundDispatchStatus.SENDING:
+            return
+        dispatch.status = status_value
+        dispatch.error_message = str(error)[:500]
+        dispatch.save(update_fields=["status", "error_message", "updated_at"])
+        conversation = dispatch.conversation
+        context = dict(conversation.context or {})
+        context["outbound_delivery_attention"] = {
+            "dispatch_id": dispatch.pk,
+            "status": status_value,
+            "in_reply_to_sid": dispatch.in_reply_to_sid,
+        }
+        conversation.context = context
+        conversation.follow_up_required = True
+        conversation.follow_up_updated_at = timezone.now()
+        conversation.save(
+            update_fields=[
+                "context",
+                "follow_up_required",
+                "follow_up_updated_at",
+                "updated_at",
+            ]
+        )
+
+
+def _dispatch_reserved_reply(dispatch_id: int) -> bool:
+    claimed = _claim_outbound_dispatch(dispatch_id)
+    if claimed is None:
+        return False
+    try:
+        outgoing_id = _deliver_flow_reply(
+            contact_phone=claimed["contact_phone"],
+            delivery_kind=claimed["delivery_kind"],
+            payload=claimed["payload"],
+        )
+    except MetaWhatsAppError as first_error:
+        if claimed["delivery_kind"] != "text" and not first_error.delivery_uncertain:
+            logger.warning(
+                "WhatsApp rejected an interactive reply; using a text fallback: %s",
+                first_error,
+            )
+            try:
+                outgoing_id = send_text(
+                    to_phone=claimed["contact_phone"],
+                    body=claimed["body"],
+                )
+            except MetaWhatsAppError as fallback_error:
+                _fail_outbound_dispatch(dispatch_id, error=fallback_error)
+                return False
+        else:
+            _fail_outbound_dispatch(dispatch_id, error=first_error)
+            return False
+    _finish_outbound_dispatch(dispatch_id, outgoing_id)
+    return True
 
 
 def _process_message(*, message: dict, metadata: dict, contact_name: str = "") -> None:
@@ -791,6 +908,23 @@ def _process_message(*, message: dict, metadata: dict, contact_name: str = "") -
     to_address = configured_business_address()
     body, selection = _message_text(message)
 
+    if WhatsAppMessage.objects.filter(
+        provider_sid=message_id,
+        direction=WhatsAppMessageDirection.INBOUND,
+    ).exists():
+        reserved_dispatch_id = (
+            WhatsAppOutboundDispatch.objects.filter(
+                in_reply_to_sid=message_id,
+                status=WhatsAppOutboundDispatchStatus.RESERVED,
+            )
+            .values_list("id", flat=True)
+            .first()
+        )
+        if reserved_dispatch_id is not None:
+            _dispatch_reserved_reply(reserved_dispatch_id)
+        return
+
+    dispatch_id = None
     with transaction.atomic():
         if WhatsAppMessage.objects.select_for_update().filter(
             provider_sid=message_id,
@@ -816,6 +950,7 @@ def _process_message(*, message: dict, metadata: dict, contact_name: str = "") -
             selection=selection,
         )
         reply = _bold_whatsapp_terms(reply)
+        delivery_kind, delivery_payload = _prepare_flow_delivery(conversation, reply)
 
         clean_contact_name = str(contact_name or "").strip()[:200]
         if clean_contact_name:
@@ -831,21 +966,18 @@ def _process_message(*, message: dict, metadata: dict, contact_name: str = "") -
             direction=WhatsAppMessageDirection.INBOUND,
             body=body,
         )
-        try:
-            outgoing_id = _send_flow_reply(conversation, reply)
-        except MetaWhatsAppError as interactive_error:
-            logger.warning(
-                "Meta interactive message failed; retrying as text: %s",
-                interactive_error,
-            )
-            outgoing_id = send_text(to_phone=contact_phone, body=reply)
-        WhatsAppMessage.objects.create(
-            conversation=conversation,
-            provider_sid=outgoing_id,
+        dispatch, created = WhatsAppOutboundDispatch.objects.get_or_create(
             in_reply_to_sid=message_id,
-            direction=WhatsAppMessageDirection.OUTBOUND,
-            body=reply,
+            defaults={
+                "conversation": conversation,
+                "delivery_kind": delivery_kind,
+                "payload": delivery_payload,
+                "body": reply,
+            },
         )
+        dispatch_id = dispatch.pk if created else None
+    if dispatch_id is not None:
+        _dispatch_reserved_reply(dispatch_id)
 
 
 def _process_payload(payload: dict) -> None:

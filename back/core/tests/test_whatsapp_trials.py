@@ -12,6 +12,7 @@ from core.models import (
     Court,
     TrialAvailabilityRule,
     TrialBooking,
+    WhatsAppAutomationSettings,
     WhatsAppConversation,
     WhatsAppMessage,
 )
@@ -415,7 +416,12 @@ def test_whatsapp_conversations_are_site_scoped_in_dashboard(auth_client):
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [visible.id]
     assert [message["body"] for message in response.json()[0]["messages"]] == [
-        "Quiero una prueba."
+        "Quiero una prueba.",
+        "Mensaje eliminado",
+    ]
+    assert [message["event_type"] for message in response.json()[0]["messages"]] == [
+        "message",
+        "revoked",
     ]
     assert visible.messages.count() == 2
     assert hidden.id not in {item["id"] for item in response.json()}
@@ -524,6 +530,115 @@ def test_dashboard_uses_most_recent_business_inbox_when_provider_is_not_configur
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [current.id]
     assert client.get(f"/api/whatsapp-conversations/{older.id}/").status_code == 404
+
+
+def test_admin_can_configure_whatsapp_human_first_schedule(auth_client):
+    WhatsAppConversation.objects.create(
+        contact_phone="+525500000083",
+        from_address="whatsapp:+525500000083",
+        to_address="whatsapp:+525574858165",
+        status="active",
+        current_step="faq",
+        last_message_at=timezone.now(),
+    )
+    client, _payload_data, user = auth_client(role="admin")
+
+    initial = client.get("/api/whatsapp-automation-settings/current/")
+
+    assert initial.status_code == 200
+    assert initial.json()["business_address"] == "whatsapp:+525574858165"
+    assert initial.json()["business_days"] == [0, 1, 2, 3, 4]
+    assert initial.json()["business_hours_start"] == "09:00"
+    assert initial.json()["business_hours_end"] == "18:00"
+    assert initial.json()["human_response_delay_seconds"] == 600
+    assert "B Power Academy" in initial.json()["welcome_message"]
+    assert "UVM Lomas Verdes" in initial.json()["assistant_instructions"]
+
+    updated = client.patch(
+        "/api/whatsapp-automation-settings/current/",
+        {
+            "human_first_enabled": True,
+            "business_days": [0, 1, 2, 3, 4, 5],
+            "business_hours_start": "10:30",
+            "business_hours_end": "19:15",
+            "human_response_delay_seconds": 600,
+            "welcome_message": "Hola, soy el asistente virtual de B Power Academy ⚽",
+            "assistant_instructions": "Responde con calidez y usa sólo datos confirmados.",
+        },
+        format="json",
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["business_days"] == [0, 1, 2, 3, 4, 5]
+    assert updated.json()["business_hours_start"] == "10:30"
+    assert updated.json()["business_hours_end"] == "19:15"
+    assert updated.json()["human_response_delay_seconds"] == 600
+    assert updated.json()["welcome_message"].startswith("Hola, soy el asistente")
+    assert updated.json()["assistant_instructions"] == (
+        "Responde con calidez y usa sólo datos confirmados."
+    )
+    record = WhatsAppAutomationSettings.objects.get(
+        business_address="whatsapp:+525574858165",
+    )
+    assert record.business_hours_start == time(10, 30)
+    assert record.business_hours_end == time(19, 15)
+    assert record.welcome_message.startswith("Hola, soy el asistente")
+    assert AuditLog.objects.filter(
+        actor=user,
+        action="whatsapp_automation_settings_updated",
+        record_id=str(record.pk),
+    ).exists()
+
+
+def test_whatsapp_schedule_configuration_is_admin_only_and_validated(auth_client):
+    WhatsAppConversation.objects.create(
+        contact_phone="+525500000084",
+        from_address="whatsapp:+525500000084",
+        to_address="whatsapp:+525574858165",
+        status="active",
+        current_step="faq",
+        last_message_at=timezone.now(),
+    )
+    coordinator = make_user(role="site_coordinator", primary_site=make_site())
+    coordinator_client, _payload_data, _user = auth_client(user=coordinator)
+    assert (
+        coordinator_client.get("/api/whatsapp-automation-settings/current/").status_code
+        == 403
+    )
+
+    admin_client, _payload_data, _user = auth_client(role="admin")
+    invalid = admin_client.patch(
+        "/api/whatsapp-automation-settings/current/",
+        {
+            "business_days": [],
+            "business_hours_start": "18:00",
+            "business_hours_end": "09:00",
+        },
+        format="json",
+    )
+    assert invalid.status_code == 400
+    assert "business_days" in invalid.json()
+
+    invalid_hours = admin_client.patch(
+        "/api/whatsapp-automation-settings/current/",
+        {
+            "business_days": [0, 1, 2, 3, 4],
+            "business_hours_start": "18:00",
+            "business_hours_end": "09:00",
+        },
+        format="json",
+    )
+    assert invalid_hours.status_code == 400
+    assert "business_hours_end" in invalid_hours.json()
+
+    invalid_messages = admin_client.patch(
+        "/api/whatsapp-automation-settings/current/",
+        {"welcome_message": "   ", "assistant_instructions": ""},
+        format="json",
+    )
+    assert invalid_messages.status_code == 400
+    assert "welcome_message" in invalid_messages.json()
+    assert "assistant_instructions" in invalid_messages.json()
 
 
 def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):

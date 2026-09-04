@@ -11,6 +11,7 @@ from core.models import (
     TrialBooking,
     TrialVisit,
     VoiceCall,
+    WhatsAppAutomationSettings,
     WhatsAppConversation,
     WhatsAppMessage,
     WhatsAppMessageDirection,
@@ -18,9 +19,6 @@ from core.models import (
     sanitize_voice_error,
 )
 from core.permissions import ADMIN_ROLES
-
-
-TECHNICAL_WHATSAPP_MESSAGE_BODIES = {"[revoke]"}
 
 
 class TrialVisitSerializer(serializers.ModelSerializer):
@@ -248,12 +246,29 @@ class VoiceCallReviewSerializer(serializers.Serializer):
 
 
 class WhatsAppMessageSerializer(serializers.ModelSerializer):
+    body = serializers.SerializerMethodField()
+    event_type = serializers.SerializerMethodField()
+
+    @staticmethod
+    def _is_revoked(instance):
+        return str(instance.body or "").strip().casefold() in {
+            "[revoke]",
+            "mensaje eliminado",
+        }
+
+    def get_body(self, instance):
+        return "Mensaje eliminado" if self._is_revoked(instance) else instance.body
+
+    def get_event_type(self, instance):
+        return "revoked" if self._is_revoked(instance) else "message"
+
     class Meta:
         model = WhatsAppMessage
         fields = [
             "id",
             "direction",
             "body",
+            "event_type",
             "created_at",
         ]
         read_only_fields = fields
@@ -303,16 +318,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         allow_blank=True,
         max_length=4000,
     )
-    messages = serializers.SerializerMethodField()
-
-    def get_messages(self, instance):
-        messages = [
-            message
-            for message in instance.messages.all()
-            if str(message.body or "").strip().casefold()
-            not in TECHNICAL_WHATSAPP_MESSAGE_BODIES
-        ]
-        return WhatsAppMessageSerializer(messages, many=True).data
+    messages = WhatsAppMessageSerializer(many=True, read_only=True)
 
     def get_follow_up_assigned_to_name(self, instance):
         assignee = instance.follow_up_assigned_to
@@ -449,6 +455,71 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class WhatsAppAutomationSettingsSerializer(serializers.ModelSerializer):
+    business_hours_start = serializers.TimeField(format="%H:%M")
+    business_hours_end = serializers.TimeField(format="%H:%M")
+
+    class Meta:
+        model = WhatsAppAutomationSettings
+        fields = [
+            "id",
+            "business_address",
+            "human_first_enabled",
+            "business_days",
+            "business_hours_start",
+            "business_hours_end",
+            "human_response_delay_seconds",
+            "welcome_message",
+            "assistant_instructions",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "business_address",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_business_days(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Selecciona los días de atención.")
+        if any(type(day) is not int or day < 0 or day > 6 for day in value):
+            raise serializers.ValidationError("Los días deben estar entre lunes y domingo.")
+        days = sorted(set(value))
+        if not days:
+            raise serializers.ValidationError("Selecciona al menos un día de atención.")
+        return days
+
+    def validate_welcome_message(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Escribe el saludo inicial del asistente.")
+        return value
+
+    def validate_assistant_instructions(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Escribe las instrucciones del asistente.")
+        return value
+
+    def validate(self, attrs):
+        instance = self.instance
+        starts_at = attrs.get(
+            "business_hours_start",
+            getattr(instance, "business_hours_start", None),
+        )
+        ends_at = attrs.get(
+            "business_hours_end",
+            getattr(instance, "business_hours_end", None),
+        )
+        if starts_at and ends_at and ends_at <= starts_at:
+            raise serializers.ValidationError(
+                {"business_hours_end": "La hora de cierre debe ser posterior a la apertura."}
+            )
+        return attrs
 
 
 class TrialAvailabilityRuleSerializer(serializers.ModelSerializer):
