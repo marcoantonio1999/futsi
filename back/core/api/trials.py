@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from statistics import median
 
 from django.db import models, transaction
 from django.utils import timezone
@@ -25,9 +26,13 @@ from core.models import (
     TrialVisit,
     VoiceCall,
     WhatsAppAutomationSettings,
+    WhatsAppContactType,
     WhatsAppConversation,
+    WhatsAppHumanResponseChannel,
+    WhatsAppHumanResponseEvent,
     WhatsAppMessage,
     WhatsAppMessageDirection,
+    WhatsAppResponseSource,
     User,
 )
 from core.permissions import ADMIN_ROLES, IsAdminRole
@@ -39,6 +44,47 @@ from core.whatsapp.meta_api import (
 
 
 TRIAL_DASHBOARD_ROLES = ADMIN_ROLES | {"site_coordinator"}
+
+
+def _response_event_summary(events):
+    answered = [event for event in events if event.response_seconds is not None]
+    durations = [event.response_seconds for event in answered]
+    total = len(events)
+
+    def percentage_within(seconds):
+        if not total:
+            return 0
+        return round(
+            sum(1 for duration in durations if duration <= seconds) * 100 / total,
+            1,
+        )
+
+    return {
+        "total": total,
+        "answered": len(answered),
+        "unanswered": total - len(answered),
+        "average_response_seconds": (
+            round(sum(durations) / len(durations)) if durations else None
+        ),
+        "median_response_seconds": round(median(durations)) if durations else None,
+        "within_5_minutes_percent": percentage_within(5 * 60),
+        "within_10_minutes_percent": percentage_within(10 * 60),
+        "within_30_minutes_percent": percentage_within(30 * 60),
+        "within_60_minutes_percent": percentage_within(60 * 60),
+    }
+
+
+def _contact_display_name(conversation):
+    context = conversation.context if isinstance(conversation.context, dict) else {}
+    return (
+        str(context.get("contact_name") or "").strip()
+        or (
+            conversation.booking.responsible_name
+            if conversation.booking_id and conversation.booking
+            else ""
+        )
+        or "Contacto de WhatsApp"
+    )
 
 
 def _current_whatsapp_business_address() -> str:
@@ -270,7 +316,12 @@ class WhatsAppConversationViewSet(
             "booking",
             "follow_up_assigned_to",
         )
-        .prefetch_related("messages")
+        .prefetch_related(
+            models.Prefetch(
+                "messages",
+                queryset=WhatsAppMessage.objects.select_related("sent_by"),
+            )
+        )
         .order_by("-last_message_at", "-created_at")
     )
     serializer_class = WhatsAppConversationSerializer
@@ -385,14 +436,47 @@ class WhatsAppConversationViewSet(
                     to_phone=locked.contact_phone,
                     body=body,
                 )
-                WhatsAppMessage.objects.get_or_create(
+                response_message, created = WhatsAppMessage.objects.get_or_create(
                     provider_sid=provider_sid,
                     defaults={
                         "conversation": locked,
                         "direction": WhatsAppMessageDirection.OUTBOUND,
                         "body": body,
+                        "response_source": WhatsAppResponseSource.HUMAN_DASHBOARD,
+                        "sent_by": request.user,
                     },
                 )
+                if not created and response_message.response_source == WhatsAppResponseSource.UNKNOWN:
+                    response_message.response_source = WhatsAppResponseSource.HUMAN_DASHBOARD
+                    response_message.sent_by = request.user
+                    response_message.save(
+                        update_fields=["response_source", "sent_by", "updated_at"]
+                    )
+                response_event = (
+                    WhatsAppHumanResponseEvent.objects.select_for_update()
+                    .filter(conversation=locked, responded_at__isnull=True)
+                    .order_by("first_inbound_at", "id")
+                    .first()
+                )
+                if response_event:
+                    response_event.response_message = response_message
+                    response_event.responder_user = request.user
+                    response_event.response_channel = WhatsAppHumanResponseChannel.DASHBOARD
+                    response_event.responded_at = now
+                    response_event.response_seconds = max(
+                        0,
+                        int((now - response_event.first_inbound_at).total_seconds()),
+                    )
+                    response_event.save(
+                        update_fields=[
+                            "response_message",
+                            "responder_user",
+                            "response_channel",
+                            "responded_at",
+                            "response_seconds",
+                            "updated_at",
+                        ]
+                    )
                 locked.context = context
                 locked.last_message_at = now
                 locked.save(update_fields=["context", "last_message_at", "updated_at"])
@@ -448,6 +532,148 @@ class WhatsAppConversationViewSet(
                 }
                 for user in queryset
             ]
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="weekly-stats",
+        permission_classes=[IsAdminRole],
+    )
+    def weekly_stats(self, request):
+        requested_start = str(request.query_params.get("week_start") or "").strip()
+        try:
+            week_start_date = (
+                date.fromisoformat(requested_start)
+                if requested_start
+                else timezone.localdate()
+            )
+        except ValueError:
+            return Response(
+                {"detail": "week_start debe tener el formato AAAA-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        week_start_date -= timedelta(days=week_start_date.weekday())
+        week_end_date = week_start_date + timedelta(days=7)
+        start_at = timezone.make_aware(datetime.combine(week_start_date, datetime.min.time()))
+        end_at = timezone.make_aware(datetime.combine(week_end_date, datetime.min.time()))
+        now = timezone.now()
+
+        conversations = self.get_queryset()
+        events = list(
+            WhatsAppHumanResponseEvent.objects.filter(
+                conversation__in=conversations,
+                human_attention_expected=True,
+                first_inbound_at__gte=start_at,
+                first_inbound_at__lt=end_at,
+            )
+            .select_related(
+                "conversation",
+                "conversation__booking",
+                "responder_user",
+            )
+            .order_by("first_inbound_at", "id")
+        )
+
+        responder_groups = {}
+        for event in events:
+            if event.response_seconds is None:
+                continue
+            if event.responder_user_id:
+                key = f"user:{event.responder_user_id}"
+                label = (
+                    event.responder_user.get_full_name().strip()
+                    or event.responder_user.username
+                )
+            else:
+                key = f"channel:{event.response_channel}"
+                label = (
+                    "Equipo vía WhatsApp Business"
+                    if event.response_channel
+                    == WhatsAppHumanResponseChannel.WHATSAPP_BUSINESS
+                    else "Equipo sin identificar"
+                )
+            group = responder_groups.setdefault(
+                key,
+                {"key": key, "name": label, "durations": []},
+            )
+            group["durations"].append(event.response_seconds)
+
+        by_responder = []
+        for group in responder_groups.values():
+            durations = group.pop("durations")
+            by_responder.append(
+                {
+                    **group,
+                    "answered": len(durations),
+                    "average_response_seconds": round(sum(durations) / len(durations)),
+                    "median_response_seconds": round(median(durations)),
+                }
+            )
+        by_responder.sort(key=lambda item: (-item["answered"], item["name"]))
+
+        longest_waits = []
+        for event in events:
+            wait_until = event.responded_at or min(now, end_at)
+            wait_seconds = event.response_seconds
+            if wait_seconds is None:
+                wait_seconds = max(
+                    0,
+                    int((wait_until - event.first_inbound_at).total_seconds()),
+                )
+            longest_waits.append(
+                {
+                    "id": event.id,
+                    "conversation_id": event.conversation_id,
+                    "contact_name": _contact_display_name(event.conversation),
+                    "contact_phone": event.conversation.contact_phone,
+                    "contact_type": event.contact_type,
+                    "within_business_hours": event.within_business_hours,
+                    "first_inbound_at": event.first_inbound_at.isoformat(),
+                    "responded_at": (
+                        event.responded_at.isoformat() if event.responded_at else None
+                    ),
+                    "response_seconds": wait_seconds,
+                    "response_channel": event.response_channel,
+                }
+            )
+        longest_waits.sort(key=lambda item: item["response_seconds"], reverse=True)
+
+        classifications = {
+            WhatsAppContactType.PROSPECT: 0,
+            WhatsAppContactType.CURRENT_CLIENT: 0,
+            WhatsAppContactType.AMBIGUOUS: 0,
+        }
+        classification_rows = (
+            WhatsAppMessage.objects.filter(
+                conversation__in=conversations,
+                direction=WhatsAppMessageDirection.INBOUND,
+                created_at__gte=start_at,
+                created_at__lt=end_at,
+            )
+            .exclude(contact_type=WhatsAppContactType.UNCLASSIFIED)
+            .values("contact_type")
+            .annotate(total=models.Count("id"))
+        )
+        for row in classification_rows:
+            classifications[row["contact_type"]] = row["total"]
+
+        return Response(
+            {
+                "week_start": week_start_date.isoformat(),
+                "week_end": (week_end_date - timedelta(days=1)).isoformat(),
+                "generated_at": now.isoformat(),
+                "summary": _response_event_summary(events),
+                "business_hours": _response_event_summary(
+                    [event for event in events if event.within_business_hours]
+                ),
+                "outside_business_hours": _response_event_summary(
+                    [event for event in events if not event.within_business_hours]
+                ),
+                "classifications": classifications,
+                "by_responder": by_responder,
+                "longest_waits": longest_waits[:10],
+            }
         )
 
 

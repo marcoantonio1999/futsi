@@ -8,6 +8,8 @@ from django.db import models
 
 from core.whatsapp.defaults import (
     DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS,
+    DEFAULT_WHATSAPP_CLASSIFICATION_CONFIDENCE_THRESHOLD,
+    DEFAULT_WHATSAPP_OUT_OF_HOURS_ACKNOWLEDGEMENT,
     DEFAULT_WHATSAPP_RESPONSE_DELAY_SECONDS,
     DEFAULT_WHATSAPP_WELCOME_MESSAGE,
 )
@@ -1183,6 +1185,35 @@ class WhatsAppMessageDirection(models.TextChoices):
     OUTBOUND = "outbound", "Saliente"
 
 
+class WhatsAppContactType(models.TextChoices):
+    UNCLASSIFIED = "unclassified", "Sin clasificar"
+    PROSPECT = "prospect", "Prospecto nuevo"
+    CURRENT_CLIENT = "current_client", "Cliente actual"
+    AMBIGUOUS = "ambiguous", "Caso ambiguo"
+
+
+class WhatsAppRoutingDecision(models.TextChoices):
+    UNCLASSIFIED = "unclassified", "Sin clasificar"
+    BOT_IMMEDIATE = "bot_immediate", "Respuesta inmediata del bot"
+    HUMAN_ONLY = "human_only", "Atención humana"
+    BOT_DELAYED = "bot_delayed", "Bot después de espera"
+    OUT_OF_HOURS_ACK = "out_of_hours_ack", "Acuse fuera de horario"
+    AUTOMATION_PAUSED = "automation_paused", "Control humano activo"
+
+
+class WhatsAppResponseSource(models.TextChoices):
+    UNKNOWN = "unknown", "Sin identificar"
+    BOT = "bot", "Asistente virtual"
+    HUMAN_DASHBOARD = "human_dashboard", "Persona desde FUTSI"
+    HUMAN_WHATSAPP = "human_whatsapp", "Persona desde WhatsApp Business"
+
+
+class WhatsAppHumanResponseChannel(models.TextChoices):
+    NONE = "none", "Sin respuesta humana"
+    DASHBOARD = "dashboard", "FUTSI"
+    WHATSAPP_BUSINESS = "whatsapp_business", "WhatsApp Business"
+
+
 _SENSITIVE_ERROR_PATTERNS = (
     re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}\b", re.IGNORECASE),
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
@@ -1459,6 +1490,35 @@ class WhatsAppMessage(TimestampedModel):
     in_reply_to_sid = models.CharField(max_length=255, null=True, blank=True, unique=True)
     direction = models.CharField(max_length=12, choices=WhatsAppMessageDirection.choices)
     body = models.TextField()
+    response_source = models.CharField(
+        max_length=24,
+        choices=WhatsAppResponseSource.choices,
+        default=WhatsAppResponseSource.UNKNOWN,
+    )
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sent_whatsapp_messages",
+    )
+    contact_type = models.CharField(
+        max_length=20,
+        choices=WhatsAppContactType.choices,
+        default=WhatsAppContactType.UNCLASSIFIED,
+    )
+    classification_confidence = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    classification_evidence = models.JSONField(default=list, blank=True)
+    known_contact = models.BooleanField(default=False)
+    routing_decision = models.CharField(
+        max_length=32,
+        choices=WhatsAppRoutingDecision.choices,
+        default=WhatsAppRoutingDecision.UNCLASSIFIED,
+    )
+    within_business_hours = models.BooleanField(null=True, blank=True)
 
     class Meta:
         db_table = "whatsapp_messages"
@@ -1470,6 +1530,67 @@ class WhatsAppMessage(TimestampedModel):
 
     def __str__(self):
         return f"{self.get_direction_display()} - {self.conversation.contact_phone}"
+
+
+class WhatsAppHumanResponseEvent(TimestampedModel):
+    conversation = models.ForeignKey(
+        WhatsAppConversation,
+        on_delete=models.CASCADE,
+        related_name="human_response_events",
+    )
+    first_inbound_message = models.OneToOneField(
+        WhatsAppMessage,
+        on_delete=models.CASCADE,
+        related_name="human_response_event",
+    )
+    contact_type = models.CharField(
+        max_length=20,
+        choices=WhatsAppContactType.choices,
+        default=WhatsAppContactType.UNCLASSIFIED,
+    )
+    human_attention_expected = models.BooleanField(default=True)
+    within_business_hours = models.BooleanField(default=True)
+    first_inbound_at = models.DateTimeField()
+    response_message = models.OneToOneField(
+        WhatsAppMessage,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="closed_human_response_event",
+    )
+    responder_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="whatsapp_human_responses",
+    )
+    response_channel = models.CharField(
+        max_length=24,
+        choices=WhatsAppHumanResponseChannel.choices,
+        default=WhatsAppHumanResponseChannel.NONE,
+    )
+    responded_at = models.DateTimeField(null=True, blank=True)
+    response_seconds = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "whatsapp_human_response_events"
+        ordering = ["-first_inbound_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conversation"],
+                condition=Q(responded_at__isnull=True),
+                name="uq_wa_open_human_response",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["first_inbound_at"], name="ix_wa_human_first_at"),
+            models.Index(
+                fields=["within_business_hours", "first_inbound_at"],
+                name="ix_wa_human_period",
+            ),
+            models.Index(fields=["responded_at"], name="ix_wa_human_responded"),
+        ]
 
 
 class WhatsAppOutboundDispatchStatus(models.TextChoices):
@@ -1526,6 +1647,15 @@ class WhatsAppAutomationSettings(TimestampedModel):
     assistant_instructions = models.TextField(
         default=DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS,
         max_length=12000,
+    )
+    contact_classification_enabled = models.BooleanField(default=True)
+    classification_confidence_threshold = models.PositiveSmallIntegerField(
+        default=DEFAULT_WHATSAPP_CLASSIFICATION_CONFIDENCE_THRESHOLD,
+        validators=[MinValueValidator(50), MaxValueValidator(100)],
+    )
+    out_of_hours_acknowledgement = models.TextField(
+        default=DEFAULT_WHATSAPP_OUT_OF_HOURS_ACKNOWLEDGEMENT,
+        max_length=2000,
     )
 
     class Meta:

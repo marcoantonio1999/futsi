@@ -248,6 +248,7 @@ class VoiceCallReviewSerializer(serializers.Serializer):
 class WhatsAppMessageSerializer(serializers.ModelSerializer):
     body = serializers.SerializerMethodField()
     event_type = serializers.SerializerMethodField()
+    sent_by_name = serializers.SerializerMethodField()
 
     @staticmethod
     def _is_revoked(instance):
@@ -262,6 +263,11 @@ class WhatsAppMessageSerializer(serializers.ModelSerializer):
     def get_event_type(self, instance):
         return "revoked" if self._is_revoked(instance) else "message"
 
+    def get_sent_by_name(self, instance):
+        if not instance.sent_by:
+            return None
+        return instance.sent_by.get_full_name().strip() or instance.sent_by.username
+
     class Meta:
         model = WhatsAppMessage
         fields = [
@@ -269,6 +275,14 @@ class WhatsAppMessageSerializer(serializers.ModelSerializer):
             "direction",
             "body",
             "event_type",
+            "response_source",
+            "sent_by_name",
+            "contact_type",
+            "classification_confidence",
+            "classification_evidence",
+            "known_contact",
+            "routing_decision",
+            "within_business_hours",
             "created_at",
         ]
         read_only_fields = fields
@@ -473,6 +487,9 @@ class WhatsAppAutomationSettingsSerializer(serializers.ModelSerializer):
             "human_response_delay_seconds",
             "welcome_message",
             "assistant_instructions",
+            "contact_classification_enabled",
+            "classification_confidence_threshold",
+            "out_of_hours_acknowledgement",
             "created_at",
             "updated_at",
         ]
@@ -503,6 +520,14 @@ class WhatsAppAutomationSettingsSerializer(serializers.ModelSerializer):
         value = str(value or "").strip()
         if not value:
             raise serializers.ValidationError("Escribe las instrucciones del asistente.")
+        return value
+
+    def validate_out_of_hours_acknowledgement(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError(
+                "Escribe el acuse que se enviará fuera del horario laboral."
+            )
         return value
 
     def validate(self, attrs):

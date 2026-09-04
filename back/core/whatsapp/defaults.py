@@ -1,4 +1,11 @@
 DEFAULT_WHATSAPP_RESPONSE_DELAY_SECONDS = 600
+DEFAULT_WHATSAPP_CLASSIFICATION_CONFIDENCE_THRESHOLD = 80
+
+DEFAULT_WHATSAPP_OUT_OF_HOURS_ACKNOWLEDGEMENT = (
+    "¡Gracias por escribirnos! 😊 Recibimos tu mensaje. En este momento estamos "
+    "fuera de horario; una persona del equipo de B Power Academy te responderá "
+    "en el próximo horario de atención. ⚽💚"
+)
 
 DEFAULT_WHATSAPP_WELCOME_MESSAGE = (
     "¡Hola! 👋 Estás hablando con el asistente virtual de *B Power Academy*. "

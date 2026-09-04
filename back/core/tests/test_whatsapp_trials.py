@@ -14,6 +14,7 @@ from core.models import (
     TrialBooking,
     WhatsAppAutomationSettings,
     WhatsAppConversation,
+    WhatsAppHumanResponseEvent,
     WhatsAppMessage,
 )
 from core.tests.factories import make_site, make_user
@@ -551,6 +552,9 @@ def test_admin_can_configure_whatsapp_human_first_schedule(auth_client):
     assert initial.json()["business_hours_start"] == "09:00"
     assert initial.json()["business_hours_end"] == "18:00"
     assert initial.json()["human_response_delay_seconds"] == 600
+    assert initial.json()["contact_classification_enabled"] is True
+    assert initial.json()["classification_confidence_threshold"] == 80
+    assert "Recibimos tu mensaje" in initial.json()["out_of_hours_acknowledgement"]
     assert "B Power Academy" in initial.json()["welcome_message"]
     assert "UVM Lomas Verdes" in initial.json()["assistant_instructions"]
 
@@ -564,6 +568,9 @@ def test_admin_can_configure_whatsapp_human_first_schedule(auth_client):
             "human_response_delay_seconds": 600,
             "welcome_message": "Hola, soy el asistente virtual de B Power Academy ⚽",
             "assistant_instructions": "Responde con calidez y usa sólo datos confirmados.",
+            "contact_classification_enabled": True,
+            "classification_confidence_threshold": 85,
+            "out_of_hours_acknowledgement": "Recibimos tu mensaje; mañana te responde el equipo. ⚽",
         },
         format="json",
     )
@@ -577,6 +584,8 @@ def test_admin_can_configure_whatsapp_human_first_schedule(auth_client):
     assert updated.json()["assistant_instructions"] == (
         "Responde con calidez y usa sólo datos confirmados."
     )
+    assert updated.json()["classification_confidence_threshold"] == 85
+    assert updated.json()["out_of_hours_acknowledgement"].startswith("Recibimos")
     record = WhatsAppAutomationSettings.objects.get(
         business_address="whatsapp:+525574858165",
     )
@@ -633,12 +642,19 @@ def test_whatsapp_schedule_configuration_is_admin_only_and_validated(auth_client
 
     invalid_messages = admin_client.patch(
         "/api/whatsapp-automation-settings/current/",
-        {"welcome_message": "   ", "assistant_instructions": ""},
+        {
+            "welcome_message": "   ",
+            "assistant_instructions": "",
+            "classification_confidence_threshold": 49,
+            "out_of_hours_acknowledgement": "",
+        },
         format="json",
     )
     assert invalid_messages.status_code == 400
     assert "welcome_message" in invalid_messages.json()
     assert "assistant_instructions" in invalid_messages.json()
+    assert "classification_confidence_threshold" in invalid_messages.json()
+    assert "out_of_hours_acknowledgement" in invalid_messages.json()
 
 
 def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):
@@ -659,10 +675,21 @@ def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):
         last_message_at=timezone.now(),
     )
     WhatsAppMessage.objects.create(
+        # This open event is what the weekly SLA report measures and the
+        # dashboard reply must close atomically.
         conversation=conversation,
         provider_sid="wamid.inbound-dashboard-reply",
         direction="inbound",
         body="¿Qué horarios tienen?",
+    )
+    inbound = conversation.messages.get(provider_sid="wamid.inbound-dashboard-reply")
+    response_event = WhatsAppHumanResponseEvent.objects.create(
+        conversation=conversation,
+        first_inbound_message=inbound,
+        contact_type="ambiguous",
+        human_attention_expected=True,
+        within_business_hours=True,
+        first_inbound_at=inbound.created_at,
     )
     client, _payload_data, _user = auth_client(user=coordinator)
 
@@ -692,6 +719,11 @@ def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):
         direction="outbound",
         body="¡Hola, Marco! Te comparto los horarios disponibles 😊",
     ).exists()
+    response_event.refresh_from_db()
+    assert response_event.response_message.provider_sid == "wamid.manual-dashboard-reply"
+    assert response_event.responder_user == coordinator
+    assert response_event.response_channel == "dashboard"
+    assert response_event.response_seconds is not None
     assert response.json()["contact_name"] == "Marco Ávila"
     assert response.json()["human_takeover_active"] is True
     assert response.json()["bot_response_pending"] is False
@@ -733,6 +765,76 @@ def test_dashboard_reply_requires_an_open_customer_service_window(auth_client):
     assert response.status_code == 409
     assert "plantilla aprobada" in response.json()["detail"]
     send_mock.assert_not_called()
+
+
+def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client):
+    responder = make_user(role="admin", first_name="Ana", last_name="Cancha")
+    now = timezone.now()
+    durations = [120, 480, 1200, None]
+    contact_types = ["current_client", "ambiguous", "current_client", "ambiguous"]
+    within_hours = [True, True, False, False]
+
+    for index, duration in enumerate(durations):
+        conversation = WhatsAppConversation.objects.create(
+            contact_phone=f"+5255000001{index:02d}",
+            from_address=f"whatsapp:+5255000001{index:02d}",
+            to_address=f"whatsapp:{WHATSAPP_NUMBER}",
+            status="active",
+            current_step="faq",
+            context={"contact_name": f"Contacto {index}"},
+            last_message_at=now,
+        )
+        inbound = WhatsAppMessage.objects.create(
+            conversation=conversation,
+            provider_sid=f"wamid.stats-inbound-{index}",
+            direction="inbound",
+            body="Mensaje de seguimiento",
+            contact_type=contact_types[index],
+            classification_confidence=95,
+            routing_decision="human_only",
+            within_business_hours=within_hours[index],
+        )
+        first_inbound_at = now - timedelta(hours=index + 1)
+        WhatsAppHumanResponseEvent.objects.create(
+            conversation=conversation,
+            first_inbound_message=inbound,
+            contact_type=contact_types[index],
+            human_attention_expected=True,
+            within_business_hours=within_hours[index],
+            first_inbound_at=first_inbound_at,
+            responder_user=responder if duration is not None else None,
+            response_channel="dashboard" if duration is not None else "none",
+            responded_at=(
+                first_inbound_at + timedelta(seconds=duration)
+                if duration is not None
+                else None
+            ),
+            response_seconds=duration,
+        )
+
+    client, _payload_data, _user = auth_client(role="admin")
+    response = client.get("/api/whatsapp-conversations/weekly-stats/")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["summary"]["total"] == 4
+    assert data["summary"]["answered"] == 3
+    assert data["summary"]["unanswered"] == 1
+    assert data["summary"]["average_response_seconds"] == 600
+    assert data["summary"]["median_response_seconds"] == 480
+    assert data["summary"]["within_5_minutes_percent"] == 25.0
+    assert data["summary"]["within_10_minutes_percent"] == 50.0
+    assert data["business_hours"]["total"] == 2
+    assert data["outside_business_hours"]["total"] == 2
+    assert data["classifications"] == {
+        "prospect": 0,
+        "current_client": 2,
+        "ambiguous": 2,
+    }
+    assert data["by_responder"][0]["name"] == "Ana Cancha"
+    assert data["by_responder"][0]["answered"] == 3
+    assert len(data["longest_waits"]) == 4
+    assert data["longest_waits"][0]["responded_at"] is None
 
 
 @override_settings(
