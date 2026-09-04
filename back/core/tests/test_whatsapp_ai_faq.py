@@ -85,6 +85,7 @@ def test_openai_faq_uses_responses_api_and_strips_internal_follow_up_marker():
     assert "niños y niñas" in payload["instructions"]
     assert "no preguntes qué sede" in payload["instructions"]
     assert "Mat se fue de viaje" in payload["instructions"]
+    assert "Nunca sustituyas una respuesta disponible" in payload["instructions"]
     assert answer.needs_human is True
     assert FOLLOW_UP_MARKER not in answer.text
     assert answer.usage["total_tokens"] == 145

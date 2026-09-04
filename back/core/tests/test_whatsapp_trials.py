@@ -554,7 +554,7 @@ def test_admin_can_configure_whatsapp_human_first_schedule(auth_client):
     assert initial.json()["human_response_delay_seconds"] == 600
     assert initial.json()["contact_classification_enabled"] is True
     assert initial.json()["classification_confidence_threshold"] == 80
-    assert "Recibimos tu mensaje" in initial.json()["out_of_hours_acknowledgement"]
+    assert "Hablar con una persona" in initial.json()["out_of_hours_acknowledgement"]
     assert "B Power Academy" in initial.json()["welcome_message"]
     assert "UVM Lomas Verdes" in initial.json()["assistant_instructions"]
 
@@ -570,7 +570,9 @@ def test_admin_can_configure_whatsapp_human_first_schedule(auth_client):
             "assistant_instructions": "Responde con calidez y usa sólo datos confirmados.",
             "contact_classification_enabled": True,
             "classification_confidence_threshold": 85,
-            "out_of_hours_acknowledgement": "Recibimos tu mensaje; mañana te responde el equipo. ⚽",
+            "out_of_hours_acknowledgement": (
+                "Si prefieres atención personal, toca Hablar con una persona. ⚽"
+            ),
         },
         format="json",
     )
@@ -585,7 +587,7 @@ def test_admin_can_configure_whatsapp_human_first_schedule(auth_client):
         "Responde con calidez y usa sólo datos confirmados."
     )
     assert updated.json()["classification_confidence_threshold"] == 85
-    assert updated.json()["out_of_hours_acknowledgement"].startswith("Recibimos")
+    assert updated.json()["out_of_hours_acknowledgement"].startswith("Si prefieres")
     record = WhatsAppAutomationSettings.objects.get(
         business_address="whatsapp:+525574858165",
     )

@@ -204,7 +204,7 @@ export function WhatsAppAutomationSettingsPanel({
             <span className="text-xs font-normal text-zinc-500">Con menor confianza, espera al equipo.</span>
           </label>
           <label className="grid gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-            Acuse fuera de horario para clientes y casos ambiguos
+            Opción de atención humana fuera de horario
             <textarea
               className={`${inputClass} min-h-28 py-2`}
               maxLength={2000}
@@ -215,7 +215,7 @@ export function WhatsAppAutomationSettingsPanel({
               value={outOfHoursAcknowledgement}
             />
             <span className="text-xs font-normal text-zinc-500">
-              Sólo confirma la recepción; no intenta resolver asuntos personales, pagos o seguimiento.
+              Se agrega después de la respuesta inmediata del asistente y acompaña la opción para pedir que una persona continúe el chat.
             </span>
           </label>
         </div>
