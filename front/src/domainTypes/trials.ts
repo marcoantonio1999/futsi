@@ -146,6 +146,14 @@ export type WhatsAppMessage = {
   direction: "inbound" | "outbound";
   body: string;
   event_type: "message" | "revoked";
+  response_source: "unknown" | "bot" | "human_dashboard" | "human_whatsapp";
+  sent_by_name?: string | null;
+  contact_type: "unclassified" | "prospect" | "current_client" | "ambiguous";
+  classification_confidence: number;
+  classification_evidence: string[];
+  known_contact: boolean;
+  routing_decision: "unclassified" | "bot_immediate" | "human_only" | "bot_delayed" | "out_of_hours_ack" | "automation_paused";
+  within_business_hours: boolean | null;
   created_at: string;
 };
 
@@ -159,8 +167,56 @@ export type WhatsAppAutomationSettings = {
   human_response_delay_seconds: number;
   welcome_message: string;
   assistant_instructions: string;
+  contact_classification_enabled: boolean;
+  classification_confidence_threshold: number;
+  out_of_hours_acknowledgement: string;
   created_at: string | null;
   updated_at: string | null;
+};
+
+export type WhatsAppResponseStatsSummary = {
+  total: number;
+  answered: number;
+  unanswered: number;
+  average_response_seconds: number | null;
+  median_response_seconds: number | null;
+  within_5_minutes_percent: number;
+  within_10_minutes_percent: number;
+  within_30_minutes_percent: number;
+  within_60_minutes_percent: number;
+};
+
+export type WhatsAppWeeklyStats = {
+  week_start: string;
+  week_end: string;
+  generated_at: string;
+  summary: WhatsAppResponseStatsSummary;
+  business_hours: WhatsAppResponseStatsSummary;
+  outside_business_hours: WhatsAppResponseStatsSummary;
+  classifications: {
+    prospect: number;
+    current_client: number;
+    ambiguous: number;
+  };
+  by_responder: Array<{
+    key: string;
+    name: string;
+    answered: number;
+    average_response_seconds: number;
+    median_response_seconds: number;
+  }>;
+  longest_waits: Array<{
+    id: number;
+    conversation_id: number;
+    contact_name: string;
+    contact_phone: string;
+    contact_type: "unclassified" | "prospect" | "current_client" | "ambiguous";
+    within_business_hours: boolean;
+    first_inbound_at: string;
+    responded_at: string | null;
+    response_seconds: number;
+    response_channel: "none" | "dashboard" | "whatsapp_business";
+  }>;
 };
 
 export type WhatsAppFollowUpAssignee = {

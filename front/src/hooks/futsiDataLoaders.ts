@@ -36,6 +36,7 @@ import type {
   WhatsAppAutomationSettings,
   WhatsAppConversation,
   WhatsAppFollowUpAssignee,
+  WhatsAppWeeklyStats,
 } from "../types";
 
 export type AppDataPatch = Partial<AppData>;
@@ -76,7 +77,7 @@ async function loadDashboardData(authToken: string): Promise<AppDataPatch> {
 async function loadCommunicationsData(authToken: string, user: User): Promise<AppDataPatch> {
   const canManageTrials = ["admin", "owner", "dev", "site_coordinator"].includes(user.role);
   const canReviewCalls = ["admin", "owner", "dev"].includes(user.role);
-  const [sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, trialAvailabilityRules] = await Promise.all([
+  const [sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, whatsappWeeklyStats, trialAvailabilityRules] = await Promise.all([
     apiRequest<Site[]>("/sites/", authToken),
     canManageTrials ? optionalRestrictedApi<Court[]>("/courts/", authToken, []) : Promise.resolve<Court[]>([]),
     canManageTrials ? optionalRestrictedApi<TrialBooking[]>("/trial-bookings/", authToken, []) : Promise.resolve<TrialBooking[]>([]),
@@ -84,9 +85,10 @@ async function loadCommunicationsData(authToken: string, user: User): Promise<Ap
     canManageTrials ? optionalRestrictedApi<WhatsAppConversation[]>("/whatsapp-conversations/", authToken, []) : Promise.resolve<WhatsAppConversation[]>([]),
     canReviewCalls ? optionalRestrictedApi<WhatsAppAutomationSettings | null>("/whatsapp-automation-settings/current/", authToken, null) : Promise.resolve<WhatsAppAutomationSettings | null>(null),
     canManageTrials ? optionalRestrictedApi<WhatsAppFollowUpAssignee[]>("/whatsapp-conversations/assignees/", authToken, []) : Promise.resolve<WhatsAppFollowUpAssignee[]>([]),
+    canReviewCalls ? optionalRestrictedApi<WhatsAppWeeklyStats | null>("/whatsapp-conversations/weekly-stats/", authToken, null) : Promise.resolve<WhatsAppWeeklyStats | null>(null),
     canManageTrials ? optionalRestrictedApi<TrialAvailabilityRule[]>("/trial-availability-rules/", authToken, []) : Promise.resolve<TrialAvailabilityRule[]>([]),
   ]);
-  return { sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, trialAvailabilityRules };
+  return { sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, whatsappWeeklyStats, trialAvailabilityRules };
 }
 
 export async function loadSectionData(authToken: string, user: User, tab: TabKey): Promise<AppDataPatch> {

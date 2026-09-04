@@ -180,6 +180,7 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
             <CommunicationsSubButton active={communicationsSection === "bookings"} label="Pruebas gratuitas" section="bookings" onClick={onSelectCommunicationsSection} />
             {canReviewCommunicationCalls && <CommunicationsSubButton active={communicationsSection === "calls"} label="Llamadas y transcripciones" section="calls" onClick={onSelectCommunicationsSection} />}
             <CommunicationsSubButton active={communicationsSection === "whatsapp"} label="WhatsApp" section="whatsapp" onClick={onSelectCommunicationsSection} />
+            {canReviewCommunicationCalls && <CommunicationsSubButton active={communicationsSection === "weekly-stats"} label="Estadísticas semanales" section="weekly-stats" onClick={onSelectCommunicationsSection} />}
             <CommunicationsSubButton active={communicationsSection === "availability"} label="Disponibilidad" section="availability" onClick={onSelectCommunicationsSection} />
             {canReviewCommunicationCalls && <CommunicationsSubButton active={communicationsSection === "settings"} label="Configuración del bot" section="settings" onClick={onSelectCommunicationsSection} />}
           </div>

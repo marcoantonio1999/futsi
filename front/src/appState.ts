@@ -31,6 +31,7 @@ export const emptyData: AppData = {
   whatsappConversations: [],
   whatsappAutomationSettings: null,
   whatsappFollowUpAssignees: [],
+  whatsappWeeklyStats: null,
   trialAvailabilityRules: [],
   guardians: [],
   students: [],

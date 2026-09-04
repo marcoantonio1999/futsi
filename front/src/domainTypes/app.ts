@@ -3,7 +3,7 @@ import type { Guardian, Student, AttendanceSession, AttendanceRecord } from "./a
 import type { Tournament, Team, StudentTournamentRegistration, Player, Match, StandingRow, StudentAssessment, StudentValueAssessment, PlayerAttendanceRecord } from "./sports";
 import type { Charge, Payment, Discount, Expense, StaffPaymentRequest, CashMovement, CoachWorkLog, Invoice } from "./finance";
 import type { HistoricalImport, HistoricalDiscrepancyReport } from "./historical";
-import type { Court, TrialAvailabilityRule, TrialBooking, VoiceCall, WhatsAppAutomationSettings, WhatsAppConversation, WhatsAppFollowUpAssignee } from "./trials";
+import type { Court, TrialAvailabilityRule, TrialBooking, VoiceCall, WhatsAppAutomationSettings, WhatsAppConversation, WhatsAppFollowUpAssignee, WhatsAppWeeklyStats } from "./trials";
 
 
 export type AppData = {
@@ -16,6 +16,7 @@ export type AppData = {
   whatsappConversations: WhatsAppConversation[];
   whatsappAutomationSettings: WhatsAppAutomationSettings | null;
   whatsappFollowUpAssignees: WhatsAppFollowUpAssignee[];
+  whatsappWeeklyStats: WhatsAppWeeklyStats | null;
   trialAvailabilityRules: TrialAvailabilityRule[];
   guardians: Guardian[];
   students: Student[];

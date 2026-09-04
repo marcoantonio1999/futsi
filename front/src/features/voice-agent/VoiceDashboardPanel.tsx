@@ -6,6 +6,7 @@ import { TrialBookingsPanel } from "./TrialBookingsPanel";
 import { VoiceCallsPanel } from "./VoiceCallsPanel";
 import { WhatsAppConversationsPanel } from "./WhatsAppConversationsPanel";
 import { WhatsAppAutomationSettingsPanel } from "./WhatsAppAutomationSettingsPanel";
+import { WhatsAppWeeklyStatsPanel } from "./WhatsAppWeeklyStatsPanel";
 import type { VoiceDashboardProps, VoiceDashboardSection } from "./model";
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
@@ -26,6 +27,10 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string; description
   whatsapp: {
     title: "Conversaciones de WhatsApp",
     description: "Revisa mensajes, contexto y seguimientos pendientes.",
+  },
+  "weekly-stats": {
+    title: "Estadísticas semanales",
+    description: "Mide clasificación, atención humana y tiempos de primera respuesta.",
   },
   availability: {
     title: "Disponibilidad",
@@ -184,6 +189,10 @@ export function VoiceDashboardPanel({
             onUpdateRecord(`/trial-availability-rules/${rule.id}/`, payload, "Disponibilidad actualizada.")
           }
         />
+      ) : null}
+
+      {section === "weekly-stats" && canReviewCalls ? (
+        <WhatsAppWeeklyStatsPanel value={voiceData.whatsappWeeklyStats} />
       ) : null}
 
       {section === "settings" && canReviewCalls ? (

@@ -26,6 +26,9 @@ export function WhatsAppAutomationSettingsPanel({
     human_response_delay_seconds: number;
     welcome_message: string;
     assistant_instructions: string;
+    contact_classification_enabled: boolean;
+    classification_confidence_threshold: number;
+    out_of_hours_acknowledgement: string;
   }) => Promise<void>;
 }) {
   const [enabled, setEnabled] = useState(value?.human_first_enabled ?? true);
@@ -39,6 +42,15 @@ export function WhatsAppAutomationSettingsPanel({
   const [assistantInstructions, setAssistantInstructions] = useState(
     value?.assistant_instructions ?? "",
   );
+  const [classificationEnabled, setClassificationEnabled] = useState(
+    value?.contact_classification_enabled ?? true,
+  );
+  const [confidenceThreshold, setConfidenceThreshold] = useState(
+    value?.classification_confidence_threshold ?? 80,
+  );
+  const [outOfHoursAcknowledgement, setOutOfHoursAcknowledgement] = useState(
+    value?.out_of_hours_acknowledgement ?? "",
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -51,6 +63,9 @@ export function WhatsAppAutomationSettingsPanel({
     setDelayMinutes(Math.max(1, Math.round(value.human_response_delay_seconds / 60)));
     setWelcomeMessage(value.welcome_message);
     setAssistantInstructions(value.assistant_instructions);
+    setClassificationEnabled(value.contact_classification_enabled);
+    setConfidenceThreshold(value.classification_confidence_threshold);
+    setOutOfHoursAcknowledgement(value.out_of_hours_acknowledgement);
   }, [value]);
 
   function toggleDay(day: number) {
@@ -76,6 +91,9 @@ export function WhatsAppAutomationSettingsPanel({
         human_response_delay_seconds: Math.max(1, Math.min(60, delayMinutes)) * 60,
         welcome_message: welcomeMessage.trim(),
         assistant_instructions: assistantInstructions.trim(),
+        contact_classification_enabled: classificationEnabled,
+        classification_confidence_threshold: Math.max(50, Math.min(100, confidenceThreshold)),
+        out_of_hours_acknowledgement: outOfHoursAcknowledgement.trim(),
       });
       setSaved(true);
     } finally {
@@ -100,6 +118,9 @@ export function WhatsAppAutomationSettingsPanel({
     || delayMinutes > 60
     || !welcomeMessage.trim()
     || !assistantInstructions.trim()
+    || confidenceThreshold < 50
+    || confidenceThreshold > 100
+    || !outOfHoursAcknowledgement.trim()
   );
 
   return (
@@ -136,6 +157,73 @@ export function WhatsAppAutomationSettingsPanel({
           <p className="mt-1 font-semibold text-zinc-950 dark:text-zinc-50">
             {value.business_address.replace(/^whatsapp:/, "")}
           </p>
+        </div>
+      </section>
+
+      <section className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-md bg-sky-700 text-white">
+              <Bot size={20} />
+            </span>
+            <div>
+              <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Clasificación de contactos</h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+                Revisa primero si el teléfono pertenece a un cliente y después combina el mensaje y el historial para distinguir prospectos, clientes actuales y casos ambiguos.
+              </p>
+            </div>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-semibold text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+            <input
+              checked={classificationEnabled}
+              className="size-4 accent-sky-700"
+              onChange={(event) => {
+                setClassificationEnabled(event.target.checked);
+                setSaved(false);
+              }}
+              type="checkbox"
+            />
+            {classificationEnabled ? "Activa" : "Desactivada"}
+          </label>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <label className="grid content-start gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            Confianza mínima (%)
+            <input
+              className={inputClass}
+              max={100}
+              min={50}
+              onChange={(event) => {
+                setConfidenceThreshold(Number(event.target.value));
+                setSaved(false);
+              }}
+              type="number"
+              value={confidenceThreshold}
+            />
+            <span className="text-xs font-normal text-zinc-500">Con menor confianza, espera al equipo.</span>
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            Acuse fuera de horario para clientes y casos ambiguos
+            <textarea
+              className={`${inputClass} min-h-28 py-2`}
+              maxLength={2000}
+              onChange={(event) => {
+                setOutOfHoursAcknowledgement(event.target.value);
+                setSaved(false);
+              }}
+              value={outOfHoursAcknowledgement}
+            />
+            <span className="text-xs font-normal text-zinc-500">
+              Sólo confirma la recepción; no intenta resolver asuntos personales, pagos o seguimiento.
+            </span>
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-2 text-sm md:grid-cols-3">
+          <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"><strong>Prospecto confiable:</strong> respuesta inmediata.</p>
+          <p className="rounded-md border border-violet-200 bg-violet-50 p-3 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100"><strong>Cliente confiable:</strong> atención humana.</p>
+          <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"><strong>Ambiguo:</strong> aplica la espera configurada.</p>
         </div>
       </section>
 

@@ -45,6 +45,20 @@ const statusClasses: Record<WhatsAppConversationStatus, string> = {
   failed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-200",
 };
 
+const contactTypeLabels = {
+  prospect: "Prospecto nuevo",
+  current_client: "Cliente actual",
+  ambiguous: "Caso ambiguo",
+  unclassified: "Sin clasificar",
+};
+
+const contactTypeClasses = {
+  prospect: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
+  current_client: "bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
+  ambiguous: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
+  unclassified: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+};
+
 export function WhatsAppConversationsPanel({
   assignees,
   conversations,
@@ -157,6 +171,9 @@ export function WhatsAppConversationsPanel({
             .map((part) => part[0]?.toUpperCase())
             .join("") || "WA";
           const latestMessage = conversation.messages.at(-1);
+          const latestClassification = [...conversation.messages]
+            .reverse()
+            .find((message) => message.direction === "inbound" && message.contact_type !== "unclassified");
           return (
             <article
               className="motion-card overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
@@ -177,6 +194,14 @@ export function WhatsAppConversationsPanel({
                         <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
                           {kindLabels[conversation.kind] ?? "WhatsApp"}
                         </span>
+                        {latestClassification ? (
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-semibold ${contactTypeClasses[latestClassification.contact_type]}`}
+                            title={latestClassification.classification_evidence.join(" · ")}
+                          >
+                            {contactTypeLabels[latestClassification.contact_type]} · {latestClassification.classification_confidence}%
+                          </span>
+                        ) : null}
                         {conversation.human_takeover_active ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
                             <ShieldCheck size={13} /> Control humano
