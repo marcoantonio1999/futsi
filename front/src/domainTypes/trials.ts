@@ -145,7 +145,22 @@ export type WhatsAppMessage = {
   id: number;
   direction: "inbound" | "outbound";
   body: string;
+  event_type: "message" | "revoked";
   created_at: string;
+};
+
+export type WhatsAppAutomationSettings = {
+  id: number | null;
+  business_address: string;
+  human_first_enabled: boolean;
+  business_days: number[];
+  business_hours_start: string;
+  business_hours_end: string;
+  human_response_delay_seconds: number;
+  welcome_message: string;
+  assistant_instructions: string;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
 export type WhatsAppFollowUpAssignee = {

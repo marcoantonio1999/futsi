@@ -86,6 +86,7 @@ export function AdminShellMobileMenu({
                   {canReviewCommunicationCalls && <CommunicationsMobileSubButton active={communicationsSection === "calls"} label="Llamadas y transcripciones" section="calls" onClick={onSelectCommunicationsSection} />}
                   <CommunicationsMobileSubButton active={communicationsSection === "whatsapp"} label="WhatsApp" section="whatsapp" onClick={onSelectCommunicationsSection} />
                   <CommunicationsMobileSubButton active={communicationsSection === "availability"} label="Disponibilidad" section="availability" onClick={onSelectCommunicationsSection} />
+                  {canReviewCommunicationCalls && <CommunicationsMobileSubButton active={communicationsSection === "settings"} label="Configuración del bot" section="settings" onClick={onSelectCommunicationsSection} />}
                 </div>
               )}
               {showBillingSubsections && tab.key === "billing" && effectiveActiveTab === "billing" && (

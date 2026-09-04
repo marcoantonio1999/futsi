@@ -29,6 +29,7 @@ export const emptyData: AppData = {
   trialBookings: [],
   voiceCalls: [],
   whatsappConversations: [],
+  whatsappAutomationSettings: null,
   whatsappFollowUpAssignees: [],
   trialAvailabilityRules: [],
   guardians: [],

@@ -33,6 +33,7 @@ import type {
   UnknownAttendanceRecord,
   User,
   VoiceCall,
+  WhatsAppAutomationSettings,
   WhatsAppConversation,
   WhatsAppFollowUpAssignee,
 } from "../types";
@@ -75,16 +76,17 @@ async function loadDashboardData(authToken: string): Promise<AppDataPatch> {
 async function loadCommunicationsData(authToken: string, user: User): Promise<AppDataPatch> {
   const canManageTrials = ["admin", "owner", "dev", "site_coordinator"].includes(user.role);
   const canReviewCalls = ["admin", "owner", "dev"].includes(user.role);
-  const [sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules] = await Promise.all([
+  const [sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, trialAvailabilityRules] = await Promise.all([
     apiRequest<Site[]>("/sites/", authToken),
     canManageTrials ? optionalRestrictedApi<Court[]>("/courts/", authToken, []) : Promise.resolve<Court[]>([]),
     canManageTrials ? optionalRestrictedApi<TrialBooking[]>("/trial-bookings/", authToken, []) : Promise.resolve<TrialBooking[]>([]),
     canReviewCalls ? optionalRestrictedApi<VoiceCall[]>("/voice-calls/", authToken, []) : Promise.resolve<VoiceCall[]>([]),
     canManageTrials ? optionalRestrictedApi<WhatsAppConversation[]>("/whatsapp-conversations/", authToken, []) : Promise.resolve<WhatsAppConversation[]>([]),
+    canReviewCalls ? optionalRestrictedApi<WhatsAppAutomationSettings | null>("/whatsapp-automation-settings/current/", authToken, null) : Promise.resolve<WhatsAppAutomationSettings | null>(null),
     canManageTrials ? optionalRestrictedApi<WhatsAppFollowUpAssignee[]>("/whatsapp-conversations/assignees/", authToken, []) : Promise.resolve<WhatsAppFollowUpAssignee[]>([]),
     canManageTrials ? optionalRestrictedApi<TrialAvailabilityRule[]>("/trial-availability-rules/", authToken, []) : Promise.resolve<TrialAvailabilityRule[]>([]),
   ]);
-  return { sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappFollowUpAssignees, trialAvailabilityRules };
+  return { sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, trialAvailabilityRules };
 }
 
 export async function loadSectionData(authToken: string, user: User, tab: TabKey): Promise<AppDataPatch> {

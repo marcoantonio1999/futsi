@@ -5,6 +5,7 @@ import { AvailabilityPanel } from "./AvailabilityPanel";
 import { TrialBookingsPanel } from "./TrialBookingsPanel";
 import { VoiceCallsPanel } from "./VoiceCallsPanel";
 import { WhatsAppConversationsPanel } from "./WhatsAppConversationsPanel";
+import { WhatsAppAutomationSettingsPanel } from "./WhatsAppAutomationSettingsPanel";
 import type { VoiceDashboardProps, VoiceDashboardSection } from "./model";
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
@@ -29,6 +30,10 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string; description
   availability: {
     title: "Disponibilidad",
     description: "Configura los horarios que puede ofrecer el asistente.",
+  },
+  settings: {
+    title: "Configuración del bot",
+    description: "Define cuándo espera al equipo y cuándo responde inmediatamente.",
   },
 };
 
@@ -177,6 +182,19 @@ export function VoiceDashboardPanel({
           }
           onUpdateRule={(rule, payload) =>
             onUpdateRecord(`/trial-availability-rules/${rule.id}/`, payload, "Disponibilidad actualizada.")
+          }
+        />
+      ) : null}
+
+      {section === "settings" && canReviewCalls ? (
+        <WhatsAppAutomationSettingsPanel
+          value={voiceData.whatsappAutomationSettings}
+          onSave={(payload) =>
+            onUpdateRecord(
+              "/whatsapp-automation-settings/current/",
+              payload,
+              "Configuración del bot actualizada.",
+            )
           }
         />
       ) : null}
