@@ -4,6 +4,20 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def enable_row_level_security(apps, schema_editor):
+    if schema_editor.connection.vendor == 'postgresql':
+        schema_editor.execute(
+            'ALTER TABLE "whatsapp_outbound_dispatches" ENABLE ROW LEVEL SECURITY;'
+        )
+
+
+def disable_row_level_security(apps, schema_editor):
+    if schema_editor.connection.vendor == 'postgresql':
+        schema_editor.execute(
+            'ALTER TABLE "whatsapp_outbound_dispatches" DISABLE ROW LEVEL SECURITY;'
+        )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -32,8 +46,8 @@ class Migration(migrations.Migration):
                 'indexes': [models.Index(fields=['status', 'created_at'], name='ix_wa_dispatch_status')],
             },
         ),
-        migrations.RunSQL(
-            sql='ALTER TABLE "whatsapp_outbound_dispatches" ENABLE ROW LEVEL SECURITY;',
-            reverse_sql='ALTER TABLE "whatsapp_outbound_dispatches" DISABLE ROW LEVEL SECURITY;',
+        migrations.RunPython(
+            enable_row_level_security,
+            reverse_code=disable_row_level_security,
         ),
     ]
