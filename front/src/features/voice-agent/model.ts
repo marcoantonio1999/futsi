@@ -7,7 +7,7 @@ export type VoiceDashboardProps = {
   data: AppData;
   section: VoiceDashboardSection;
   onCreateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
-  onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
+  onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<boolean>;
   onCreateAndReturn: <T>(path: string, payload: unknown) => Promise<T>;
 };
 

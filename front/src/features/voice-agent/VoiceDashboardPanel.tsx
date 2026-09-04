@@ -182,12 +182,12 @@ export function VoiceDashboardPanel({
       {section === "availability" ? (
         <AvailabilityPanel
           data={voiceData}
-          onCreateRule={(payload) =>
-            onCreateRecord("/trial-availability-rules/", payload, "Horario de pruebas creado.")
-          }
-          onUpdateRule={(rule, payload) =>
-            onUpdateRecord(`/trial-availability-rules/${rule.id}/`, payload, "Disponibilidad actualizada.")
-          }
+          onCreateRule={async (payload) => {
+            await onCreateRecord("/trial-availability-rules/", payload, "Horario de pruebas creado.");
+          }}
+          onUpdateRule={async (rule, payload) => {
+            await onUpdateRecord(`/trial-availability-rules/${rule.id}/`, payload, "Disponibilidad actualizada.");
+          }}
         />
       ) : null}
 

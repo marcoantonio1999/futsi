@@ -29,7 +29,7 @@ export function WhatsAppAutomationSettingsPanel({
     contact_classification_enabled: boolean;
     classification_confidence_threshold: number;
     out_of_hours_acknowledgement: string;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
 }) {
   const [enabled, setEnabled] = useState(value?.human_first_enabled ?? true);
   const [days, setDays] = useState<number[]>(value?.business_days ?? [0, 1, 2, 3, 4]);
@@ -83,7 +83,7 @@ export function WhatsAppAutomationSettingsPanel({
     setSaving(true);
     setSaved(false);
     try {
-      await onSave({
+      const didSave = await onSave({
         human_first_enabled: enabled,
         business_days: days,
         business_hours_start: startsAt,
@@ -95,7 +95,7 @@ export function WhatsAppAutomationSettingsPanel({
         classification_confidence_threshold: Math.max(50, Math.min(100, confidenceThreshold)),
         out_of_hours_acknowledgement: outOfHoursAcknowledgement.trim(),
       });
-      setSaved(true);
+      setSaved(didSave);
     } finally {
       setSaving(false);
     }
@@ -250,6 +250,7 @@ export function WhatsAppAutomationSettingsPanel({
                       : "border-zinc-300 bg-white text-zinc-600 hover:border-emerald-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
                   }`}
                   key={day.value}
+                  data-testid={`whatsapp-business-day-${day.value}`}
                   onClick={() => toggleDay(day.value)}
                   title={day.label}
                   type="button"
@@ -267,6 +268,7 @@ export function WhatsAppAutomationSettingsPanel({
             Hora de apertura
             <input
               className={inputClass}
+              data-testid="whatsapp-business-hours-start"
               onChange={(event) => {
                 setStartsAt(event.target.value);
                 setSaved(false);
@@ -279,6 +281,7 @@ export function WhatsAppAutomationSettingsPanel({
             Hora de cierre
             <input
               className={inputClass}
+              data-testid="whatsapp-business-hours-end"
               onChange={(event) => {
                 setEndsAt(event.target.value);
                 setSaved(false);
@@ -291,6 +294,7 @@ export function WhatsAppAutomationSettingsPanel({
             Espera antes del bot (minutos)
             <input
               className={inputClass}
+              data-testid="whatsapp-human-delay-minutes"
               max={60}
               min={1}
               onChange={(event) => {
@@ -362,7 +366,7 @@ export function WhatsAppAutomationSettingsPanel({
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {saved ? <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Guardado</span> : null}
-          <button className={primaryButtonClass} disabled={invalidSchedule || saving} type="submit">
+          <button className={primaryButtonClass} data-testid="whatsapp-settings-save" disabled={invalidSchedule || saving} type="submit">
             <Save size={15} /> {saving ? "Guardando…" : "Guardar configuración"}
           </button>
         </div>

@@ -121,6 +121,7 @@ def live_backend(e2e_config):
             "DJANGO_ALLOWED_HOSTS": "localhost,127.0.0.1,testserver",
             "CORS_ALLOWED_ORIGINS": f"http://127.0.0.1:{e2e_config['web_port']},http://localhost:{e2e_config['web_port']}",
             "CSRF_TRUSTED_ORIGINS": f"http://127.0.0.1:{e2e_config['web_port']},http://localhost:{e2e_config['web_port']}",
+            "META_WHATSAPP_DISPLAY_NUMBER": "+525574858165",
             "DEBUG": "1",
         }
     )

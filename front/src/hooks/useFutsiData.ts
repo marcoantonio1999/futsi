@@ -15,6 +15,7 @@ import type {
   Team,
   Tournament,
   User,
+  WhatsAppAutomationSettings,
 } from "../types";
 import { loadAppDataForUser, loadSectionData, mergeAppData } from "./futsiDataLoaders";
 
@@ -150,14 +151,23 @@ export function useFutsiData() {
     setError("");
     setActionLoadingMessage(loadingLabel);
     try {
-      await apiRequest(path, token, {
+      const result = await apiRequest<unknown>(path, token, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
+      if (path === "/whatsapp-automation-settings/current/") {
+        setData((current) => ({
+          ...current,
+          whatsappAutomationSettings: result as WhatsAppAutomationSettings,
+        }));
+      } else {
+        await loadSection(activeSection, { force: true, silent: true });
+      }
       setMessage(success);
-      await loadSection(activeSection, { force: true, silent: true });
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar.");
+      return false;
     } finally {
       setActionLoadingMessage("");
     }
