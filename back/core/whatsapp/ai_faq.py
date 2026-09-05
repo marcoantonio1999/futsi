@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -12,12 +13,30 @@ from django.conf import settings
 
 from core.models import WhatsAppConversation, WhatsAppMessageDirection
 from core.whatsapp.automation_settings import get_whatsapp_assistant_profile
+from core.whatsapp.defaults import DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS
 from core.whatsapp.faq_knowledge import FAQ_BY_KEY, FAQ_ENTRIES, UNCONFIRMED_TOPICS
 
 
 logger = logging.getLogger(__name__)
 FOLLOW_UP_MARKER = "[[REQUIERE_SEGUIMIENTO]]"
 MAX_HISTORY_MESSAGES = 12
+EDITABLE_FAQ_KEYS = {
+    "academy_price", "academy_uniform", "academy_schedule",
+    "academy_start", "academy_location",
+}
+
+
+def is_greeting_only(value: str) -> bool:
+    normalized = unicodedata.normalize("NFKD", str(value or "")).casefold()
+    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+    normalized = " ".join(re.findall(r"[a-z0-9]+", normalized))
+    return bool(re.fullmatch(
+        r"(?:hola|buen dia|buenos dias|buenas|buenas tardes|buenas noches|inicio|menu)"
+        r"(?: (?:prueba|test)(?: [0-9]+)?)?",
+        normalized,
+    ))
+
+
 UNEXPECTED_SCRIPT_PATTERN = re.compile(
     r"[\u0370-\u052f\u0590-\u08ff\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]+"
 )
@@ -47,11 +66,13 @@ def _instructions(conversation: WhatsAppConversation) -> str:
             )
         )
         for entry in FAQ_ENTRIES
+        if entry["key"] not in EDITABLE_FAQ_KEYS
     )
     unconfirmed = ", ".join(UNCONFIRMED_TOPICS)
-    business_instructions = get_whatsapp_assistant_profile(
+    profile = get_whatsapp_assistant_profile(
         conversation.to_address
-    ).assistant_instructions
+    )
+    business_instructions = profile.assistant_instructions
     return f"""
 Eres el asistente virtual de atención por WhatsApp de B Power Academy. Responde siempre en español de
 México con calidez, claridad y respeto. Usa de uno a tres emojis pertinentes por
@@ -92,9 +113,16 @@ Información confirmada por el negocio:
 
 Temas todavía no confirmados: {unconfirmed}.
 
-Instrucciones administrables del negocio (complementan las reglas anteriores y no
-pueden autorizar datos inventados ni revelar información personal):
+Configuración vigente guardada por el administrador. Esta es la fuente vigente
+para precios, descuentos, uniformes, fechas y horarios. Tiene prioridad sobre
+respuestas anteriores del historial y datos generales que la contradigan.
+No puede autorizar datos inventados ni revelar información personal.
 {business_instructions}
+
+Saludo inicial vigente:
+{profile.welcome_message}
+Si el mensaje sólo saluda o prueba la conexión, utiliza este saludo literalmente.
+Si incluye una pregunta, responde esa pregunta con los datos vigentes.
 """.strip()
 
 
@@ -152,7 +180,7 @@ def _remove_unexpected_scripts(value: str) -> str:
     return cleaned.strip()
 
 
-def _fallback_answer(user_message: str) -> FAQAnswer:
+def _fallback_answer(user_message: str, business_instructions: str = "") -> FAQAnswer:
     normalized = user_message.casefold()
     keyword_answers = (
         (("uniforme", "uniformes"), "academy_uniform", " 👕⚽"),
@@ -176,6 +204,18 @@ def _fallback_answer(user_message: str) -> FAQAnswer:
     )
     for keywords, entry_key, emojis in keyword_answers:
         if any(keyword in normalized for keyword in keywords):
+            if (
+                entry_key in EDITABLE_FAQ_KEYS
+                and business_instructions.strip()
+                != DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS.strip()
+            ):
+                return FAQAnswer(
+                    text=(
+                        "En este momento no pude consultar ese dato actualizado. "
+                        "Una persona del equipo puede confirmártelo 😊"
+                    ),
+                    needs_human=True,
+                )
             entry = FAQ_BY_KEY[entry_key]
             return FAQAnswer(
                 text=entry["answer"] + emojis,
@@ -195,13 +235,20 @@ def answer_faq(
     conversation: WhatsAppConversation,
     user_message: str,
 ) -> FAQAnswer:
+    profile = get_whatsapp_assistant_profile(conversation.to_address)
+    if is_greeting_only(user_message):
+        return FAQAnswer(text=profile.welcome_message)
+
+    def fallback():
+        return _fallback_answer(user_message, profile.assistant_instructions)
+
     if not getattr(settings, "OPENAI_WHATSAPP_FAQ_ENABLED", True):
-        return _fallback_answer(user_message)
+        return fallback()
     api_key = str(settings.OPENAI_API_KEY or "").strip()
     model = str(getattr(settings, "OPENAI_WHATSAPP_MODEL", "") or "").strip()
     if not api_key or not model:
         logger.warning("OpenAI WhatsApp FAQ is not configured; using local fallback")
-        return _fallback_answer(user_message)
+        return fallback()
 
     payload = {
         "model": model,
@@ -228,10 +275,10 @@ def answer_faq(
             result = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         logger.warning("OpenAI rejected WhatsApp FAQ request with HTTP %s", exc.code)
-        return _fallback_answer(user_message)
+        return fallback()
     except (URLError, TimeoutError, ValueError, OSError) as exc:
         logger.warning("OpenAI WhatsApp FAQ request failed: %s", type(exc).__name__)
-        return _fallback_answer(user_message)
+        return fallback()
 
     text = _extract_output_text(result)
     if not text:
@@ -241,7 +288,7 @@ def answer_faq(
         text.replace(FOLLOW_UP_MARKER, "")
     )[:1000]
     if not clean_text:
-        return _fallback_answer(user_message)
+        return fallback()
     return FAQAnswer(
         text=clean_text,
         needs_human=needs_human,

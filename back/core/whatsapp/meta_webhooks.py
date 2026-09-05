@@ -25,7 +25,7 @@ from core.models import (
     WhatsAppOutboundDispatch,
     WhatsAppOutboundDispatchStatus,
 )
-from core.whatsapp.ai_faq import OpenAIWhatsAppError, answer_faq
+from core.whatsapp.ai_faq import OpenAIWhatsAppError, answer_faq, is_greeting_only
 from core.whatsapp.automation_settings import get_whatsapp_assistant_profile
 from core.whatsapp.meta_api import (
     MetaWhatsAppError,
@@ -96,15 +96,7 @@ def _bold_whatsapp_terms(value: str) -> str:
 
 
 def _is_greeting(value: str) -> bool:
-    return _normalize_text(value) in {
-        "hola",
-        "buen dia",
-        "buenas",
-        "buenas tardes",
-        "buenas noches",
-        "inicio",
-        "menu",
-    }
+    return is_greeting_only(value)
 
 
 def _booking_requested(value: str) -> bool:
@@ -301,11 +293,10 @@ def _move_to_menu(conversation: WhatsAppConversation) -> str:
     conversation.save(
         update_fields=["current_step", "site", "context", "failure_reason", "updated_at"]
     )
-    return (
-        _welcome_prompt(conversation.to_address)
-        if conversation.context["booking_available"]
-        else NO_SCHEDULE_PROMPT
-    )
+    reply = _welcome_prompt(conversation.to_address)
+    if not conversation.context["booking_available"]:
+        reply += "\n\n" + NO_SCHEDULE_PROMPT
+    return reply
 
 
 def _normalize_contact_phone(value: str, fallback: str) -> str | None:
@@ -543,11 +534,9 @@ def _route_message(
                 to_address=to_address,
                 contact_phone=contact_phone,
             )
-            reply = (
-                _welcome_prompt(to_address)
-                if conversation.context.get("booking_available")
-                else NO_SCHEDULE_PROMPT
-            )
+            reply = _welcome_prompt(to_address)
+            if not conversation.context.get("booking_available"):
+                reply += "\n\n" + NO_SCHEDULE_PROMPT
             return conversation, reply
         conversation = _new_faq_conversation(
             from_address=from_address,
