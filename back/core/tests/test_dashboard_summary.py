@@ -182,3 +182,53 @@ def test_dashboard_summary_limits_cashier_to_primary_site(api_client):
     assert body["metrics"]["active_sites"] == 1
     assert body["metrics"]["students"] == 1
     assert body["metrics"]["open_balance"] == 300.0
+    assert api_client.get("/api/dashboard/summary/", {"site": other_site.id}).status_code == 404
+
+
+def test_dashboard_filters_financial_period_but_preserves_current_balances(api_client):
+    site = Site.objects.create(name="Periodos QA", code="qa-period", address="QA")
+    other = Site.objects.create(name="Otra QA", code="qa-other-period", address="QA")
+    admin = User.objects.create_user(username="period-admin", password="x", role="admin")
+    student = _student(site)
+    charge = Charge.objects.create(site=site, student=student, concept="Mensualidad", amount=1000,
+                                   due_date=date(2026, 5, 1), created_by=admin)
+    for month, amount in [(5, 100), (6, 200)]:
+        Payment.objects.create(site=site, charge=charge, student=student, amount=amount,
+                               method="cash", status="registered", paid_at=_aware(2026, month, 10),
+                               confirmed_at=_aware(2026, month, 10), received_by=admin)
+        Expense.objects.create(site=site, category="Renta", amount=20, status="approved",
+                               expense_date=date(2026, month, 11), captured_by=admin)
+    Payment.objects.create(site=other, amount=900, method="cash", status="registered",
+                           paid_at=_aware(2026, 6, 10), received_by=admin)
+    Payment.objects.create(site=site, charge=charge, amount=50, method="card", status="processing",
+                           paid_at=_aware(2026, 5, 10), received_by=admin)
+    Expense.objects.create(site=site, category="Renta", amount=40, status="pending",
+                           expense_date=date(2026, 5, 11), captured_by=admin)
+    api_client.force_authenticate(user=admin)
+    response = api_client.get("/api/dashboard/summary/", {"site": site.id, "month": "2026-06"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["context"]["month"] == "2026-06"
+    assert body["context"]["available_months"] == ["2026-05", "2026-06"]
+    assert body["context"]["generated_at"]
+    assert [row["id"] for row in body["site_rows"]] == [site.id]
+    assert body["metrics"]["total_income"] == 200
+    assert body["metrics"]["approved_expenses"] == 20
+    assert body["metrics"]["utility"] == 180
+    assert body["metrics"]["open_balance"] == 700
+    assert body["metrics"]["pending_payment_total"] == 50
+    assert body["metrics"]["pending_expenses"] == 40
+    assert body["metrics"]["ticket_average"]["amount"] == 200
+    assert body["method_rows"][0]["value"] == 200
+    assert {row["month"] for row in body["monthly_rows"]} == {"2026-06"}
+    empty = api_client.get("/api/dashboard/summary/", {"site": site.id, "month": "2026-07"}).json()
+    assert empty["metrics"]["total_income"] == 0
+    assert empty["metrics"]["open_balance"] == 700
+    assert empty["metrics"]["ticket_average"]["month_key"] == "2026-07"
+
+
+@pytest.mark.parametrize("month", ["2026-13", "2026-6", "invalid", "2026-06-10"])
+def test_dashboard_rejects_invalid_period(api_client, month):
+    user = User.objects.create_user(username="invalid-period", password="x", role="admin")
+    api_client.force_authenticate(user=user)
+    assert api_client.get("/api/dashboard/summary/", {"month": month}).status_code == 400

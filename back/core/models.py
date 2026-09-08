@@ -1631,6 +1631,11 @@ class WhatsAppOutboundDispatch(TimestampedModel):
 
 
 class WhatsAppAutomationSettings(TimestampedModel):
+    site = models.ForeignKey(
+        Site, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="whatsapp_settings",
+    )
+    openai_model = models.CharField(max_length=120, blank=True, default="")
     business_address = models.CharField(max_length=64, unique=True)
     human_first_enabled = models.BooleanField(default=True)
     business_days = models.JSONField(default=default_whatsapp_business_days)

@@ -299,6 +299,7 @@ class WhatsAppSendMessageSerializer(serializers.Serializer):
 
 
 class WhatsAppConversationSerializer(serializers.ModelSerializer):
+    attention_resolution = serializers.SerializerMethodField()
     kind = serializers.SerializerMethodField()
     contact_name = serializers.SerializerMethodField()
     human_takeover_active = serializers.SerializerMethodField()
@@ -333,6 +334,13 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         max_length=4000,
     )
     messages = WhatsAppMessageSerializer(many=True, read_only=True)
+
+    def get_attention_resolution(self, instance):
+        context = instance.context if isinstance(instance.context, dict) else {}
+        resolution = context.get("attention_resolution")
+        if not isinstance(resolution, dict):
+            return None
+        return {"message_id": resolution.get("message_id"), "resolved_at": resolution.get("resolved_at")}
 
     def get_follow_up_assigned_to_name(self, instance):
         assignee = instance.follow_up_assigned_to
@@ -433,6 +441,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
             "follow_up_assigned_to_name",
             "follow_up_notes",
             "follow_up_updated_at",
+            "attention_resolution",
             "human_takeover_active",
             "human_last_reply_at",
             "bot_response_pending",
@@ -459,6 +468,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
             "last_message_at",
             "follow_up_assigned_to_name",
             "follow_up_updated_at",
+            "attention_resolution",
             "human_takeover_active",
             "human_last_reply_at",
             "bot_response_pending",
@@ -472,6 +482,29 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
 
 
 class WhatsAppAutomationSettingsSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True, default="")
+    effective_model = serializers.SerializerMethodField()
+
+    def get_effective_model(self, obj):
+        from django.conf import settings
+        return obj.openai_model or getattr(settings, "OPENAI_WHATSAPP_MODEL", "")
+
+    def validate_openai_model(self, value):
+        import re
+        value = value.strip()
+        if value and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}", value):
+            raise serializers.ValidationError("Escribe un identificador de modelo válido, no una clave de API.")
+        if value.startswith("sk-"):
+            raise serializers.ValidationError("No ingreses claves de API en este campo.")
+        return value
+
+    def validate_site(self, value):
+        if value is not None and not value.is_active:
+            raise serializers.ValidationError("Selecciona una sede activa.")
+        if self.instance and self.instance.site_id and (value is None or value.pk != self.instance.site_id):
+            raise serializers.ValidationError("Este número ya pertenece a una sede. No se puede reasignar desde este formulario para evitar mezclar conversaciones.")
+        return value
+
     business_hours_start = serializers.TimeField(format="%H:%M")
     business_hours_end = serializers.TimeField(format="%H:%M")
 
@@ -480,6 +513,10 @@ class WhatsAppAutomationSettingsSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "business_address",
+            "site",
+            "site_name",
+            "openai_model",
+            "effective_model",
             "human_first_enabled",
             "business_days",
             "business_hours_start",

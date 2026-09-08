@@ -169,7 +169,11 @@ def _looks_like_question(value: str) -> bool:
     )
 
 
-def _default_site() -> Site | None:
+def _default_site(business_address: str = "") -> Site | None:
+    from core.whatsapp.assistant_profile import get_whatsapp_assistant_profile
+    profile = get_whatsapp_assistant_profile(business_address or configured_business_address())
+    if profile.site_id is not None:
+        return Site.objects.filter(pk=profile.site_id, is_active=True).first()
     code = str(settings.META_WHATSAPP_DEFAULT_SITE_CODE or "").strip()
     return Site.objects.filter(code=code, is_active=True).first()
 
@@ -202,7 +206,7 @@ def _menu_context(site: Site | None) -> dict:
 def _new_menu_conversation(
     *, from_address: str, to_address: str, contact_phone: str
 ) -> WhatsAppConversation:
-    site = _default_site()
+    site = _default_site(to_address)
     return WhatsAppConversation.objects.create(
         contact_phone=contact_phone,
         from_address=from_address,
@@ -222,7 +226,7 @@ def _new_faq_conversation(
         from_address=from_address,
         to_address=to_address,
         current_step=WhatsAppConversationStep.FAQ,
-        site=_default_site(),
+        site=_default_site(to_address),
         context={"kind": "faq", "openai_usage": {}},
         last_message_at=timezone.now(),
     )
@@ -238,7 +242,7 @@ def _schedule_prompt(package: dict) -> str:
 
 
 def _start_booking_for_existing(conversation: WhatsAppConversation) -> str:
-    site = _default_site()
+    site = _default_site(conversation.to_address)
     schedules = _schedule_options(site.id) if site else []
     conversation.site = site
     conversation.booking = None
@@ -285,7 +289,7 @@ def _start_booking_for_new_contact(
 
 
 def _move_to_menu(conversation: WhatsAppConversation) -> str:
-    site = _default_site()
+    site = _default_site(conversation.to_address)
     conversation.current_step = WhatsAppConversationStep.MENU
     conversation.site = site
     conversation.context = _menu_context(site)

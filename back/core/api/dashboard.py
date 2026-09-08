@@ -1,5 +1,6 @@
 from collections import defaultdict
 from decimal import Decimal
+from datetime import date
 
 from django.db.models import Prefetch, Sum
 
@@ -172,7 +173,20 @@ class DashboardSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        period = request.query_params.get("month", "all")
+        if period != "all":
+            try:
+                parsed = date.fromisoformat(f"{period}-01")
+                if parsed.strftime("%Y-%m") != period:
+                    raise ValueError
+            except ValueError:
+                return Response({"detail": "El periodo debe usar el formato AAAA-MM."}, status=400)
         sites = list(_scoped_sites(request.user).order_by("name"))
+        selected_site = request.query_params.get("site", "all")
+        if selected_site != "all":
+            sites = [site for site in sites if str(site.id) == selected_site]
+            if not sites:
+                return Response({"detail": "Sede no disponible."}, status=404)
         site_ids = [site.id for site in sites]
         students = list(_scoped_students(request.user, site_ids).only("id", "site_id", "full_name", "status"))
         charges = list(_scoped_charges(request.user, site_ids).filter(status__in=OPEN_CHARGE_STATUSES))
@@ -201,6 +215,13 @@ class DashboardSummaryView(APIView):
         pending_payments = [payment for payment in payments if payment.status in PENDING_PAYMENT_STATUSES]
         approved_expenses = [expense for expense in expenses if expense.status == "approved"]
         pending_expenses = [expense for expense in expenses if expense.status == "pending"]
+        available_months = sorted(
+            {_month_key(payment.confirmed_at or payment.paid_at) for payment in confirmed_payments}
+            | {_month_key(expense.expense_date) for expense in approved_expenses}
+        )
+        if period != "all":
+            confirmed_payments = [payment for payment in confirmed_payments if _month_key(payment.confirmed_at or payment.paid_at) == period]
+            approved_expenses = [expense for expense in approved_expenses if _month_key(expense.expense_date) == period]
 
         total_income = sum((payment.amount for payment in confirmed_payments), Decimal("0"))
         pending_payment_total = sum((payment.amount for payment in pending_payments), Decimal("0"))
@@ -285,7 +306,7 @@ class DashboardSummaryView(APIView):
 
         month_keys = sorted(set(monthly_income.keys()) | set(monthly_expense.keys()))
         current_month = timezone.localdate().strftime("%Y-%m")
-        selected_month = current_month if current_month in month_keys else (month_keys[-1] if month_keys else "")
+        selected_month = period if period != "all" else current_month if current_month in month_keys else (month_keys[-1] if month_keys else "")
         selected_payer_count = len(payer_by_month[selected_month]) if selected_month else 0
         selected_month_total = monthly_income[selected_month] if selected_month else Decimal("0")
 
@@ -312,6 +333,12 @@ class DashboardSummaryView(APIView):
 
         return Response(
             {
+                "context": {
+                    "generated_at": timezone.now().isoformat(),
+                    "month": period,
+                    "site": selected_site,
+                    "available_months": available_months,
+                },
                 "metrics": {
                     "active_sites": sum(1 for site in sites if site.is_active),
                     "students": len(students),

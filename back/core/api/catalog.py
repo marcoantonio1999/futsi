@@ -1,5 +1,14 @@
 from .common import *
-from django.db.models import Prefetch
+from django.db import transaction
+from django.db.models import Prefetch, Exists, OuterRef, CharField, Q
+from django.db.models.functions import Cast
+from pathlib import Path
+from rest_framework.exceptions import NotFound
+from django.shortcuts import get_object_or_404
+from core.services.student_deletion import preview as student_deletion_preview, permanently_delete, cleanup_files
+from core.services import guardian_deletion, tournament_deletion
+from core.services.student_photos import save_student, PHOTO_BUCKET, StudentPhotoUnavailable
+from core.services.supabase_storage import download_private_file, parse_storage_uri
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.select_related("primary_site", "guardian_profile").all()
@@ -34,9 +43,56 @@ class GuardianViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.request.user.role in {"site_coordinator", "cashier"} and self.request.user.primary_site_id:
-            queryset = queryset.filter(students__site_id=self.request.user.primary_site_id)
+        if self.request.user.role in {"site_coordinator", "cashier"}:
+            if not self.request.user.primary_site_id:
+                return queryset.none()
+            # A tutor created in step one must remain selectable after a refresh,
+            # even before their first child has been registered.
+            created_here = AuditLog.objects.filter(
+                action="guardian_created", table_name="guardians",
+                record_id=Cast(OuterRef("pk"), CharField()),
+                metadata__site_id=self.request.user.primary_site_id,
+            )
+            queryset = queryset.annotate(created_here=Exists(created_here)).filter(
+                Q(students__site_id=self.request.user.primary_site_id)
+                | Q(students__isnull=True, created_here=True)
+            )
         return queryset.distinct()
+
+    def perform_create(self, serializer):
+        if self.request.user.role not in {"site_coordinator", "cashier"}:
+            serializer.save()
+            return
+        if not self.request.user.primary_site_id:
+            raise PermissionDenied("Necesitas una sede asignada para registrar tutores.")
+        with transaction.atomic():
+            guardian = serializer.save()
+            AuditLog.objects.create(
+                actor=self.request.user, action="guardian_created", table_name="guardians",
+                record_id=str(guardian.pk), metadata={"site_id": self.request.user.primary_site_id},
+            )
+
+    @action(detail=True, methods=["get"], url_path="deletion-preview")
+    def deletion_preview(self, request, pk=None):
+        return Response(guardian_deletion.preview(self.get_object(), request.user))
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(guardian_deletion.permanently_delete(self.get_object(), request.user, request.data))
+
+    @action(detail=False, methods=["post"], url_path="deletion-cleanup")
+    def deletion_cleanup(self, request):
+        deletion_id = request.data.get("deletion_id")
+        if not isinstance(deletion_id, int) or isinstance(deletion_id, bool):
+            raise ValidationError("La referencia de eliminación no es válida.")
+        audits = AuditLog.objects.filter(action="guardian_deleted")
+        if request.user.role in {"cashier", "site_coordinator"}:
+            if not request.user.primary_site_id:
+                raise PermissionDenied("Necesitas una sede asignada.")
+            audits = audits.filter(metadata__site_id=request.user.primary_site_id)
+        with transaction.atomic():
+            audit = get_object_or_404(audits.select_for_update(), pk=deletion_id)
+            result = cleanup_files(audit)
+        return Response(result)
 
 
 class StudentViewSet(viewsets.ModelViewSet):
@@ -67,6 +123,10 @@ class StudentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOperationsCashierCoachOrGuardianRole]
 
     def get_permissions(self):
+        if self.action in {"deletion_preview", "deletion_cleanup"}:
+            return [IsOperationsOrCashierRole()]
+        if self.request.user.is_authenticated and self.request.user.role in {"adult_player", "adult_representative"}:
+            return [IsOperationsRole()]
         if self.request.user.is_authenticated and self.request.user.role in {"guardian", "coach"} and self.request.method not in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsRole()]
         if self.request.user.is_authenticated and self.request.user.role == "cashier" and self.request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -77,7 +137,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         if self.request.user.role == "guardian":
             return queryset.filter(guardian__user=self.request.user)
-        if self.request.user.role == "cashier":
+        if self.request.user.role in {"cashier", "site_coordinator"}:
             return queryset.filter(site=self.request.user.primary_site)
         if self.request.user.role == "coach":
             queryset = queryset.filter(site=self.request.user.primary_site)
@@ -87,21 +147,66 @@ class StudentViewSet(viewsets.ModelViewSet):
         return queryset.distinct()
 
     def perform_create(self, serializer):
-        self._validate_cashier_scope(serializer.validated_data)
-        serializer.save()
+        self._validate_academy_scope(serializer.validated_data)
+        save_student(serializer)
 
     def perform_update(self, serializer):
-        self._validate_cashier_scope(serializer.validated_data, serializer.instance)
-        serializer.save()
+        self._validate_academy_scope(serializer.validated_data, serializer.instance)
+        save_student(serializer)
 
-    def _validate_cashier_scope(self, data, instance=None):
-        if self.request.user.role != "cashier":
+    @action(detail=True, methods=["get"], url_path="deletion-preview")
+    def deletion_preview(self, request, pk=None):
+        student = self.get_object()
+        self._validate_academy_scope({"site": student.site}, student)
+        return Response(student_deletion_preview(student, request.user))
+
+    def destroy(self, request, *args, **kwargs):
+        student = self.get_object()
+        self._validate_academy_scope({"site": student.site}, student)
+        return Response(permanently_delete(student, request.user, request.data))
+
+    @action(detail=False, methods=["post"], url_path="deletion-cleanup")
+    def deletion_cleanup(self, request):
+        deletion_id = request.data.get("deletion_id")
+        if not isinstance(deletion_id, int) or isinstance(deletion_id, bool):
+            return Response({"detail": "La referencia de eliminación no es válida."}, status=400)
+        audits = AuditLog.objects.filter(action="student_deleted")
+        if request.user.role in {"cashier", "site_coordinator"}:
+            audits = audits.filter(metadata__site_id=request.user.primary_site_id)
+        audit = get_object_or_404(audits, pk=deletion_id)
+        with transaction.atomic():
+            audit = AuditLog.objects.select_for_update().get(pk=audit.pk)
+            result = cleanup_files(audit)
+        return Response(result)
+
+    @action(detail=True, methods=["get"], url_path="photo-content")
+    def photo_content(self, request, pk=None):
+        student = self.get_object()
+        stored = parse_storage_uri(student.photo_url or "")
+        if not stored or stored[0] != PHOTO_BUCKET:
+            raise NotFound("El alumno no tiene una foto privada disponible.")
+        local_path = None
+        try:
+            local_path = download_private_file(*stored)
+            response = HttpResponse(Path(local_path).read_bytes(), content_type="image/jpeg")
+            response["Cache-Control"] = "private, no-store"
+            response["X-Content-Type-Options"] = "nosniff"
+            return response
+        except Exception as exc:
+            raise StudentPhotoUnavailable("No se pudo cargar la foto del alumno.") from exc
+        finally:
+            if local_path:
+                Path(local_path).unlink(missing_ok=True)
+
+    def _validate_academy_scope(self, data, instance=None):
+        if self.request.user.role not in {"cashier", "site_coordinator"}:
             return
         site = data.get("site") or getattr(instance, "site", None)
         guardian = data.get("guardian") or getattr(instance, "guardian", None)
-        ensure_cashier_primary_site(self.request.user, site.id if site else None)
+        if not self.request.user.primary_site_id or not site or site.id != self.request.user.primary_site_id:
+            raise PermissionDenied("Solo puedes registrar o editar alumnos de tu sede.")
         if guardian and guardian.students.exists() and not guardian.students.filter(site_id=self.request.user.primary_site_id).exists():
-            raise PermissionDenied("El cajero solo puede usar representantes vinculados a su sede.")
+            raise PermissionDenied("Solo puedes asignar tutores vinculados a tu sede.")
 
 
 class TournamentViewSet(viewsets.ModelViewSet):
@@ -110,6 +215,10 @@ class TournamentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrSiteCoordinatorRole]
 
     def get_permissions(self):
+        if self.action in {"deletion_preview", "deletion_cleanup", "destroy"}:
+            if self.request.user.is_authenticated and self.request.user.role == "cashier":
+                return [IsOperationsOrCashierRole()]
+            return [IsAdminOrSiteCoordinatorRole()]
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return [IsOperationsCashierCoachOrGuardianRole()]
         if self.request.user.is_authenticated and self.request.user.role == "cashier":
@@ -128,6 +237,35 @@ class TournamentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         ensure_cashier_primary_site(self.request.user, serializer.validated_data["site"].id)
         serializer.save()
+
+    def deletion_target(self):
+        tournament = self.get_object()
+        if self.request.user.role in {"cashier", "site_coordinator"}:
+            if not self.request.user.primary_site_id or tournament.site_id != self.request.user.primary_site_id:
+                raise PermissionDenied("Solo puedes eliminar torneos de tu sede asignada.")
+        return tournament
+
+    @action(detail=True, methods=["get"], url_path="deletion-preview")
+    def deletion_preview(self, request, pk=None):
+        return Response(tournament_deletion.preview(self.deletion_target(), request.user))
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(tournament_deletion.permanently_delete(self.deletion_target(), request.user, request.data))
+
+    @action(detail=False, methods=["post"], url_path="deletion-cleanup")
+    def deletion_cleanup(self, request):
+        deletion_id = request.data.get("deletion_id")
+        if not isinstance(deletion_id, int) or isinstance(deletion_id, bool):
+            raise ValidationError("La referencia de eliminación no es válida.")
+        audits = AuditLog.objects.filter(action="tournament_deleted")
+        if request.user.role in {"cashier", "site_coordinator"}:
+            if not request.user.primary_site_id:
+                raise PermissionDenied("Necesitas una sede asignada.")
+            audits = audits.filter(metadata__site_id=request.user.primary_site_id)
+        with transaction.atomic():
+            audit = get_object_or_404(audits.select_for_update(), pk=deletion_id)
+            result = cleanup_files(audit)
+        return Response(result)
 
     def perform_update(self, serializer):
         site = serializer.validated_data.get("site") or serializer.instance.site
@@ -192,24 +330,28 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(tournament__site_id=site)
         if self.request.user.role == "guardian":
             queryset = queryset.filter(student__guardian__user=self.request.user)
-        if self.request.user.role in {"coach", "cashier"} and self.request.user.primary_site_id:
+        if self.request.user.role in {"coach", "cashier", "site_coordinator"}:
             queryset = queryset.filter(tournament__site=self.request.user.primary_site)
         return queryset.distinct()
 
     def perform_create(self, serializer):
-        self._validate_cashier_scope(serializer.validated_data)
+        self._validate_academy_scope(serializer.validated_data)
         serializer.save()
 
     def perform_update(self, serializer):
-        self._validate_cashier_scope(serializer.validated_data, serializer.instance)
+        self._validate_academy_scope(serializer.validated_data, serializer.instance)
         serializer.save()
 
-    def _validate_cashier_scope(self, data, instance=None):
-        if self.request.user.role != "cashier":
+    def _validate_academy_scope(self, data, instance=None):
+        if self.request.user.role not in {"cashier", "site_coordinator"}:
             return
+        if not self.request.user.primary_site_id:
+            raise PermissionDenied("Necesitas una sede asignada para gestionar inscripciones.")
         tournament = data.get("tournament") or getattr(instance, "tournament", None)
         student = data.get("student") or getattr(instance, "student", None)
         team = data.get("team") if "team" in data else getattr(instance, "team", None)
+        if tournament and tournament.site_id != self.request.user.primary_site_id:
+            raise PermissionDenied("Solo puedes gestionar inscripciones de tu sede.")
         ensure_cashier_primary_site(self.request.user, tournament.site_id if tournament else None)
         if student:
             ensure_cashier_primary_site(self.request.user, student.site_id)

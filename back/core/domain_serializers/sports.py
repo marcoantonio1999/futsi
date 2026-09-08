@@ -44,8 +44,9 @@ class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):
             "site__name",
         )
     )
-    student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.only("id", "full_name", "category", "group_name"))
-    team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.only("id", "name"), required=False, allow_null=True)
+    student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.only("id", "site_id", "full_name", "category", "group_name"))
+    team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.only("id", "name", "tournament_id"), required=False, allow_null=True)
+    status = serializers.ChoiceField(choices=["registered", "withdrawn"], required=False)
     tournament_name = serializers.CharField(source="tournament.name", read_only=True)
     site = serializers.IntegerField(source="tournament.site_id", read_only=True)
     site_name = serializers.CharField(source="tournament.site.name", read_only=True)
@@ -62,8 +63,19 @@ class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         tournament = attrs.get("tournament") or getattr(self.instance, "tournament", None)
+        student = attrs.get("student") or getattr(self.instance, "student", None)
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        if team and tournament and team.tournament_id != tournament.pk:
+            raise serializers.ValidationError({"team": "El equipo debe pertenecer al torneo seleccionado."})
+        if student and tournament and student.site_id != tournament.site_id:
+            raise serializers.ValidationError({"student": "El alumno debe pertenecer a la sede del torneo."})
+        if self.instance and any(key in attrs and attrs[key].pk != getattr(self.instance, f"{key}_id") for key in ["student", "tournament"]):
+            raise serializers.ValidationError("La inscripción pertenece a este alumno y torneo. Crea otra inscripción para cambiar esos datos.")
+        for field in ["weekly_amount", "full_amount"]:
+            if field in attrs and attrs[field] < 0:
+                raise serializers.ValidationError({field: "El importe no puede ser negativo."})
         billing_type = attrs.get("billing_type")
-        if tournament and not billing_type:
+        if tournament and not billing_type and self.instance is None:
             attrs["billing_type"] = tournament.billing_type
         return attrs
 
@@ -150,8 +162,16 @@ class MatchSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         home_team = attrs.get("home_team") or getattr(self.instance, "home_team", None)
         away_team = attrs.get("away_team") or getattr(self.instance, "away_team", None)
+        tournament = attrs.get("tournament") or getattr(self.instance, "tournament", None)
+        site = attrs.get("site") or getattr(self.instance, "site", None)
         if home_team and away_team and home_team == away_team:
             raise serializers.ValidationError("Un equipo no puede jugar contra si mismo.")
+        if tournament and any(team and team.tournament_id != tournament.pk for team in [home_team, away_team]):
+            raise serializers.ValidationError("Los dos equipos deben pertenecer al torneo del partido.")
+        if tournament and site and site.pk != tournament.site_id:
+            raise serializers.ValidationError({"site": "La sede debe coincidir con la del torneo."})
+        if "duration_minutes" in attrs and not 1 <= attrs["duration_minutes"] <= 1440:
+            raise serializers.ValidationError({"duration_minutes": "La duración debe estar entre 1 y 1440 minutos."})
         return attrs
 
     def create(self, validated_data):

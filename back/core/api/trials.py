@@ -17,6 +17,7 @@ from core.domain_serializers.trials import (
     VoiceCallSerializer,
     WhatsAppAutomationSettingsSerializer,
     WhatsAppConversationSerializer,
+    WhatsAppMessageSerializer,
     WhatsAppSendMessageSerializer,
 )
 from core.models import (
@@ -394,6 +395,31 @@ class WhatsAppConversationViewSet(
             metadata={"contact_phone": conversation.contact_phone},
         )
 
+    @action(detail=True, methods=["post"], url_path="resolve-attention")
+    def resolve_attention(self, request, pk=None):
+        conversation = self.get_object()  # Preserve site and role scoping.
+        message_id = request.data.get("last_message_id")
+        if type(message_id) is not int or message_id <= 0:
+            return Response({"detail": "Indica el último mensaje que revisaste."}, status=400)
+        with transaction.atomic():
+            locked = WhatsAppConversation.objects.select_for_update().get(pk=conversation.pk)
+            latest = next((message for message in locked.messages.order_by("-created_at", "-id")
+                           if not WhatsAppMessageSerializer._is_revoked(message) and message.body.strip().lower() != "[reaction]"), None)
+            if latest is None or latest.pk != message_id:
+                return Response({"detail": "Hay mensajes nuevos. Actualiza y revisa el chat antes de marcarlo como atendido."}, status=409)
+            context = dict(locked.context) if isinstance(locked.context, dict) else {}
+            previous = context.get("attention_resolution")
+            resolution = {"message_id": message_id, "resolved_at": timezone.now().isoformat(), "resolved_by_user_id": request.user.pk}
+            context["attention_resolution"] = resolution
+            locked.context = context
+            locked.save(update_fields=["context", "updated_at"])
+            AuditLog.objects.create(
+                actor=request.user, action="whatsapp_attention_resolved",
+                table_name=WhatsAppConversation._meta.db_table, record_id=str(locked.pk),
+                previous_values={"attention_resolution": previous}, new_values={"attention_resolution": resolution},
+            )
+        return Response(self.get_serializer(locked).data)
+
     @action(detail=True, methods=["post"], url_path="send-message")
     def send_message(self, request, pk=None):
         conversation = self.get_object()
@@ -681,9 +707,30 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminRole]
     http_method_names = ["get", "patch", "head", "options"]
 
+    def list(self, request):
+        records = {item.business_address: item for item in
+                   WhatsAppAutomationSettings.objects.select_related("site").all()}
+        addresses = set(records)
+        addresses.update(WhatsAppConversation.objects.filter(
+            to_address__startswith="whatsapp:+"
+        ).values_list("to_address", flat=True).distinct())
+        current = _current_whatsapp_business_address()
+        if current:
+            addresses.add(current)
+        return Response([
+            WhatsAppAutomationSettingsSerializer(
+                records.get(address) or WhatsAppAutomationSettings(business_address=address)
+            ).data for address in sorted(addresses)
+        ])
+
     @action(detail=False, methods=["get", "patch"], url_path="current")
     def current(self, request):
-        business_address = _current_whatsapp_business_address()
+        import re
+        selected_address = request.query_params.get("business_address", "").strip()
+        if selected_address and not re.fullmatch(r"whatsapp:\+[1-9][0-9]{7,14}", selected_address):
+            return Response({"detail": "Usa whatsapp:+ y el número con código de país."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        business_address = selected_address or _current_whatsapp_business_address()
         if not business_address:
             return Response(
                 {
@@ -694,6 +741,13 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
+        new_channel_defaults = {}
+        if selected_address and not WhatsAppConversation.objects.filter(to_address=business_address).exists():
+            new_channel_defaults = {
+                "welcome_message": "¡Hola! 😊 Soy el asistente virtual de esta sede. ¿En qué podemos ayudarte?",
+                "assistant_instructions": "Agrega aquí únicamente los datos confirmados de esta sede: nombre, servicios, costos y horarios. Si falta información, ofrece atención humana.",
+                "out_of_hours_acknowledgement": "Si necesitas hablar con una persona, escribe HUMANO. El equipo continuará en el próximo horario de atención.",
+            }
         if request.method == "GET":
             instance = WhatsAppAutomationSettings.objects.filter(
                 business_address=business_address,
@@ -701,12 +755,18 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
             if instance is None:
                 instance = WhatsAppAutomationSettings(
                     business_address=business_address,
+                    **new_channel_defaults,
                 )
             return Response(WhatsAppAutomationSettingsSerializer(instance).data)
 
+        if selected_address and not WhatsAppAutomationSettings.objects.filter(business_address=business_address).exists():
+            if not request.data.get("site") or not request.data.get("openai_model"):
+                return Response({"detail": "Selecciona la sede y el modelo para configurar este número."},
+                                status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             instance, _created = WhatsAppAutomationSettings.objects.get_or_create(
                 business_address=business_address,
+                defaults=new_channel_defaults,
             )
             previous_values = WhatsAppAutomationSettingsSerializer(instance).data
             serializer = WhatsAppAutomationSettingsSerializer(

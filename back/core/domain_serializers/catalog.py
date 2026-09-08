@@ -87,6 +87,20 @@ class StudentSerializer(serializers.ModelSerializer):
     balance_due = serializers.SerializerMethodField()
     active_discounts = serializers.SerializerMethodField()
 
+    def validate_photo(self, value):
+        from core.services.student_photos import validate_student_photo
+        return validate_student_photo(value)
+
+    def validate(self, attrs):
+        birth_date = attrs.get("birth_date")
+        if birth_date and birth_date > timezone.localdate():
+            raise serializers.ValidationError({"birth_date": "La fecha de nacimiento no puede ser futura."})
+        start = attrs.get("pause_start", getattr(self.instance, "pause_start", None))
+        end = attrs.get("pause_end", getattr(self.instance, "pause_end", None))
+        if start and end and end < start:
+            raise serializers.ValidationError({"pause_end": "El fin de la pausa debe ser posterior al inicio."})
+        return attrs
+
     class Meta:
         model = Student
         fields = "__all__"
