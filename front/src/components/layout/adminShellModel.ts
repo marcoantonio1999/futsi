@@ -202,5 +202,3 @@ export function academyData(data: AppData): AppData {
 }
 
 export type GuardiansSubsection = "registered" | "create" | "edit";
-
-export type SportsSubsection = "exams" | "matches";

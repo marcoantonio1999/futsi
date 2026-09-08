@@ -1,3 +1,4 @@
+import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { TabKey } from "../../types";
 import { defaultSectionsByRole, tabItems } from "./adminNavigation";
@@ -21,7 +22,6 @@ import {
   type BusinessScope,
   type CommunicationsSubsection,
   type StudentsSubsection,
-  type SportsSubsection,
   type GuardiansSubsection,
 } from "./adminShellModel";
 
@@ -58,10 +58,10 @@ export function AdminShell({
   const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
   const [communicationsMenuExpanded, setCommunicationsMenuExpanded] = useState(false);
   const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>("summary");
-  const [sportsSection, setSportsSection] = useState<SportsSubsection>("exams");
-  const [sportsMenuExpanded, setSportsMenuExpanded] = useState(false);
   const [studentsMenuExpanded, setStudentsMenuExpanded] = useState(false);
   const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("overview");
+  const [coachesSection, setCoachesSection] = useState<CoachesSection>("overview");
+  const [coachesMenuExpanded, setCoachesMenuExpanded] = useState(false);
   const [guardiansSection, setGuardiansSection] = useState<GuardiansSubsection>("registered");
   const [guardianToEdit, setGuardianToEdit] = useState<number | null>(null);
   const [guardiansMenuExpanded, setGuardiansMenuExpanded] = useState(false);
@@ -200,6 +200,18 @@ export function AdminShell({
     scrollToTop();
   }
 
+  function toggleCoachesMenu() {
+    if (effectiveActiveTab !== "coaches") {
+      setActiveTab("coaches"); setCoachesMenuExpanded(true); scrollToTop(); return;
+    }
+    setCoachesMenuExpanded(expanded => !expanded);
+  }
+
+  function selectCoachesSection(section: CoachesSection) {
+    setCoachesSection(section); setCoachesMenuExpanded(true); setActiveTab("coaches");
+    setMobileMenuOpen(false); scrollToTop();
+  }
+
   function toggleGuardiansMenu() {
     if (effectiveActiveTab !== "guardians") {
       setActiveTab("guardians"); setGuardiansMenuExpanded(true); scrollToTop(); return;
@@ -210,18 +222,6 @@ export function AdminShell({
   function selectGuardiansSection(section: GuardiansSubsection) {
     setGuardianToEdit(null); setGuardiansSection(section); setActiveTab("guardians");
     setGuardiansMenuExpanded(true); setMobileMenuOpen(false); scrollToTop();
-  }
-
-  function toggleSportsMenu() {
-    if (effectiveActiveTab !== "sports") {
-      setActiveTab("sports"); setSportsMenuExpanded(true); scrollToTop(); return;
-    }
-    setSportsMenuExpanded(expanded => !expanded);
-  }
-
-  function selectSportsSection(section: SportsSubsection) {
-    setSportsSection(section); setSportsMenuExpanded(true); setActiveTab("sports");
-    setMobileMenuOpen(false); scrollToTop();
   }
 
   function toggleStudentsMenu() {
@@ -310,12 +310,13 @@ export function AdminShell({
         billingSection={billingSection}
         communicationsSection={communicationsSection}
         communicationsMenuExpanded={communicationsMenuExpanded}
+        coachesSection={coachesSection}
+        coachesMenuExpanded={coachesMenuExpanded}
+        canManageCoaches={isAdmin}
+        onSelectCoachesSection={selectCoachesSection}
         guardiansMenuExpanded={guardiansMenuExpanded}
         studentsMenuExpanded={studentsMenuExpanded}
-        sportsSection={sportsSection}
-        sportsMenuExpanded={sportsMenuExpanded}
         tournamentsMenuExpanded={tournamentsMenuExpanded}
-        onSelectSportsSection={selectSportsSection}
         onSelectGuardiansSection={selectGuardiansSection}
         guardiansSection={guardiansSection}
         studentsSection={studentsSection}
@@ -332,9 +333,9 @@ export function AdminShell({
         }}
         onSelectBillingSection={selectBillingSection}
         onToggleCommunicationsMenu={toggleCommunicationsMenu}
+        onToggleCoachesMenu={toggleCoachesMenu}
         onToggleGuardiansMenu={toggleGuardiansMenu}
         onToggleStudentsMenu={toggleStudentsMenu}
-        onToggleSportsMenu={toggleSportsMenu}
         onToggleTournamentsMenu={toggleTournamentsMenu}
         onSelectCommunicationsSection={selectCommunicationsSection}
         onSelectStudentsSection={selectStudentsSection}
@@ -351,12 +352,13 @@ export function AdminShell({
           billingSection={billingSection}
           communicationsSection={communicationsSection}
         communicationsMenuExpanded={communicationsMenuExpanded}
+        coachesSection={coachesSection}
+        coachesMenuExpanded={coachesMenuExpanded}
+        canManageCoaches={isAdmin}
+        onSelectCoachesSection={selectCoachesSection}
         guardiansMenuExpanded={guardiansMenuExpanded}
         studentsMenuExpanded={studentsMenuExpanded}
-        sportsSection={sportsSection}
-        sportsMenuExpanded={sportsMenuExpanded}
         tournamentsMenuExpanded={tournamentsMenuExpanded}
-        onSelectSportsSection={selectSportsSection}
         onSelectGuardiansSection={selectGuardiansSection}
           guardiansSection={guardiansSection}
         studentsSection={studentsSection}
@@ -375,17 +377,17 @@ export function AdminShell({
               if (effectiveActiveTab !== "tournaments") { setActiveTab("tournaments"); scrollToTop(); }
             } else toggleTournamentsMenu();
           }}
-          onToggleSportsMenu={() => {
-            if (!sidebarExpanded) {
-              setSidebarExpanded(true); setSportsMenuExpanded(true);
-              if (effectiveActiveTab !== "sports") { setActiveTab("sports"); scrollToTop(); }
-            } else toggleSportsMenu();
-          }}
           onToggleStudentsMenu={() => {
             if (!sidebarExpanded) {
               setSidebarExpanded(true); setStudentsMenuExpanded(true);
               if (effectiveActiveTab !== "students") { setActiveTab("students"); scrollToTop(); }
             } else toggleStudentsMenu();
+          }}
+          onToggleCoachesMenu={() => {
+            if (!sidebarExpanded) {
+              setSidebarExpanded(true); setCoachesMenuExpanded(true);
+              if (effectiveActiveTab !== "coaches") { setActiveTab("coaches"); scrollToTop(); }
+            } else toggleCoachesMenu();
           }}
           onToggleGuardiansMenu={() => {
             if (!sidebarExpanded) {
@@ -421,8 +423,9 @@ export function AdminShell({
             onLogout={onLogout}
           />
           <AdminShellContent
+            coachesSection={coachesSection}
+            onSelectCoachesSection={selectCoachesSection}
             onSelectTournamentSection={selectTournamentSection}
-            sportsSection={sportsSection}
             onSelectStudentsSection={selectStudentsSection}
             studentToEdit={studentToEdit}
             onEditStudent={(id) => { setStudentToEdit(id); setStudentsSection("edit"); scrollToTop(); }}

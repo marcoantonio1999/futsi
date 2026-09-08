@@ -1,0 +1,92 @@
+.coach-ui { --c-bg:#fff; --c-soft:#fafafa; --c-line:#e4e4e7; --c-ink:#18181b; --c-muted:#71717a; color:var(--c-ink); min-width:0; }
+.coach-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; margin:12px 0 24px; }
+.coach-eyebrow { color:#047857; font-size:11px; letter-spacing:.09em; font-weight:750; text-transform:uppercase; margin-bottom:7px; }
+.coach-heading h2,.coach-success h2 { font-size:27px; font-weight:750; line-height:1.2; }
+.coach-heading h2+p { margin-top:8px; color:var(--c-muted); font-size:13px; }
+.coach-surface { min-width:0; background:var(--c-bg); border:1px solid var(--c-line); border-radius:13px; margin-bottom:20px; overflow:hidden; }
+.coach-button { display:inline-flex; justify-content:center; align-items:center; gap:8px; min-height:42px; padding:10px 15px; border-radius:8px; border:1px solid var(--c-line); background:var(--c-bg); font-size:13px; font-weight:650; }
+.coach-button.primary { color:white; background:#047857; border-color:#047857; }
+.coach-button:hover { filter:brightness(.96); }
+.coach-ui button:disabled { opacity:.5; cursor:not-allowed; }
+.coach-ui input:invalid:not(:user-invalid),.coach-ui select:invalid:not(:user-invalid) { border-color:var(--c-line); background:var(--c-bg); }
+.coach-ui input:user-invalid,.coach-ui select:user-invalid { border-color:#e11d48; background:#fff1f2; color:#881337; }
+.coach-back { display:inline-flex; align-items:center; gap:7px; color:#047857; font-size:12px; font-weight:650; }
+.coach-filters { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:18px; padding:20px; }
+.coach-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:20px 0; }
+.coach-stats.four { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.coach-stat { padding:20px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; min-width:0; color:#1e40af; }
+.coach-stat.success { color:#065f46; background:#ecfdf5; border-color:#a7f3d0; }
+.coach-stat.warning { color:#92400e; background:#fffbeb; border-color:#fde68a; }
+.coach-stat>div { display:flex; align-items:flex-start; gap:10px; justify-content:space-between; font-size:12px; font-weight:650; }
+.coach-stat svg { flex-shrink:0; }
+.coach-stat strong { display:block; font-size:27px; line-height:1.2; margin:15px 0 8px; letter-spacing:-.035em; overflow-wrap:anywhere; }
+.coach-stat p { font-size:11px; line-height:1.5; }
+.coach-section-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin:26px 0 16px; }
+.coach-section-heading h3,.coach-create h3 { font-size:16px; font-weight:700; }
+.coach-section-heading p { font-size:12px; color:var(--c-muted); margin-top:5px; }
+.coach-section-heading.padded { margin:0; padding:20px; border-bottom:1px solid var(--c-line); }
+.coach-directory { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.coach-card { padding:22px; margin:0; display:flex; flex-direction:column; }
+.coach-card header { display:flex; align-items:center; gap:12px; }
+.coach-card header>div { min-width:0; flex:1; }
+.coach-card h3 { font-size:16px; font-weight:700; overflow-wrap:anywhere; }
+.coach-card header p { color:var(--c-muted); font-size:12px; overflow-wrap:anywhere; }
+.coach-avatar { display:grid; place-items:center; height:42px; width:42px; flex-shrink:0; border-radius:12px; background:#ecfdf5; color:#047857; font-size:14px; font-weight:750; }
+.coach-badge { display:inline-block; border-radius:5px; padding:5px 8px; font-size:11px; font-weight:650; white-space:nowrap; }
+.coach-badge.success { background:#ecfdf5; color:#047857; }
+.coach-badge.warning { background:#fffbeb; color:#92400e; }
+.coach-badge.error { background:#fff1f2; color:#be123c; }
+.coach-badge.info { background:#eff6ff; color:#1e40af; }
+.coach-badge.muted { background:var(--c-soft); color:var(--c-muted); }
+.coach-card-details { display:grid; gap:10px; margin:22px 0; }
+.coach-card-details>div { display:grid; grid-template-columns:50px minmax(0,1fr); gap:10px; font-size:12px; }
+.coach-card-details dt { color:var(--c-muted); }
+.coach-card-details dd { overflow-wrap:anywhere; }
+.coach-card-numbers { display:grid; grid-template-columns:1fr 1fr; padding:17px 0; border-block:1px solid var(--c-line); margin-top:auto; }
+.coach-card-numbers strong { display:block; font-size:22px; font-weight:750; }
+.coach-card-numbers span { color:var(--c-muted); font-size:11px; }
+.coach-card footer { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-top:17px; }
+.coach-card footer>span { color:var(--c-muted); font-size:11px; overflow-wrap:anywhere; }
+.coach-inline-warning { padding:10px; color:#92400e; background:#fffbeb; border-radius:6px; font-size:12px; margin-top:12px; }
+.coach-table-scroll { overflow:auto; max-width:100%; }
+.coach-table-scroll table { width:100%; min-width:720px; font-size:13px; text-align:left; border-collapse:collapse; }
+.coach-table-scroll th { background:var(--c-soft); color:var(--c-muted); font-size:11px; font-weight:650; padding:13px 20px; }
+.coach-table-scroll td { padding:15px 20px; border-top:1px solid var(--c-line); max-width:300px; overflow-wrap:anywhere; }
+.coach-cell-note { display:block; margin-top:4px; font-size:11px; color:var(--c-muted); }
+.coach-hint,.coach-period { font-size:12px; line-height:1.6; color:var(--c-muted); margin:12px 0 20px; }
+.coach-period { margin-top:-8px; }
+.padded-hint { padding:0 20px; }
+.coach-detail-switch { display:flex; flex-wrap:wrap; gap:6px; }
+.coach-detail-section { scroll-margin-top:135px; }
+.coach-notice>svg { flex-shrink:0; }
+.coach-notice>span { min-width:0; }
+.coach-detail-switch button { padding:10px 12px; border-radius:7px; color:var(--c-muted); font-size:13px; font-weight:650; }
+.coach-detail-switch button[aria-pressed=true] { background:#ecfdf5; color:#047857; }
+.coach-detail-switch span { margin-left:5px; font-size:11px; }
+.coach-empty { padding:36px 20px; color:var(--c-muted); font-size:13px; text-align:center; }
+.coach-pagination { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; padding:16px 20px; border-top:1px solid var(--c-line); font-size:12px; color:var(--c-muted); }
+.coach-pagination span { margin-right:auto; }
+.coach-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.coach-create { max-width:900px; }
+.coach-create section { padding:25px; border-bottom:1px solid var(--c-line); }
+.coach-create h3 { margin-bottom:20px; }
+.coach-create .coach-hint { margin-bottom:0; }
+.coach-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; padding:20px 25px; }
+.coach-notice { display:flex; align-items:center; gap:12px; border-radius:8px; padding:14px 18px; margin-bottom:20px; font-size:13px; }
+.coach-notice button { margin-left:auto; }
+.coach-notice.success { background:#ecfdf5; color:#065f46; }
+.coach-notice.warning { background:#fffbeb; color:#92400e; }
+.coach-notice.error { background:#fff1f2; color:#be123c; }
+.coach-success { padding:48px 24px; text-align:center; }
+.coach-success>svg { color:#047857; margin:0 auto 20px; }
+.coach-success p { color:var(--c-muted); font-size:14px; margin-top:14px; }
+.coach-success .coach-actions { justify-content:center; margin-top:20px; }
+@media(max-width:700px) { .coach-heading>svg { display:none; } }
+[data-theme="dark"] .coach-ui,.dark .coach-ui { --c-bg:#18181b; --c-soft:#202024; --c-line:#3f3f46; --c-ink:#f4f4f5; --c-muted:#a1a1aa; }
+.dark .coach-stat,.dark .coach-badge.info { color:#93c5fd; background:#172554; border-color:#1e40af; }
+.dark .coach-stat.success,.dark .coach-badge.success,.dark .coach-notice.success,.dark .coach-avatar,.dark .coach-detail-switch button[aria-pressed=true] { color:#6ee7b7; background:#052e25; border-color:#065f46; }
+.dark .coach-stat.warning,.dark .coach-badge.warning,.dark .coach-notice.warning,.dark .coach-inline-warning { color:#fcd34d; background:#451a03; border-color:#92400e; }
+.dark .coach-badge.error,.dark .coach-notice.error { color:#fda4af; background:#4c0519; }
+.dark .coach-eyebrow,.dark .coach-back { color:#6ee7b7; }
+@media(max-width:1200px) { .coach-stats.four { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:700px) { .coach-directory,.coach-filters,.coach-form-grid { grid-template-columns:1fr; } .coach-stats { grid-template-columns:1fr; } .coach-stats.four { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .coach-stat { padding:16px; } .coach-stat strong { font-size:24px; } .coach-stat>div svg { display:none; } .coach-create section { padding:20px; } .coach-heading h2 { font-size:24px; } }

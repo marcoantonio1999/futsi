@@ -1,3 +1,5 @@
+import { CoachesWorkspace } from "../../features/coach/CoachesWorkspace";
+import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import type { StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { RefreshSkeletonBar, SectionSkeleton } from "../loading/AppSkeleton";
 import type {
@@ -7,15 +9,17 @@ import type {
   FaceRecognitionResponse,
   Guardian,
   Student,
+  StaffPaymentRequest,
   HistoricalImport,
   TabKey,
   User,
 } from "../../types";
+import { PerformancePanel } from "../views/sportsPanel";
 import { fullWidthTabs } from "./adminNavigation";
-import type { AttendanceSubsection, BillingSubsection, BusinessScope, CommunicationsSubsection, StudentsSubsection, GuardiansSubsection, SportsSubsection } from "./adminShellModel";
+import type { AttendanceSubsection, BillingSubsection, BusinessScope, CommunicationsSubsection, StudentsSubsection, GuardiansSubsection } from "./adminShellModel";
 import { AutomaticAttendancePanel, VideoOccupancyPanel } from "../../features/automatic-attendance";
 import { BillingCollectionPanel, BillingPanel } from "../../features/billing";
-import { CoachDashboardPanel, CoachesConsolidatedPanel } from "../../features/coach";
+import { CoachDashboardPanel } from "../../features/coach";
 import { FaceGuardMonthlyReport } from "../../features/faceguard-monthly";
 import { TournamentsPanel, type TournamentSection } from "../../features/tournaments";
 import { UnknownAttendanceDetailPanel, UnknownAttendancePanel } from "../../features/unknown-attendance";
@@ -38,13 +42,14 @@ import {
   RefereesConsolidatedPanel,
   SalesEstimationPanel,
   SitesPanel,
-  SportsPanel,
   StudentsPanel,
   UniformsPanel,
   UsersPanel,
 } from "../FutsiViews";
 
 type AdminShellContentProps = {
+  coachesSection: CoachesSection;
+  onSelectCoachesSection: (section: CoachesSection) => void;
   onSelectCommunicationsSection: (section: CommunicationsSubsection) => void;
   onNavigateDashboard: (tab: TabKey) => void;
   dashboardSections: TabKey[];
@@ -67,7 +72,6 @@ type AdminShellContentProps = {
   guardianToEdit: number | null;
   onEditGuardian: (id: number) => void;
   onSelectGuardiansSection: (section: GuardiansSubsection) => void;
-  sportsSection: SportsSubsection;
   studentsSection: StudentsSubsection;
   studentToEdit: number | null;
   onEditStudent: (studentId: number) => void;
@@ -187,7 +191,7 @@ function ActivePanel(props: AdminShellContentProps) {
         />
       )}
       {effectiveActiveTab === "calendar" && <CalendarPanel data={scopedData} scope={businessScope} />}
-      {effectiveActiveTab === "sports" && <SportsPanel section={props.sportsSection} data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />}
+      {effectiveActiveTab === "sports" && <PerformancePanel data={scopedData} canEdit onSaveAssessment={onSaveStudentAssessment} />}
       {effectiveActiveTab === "tournaments" && (
         <TournamentsPanel
           data={scopedData}
@@ -206,7 +210,7 @@ function ActivePanel(props: AdminShellContentProps) {
           onUpdateMatch={onUpdateMatchScore}
         />
       )}
-      {effectiveActiveTab === "coaches" && <CoachesConsolidatedPanel data={scopedData} />}
+      {effectiveActiveTab === "coaches" && <CoachesWorkspace data={scopedData} section={props.coachesSection} canManage={isAdmin} onSelectSection={props.onSelectCoachesSection} onCreate={(payload) => onCreateAndReturn<User>("/users/", payload)} onRequestPayment={(payload) => onCreateAndReturn<StaffPaymentRequest>("/staff-payment-requests/", payload)} />}
       {effectiveActiveTab === "referees" && <RefereesConsolidatedPanel data={scopedData} />}
       {effectiveActiveTab === "uniforms" && <UniformsPanel data={scopedData} />}
       {effectiveActiveTab === "sales-estimate" && <SalesEstimationPanel data={scopedData} />}

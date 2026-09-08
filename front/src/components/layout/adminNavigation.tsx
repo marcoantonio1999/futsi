@@ -48,7 +48,7 @@ export function tabItems(): Array<{ key: TabKey; label: string; icon: React.Reac
     { key: "communications", label: "Comunicaciones", icon: <MessageSquareText size={16} /> },
     { key: "adult-dashboard", label: "Liga adultos", icon: <UsersRound size={16} /> },
     { key: "calendar", label: "Calendario", icon: <CalendarDays size={16} /> },
-    { key: "sports", label: "Deportivo", icon: <BarChart3 size={16} /> },
+    { key: "sports", label: "Rendimiento", icon: <BarChart3 size={16} /> },
     { key: "tournaments", label: "Torneos", icon: <Trophy size={16} /> },
     { key: "coaches", label: "Coaches", icon: <UserRound size={16} /> },
     { key: "referees", label: "Arbitros", icon: <Shield size={16} /> },

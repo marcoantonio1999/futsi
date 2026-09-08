@@ -1,9 +1,10 @@
+import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
 import { ChevronDown, GraduationCap, LogOut, Menu, RefreshCw, UsersRound } from "lucide-react";
 import type { RefObject } from "react";
 import type { TabKey } from "../../types";
 import type { TournamentSection } from "../../features/tournaments";
-import type { BillingSubsection, BusinessScope, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection, GuardiansSubsection, SportsSubsection } from "./adminShellModel";
+import type { BillingSubsection, BusinessScope, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection, GuardiansSubsection } from "./adminShellModel";
 
 type AdminShellSidebarProps = {
   sidebarRef: RefObject<HTMLElement | null>;
@@ -16,17 +17,18 @@ type AdminShellSidebarProps = {
   communicationsSection: CommunicationsSubsection;
   communicationsMenuExpanded: boolean;
   onToggleCommunicationsMenu: () => void;
+  coachesSection: CoachesSection;
+  coachesMenuExpanded: boolean;
+  canManageCoaches: boolean;
+  onToggleCoachesMenu: () => void;
+  onSelectCoachesSection: (section: CoachesSection) => void;
   guardiansSection: GuardiansSubsection;
   guardiansMenuExpanded: boolean;
   onToggleGuardiansMenu: () => void;
   onSelectGuardiansSection: (section: GuardiansSubsection) => void;
   studentsSection: StudentsSubsection;
-  sportsSection: SportsSubsection;
-  sportsMenuExpanded: boolean;
   tournamentsMenuExpanded: boolean;
   onToggleTournamentsMenu: () => void;
-  onToggleSportsMenu: () => void;
-  onSelectSportsSection: (section: SportsSubsection) => void;
   studentsMenuExpanded: boolean;
   onToggleStudentsMenu: () => void;
   canReviewCommunicationCalls: boolean;
@@ -56,8 +58,8 @@ export function AdminShellSidebar({
   communicationsSection,
   communicationsMenuExpanded,
   onToggleCommunicationsMenu,
-  guardiansSection, guardiansMenuExpanded, onToggleGuardiansMenu, onSelectGuardiansSection,
-  sportsSection, sportsMenuExpanded, tournamentsMenuExpanded, onToggleTournamentsMenu, onToggleSportsMenu, onSelectSportsSection, studentsSection, studentsMenuExpanded, onToggleStudentsMenu,
+  coachesSection, coachesMenuExpanded, canManageCoaches, onToggleCoachesMenu, onSelectCoachesSection, guardiansSection, guardiansMenuExpanded, onToggleGuardiansMenu, onSelectGuardiansSection,
+  tournamentsMenuExpanded, onToggleTournamentsMenu, studentsSection, studentsMenuExpanded, onToggleStudentsMenu,
   canReviewCommunicationCalls,
   canProgramBilling,
   showBillingSubsections,
@@ -119,9 +121,9 @@ export function AdminShellSidebar({
       </div>
       <nav className={`mt-6 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto ${sidebarExpanded ? "pr-1" : "pr-0"}`}>
         {sidebarExpanded && <p className="px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">{shellTone.menuTitle}</p>}
-        <SidebarTabButtons tabs={sidebarTabs.slice(0, businessScope === "academy" ? 11 : 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} communicationsSection={communicationsSection} communicationsMenuExpanded={communicationsMenuExpanded} onToggleCommunicationsMenu={onToggleCommunicationsMenu} guardiansSection={guardiansSection} guardiansMenuExpanded={guardiansMenuExpanded} onToggleGuardiansMenu={onToggleGuardiansMenu} onSelectGuardiansSection={onSelectGuardiansSection} studentsSection={studentsSection} sportsSection={sportsSection} sportsMenuExpanded={sportsMenuExpanded} tournamentsMenuExpanded={tournamentsMenuExpanded} onToggleTournamentsMenu={onToggleTournamentsMenu} onToggleSportsMenu={onToggleSportsMenu} onSelectSportsSection={onSelectSportsSection} studentsMenuExpanded={studentsMenuExpanded} onToggleStudentsMenu={onToggleStudentsMenu} canReviewCommunicationCalls={canReviewCommunicationCalls} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectCommunicationsSection={onSelectCommunicationsSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
+        <SidebarTabButtons tabs={sidebarTabs.slice(0, businessScope === "academy" ? 11 : 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} communicationsSection={communicationsSection} communicationsMenuExpanded={communicationsMenuExpanded} onToggleCommunicationsMenu={onToggleCommunicationsMenu} coachesSection={coachesSection} coachesMenuExpanded={coachesMenuExpanded} canManageCoaches={canManageCoaches} onToggleCoachesMenu={onToggleCoachesMenu} onSelectCoachesSection={onSelectCoachesSection} guardiansSection={guardiansSection} guardiansMenuExpanded={guardiansMenuExpanded} onToggleGuardiansMenu={onToggleGuardiansMenu} onSelectGuardiansSection={onSelectGuardiansSection} studentsSection={studentsSection} tournamentsMenuExpanded={tournamentsMenuExpanded} onToggleTournamentsMenu={onToggleTournamentsMenu} studentsMenuExpanded={studentsMenuExpanded} onToggleStudentsMenu={onToggleStudentsMenu} canReviewCommunicationCalls={canReviewCommunicationCalls} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectCommunicationsSection={onSelectCommunicationsSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
         {sidebarExpanded ? <p className="mt-5 px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">General</p> : <div className="my-3 h-px bg-zinc-200" />}
-        <SidebarTabButtons tabs={sidebarTabs.slice(businessScope === "academy" ? 11 : 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} communicationsSection={communicationsSection} communicationsMenuExpanded={communicationsMenuExpanded} onToggleCommunicationsMenu={onToggleCommunicationsMenu} guardiansSection={guardiansSection} guardiansMenuExpanded={guardiansMenuExpanded} onToggleGuardiansMenu={onToggleGuardiansMenu} onSelectGuardiansSection={onSelectGuardiansSection} studentsSection={studentsSection} sportsSection={sportsSection} sportsMenuExpanded={sportsMenuExpanded} tournamentsMenuExpanded={tournamentsMenuExpanded} onToggleTournamentsMenu={onToggleTournamentsMenu} onToggleSportsMenu={onToggleSportsMenu} onSelectSportsSection={onSelectSportsSection} studentsMenuExpanded={studentsMenuExpanded} onToggleStudentsMenu={onToggleStudentsMenu} canReviewCommunicationCalls={canReviewCommunicationCalls} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectCommunicationsSection={onSelectCommunicationsSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
+        <SidebarTabButtons tabs={sidebarTabs.slice(businessScope === "academy" ? 11 : 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} communicationsSection={communicationsSection} communicationsMenuExpanded={communicationsMenuExpanded} onToggleCommunicationsMenu={onToggleCommunicationsMenu} coachesSection={coachesSection} coachesMenuExpanded={coachesMenuExpanded} canManageCoaches={canManageCoaches} onToggleCoachesMenu={onToggleCoachesMenu} onSelectCoachesSection={onSelectCoachesSection} guardiansSection={guardiansSection} guardiansMenuExpanded={guardiansMenuExpanded} onToggleGuardiansMenu={onToggleGuardiansMenu} onSelectGuardiansSection={onSelectGuardiansSection} studentsSection={studentsSection} tournamentsMenuExpanded={tournamentsMenuExpanded} onToggleTournamentsMenu={onToggleTournamentsMenu} studentsMenuExpanded={studentsMenuExpanded} onToggleStudentsMenu={onToggleStudentsMenu} canReviewCommunicationCalls={canReviewCommunicationCalls} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectCommunicationsSection={onSelectCommunicationsSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
       </nav>
       <div className={`mt-3 shrink-0 ${sidebarExpanded ? "grid gap-2" : "grid gap-2"}`}>
         {sidebarExpanded ? (
@@ -157,17 +159,18 @@ type SidebarTabButtonsProps = {
   communicationsSection: CommunicationsSubsection;
   communicationsMenuExpanded: boolean;
   onToggleCommunicationsMenu: () => void;
+  coachesSection: CoachesSection;
+  coachesMenuExpanded: boolean;
+  canManageCoaches: boolean;
+  onToggleCoachesMenu: () => void;
+  onSelectCoachesSection: (section: CoachesSection) => void;
   guardiansSection: GuardiansSubsection;
   guardiansMenuExpanded: boolean;
   onToggleGuardiansMenu: () => void;
   onSelectGuardiansSection: (section: GuardiansSubsection) => void;
   studentsSection: StudentsSubsection;
-  sportsSection: SportsSubsection;
-  sportsMenuExpanded: boolean;
   tournamentsMenuExpanded: boolean;
   onToggleTournamentsMenu: () => void;
-  onToggleSportsMenu: () => void;
-  onSelectSportsSection: (section: SportsSubsection) => void;
   studentsMenuExpanded: boolean;
   onToggleStudentsMenu: () => void;
   canReviewCommunicationCalls: boolean;
@@ -182,7 +185,7 @@ type SidebarTabButtonsProps = {
   onSelectTournamentSection: (section: TournamentSection) => void;
 };
 
-function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingSection, communicationsSection, communicationsMenuExpanded, onToggleCommunicationsMenu, guardiansSection, guardiansMenuExpanded, onToggleGuardiansMenu, onSelectGuardiansSection, sportsSection, sportsMenuExpanded, tournamentsMenuExpanded, onToggleTournamentsMenu, onToggleSportsMenu, onSelectSportsSection, studentsSection, studentsMenuExpanded, onToggleStudentsMenu, canReviewCommunicationCalls, canProgramBilling, showBillingSubsections, tournamentSection, shellTone, onSelectTab, onSelectBillingSection, onSelectCommunicationsSection, onSelectStudentsSection, onSelectTournamentSection }: SidebarTabButtonsProps) {
+function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingSection, communicationsSection, communicationsMenuExpanded, onToggleCommunicationsMenu, coachesSection, coachesMenuExpanded, canManageCoaches, onToggleCoachesMenu, onSelectCoachesSection, guardiansSection, guardiansMenuExpanded, onToggleGuardiansMenu, onSelectGuardiansSection, tournamentsMenuExpanded, onToggleTournamentsMenu, studentsSection, studentsMenuExpanded, onToggleStudentsMenu, canReviewCommunicationCalls, canProgramBilling, showBillingSubsections, tournamentSection, shellTone, onSelectTab, onSelectBillingSection, onSelectCommunicationsSection, onSelectStudentsSection, onSelectTournamentSection }: SidebarTabButtonsProps) {
   return (
     <>
       {tabs.map((tab) => (
@@ -192,24 +195,23 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
           className={`relative flex w-full items-center rounded-md py-2.5 text-sm font-medium transition ${sidebarExpanded ? "gap-3 px-3 text-left" : "justify-center px-0"} ${
             effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
           }`}
-          onClick={() => tab.key === "sports" ? onToggleSportsMenu() : tab.key === "guardians" ? onToggleGuardiansMenu() : tab.key === "communications" ? onToggleCommunicationsMenu() : tab.key === "tournaments" ? onToggleTournamentsMenu() : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onToggleStudentsMenu() : onSelectTab(tab.key)}
+          onClick={() => tab.key === "coaches" ? onToggleCoachesMenu() : tab.key === "guardians" ? onToggleGuardiansMenu() : tab.key === "communications" ? onToggleCommunicationsMenu() : tab.key === "tournaments" ? onToggleTournamentsMenu() : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onToggleStudentsMenu() : onSelectTab(tab.key)}
           type="button"
-          aria-expanded={tab.key === "tournaments" ? sidebarExpanded && effectiveActiveTab === "tournaments" && tournamentsMenuExpanded : tab.key === "sports" ? sidebarExpanded && effectiveActiveTab === "sports" && sportsMenuExpanded : tab.key === "students" ? sidebarExpanded && effectiveActiveTab === "students" && studentsMenuExpanded : tab.key === "guardians" ? sidebarExpanded && effectiveActiveTab === "guardians" && guardiansMenuExpanded : tab.key === "communications" ? sidebarExpanded && effectiveActiveTab === "communications" && communicationsMenuExpanded : undefined}
-          aria-controls={tab.key === "tournaments" ? "tournaments-sidebar-submenu" : tab.key === "sports" ? "sports-sidebar-submenu" : tab.key === "students" ? "students-sidebar-submenu" : tab.key === "guardians" ? "guardians-sidebar-submenu" : tab.key === "communications" ? "communications-sidebar-submenu" : undefined}
-          title={tab.key === "tournaments" ? (sidebarExpanded && effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "Contraer Torneos" : "Desplegar Torneos") : tab.key === "sports" ? (sidebarExpanded && effectiveActiveTab === "sports" && sportsMenuExpanded ? "Contraer Deportivo" : "Desplegar Deportivo") : tab.key === "students" ? (sidebarExpanded && effectiveActiveTab === "students" && studentsMenuExpanded ? "Contraer Alumnos" : "Desplegar Alumnos") : tab.key === "guardians" ? (sidebarExpanded && effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "Contraer Papás y tutores" : "Desplegar Papás y tutores") : tab.key === "communications" ? (sidebarExpanded && effectiveActiveTab === "communications" && communicationsMenuExpanded ? "Contraer Comunicaciones" : "Desplegar Comunicaciones") : tab.label}
+          aria-expanded={tab.key === "coaches" ? sidebarExpanded && effectiveActiveTab === "coaches" && coachesMenuExpanded : tab.key === "tournaments" ? sidebarExpanded && effectiveActiveTab === "tournaments" && tournamentsMenuExpanded : tab.key === "students" ? sidebarExpanded && effectiveActiveTab === "students" && studentsMenuExpanded : tab.key === "guardians" ? sidebarExpanded && effectiveActiveTab === "guardians" && guardiansMenuExpanded : tab.key === "communications" ? sidebarExpanded && effectiveActiveTab === "communications" && communicationsMenuExpanded : undefined}
+          aria-controls={tab.key === "coaches" ? "coaches-sidebar-submenu" : tab.key === "tournaments" ? "tournaments-sidebar-submenu" : tab.key === "students" ? "students-sidebar-submenu" : tab.key === "guardians" ? "guardians-sidebar-submenu" : tab.key === "communications" ? "communications-sidebar-submenu" : undefined}
+          title={tab.key === "coaches" ? (sidebarExpanded && effectiveActiveTab === "coaches" && coachesMenuExpanded ? "Contraer Coaches" : "Desplegar Coaches") : tab.key === "tournaments" ? (sidebarExpanded && effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "Contraer Torneos" : "Desplegar Torneos") : tab.key === "students" ? (sidebarExpanded && effectiveActiveTab === "students" && studentsMenuExpanded ? "Contraer Alumnos" : "Desplegar Alumnos") : tab.key === "guardians" ? (sidebarExpanded && effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "Contraer Papás y tutores" : "Desplegar Papás y tutores") : tab.key === "communications" ? (sidebarExpanded && effectiveActiveTab === "communications" && communicationsMenuExpanded ? "Contraer Comunicaciones" : "Desplegar Comunicaciones") : tab.label}
         >
           {effectiveActiveTab === tab.key && <span className={`absolute h-7 w-1 rounded-r-full ${sidebarExpanded ? "-left-4" : "-left-3"} ${shellTone.indicatorClass}`} />}
           <span className="grid size-5 shrink-0 place-items-center">{tab.icon}</span>
           {sidebarExpanded && <span className="truncate">{tab.label}</span>}
+          {sidebarExpanded && tab.key === "coaches" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "coaches" && coachesMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "communications" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "communications" && communicationsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
 {sidebarExpanded && tab.key === "guardians" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "students" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "students" && studentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
-          {sidebarExpanded && tab.key === "sports" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "sports" && sportsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "tournaments" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
         </button>
-        {tab.key === "sports" && <div id="sports-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "sports" || !sportsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
-          <StudentsSubButton active={sportsSection === "exams"} label="Examen mensual" onClick={() => onSelectSportsSection("exams")} />
-          <StudentsSubButton active={sportsSection === "matches"} label="Marcadores y posiciones" onClick={() => onSelectSportsSection("matches")} />
+        {tab.key === "coaches" && <div id="coaches-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "coaches" || !coachesMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
+          {coachSections.filter(item => item.key !== "create" || canManageCoaches).map(item => <StudentsSubButton key={item.key} active={coachesSection === item.key} label={item.label} onClick={() => onSelectCoachesSection(item.key)} />)}
         </div></div>}
         {tab.key === "guardians" && <div id="guardians-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "guardians" || !guardiansMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           <StudentsSubButton active={guardiansSection !== "create"} label="Gestionar tutores" onClick={() => onSelectGuardiansSection("registered")} />

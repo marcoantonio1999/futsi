@@ -156,16 +156,12 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
   }
 
   if (tab === "sports") {
-    const [sites, students, tournaments, teams, matches, standings, studentAssessments] = await Promise.all([
+    const [sites, students, studentAssessments] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<Student[]>("/students/", authToken),
-      apiRequest<Tournament[]>("/tournaments/", authToken),
-      apiRequest<Team[]>("/teams/", authToken),
-      apiRequest<Match[]>("/matches/", authToken),
-      apiRequest<StandingRow[]>("/matches/standings/", authToken),
       apiRequest<StudentAssessment[]>("/student-assessments/", authToken),
     ]);
-    return { sites, students, tournaments, teams, matches, standings, studentAssessments };
+    return { sites, students, studentAssessments };
   }
 
   if (tab === "tournaments") {
@@ -204,23 +200,15 @@ export async function loadSectionData(authToken: string, user: User, tab: TabKey
   }
 
   if (tab === "coaches") {
-    const [sites, users, students, expenses, staffPaymentRequests, cashMovements, coachWorkLogs, charges, payments, discounts, tournaments, teams, players, matches] = await Promise.all([
+    const [sites, users, students, staffPaymentRequests, coachWorkLogs, expenses] = await Promise.all([
       apiRequest<Site[]>("/sites/", authToken),
       apiRequest<User[]>("/users/", authToken),
       apiRequest<Student[]>("/students/", authToken),
+      apiRequest<StaffPaymentRequest[]>("/staff-payment-requests/", authToken),
+      apiRequest<CoachWorkLog[]>("/coach-work-logs/", authToken),
       apiRequest<Expense[]>("/expenses/", authToken),
-      optionalApi<StaffPaymentRequest[]>("/staff-payment-requests/", authToken, []),
-      optionalApi<CashMovement[]>("/cash-movements/", authToken, []),
-      apiRequest<CoachWorkLog[]>("/coach-work-logs/", authToken).catch(() => []),
-      apiRequest<Charge[]>("/charges/", authToken),
-      apiRequest<Payment[]>("/payments/", authToken),
-      apiRequest<Discount[]>("/discounts/", authToken),
-      apiRequest<Tournament[]>("/tournaments/", authToken),
-      apiRequest<Team[]>("/teams/", authToken),
-      apiRequest<Player[]>("/players/", authToken),
-      apiRequest<Match[]>("/matches/", authToken),
     ]);
-    return { sites, users, students, expenses, staffPaymentRequests, cashMovements, coachWorkLogs, charges, payments, discounts, tournaments, teams, players, matches };
+    return { sites, users, students, staffPaymentRequests, coachWorkLogs, expenses };
   }
 
   if (tab === "expenses" || tab === "income-statement" || tab === "daily-operation" || tab === "sales-estimate" || tab === "referees") {

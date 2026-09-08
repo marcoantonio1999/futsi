@@ -353,7 +353,7 @@ export function AssessmentForm({ students, assessments, onSaveAssessment }: { st
 
   return (
     <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
-      <h2 className="font-semibold">Examen mensual del alumno</h2>
+      <h2 className="font-semibold">Evaluación mensual del alumno</h2>
       <p className="mt-1 text-sm text-zinc-500">El coach actualiza estos stats cada mes; se reflejan de inmediato en el dashboard.</p>
       <SelectInput className="mt-4" label="Alumno" value={studentId} onChange={(event) => setStudentId(event.target.value)}>
         {students.map((student) => <option key={student.id} value={student.id}>{student.full_name}</option>)}

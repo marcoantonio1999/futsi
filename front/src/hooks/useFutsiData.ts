@@ -394,7 +394,7 @@ export function useFutsiData() {
 
   async function saveStudentAssessment(payload: unknown) {
     await createAndReturn<StudentAssessment>("/student-assessments/", payload);
-    setMessage("Examen mensual guardado correctamente.");
+    setMessage("Evaluación mensual guardada correctamente.");
   }
 
   async function markAdultPlayer(payload: unknown) {

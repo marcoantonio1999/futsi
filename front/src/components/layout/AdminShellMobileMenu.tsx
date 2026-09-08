@@ -1,8 +1,9 @@
+import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
 import { ChevronDown, LogOut, X } from "lucide-react";
 import type { TabKey } from "../../types";
 import type { TournamentSection } from "../../features/tournaments";
-import type { BillingSubsection, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection, GuardiansSubsection, SportsSubsection } from "./adminShellModel";
+import type { BillingSubsection, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection, GuardiansSubsection } from "./adminShellModel";
 
 type AdminShellMobileMenuProps = {
   isOpen: boolean;
@@ -12,17 +13,18 @@ type AdminShellMobileMenuProps = {
   communicationsSection: CommunicationsSubsection;
   communicationsMenuExpanded: boolean;
   onToggleCommunicationsMenu: () => void;
+  coachesSection: CoachesSection;
+  coachesMenuExpanded: boolean;
+  canManageCoaches: boolean;
+  onToggleCoachesMenu: () => void;
+  onSelectCoachesSection: (section: CoachesSection) => void;
   guardiansSection: GuardiansSubsection;
   guardiansMenuExpanded: boolean;
   onToggleGuardiansMenu: () => void;
   onSelectGuardiansSection: (section: GuardiansSubsection) => void;
   studentsSection: StudentsSubsection;
-  sportsSection: SportsSubsection;
-  sportsMenuExpanded: boolean;
   tournamentsMenuExpanded: boolean;
   onToggleTournamentsMenu: () => void;
-  onToggleSportsMenu: () => void;
-  onSelectSportsSection: (section: SportsSubsection) => void;
   studentsMenuExpanded: boolean;
   onToggleStudentsMenu: () => void;
   canReviewCommunicationCalls: boolean;
@@ -47,8 +49,8 @@ export function AdminShellMobileMenu({
   communicationsSection,
   communicationsMenuExpanded,
   onToggleCommunicationsMenu,
-  guardiansSection, guardiansMenuExpanded, onToggleGuardiansMenu, onSelectGuardiansSection,
-  sportsSection, sportsMenuExpanded, tournamentsMenuExpanded, onToggleTournamentsMenu, onToggleSportsMenu, onSelectSportsSection, studentsSection, studentsMenuExpanded, onToggleStudentsMenu,
+  coachesSection, coachesMenuExpanded, canManageCoaches, onToggleCoachesMenu, onSelectCoachesSection, guardiansSection, guardiansMenuExpanded, onToggleGuardiansMenu, onSelectGuardiansSection,
+  tournamentsMenuExpanded, onToggleTournamentsMenu, studentsSection, studentsMenuExpanded, onToggleStudentsMenu,
   canReviewCommunicationCalls,
   canProgramBilling,
   showBillingSubsections,
@@ -88,25 +90,24 @@ export function AdminShellMobileMenu({
             <div key={tab.key}>
               <button
                 data-testid={`menu-tab-${tab.key}`}
-                aria-expanded={tab.key === "tournaments" ? effectiveActiveTab === "tournaments" && tournamentsMenuExpanded : tab.key === "sports" ? effectiveActiveTab === "sports" && sportsMenuExpanded : tab.key === "students" ? effectiveActiveTab === "students" && studentsMenuExpanded : tab.key === "guardians" ? effectiveActiveTab === "guardians" && guardiansMenuExpanded : tab.key === "communications" ? effectiveActiveTab === "communications" && communicationsMenuExpanded : undefined}
-                aria-controls={tab.key === "tournaments" ? "tournaments-mobile-submenu" : tab.key === "sports" ? "sports-mobile-submenu" : tab.key === "students" ? "students-mobile-submenu" : tab.key === "guardians" ? "guardians-mobile-submenu" : tab.key === "communications" ? "communications-mobile-submenu" : undefined}
+                aria-expanded={tab.key === "coaches" ? effectiveActiveTab === "coaches" && coachesMenuExpanded : tab.key === "tournaments" ? effectiveActiveTab === "tournaments" && tournamentsMenuExpanded : tab.key === "students" ? effectiveActiveTab === "students" && studentsMenuExpanded : tab.key === "guardians" ? effectiveActiveTab === "guardians" && guardiansMenuExpanded : tab.key === "communications" ? effectiveActiveTab === "communications" && communicationsMenuExpanded : undefined}
+                aria-controls={tab.key === "coaches" ? "coaches-mobile-submenu" : tab.key === "tournaments" ? "tournaments-mobile-submenu" : tab.key === "students" ? "students-mobile-submenu" : tab.key === "guardians" ? "guardians-mobile-submenu" : tab.key === "communications" ? "communications-mobile-submenu" : undefined}
                 className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
                   effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
                 }`}
-                onClick={() => tab.key === "sports" ? onToggleSportsMenu() : tab.key === "guardians" ? onToggleGuardiansMenu() : tab.key === "communications" ? onToggleCommunicationsMenu() : tab.key === "tournaments" ? onToggleTournamentsMenu() : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onToggleStudentsMenu() : onSelectTab(tab.key)}
+                onClick={() => tab.key === "coaches" ? onToggleCoachesMenu() : tab.key === "guardians" ? onToggleGuardiansMenu() : tab.key === "communications" ? onToggleCommunicationsMenu() : tab.key === "tournaments" ? onToggleTournamentsMenu() : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onToggleStudentsMenu() : onSelectTab(tab.key)}
                 type="button"
               >
                 {tab.icon}
                 <span>{tab.label}</span>
-                {tab.key === "communications" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "communications" && communicationsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
+                {tab.key === "coaches" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "coaches" && coachesMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
+          {tab.key === "communications" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "communications" && communicationsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
 {tab.key === "guardians" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {tab.key === "students" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "students" && studentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
-          {tab.key === "sports" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "sports" && sportsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {tab.key === "tournaments" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
               </button>
-        {tab.key === "sports" && <div id="sports-mobile-submenu" hidden={effectiveActiveTab !== "sports" || !sportsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
-          <StudentsMobileSubButton active={sportsSection === "exams"} label="Examen mensual" onClick={() => onSelectSportsSection("exams")} />
-          <StudentsMobileSubButton active={sportsSection === "matches"} label="Marcadores y posiciones" onClick={() => onSelectSportsSection("matches")} />
+        {tab.key === "coaches" && <div id="coaches-mobile-submenu" hidden={effectiveActiveTab !== "coaches" || !coachesMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
+          {coachSections.filter(item => item.key !== "create" || canManageCoaches).map(item => <StudentsMobileSubButton key={item.key} active={coachesSection === item.key} label={item.label} onClick={() => onSelectCoachesSection(item.key)} />)}
         </div></div>}
         {tab.key === "guardians" && <div id="guardians-mobile-submenu" hidden={effectiveActiveTab !== "guardians" || !guardiansMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           <StudentsMobileSubButton active={guardiansSection !== "create"} label="Gestionar tutores" onClick={() => onSelectGuardiansSection("registered")} />
