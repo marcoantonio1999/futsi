@@ -2,10 +2,11 @@ from datetime import date, datetime, timedelta
 from statistics import median
 
 from django.db import models, transaction
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
@@ -329,31 +330,48 @@ class WhatsAppConversationViewSet(
     permission_classes = [CanManageTrialDashboard]
     http_method_names = ["get", "post", "patch", "head", "options"]
 
+    def visible_conversations(self):
+        # Use the explicitly linked channel before a legacy conversation default.
+        profile = WhatsAppAutomationSettings.objects.filter(business_address=models.OuterRef("to_address"))
+        queryset = self.queryset.all().annotate(
+            channel_site_id=Coalesce(models.Subquery(profile.values("site_id")[:1]), models.F("site_id"), output_field=models.BigIntegerField()),
+            channel_site_name=Coalesce(models.Subquery(profile.values("site__name")[:1]), models.F("site__name")),
+        )
+        user = self.request.user
+        if user.role not in ADMIN_ROLES:
+            if user.role != "site_coordinator" or not user.primary_site_id:
+                return queryset.none()
+            queryset = queryset.filter(channel_site_id=user.primary_site_id)
+        return queryset
+
     def get_queryset(self):
-        queryset = super().get_queryset()
-        business_address = configured_business_address()
-        if business_address and queryset.filter(to_address=business_address).exists():
-            queryset = queryset.filter(to_address=business_address)
-        else:
+        queryset = self.visible_conversations()
+        selected = self.request.query_params.get("business_address", "").strip()
+        if selected:
+            import re
+            if not re.fullmatch(r"whatsapp:\+[1-9][0-9]{7,14}", selected):
+                raise ValidationError({"business_address": "Número de WhatsApp inválido."})
+            queryset = queryset.filter(to_address=selected)
+        elif self.request.query_params.get("scope") != "all" and not self.request.query_params.get("site"):
+            business_address = configured_business_address()
             # The standalone WhatsApp service writes to the shared database, while
             # this API may run without provider credentials. In that deployment
             # shape, select the inbox that most recently received activity instead
             # of presenting an empty dashboard.
-            business_address = (
-                queryset.filter(to_address__startswith="whatsapp:+")
-                .order_by("-last_message_at", "-created_at")
-                .values_list("to_address", flat=True)
-                .first()
-            )
-        if not business_address:
-            return queryset.none()
-        queryset = queryset.filter(to_address=business_address)
+            if not business_address or not queryset.filter(to_address=business_address).exists():
+                business_address = queryset.filter(to_address__startswith="whatsapp:+").values_list("to_address", flat=True).first()
+            queryset = queryset.filter(to_address=business_address) if business_address else queryset.none()
         site = self.request.query_params.get("site")
         status_value = self.request.query_params.get("status")
         booking = self.request.query_params.get("booking")
         search = self.request.query_params.get("search", "").strip()
         if site:
-            queryset = queryset.filter(site_id=site)
+            if site == "unassigned":
+                queryset = queryset.filter(channel_site_id__isnull=True)
+            elif site.isdigit():
+                queryset = queryset.filter(channel_site_id=int(site))
+            else:
+                raise ValidationError({"site": "Sede inválida."})
         if status_value:
             queryset = queryset.filter(status=status_value)
         if booking:
@@ -365,6 +383,39 @@ class WhatsAppConversationViewSet(
                 | models.Q(booking__child_first_name__icontains=search)
             )
         return queryset
+
+    @action(detail=False, methods=["get"])
+    def channels(self, request):
+        rows = self.visible_conversations().order_by().values("to_address", "channel_site_id", "channel_site_name").distinct()
+        records = {}
+        for row in rows:
+            address = row["to_address"]
+            if address.startswith("whatsapp:+"):
+                records.setdefault(address, {"business_address": address, "site": row["channel_site_id"], "site_name": row["channel_site_name"] or ""})
+                if records[address]["site"] != row["channel_site_id"]:
+                    records[address].update(site=None, site_name="")
+        profiles = WhatsAppAutomationSettings.objects.select_related("site")
+        if request.user.role not in ADMIN_ROLES:
+            profiles = profiles.filter(site_id=request.user.primary_site_id) if request.user.primary_site_id else profiles.none()
+        for profile in profiles:
+            if profile.site_id or profile.business_address not in records:
+                records[profile.business_address] = {"business_address": profile.business_address, "site": profile.site_id, "site_name": profile.site.name if profile.site_id else ""}
+        return Response(sorted(records.values(), key=lambda row: (row["site_name"], row["business_address"])))
+
+    @action(detail=False, methods=["get"], url_path="templates")
+    def templates(self, request):
+        from .template_catalog import catalog_for_channel
+        address = request.query_params.get("business_address", "").strip()
+        after = request.query_params.get("after", "")
+        if not address or len(after) > 2048:
+            return Response({"detail": "Selecciona un número válido."}, status=400)
+        allowed = {row["business_address"] for row in self.channels(request).data}
+        if address not in allowed:
+            return Response({"detail": "Canal no disponible para este usuario."}, status=404)
+        try:
+            return Response(catalog_for_channel(address, after))
+        except MetaWhatsAppError as exc:
+            return Response({"detail": str(exc)}, status=503)
 
     def perform_update(self, serializer):
         conversation = serializer.instance
@@ -418,11 +469,13 @@ class WhatsAppConversationViewSet(
                 table_name=WhatsAppConversation._meta.db_table, record_id=str(locked.pk),
                 previous_values={"attention_resolution": previous}, new_values={"attention_resolution": resolution},
             )
-        return Response(self.get_serializer(locked).data)
+        return Response(self.get_serializer(self.get_queryset().get(pk=locked.pk)).data)
 
     @action(detail=True, methods=["post"], url_path="send-message")
     def send_message(self, request, pk=None):
         conversation = self.get_object()
+        if not configured_business_address() or conversation.to_address != configured_business_address():
+            return Response({"detail": "El envío de este número no está conectado a este servicio. Responde desde su WhatsApp Business; no se enviará desde otra sede."}, status=409)
         input_serializer = WhatsAppSendMessageSerializer(data=request.data)
         input_serializer.is_valid(raise_exception=True)
         body = input_serializer.validated_data["body"]

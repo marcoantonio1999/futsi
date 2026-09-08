@@ -299,6 +299,19 @@ class WhatsAppSendMessageSerializer(serializers.Serializer):
 
 
 class WhatsAppConversationSerializer(serializers.ModelSerializer):
+    business_address = serializers.CharField(source="to_address", read_only=True)
+    channel_site = serializers.SerializerMethodField()
+    channel_site_name = serializers.CharField(read_only=True, allow_null=True)
+    manual_send_available = serializers.SerializerMethodField()
+
+    def get_channel_site(self, instance):
+        return getattr(instance, "channel_site_id", instance.site_id)
+
+    def get_manual_send_available(self, instance):
+        from core.whatsapp.meta_api import configured_business_address
+        address = configured_business_address()
+        return bool(address and address == instance.to_address)
+
     attention_resolution = serializers.SerializerMethodField()
     kind = serializers.SerializerMethodField()
     contact_name = serializers.SerializerMethodField()
@@ -403,7 +416,8 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         if not conversation or not request:
             return assignee
         if assignee.role == "site_coordinator":
-            if not conversation.site_id or assignee.primary_site_id != conversation.site_id:
+            site_id = getattr(conversation, "channel_site_id", conversation.site_id)
+            if not site_id or assignee.primary_site_id != site_id:
                 raise serializers.ValidationError(
                     "El coordinador asignado debe pertenecer a la sede de la conversación."
                 )
@@ -423,6 +437,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = WhatsAppConversation
         fields = [
+            "business_address", "channel_site", "channel_site_name", "manual_send_available",
             "id",
             "kind",
             "contact_name",

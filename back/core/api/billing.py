@@ -20,7 +20,9 @@ class ChargeViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOperationsCashierOrGuardianRole]
 
     def get_permissions(self):
-        if self.action == "send_whatsapp_reminder":
+        if self.action == "communications":
+            return [IsOperationsRole()]
+        if self.action in {"send_whatsapp_reminder", "manual_whatsapp"}:
             return [IsOperationsRole()]
         if self.action == "generate_scheduled":
             return [IsOperationsCashierOrGuardianRole()]
@@ -30,6 +32,8 @@ class ChargeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.request.user.role == "site_coordinator":
+            queryset = queryset.filter(site_id=self.request.user.primary_site_id) if self.request.user.primary_site_id else queryset.none()
         if self.request.user.role == "guardian":
             queryset = queryset.filter(student__guardian__user=self.request.user)
         if self.request.user.role == "adult_representative":
@@ -45,6 +49,23 @@ class ChargeViewSet(viewsets.ModelViewSet):
         if student:
             queryset = queryset.filter(student_id=student)
         return queryset.distinct()
+
+    @action(detail=False, methods=["get"], url_path="communications")
+    def communications(self, request):
+        from .debt_communications import collection_report
+        return Response(collection_report(self.get_queryset(), request.query_params))
+
+    @action(detail=True, methods=["post"], url_path="manual-whatsapp")
+    def manual_whatsapp(self, request, pk=None):
+        from .manual_collection import preview, send
+        charge = self.get_object()
+        if request.data.get("action") not in ("preview", "send"):
+            return Response({"detail": "Selecciona vista previa o envío."}, status=400)
+        try:
+            handler = send if request.data["action"] == "send" else preview
+            return Response(handler(charge, request.user, request.data))
+        except MetaWhatsAppError as exc:
+            return Response({"detail": str(exc)}, status=503)
 
     @action(detail=False, methods=["post"], url_path="generate-scheduled")
     def generate_scheduled(self, request):
