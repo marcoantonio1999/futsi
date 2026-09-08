@@ -1,4 +1,23 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+
+// One shared scale keeps the posts, six-yard box, penalty spot and D aligned.
+// IFAB Law 1: https://www.theifab.com/laws/latest/the-field-of-play/
+const UNIT = 4.25 / 7.32;
+export const PITCH = {
+  groundY: -0.74, goalZ: -6.2, width: 68 * UNIT, length: 105 * UNIT,
+  goalWidth: 7.32 * UNIT, goalHeight: 2.44 * UNIT, lineWidth: 0.10 * UNIT,
+  goalAreaWidth: 18.32 * UNIT, goalAreaDepth: 5.5 * UNIT,
+  penaltyAreaWidth: 40.32 * UNIT, penaltyAreaDepth: 16.5 * UNIT,
+  penaltyDistance: 11 * UNIT, circleRadius: 9.15 * UNIT, cornerRadius: UNIT,
+} as const;
+
+function merged(parts: THREE.BufferGeometry[]) {
+  const geometry = mergeGeometries(parts)!;
+  parts.forEach(part => part.dispose());
+  return geometry;
+}
+
 
 export function easeInOut(value: number) {
   return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
@@ -52,10 +71,10 @@ export function createGrassTexture() {
     ctx.fillRect(0, y, canvas.width, 64);
   }
 
-  for (let index = 0; index < 4200; index += 1) {
+  for (let index = 0; index < 18000; index += 1) {
     const x = Math.random() * canvas.width;
     const y = Math.random() * canvas.height;
-    const length = 5 + Math.random() * 14;
+    const length = 1 + Math.random() * 3;
     const alpha = 0.08 + Math.random() * 0.14;
     ctx.strokeStyle = Math.random() > 0.5 ? `rgba(209, 250, 229, ${alpha})` : `rgba(6, 78, 59, ${alpha})`;
     ctx.lineWidth = 1;
@@ -69,7 +88,7 @@ export function createGrassTexture() {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(4, 4);
+  texture.repeat.set(1, 1);
   return texture;
 }
 
@@ -78,8 +97,8 @@ export function createSoccerBall() {
   const group = new THREE.Group();
   const ballTexture = createBallTexture();
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 96, 96),
-    new THREE.MeshStandardMaterial({ color: "#ffffff", map: ballTexture ?? undefined, roughness: 0.34 }),
+    new THREE.SphereGeometry(radius, 40, 28),
+    new THREE.MeshStandardMaterial({ color: "#ffffff", map: ballTexture, roughness: 0.34 }),
   );
   sphere.castShadow = true;
   group.add(sphere);
@@ -93,167 +112,201 @@ export function createSoccerBall() {
     [phi, 0, 1], [-phi, 0, 1], [phi, 0, -1], [-phi, 0, -1],
   ];
   const defaultNormal = new THREE.Vector3(0, 0, 1);
+  const patches = new THREE.InstancedMesh(pentagonGeometry, pentagonMaterial, normals.length);
+  const transform = new THREE.Object3D();
   normals.forEach(([x, y, z], index) => {
     const normal = new THREE.Vector3(x, y, z).normalize();
-    const patch = new THREE.Mesh(pentagonGeometry, pentagonMaterial);
-    patch.position.copy(normal.clone().multiplyScalar(radius + 0.006));
-    patch.quaternion.setFromUnitVectors(defaultNormal, normal);
-    patch.rotateZ(index * 0.31);
-    patch.castShadow = true;
-    group.add(patch);
+    transform.position.copy(normal).multiplyScalar(radius + 0.006);
+    transform.quaternion.setFromUnitVectors(defaultNormal, normal);
+    transform.rotateZ(index * 0.31);
+    transform.updateMatrix();
+    patches.setMatrixAt(index, transform.matrix);
   });
+  patches.castShadow = true;
+  patches.instanceMatrix.needsUpdate = true;
+  group.add(patches);
 
   group.userData.ballTexture = ballTexture;
   return group;
 }
 
-function makePost(width: number, height: number, depth: number, position: THREE.Vector3) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
-    new THREE.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.42 }),
-  );
-  mesh.position.copy(position);
-  mesh.castShadow = true;
-  return mesh;
-}
-
 export function createGoal() {
   const group = new THREE.Group();
-  const postWidth = 0.08;
-  const goalWidth = 4.25;
-  const goalHeight = 2.15;
-  const goalDepth = 1.2;
-
-  group.add(makePost(postWidth, goalHeight, postWidth, new THREE.Vector3(-goalWidth / 2, goalHeight / 2, 0)));
-  group.add(makePost(postWidth, goalHeight, postWidth, new THREE.Vector3(goalWidth / 2, goalHeight / 2, 0)));
-  group.add(makePost(goalWidth + postWidth, postWidth, postWidth, new THREE.Vector3(0, goalHeight, 0)));
-  group.add(makePost(postWidth, postWidth, goalDepth, new THREE.Vector3(-goalWidth / 2, 0.08, -goalDepth / 2)));
-  group.add(makePost(postWidth, postWidth, goalDepth, new THREE.Vector3(goalWidth / 2, 0.08, -goalDepth / 2)));
-
-  const netMaterial = new THREE.LineBasicMaterial({ color: "#dbeafe", transparent: true, opacity: 0.5 });
-  const linePoints: number[] = [];
-  const addLine = (from: THREE.Vector3, to: THREE.Vector3) => {
-    linePoints.push(from.x, from.y, from.z, to.x, to.y, to.z);
+  const width = PITCH.goalWidth, height = PITCH.goalHeight, depth = 1.2;
+  const post = PITCH.lineWidth;
+  const parts: THREE.BufferGeometry[] = [];
+  const bar = (a: THREE.Vector3, b: THREE.Vector3, radius = post / 2) => {
+    const direction = b.clone().sub(a);
+    const geometry = new THREE.CylinderGeometry(radius, radius, direction.length(), 10);
+    geometry.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize()));
+    geometry.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    parts.push(geometry);
   };
-
-  for (let x = -goalWidth / 2; x <= goalWidth / 2 + 0.01; x += 0.35) {
-    addLine(new THREE.Vector3(x, 0.08, -goalDepth), new THREE.Vector3(x, goalHeight, -goalDepth));
-    addLine(new THREE.Vector3(x, goalHeight, 0), new THREE.Vector3(x, goalHeight, -goalDepth));
+  for (const side of [-1, 1]) {
+    const x = side * (width / 2 + post / 2);
+    bar(new THREE.Vector3(x, 0, 0), new THREE.Vector3(x, height, 0));
+    bar(new THREE.Vector3(x, post / 2, 0), new THREE.Vector3(x, post / 2, -depth));
+    bar(new THREE.Vector3(x, 0, -depth), new THREE.Vector3(x, height, -depth * 0.40), post / 3);
+    bar(new THREE.Vector3(x, height, 0), new THREE.Vector3(x, height, -depth * 0.40), post / 3);
   }
-  for (let y = 0.25; y <= goalHeight + 0.01; y += 0.28) {
-    addLine(new THREE.Vector3(-goalWidth / 2, y, -goalDepth), new THREE.Vector3(goalWidth / 2, y, -goalDepth));
-    addLine(new THREE.Vector3(-goalWidth / 2, y, 0), new THREE.Vector3(-goalWidth / 2, y, -goalDepth));
-    addLine(new THREE.Vector3(goalWidth / 2, y, 0), new THREE.Vector3(goalWidth / 2, y, -goalDepth));
-  }
+  bar(new THREE.Vector3(-width / 2 - post, height + post / 2, 0), new THREE.Vector3(width / 2 + post, height + post / 2, 0));
+  bar(new THREE.Vector3(-width / 2, post / 2, -depth), new THREE.Vector3(width / 2, post / 2, -depth), post / 3);
+  const frame = new THREE.Mesh(merged(parts), new THREE.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.45 }));
+  frame.castShadow = true;
+  group.add(frame);
 
-  const netGeometry = new THREE.BufferGeometry();
-  netGeometry.setAttribute("position", new THREE.Float32BufferAttribute(linePoints, 3));
-  group.add(new THREE.LineSegments(netGeometry, netMaterial));
-  group.position.set(0, -0.72, -6.2);
+  // Back, roof and both sides of the net share one draw call.
+  const points: number[] = [];
+  const line = (x: number, y: number, z: number, xx: number, yy: number, zz: number) => points.push(x, y, z, xx, yy, zz);
+  const columns = 30, rows = 12, depthSteps = 8;
+  for (let column = 0; column <= columns; column++) {
+    const x = -width / 2 + width * column / columns;
+    line(x, 0, -depth, x, height, -depth * 0.4);
+    line(x, height, 0, x, height, -depth * 0.4);
+  }
+  for (let row = 0; row <= rows; row++) {
+    const y = height * row / rows, z = -depth + depth * 0.6 * row / rows;
+    line(-width / 2, y, z, width / 2, y, z);
+    for (const side of [-1, 1]) line(side * width / 2, y, 0, side * width / 2, y, z);
+  }
+  for (let step = 0; step <= depthSteps; step++) {
+    const t = step / depthSteps;
+    line(-width / 2, height, -depth * 0.4 * t, width / 2, height, -depth * 0.4 * t);
+    for (const side of [-1, 1]) line(side * width / 2, 0, -depth * t, side * width / 2, height, -depth * 0.4 * t);
+  }
+  const net = new THREE.BufferGeometry();
+  net.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+  group.add(new THREE.LineSegments(net, new THREE.LineBasicMaterial({ color: "#d5e6dc", transparent: true, opacity: 0.38 })));
+  group.position.set(0, PITCH.groundY, PITCH.goalZ);
   return group;
 }
 
 export function createStands() {
   const group = new THREE.Group();
-  const standWidth = 16;
-  const rows = 8;
-  const seatsPerRow = 38;
-  const structureMaterial = new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.68 });
-  const seatMaterials = [
-    new THREE.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.52 }),
-    new THREE.MeshStandardMaterial({ color: "#10b981", roughness: 0.56 }),
-    new THREE.MeshStandardMaterial({ color: "#38bdf8", roughness: 0.56 }),
-    new THREE.MeshStandardMaterial({ color: "#94a3b8", roughness: 0.56 }),
-  ];
-
-  const base = new THREE.Mesh(new THREE.BoxGeometry(standWidth, 0.24, 1.9), structureMaterial);
-  base.position.set(0, -0.36, -8.1);
-  base.castShadow = true;
-  base.receiveShadow = true;
-  group.add(base);
-
-  for (let row = 0; row < rows; row += 1) {
-    const rowWidth = standWidth - row * 0.28;
-    const platform = new THREE.Mesh(new THREE.BoxGeometry(rowWidth, 0.12, 0.24), structureMaterial);
-    platform.position.set(0, -0.18 + row * 0.21, -7.32 - row * 0.2);
-    platform.castShadow = true;
-    platform.receiveShadow = true;
-    group.add(platform);
-
-    for (let seat = 0; seat < seatsPerRow; seat += 1) {
-      const material = seatMaterials[(seat + row) % seatMaterials.length];
-      const chair = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.1, 0.13), material);
-      const seatSpacing = rowWidth / seatsPerRow;
-      chair.position.set(-rowWidth / 2 + seatSpacing * (seat + 0.5), -0.07 + row * 0.21, -7.18 - row * 0.2);
-      chair.castShadow = true;
-      group.add(chair);
+  group.name = "stadium-stands";
+  const rows = 9, blocks = 4, seatsPerBlock = 11;
+  const seatSpacing = 0.34, aisleWidth = 0.72;
+  const blockWidth = seatsPerBlock * seatSpacing;
+  const width = blocks * blockWidth + (blocks - 1) * aisleWidth;
+  const frontZ = -8.65, tread = 0.40, rise = 0.22;
+  // A seat has a cushion and an angled back, but all 396 seats are ONE mesh.
+  const seatGeometry = merged([
+    new THREE.BoxGeometry(0.27, 0.055, 0.25).translate(0, 0.12, 0),
+    new THREE.BoxGeometry(0.27, 0.26, 0.045).rotateX(-0.12).translate(0, 0.25, -0.11),
+  ]);
+  const seats = new THREE.InstancedMesh(seatGeometry, new THREE.MeshStandardMaterial({ roughness: 0.82 }), rows * blocks * seatsPerBlock);
+  const transform = new THREE.Object3D();
+  const palette = ["#176e53", "#edf0dc", "#258264", "#9ab9a6"];
+  let seatIndex = 0;
+  const boxes: { x: number; y: number; z: number; w: number; h: number; d: number; color: string }[] = [];
+  const box = (x: number, y: number, z: number, w: number, h: number, d: number, color: string) => boxes.push({x, y, z, w, h, d, color});
+  const railPoints: number[] = [];
+  const rail = (x: number, y: number, z: number, xx: number, yy: number, zz: number) => railPoints.push(x, y, z, xx, yy, zz);
+  for (let row = 0; row < rows; row++) {
+    const top = PITCH.groundY + 0.28 + row * rise, z = frontZ - row * tread;
+    const h = top - PITCH.groundY;
+    box(0, PITCH.groundY + h / 2, z, width + 0.6, h, tread, row % 2 ? "#40554d" : "#4b6056");
+    for (let block = 0; block < blocks; block++) {
+      for (let seat = 0; seat < seatsPerBlock; seat++) {
+        transform.position.set(-width / 2 + block * (blockWidth + aisleWidth) + (seat + 0.5) * seatSpacing, top, z);
+        transform.rotation.set(0, 0, 0);
+        transform.scale.set(1, 1, 1);
+        transform.updateMatrix();
+        seats.setMatrixAt(seatIndex, transform.matrix);
+        // Broad green/cream bands read as sections instead of multicolour noise.
+        seats.setColorAt(seatIndex++, new THREE.Color(palette[row === 3 || row === 7 ? 1 : block % 2 ? 2 : 0]));
+      }
+      if (block < blocks - 1) {
+        const x = -width / 2 + (block + 1) * blockWidth + block * aisleWidth + aisleWidth / 2;
+        box(x, top + 0.012, z + tread / 2 - 0.025, aisleWidth, 0.025, 0.045, "#b5bc83");
+        box(x, top + 0.055, z - 0.10, aisleWidth, 0.11, 0.20, "#637167");
+        if (row % 3 === 0) rail(x, top, z, x, top + 0.62, z);
+      }
     }
   }
-
-  const railMaterial = new THREE.MeshStandardMaterial({ color: "#cbd5e1", roughness: 0.36 });
-  const railTop = new THREE.Mesh(new THREE.BoxGeometry(standWidth + 0.3, 0.045, 0.045), railMaterial);
-  railTop.position.set(0, 1.58, -8.88);
-  group.add(railTop);
-  for (let post = 0; post <= 10; post += 1) {
-    const x = -standWidth / 2 + (standWidth / 10) * post;
-    const railPost = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.55, 0.04), railMaterial);
-    railPost.position.set(x, 0.82, -8.16);
-    group.add(railPost);
+  seats.instanceMatrix.needsUpdate = true;
+  seats.instanceColor!.needsUpdate = true;
+  group.add(seats);
+  const rearZ = frontZ - (rows - 1) * tread - 0.32;
+  const rearTop = PITCH.groundY + 0.28 + (rows - 1) * rise;
+  // Low front wall, rear rail, connected aisle handrails and a lightweight roof.
+  box(0, PITCH.groundY + 0.18, frontZ + 0.47, width + 0.8, 0.36, 0.16, "#183f30");
+  box(0, rearTop + 0.25, rearZ, width + 0.8, 0.50, 0.14, "#243f34");
+  const roofY = rearTop + 1.18;
+  box(0, roofY, frontZ - 1.7, width + 1.2, 0.10, 4.5, "#203e32");
+  box(0, roofY - 0.09, frontZ + 0.54, width + 1.2, 0.12, 0.08, "#9cb9a5");
+  for (let post = 0; post <= 4; post++) {
+    const x = -width / 2 + width * post / 4;
+    box(x, (roofY + PITCH.groundY) / 2, rearZ, 0.075, roofY - PITCH.groundY, 0.075, "#799386");
+    rail(x, rearTop + 0.5, rearZ, x, rearTop + 0.83, rearZ);
   }
-
-  group.position.set(0, -0.72, -0.62);
+  rail(-width / 2, rearTop + 0.83, rearZ, width / 2, rearTop + 0.83, rearZ);
+  for (let block = 0; block < blocks - 1; block++) {
+    const x = -width / 2 + (block + 1) * blockWidth + block * aisleWidth + aisleWidth / 2;
+    rail(x, PITCH.groundY + 0.9, frontZ, x, rearTop + 0.62, frontZ - (rows - 1) * tread);
+  }
+  const structure = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.95 }), boxes.length);
+  boxes.forEach((item, index) => {
+    transform.position.set(item.x, item.y, item.z);
+    transform.scale.set(item.w, item.h, item.d);
+    transform.updateMatrix();
+    structure.setMatrixAt(index, transform.matrix);
+    structure.setColorAt(index, new THREE.Color(item.color));
+  });
+  structure.instanceMatrix.needsUpdate = true;
+  structure.instanceColor!.needsUpdate = true;
+  group.add(structure);
+  const rails = new THREE.BufferGeometry();
+  rails.setAttribute("position", new THREE.Float32BufferAttribute(railPoints, 3));
+  group.add(new THREE.LineSegments(rails, new THREE.LineBasicMaterial({ color: "#a8bcae" })));
   return group;
 }
 
 export function createFieldLines() {
-  const material = new THREE.LineBasicMaterial({ color: "#ecfdf5", transparent: true, opacity: 0.72 });
-  const points: number[] = [];
-  const addLine = (from: THREE.Vector3, to: THREE.Vector3) => {
-    points.push(from.x, from.y, from.z, to.x, to.y, to.z);
+  const { goalZ, length, width, groundY, lineWidth } = PITCH;
+  const parts: THREE.BufferGeometry[] = [];
+  const y = groundY + 0.009;
+  const stroke = (x: number, z: number, xx: number, zz: number) => {
+    const dx = xx - x, dz = zz - z;
+    const plane = new THREE.PlaneGeometry(lineWidth, Math.hypot(dx, dz));
+    plane.rotateX(-Math.PI / 2);
+    plane.rotateY(Math.atan2(dx, dz));
+    plane.translate((x + xx) / 2, y, (z + zz) / 2);
+    parts.push(plane);
   };
-  const y = -0.715;
-  const goalLineZ = -6.2;
-  const nearLineZ = 3.2;
-  const sideX = 7.1;
-  const penaltyX = 3.25;
-  const penaltyFrontZ = -3.1;
-  const goalAreaX = 1.42;
-  const goalAreaFrontZ = -5.08;
-  const penaltySpotZ = -4.25;
-
-  const addArc = (centerX: number, centerZ: number, radius: number, startAngle: number, endAngle: number, segments = 36) => {
-    let previous = new THREE.Vector3(centerX + Math.cos(startAngle) * radius, y, centerZ + Math.sin(startAngle) * radius);
-    for (let index = 1; index <= segments; index += 1) {
-      const t = index / segments;
-      const angle = startAngle + (endAngle - startAngle) * t;
-      const current = new THREE.Vector3(centerX + Math.cos(angle) * radius, y, centerZ + Math.sin(angle) * radius);
-      addLine(previous, current);
-      previous = current;
+  const arc = (x: number, z: number, radius: number, start: number, end: number) => {
+    const geometry = new THREE.RingGeometry(radius - lineWidth / 2, radius + lineWidth / 2, 64, 1, start, end - start);
+    geometry.rotateX(-Math.PI / 2);
+    geometry.translate(x, y, z);
+    parts.push(geometry);
+  };
+  const spot = (z: number) => {
+    const geometry = new THREE.CircleGeometry(lineWidth * 1.1, 16);
+    geometry.rotateX(-Math.PI / 2); geometry.translate(0, y, z); parts.push(geometry);
+  };
+  stroke(-width / 2, goalZ, width / 2, goalZ);
+  stroke(-width / 2, goalZ + length, width / 2, goalZ + length);
+  for (const side of [-1, 1]) stroke(side * width / 2, goalZ, side * width / 2, goalZ + length);
+  const middle = goalZ + length / 2;
+  stroke(-width / 2, middle, width / 2, middle);
+  arc(0, middle, PITCH.circleRadius, 0, Math.PI * 2); spot(middle);
+  for (const end of [0, 1]) {
+    const baseline = goalZ + end * length, inward = end ? -1 : 1;
+    for (const [boxWidth, depth] of [[PITCH.goalAreaWidth, PITCH.goalAreaDepth], [PITCH.penaltyAreaWidth, PITCH.penaltyAreaDepth]]) {
+      const front = baseline + inward * depth;
+      for (const side of [-1, 1]) stroke(side * boxWidth / 2, baseline, side * boxWidth / 2, front);
+      stroke(-boxWidth / 2, front, boxWidth / 2, front);
     }
-  };
-
-  // Linea de fondo alineada con la porteria y limites laterales del campo visible.
-  addLine(new THREE.Vector3(-sideX, y, goalLineZ), new THREE.Vector3(sideX, y, goalLineZ));
-  addLine(new THREE.Vector3(-sideX, y, nearLineZ), new THREE.Vector3(sideX, y, nearLineZ));
-  addLine(new THREE.Vector3(-sideX, y, goalLineZ), new THREE.Vector3(-sideX, y, nearLineZ));
-  addLine(new THREE.Vector3(sideX, y, goalLineZ), new THREE.Vector3(sideX, y, nearLineZ));
-
-  // Area grande frente al arco.
-  addLine(new THREE.Vector3(-penaltyX, y, goalLineZ), new THREE.Vector3(-penaltyX, y, penaltyFrontZ));
-  addLine(new THREE.Vector3(penaltyX, y, goalLineZ), new THREE.Vector3(penaltyX, y, penaltyFrontZ));
-  addLine(new THREE.Vector3(-penaltyX, y, penaltyFrontZ), new THREE.Vector3(penaltyX, y, penaltyFrontZ));
-
-  // Area chica.
-  addLine(new THREE.Vector3(-goalAreaX, y, goalLineZ), new THREE.Vector3(-goalAreaX, y, goalAreaFrontZ));
-  addLine(new THREE.Vector3(goalAreaX, y, goalLineZ), new THREE.Vector3(goalAreaX, y, goalAreaFrontZ));
-  addLine(new THREE.Vector3(-goalAreaX, y, goalAreaFrontZ), new THREE.Vector3(goalAreaX, y, goalAreaFrontZ));
-
-  // Punto y arco de tiro libre/penal frente al area.
-  addArc(0, penaltySpotZ, 0.06, 0, Math.PI * 2, 20);
-  addArc(0, penaltySpotZ, 1.08, 0.38, Math.PI - 0.38, 32);
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
-  return new THREE.LineSegments(geometry, material);
+    const penaltyZ = baseline + inward * PITCH.penaltyDistance;
+    spot(penaltyZ);
+    // RingGeometry's positive angle points toward -Z after rotation.
+    const angle = Math.asin((PITCH.penaltyAreaDepth - PITCH.penaltyDistance) / PITCH.circleRadius);
+    const start = end ? angle : Math.PI + angle;
+    arc(0, penaltyZ, PITCH.circleRadius, start, start + Math.PI - 2 * angle);
+    arc(-width / 2, baseline, PITCH.cornerRadius, end ? 0 : Math.PI * 1.5, end ? Math.PI / 2 : Math.PI * 2);
+    arc(width / 2, baseline, PITCH.cornerRadius, end ? Math.PI / 2 : Math.PI, end ? Math.PI : Math.PI * 1.5);
+  }
+  const mesh = new THREE.Mesh(merged(parts), new THREE.MeshBasicMaterial({ color: "#e0ead6", toneMapped: false }));
+  mesh.name = "pitch-markings";
+  return mesh;
 }
-

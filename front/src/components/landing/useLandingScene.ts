@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 import * as THREE from "three";
-import { createFieldLines, createGoal, createGrassTexture, createSoccerBall, createStands, easeInOut } from "./FutsiLandingSceneObjects";
+import { createFieldLines, createGoal, createGrassTexture, createSoccerBall, createStands, easeInOut, PITCH } from "./FutsiLandingSceneObjects";
 export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
   const [sceneReady, setSceneReady] = useState(false);
 
@@ -10,11 +10,11 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#082f22");
-    scene.fog = new THREE.Fog("#082f22", 12, 28);
+    scene.fog = new THREE.Fog("#082f22", 18, 42);
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80);
-    camera.position.set(0, 1.45, 5.9);
-    camera.lookAt(0, 0.45, -4.2);
+    camera.position.set(0, 4.5, 12);
+    camera.lookAt(0, -0.2, -2);
 
     let renderer: THREE.WebGLRenderer;
     try {
@@ -27,7 +27,7 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.domElement.dataset.testid = "landing-three-canvas";
     renderer.domElement.style.display = "block";
     renderer.domElement.style.height = "100%";
@@ -54,11 +54,12 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
 
     const grassTexture = createGrassTexture();
     const field = new THREE.Mesh(
-      new THREE.PlaneGeometry(18, 18, 1, 1),
+      new THREE.PlaneGeometry(PITCH.width + 8, PITCH.length + 12, 1, 1),
       new THREE.MeshStandardMaterial({ color: "#047857", map: grassTexture ?? undefined, roughness: 0.78, metalness: 0.02 }),
     );
     field.rotation.x = -Math.PI / 2;
-    field.position.y = -0.74;
+    field.position.set(0, PITCH.groundY, PITCH.goalZ + PITCH.length / 2);
+    if (grassTexture) grassTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     field.receiveShadow = true;
     scene.add(field);
     scene.add(createFieldLines());
@@ -78,7 +79,10 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
     shadow.position.y = -0.715;
     scene.add(shadow);
 
-    const clock = new THREE.Clock();
+    let previousFrame = 0;
+    let elapsed = 0;
+    let inView = true;
+    let running = false;
     const pointerTarget = new THREE.Vector2(0, 0);
     const pointerCurrent = new THREE.Vector2(0, 0);
     let frameId = 0;
@@ -92,9 +96,9 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
       compactScene = width < 760;
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
-      camera.position.z = compactScene ? 6.7 : 5.9;
+      camera.position.z = compactScene ? 13.2 : 12;
       camera.position.x = compactScene ? 0.18 : 0;
-      camera.lookAt(0, 0.45, -4.2);
+      camera.lookAt(0, -0.2, -2);
       camera.updateProjectionMatrix();
     };
 
@@ -119,33 +123,37 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
     window.addEventListener("pointerleave", handlePointerLeave);
 
     const animate = () => {
-      const elapsed = clock.getElapsedTime();
+      const now = performance.now();
+      const delta = Math.min((now - previousFrame) / 1000, 0.05);
+      previousFrame = now;
+      elapsed += delta;
       const cycle = (elapsed % 7.2) / 7.2;
       const shotStartX = compactScene ? 1.08 : 1.85;
+      const shotStartZ = compactScene ? 5.6 : 5.2;
 
       if (cycle < 0.24) {
         const idle = cycle / 0.24;
-        ball.position.set(shotStartX + Math.sin(elapsed * 1.7) * 0.1, -0.2 + Math.sin(idle * Math.PI) * 0.34, 1.95);
+        ball.position.set(shotStartX + Math.sin(elapsed * 1.7) * 0.1, -0.2 + Math.sin(idle * Math.PI) * 0.34, shotStartZ);
       } else if (cycle < 0.79) {
         const shot = easeInOut((cycle - 0.24) / 0.55);
         const arc = Math.sin(shot * Math.PI) * 1.55;
         ball.position.set(
           THREE.MathUtils.lerp(shotStartX, 0.18, shot),
-          THREE.MathUtils.lerp(-0.15, 0.35, shot) + arc,
-          THREE.MathUtils.lerp(1.95, -6.85, shot),
+          THREE.MathUtils.lerp(-0.15, 0.22, shot) + arc,
+          THREE.MathUtils.lerp(shotStartZ, -6.85, shot),
         );
       } else {
         const settle = (cycle - 0.79) / 0.21;
         ball.position.set(0.18 + Math.sin(settle * Math.PI * 4) * 0.05, -0.22 + Math.sin(settle * Math.PI * 3) * 0.07, -6.85);
       }
 
-      pointerCurrent.lerp(pointerTarget, pointerActive ? 0.22 : 0.06);
+      pointerCurrent.lerp(pointerTarget, 1 - Math.pow(pointerActive ? 0.78 : 0.94, delta * 60));
       const lateralInfluence = cycle < 0.24 ? 0.85 : cycle < 0.79 ? 1.15 : 0.75;
       const lateralRange = compactScene ? 1.15 : 1.85;
       ball.position.x += pointerCurrent.x * lateralRange * lateralInfluence;
 
-      ball.rotation.x -= 0.045;
-      ball.rotation.y += 0.028;
+      ball.rotation.x -= 2.7 * delta;
+      ball.rotation.y += 1.68 * delta;
       shadow.position.x = ball.position.x;
       shadow.position.z = ball.position.z;
       const heightFactor = THREE.MathUtils.clamp((ball.position.y + 0.45) / 2.6, 0, 1);
@@ -157,11 +165,27 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
       frameId = window.requestAnimationFrame(animate);
     };
 
-    animate();
+    // Keep the same shot cycle, but spend no frames on an off-screen stadium.
+    const syncPlayback = () => {
+      const shouldRun = inView && !document.hidden;
+      if (shouldRun === running) return;
+      running = shouldRun;
+      if (running) { previousFrame = performance.now(); animate(); }
+      else { window.cancelAnimationFrame(frameId); }
+    };
+    const visibilityObserver = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting;
+      syncPlayback();
+    });
+    visibilityObserver.observe(mount);
+    document.addEventListener("visibilitychange", syncPlayback);
+    syncPlayback();
 
     return () => {
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
+      visibilityObserver.disconnect();
+      document.removeEventListener("visibilitychange", syncPlayback);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerleave", handlePointerLeave);
       renderer.dispose();
@@ -169,6 +193,7 @@ export function useLandingScene(mountRef: RefObject<HTMLDivElement | null>) {
       (ball.userData.ballTexture as THREE.Texture | undefined)?.dispose();
       scene.traverse((object: THREE.Object3D) => {
         if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments)) return;
+        if (object instanceof THREE.InstancedMesh) object.dispose();
         object.geometry.dispose();
         const material = object.material;
         if (Array.isArray(material)) material.forEach((item) => item.dispose());
