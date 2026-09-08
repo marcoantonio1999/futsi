@@ -81,3 +81,7 @@
   .comm-inbox:not(.has-selection){height:calc(100dvh - 422px);min-height:400px}
   .communications:has(.comm-inbox.has-selection)>.comm-section-map{display:none}
 }
+.comm-scope { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:16px; margin-bottom:16px; }
+.comm-scope label { display:grid; gap:6px; font-size:13px; font-weight:600; }
+.comm-scope p { grid-column:1/-1; font-size:12px; color:var(--comm-muted,#71717a); margin:0; }
+@media(max-width:640px) { .comm-scope { grid-template-columns:1fr; } }

@@ -5,12 +5,13 @@ import type { WhatsAppConversation, WhatsAppWeeklyStats } from "../../types";
 import { compareConversations, contactName, conversationAttention, durationLabel, mondayKey, shiftWeek } from "./communicationUtils";
 import { formatDateTime, inputClass, secondaryButtonClass } from "./model";
 
-export function WhatsAppWeeklyStatsPanel({ value, token, conversations, onOpenConversation }: {
+export function WhatsAppWeeklyStatsPanel({ value, token, conversations, onOpenConversation, scopeQuery = "scope=all" }: {
   conversations: WhatsAppConversation[]; value: WhatsAppWeeklyStats | null; token: string; onOpenConversation: (id: number) => void;
+  scopeQuery?: string;
 }) {
   const currentWeek = value?.week_start ?? mondayKey();
   const [week, setWeek] = useState(currentWeek);
-  const [result, setResult] = useState<{ week: string; value: WhatsAppWeeklyStats; previous: WhatsAppWeeklyStats | null } | null>(null);
+  const [result, setResult] = useState<{ week: string; scope: string; value: WhatsAppWeeklyStats; previous: WhatsAppWeeklyStats | null } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -19,15 +20,16 @@ export function WhatsAppWeeklyStatsPanel({ value, token, conversations, onOpenCo
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError(""); setComparisonError(false);
-    const fetchWeek = (key: string) => apiRequest<WhatsAppWeeklyStats>(`/whatsapp-conversations/weekly-stats/?week_start=${key}`, token, { signal: controller.signal });
+    const fetchWeek = (key: string) => apiRequest<WhatsAppWeeklyStats>(`/whatsapp-conversations/weekly-stats/?week_start=${key}&${scopeQuery}`, token, { signal: controller.signal });
     Promise.all([fetchWeek(week), week < currentWeek ? fetchWeek(shiftWeek(week, -1)).catch(err => { if (!controller.signal.aborted) setComparisonError(true); return null; }) : Promise.resolve(null)])
-      .then(([next, previous]) => { if (!controller.signal.aborted) setResult({ week, value: next, previous }); })
+      .then(([next, previous]) => { if (!controller.signal.aborted) setResult({ week, scope: scopeQuery, value: next, previous }); })
       .catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "No se pudieron consultar las estadísticas."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [week, token, currentWeek, retry]);
-  const stats = result?.week === week ? result.value : week === currentWeek ? value : null;
-  const previous = result?.week === week ? result.previous : null;
+  }, [week, token, currentWeek, retry, scopeQuery]);
+  const currentResult = result?.week === week && result.scope === scopeQuery ? result : null;
+  const stats = currentResult ? currentResult.value : week === currentWeek ? value : null;
+  const previous = currentResult?.previous ?? null;
   const isCurrent = week === currentWeek;
   const summary = stats?.summary;
   const delta = summary?.average_response_seconds != null && previous?.summary.average_response_seconds != null ? summary.average_response_seconds - previous.summary.average_response_seconds : null;

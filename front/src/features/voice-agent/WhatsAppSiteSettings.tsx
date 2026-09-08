@@ -5,11 +5,17 @@ import { WhatsAppAutomationSettingsPanel } from "./WhatsAppAutomationSettingsPan
 import { inputClass, secondaryButtonClass } from "./model";
 
 const endpoint = "/whatsapp-automation-settings/";
-export function WhatsAppSiteSettings({ token, sites, initial }: {
+export function WhatsAppSiteSettings({ token, sites, initial, selectedAddress, onAddressChange, onDirtyChange, onBusyChange, onChannelSaved }: {
   token: string; sites: Site[]; initial: WhatsAppAutomationSettings | null;
+  selectedAddress?: string;
+  onAddressChange?: (address: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onChannelSaved?: (channel: WhatsAppAutomationSettings) => void;
 }) {
   const [options, setOptions] = useState<WhatsAppAutomationSettings[]>([]);
-  const [address, setAddress] = useState(initial?.business_address ?? "");
+  const [localAddress, setAddress] = useState(initial?.business_address ?? "");
+  const address = selectedAddress === undefined ? localAddress : selectedAddress === "all" ? "" : selectedAddress;
   const [value, setValue] = useState<WhatsAppAutomationSettings | null>(null);
   const [phone, setPhone] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -17,6 +23,8 @@ export function WhatsAppSiteSettings({ token, sites, initial }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
+  useEffect(() => { onBusyChange?.(saving); return () => onBusyChange?.(false); }, [saving, onBusyChange]);
   useEffect(() => {
     const controller = new AbortController();
     apiRequest<WhatsAppAutomationSettings[]>(endpoint, token, { signal: controller.signal })
@@ -25,7 +33,7 @@ export function WhatsAppSiteSettings({ token, sites, initial }: {
     return () => controller.abort();
   }, [token, retry]);
   useEffect(() => {
-    if (!address) return;
+    if (!address) { setValue(null); setLoading(false); return; }
     const controller = new AbortController();
     setLoading(true); setValue(null); setError("");
     apiRequest<WhatsAppAutomationSettings>(endpoint + "current/?business_address=" + encodeURIComponent(address), token, { signal: controller.signal })
@@ -36,20 +44,21 @@ export function WhatsAppSiteSettings({ token, sites, initial }: {
   }, [address, token, retry]);
   function select(next: string) {
     if (saving || next === address) return;
-    if (dirty && !window.confirm("Hay cambios sin guardar. ¿Quieres descartarlos y cambiar de número?")) return;
-    setDirty(false); setAddress(next);
+    if (!onAddressChange && dirty && !window.confirm("Hay cambios sin guardar. ¿Quieres descartarlos y cambiar de número?")) return;
+    if (onAddressChange) onAddressChange(next);
+    else { setDirty(false); setAddress(next); }
   }
   return <div className="grid gap-4">
     <section className="comm-panel">
       <header className="comm-section-heading"><div><h3>Configuración por sede y número</h3><p>Selecciona el canal que quieres editar. No cambia la configuración de los demás.</p></div></header>
       <div className="comm-stats-body grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-1 text-sm font-semibold">Número / sede
+        {selectedAddress === undefined ? <label className="grid gap-1 text-sm font-semibold">Número / sede
           <select className={inputClass} value={address} disabled={saving} onChange={e => select(e.target.value)}>
             {!address && <option value="">Selecciona un número</option>}
             {address && !options.some(item => item.business_address === address) && <option value={address}>{address} · Nuevo</option>}
             {options.map(item => <option key={item.business_address} value={item.business_address}>{item.site_name || "Sin sede vinculada"} · {item.business_address.replace("whatsapp:", "")}</option>)}
           </select>
-        </label>
+        </label> : <p>{address ? `Editando ${address.replace("whatsapp:", "")}` : "Selecciona un número en el filtro superior para editar sus ajustes. No se aplican cambios masivos a todas las sedes."}</p>}
         <div className="grid gap-2"><label className="grid gap-1 text-sm font-semibold">Configurar otro número
           <input className={inputClass} type="tel" placeholder="+52..." value={phone} onChange={e => setPhone(e.target.value)} />
         </label><button type="button" className={secondaryButtonClass} disabled={saving || !/^\+[1-9]\d{7,14}$/.test(phone.trim())} onClick={() => select("whatsapp:" + phone.trim())}>Preparar configuración</button></div>
@@ -63,6 +72,8 @@ export function WhatsAppSiteSettings({ token, sites, initial }: {
         const next = await apiRequest<WhatsAppAutomationSettings>(endpoint + "current/?business_address=" + encodeURIComponent(address), token, { method: "PATCH", body: JSON.stringify(payload) });
         setValue(next); setDirty(false);
         setOptions(rows => [...rows.filter(item => item.business_address !== next.business_address), next]);
+        onDirtyChange?.(false);
+        onChannelSaved?.(next);
         return true;
       } finally { setSaving(false); }
     }} /></div>}

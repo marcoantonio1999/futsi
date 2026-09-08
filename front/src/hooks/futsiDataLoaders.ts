@@ -82,10 +82,10 @@ async function loadCommunicationsData(authToken: string, user: User): Promise<Ap
     canManageTrials ? optionalRestrictedApi<Court[]>("/courts/", authToken, []) : Promise.resolve<Court[]>([]),
     canManageTrials ? optionalRestrictedApi<TrialBooking[]>("/trial-bookings/", authToken, []) : Promise.resolve<TrialBooking[]>([]),
     canReviewCalls ? optionalRestrictedApi<VoiceCall[]>("/voice-calls/", authToken, []) : Promise.resolve<VoiceCall[]>([]),
-    canManageTrials ? optionalRestrictedApi<WhatsAppConversation[]>("/whatsapp-conversations/", authToken, []) : Promise.resolve<WhatsAppConversation[]>([]),
+    canManageTrials ? optionalRestrictedApi<WhatsAppConversation[]>("/whatsapp-conversations/?scope=all", authToken, []) : Promise.resolve<WhatsAppConversation[]>([]),
     canReviewCalls ? optionalRestrictedApi<WhatsAppAutomationSettings | null>("/whatsapp-automation-settings/current/", authToken, null) : Promise.resolve<WhatsAppAutomationSettings | null>(null),
     canManageTrials ? optionalRestrictedApi<WhatsAppFollowUpAssignee[]>("/whatsapp-conversations/assignees/", authToken, []) : Promise.resolve<WhatsAppFollowUpAssignee[]>([]),
-    canReviewCalls ? optionalRestrictedApi<WhatsAppWeeklyStats | null>("/whatsapp-conversations/weekly-stats/", authToken, null) : Promise.resolve<WhatsAppWeeklyStats | null>(null),
+    canReviewCalls ? optionalRestrictedApi<WhatsAppWeeklyStats | null>("/whatsapp-conversations/weekly-stats/?scope=all", authToken, null) : Promise.resolve<WhatsAppWeeklyStats | null>(null),
     canManageTrials ? optionalRestrictedApi<TrialAvailabilityRule[]>("/trial-availability-rules/", authToken, []) : Promise.resolve<TrialAvailabilityRule[]>([]),
   ]);
   return { sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, whatsappWeeklyStats, trialAvailabilityRules };

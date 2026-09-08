@@ -232,6 +232,10 @@ export type WhatsAppFollowUpAssignee = {
 };
 
 export type WhatsAppConversation = {
+  business_address?: string;
+  channel_site?: number | null;
+  channel_site_name?: string | null;
+  manual_send_available?: boolean;
   attention_resolution?: { message_id: number; resolved_at: string } | null;
   id: number;
   kind: "menu" | "faq" | "trial_booking" | "payment_reminder" | string;

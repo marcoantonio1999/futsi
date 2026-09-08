@@ -182,12 +182,7 @@ export function buildDebtRows(data: AppData, today: Date): DebtRow[] {
 }
 
 export function defaultOutreach(debt: DebtRow, today: Date): OutreachState {
-  if ((debt.risk === "critico" || debt.risk === "alto") && debt.overdueDays >= 4) {
-    return { sentAt: formatDate(addDays(today, -4)), seenAt: null, calledAt: null };
-  }
-  if (debt.risk === "medio" && debt.overdueDays >= 1) {
-    return { sentAt: formatDate(addDays(today, -1)), seenAt: null, calledAt: null };
-  }
+  // Aging alone is not evidence of a message, a read receipt, or a call.
   return { sentAt: null, seenAt: null, calledAt: null };
 }
 

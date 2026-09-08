@@ -170,6 +170,7 @@ function ActivePanel(props: AdminShellContentProps) {
       )}
       {effectiveActiveTab === "communications" && (
         <VoiceDashboardPanel
+          onOpenDebts={() => props.onNavigateDashboard("debts")}
           token={token}
           onSelectSection={props.onSelectCommunicationsSection}
           user={user}
@@ -216,7 +217,7 @@ function ActivePanel(props: AdminShellContentProps) {
       {effectiveActiveTab === "sales-estimate" && <SalesEstimationPanel data={scopedData} />}
       {effectiveActiveTab === "income-statement" && <IncomeStatementPanel data={scopedData} />}
       {effectiveActiveTab === "daily-operation" && <DailyOperationPanel data={scopedData} />}
-      {effectiveActiveTab === "debts" && <DebtsPanel data={scopedData} token={token} />}
+      {effectiveActiveTab === "debts" && <DebtsPanel data={scopedData} token={token} onOpenCommunications={() => props.onSelectCommunicationsSection("collections")} />}
       {effectiveActiveTab === "attendance" && (
         <AttendanceContent
           token={token}

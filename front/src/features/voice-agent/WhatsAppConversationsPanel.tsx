@@ -74,7 +74,7 @@ function ConversationDetail({ conversation: c, assignees, body, onBody, onBack, 
   const history = useRef<HTMLDivElement>(null);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer); }, []);
   useEffect(() => { if (history.current) history.current.scrollTop = history.current.scrollHeight; }, [c.id, c.messages.length]);
-  const canReply = replyWindowOpen(c, now);
+  const canReply = replyWindowOpen(c, now) && c.manual_send_available !== false;
   const messages = orderedMessages(c);
   const latest = messages.filter(m => m.direction === "inbound" && m.event_type !== "revoked").at(-1);
   const attention = conversationAttention(c);
@@ -85,7 +85,7 @@ function ConversationDetail({ conversation: c, assignees, body, onBody, onBack, 
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!body.trim() || sending) return;
+    if (!body.trim() || sending || c.manual_send_available === false) return;
     if (!replyWindowOpen(c)) { setNow(Date.now()); setError("La ventana de respuesta acaba de cerrar. Tu borrador se conserva."); return; }
     setSending(true); setError(""); setSent(false);
     try { await onSend(body.trim()); onBody(""); setSent(true); } catch (err) { setError(err instanceof Error ? err.message : "No se pudo enviar. Tu borrador se conserva."); } finally { setSending(false); }
@@ -93,6 +93,7 @@ function ConversationDetail({ conversation: c, assignees, body, onBody, onBack, 
   return <div className="comm-chat">
     <header className="comm-chat-heading"><button className="comm-back" aria-label="Volver a la bandeja" onClick={onBack}><ArrowLeft size={20} /></button><span className="comm-avatar"><UserRound size={19} /></span><div className="comm-row-main"><h3>{contactName(c)}</h3><small>{c.contact_phone} · {c.site_name || "Sede por definir"}</small></div><button className={secondaryButtonClass} aria-expanded={editing} onClick={() => setEditing(!editing)}>Seguimiento</button></header>
     <div className="comm-chat-context">
+      <p className="comm-muted">Canal: {c.business_address?.replace("whatsapp:", "") || "Sin número identificado"} · {c.channel_site_name || c.site_name || "Sin sede vinculada"}</p>
       <div className={`comm-attention-strip attention-${attention.tone}`}><div className="comm-inline"><span className={`comm-badge ${attention.tone}`}>{attention.label}</span>{c.human_takeover_active && <strong className="comm-handling">Atención manual · Asistente pausado</strong>}</div><p>{attention.detail}</p>{c.follow_up_assigned_to_name && <small>Asignado a {c.follow_up_assigned_to_name}</small>}{attention.key === "needs_reply" && <button className="comm-resolve-button" disabled={resolving || sending} onClick={() => void resolveAttention()}>{resolving ? "Guardando…" : "No requiere respuesta"}</button>}{resolveError && <p role="alert" className="comm-error">{resolveError}</p>}</div>
       {editing && <FollowUpEditor assignees={assignees} conversation={c} onCancel={() => setEditing(false)} onSave={async payload => { await onSave(payload); setEditing(false); }} />}
       <details><summary>Datos del contacto y automatización</summary><dl className="comm-details"><div><dt>Estado del flujo</dt><dd>{statusLabels[c.status]}</dd></div><div><dt>Asistente</dt><dd>{c.human_takeover_active ? "Pausado por atención humana" : c.bot_response_pending ? "Respuesta pendiente" : "Sin pausa registrada"}</dd></div><div><dt>Clasificación del último mensaje</dt><dd>{({ prospect: "Prospecto", current_client: "Cliente actual", ambiguous: "Por confirmar", unclassified: "Sin clasificar" })[latest?.contact_type ?? "unclassified"]} {latest?.classification_confidence != null ? `· Confianza ${latest.classification_confidence}%` : ""}</dd></div><div><dt>Notas de seguimiento</dt><dd>{c.follow_up_notes || "Sin notas"}</dd></div>{c.failure_reason && <div><dt>Error registrado</dt><dd>{c.failure_reason}</dd></div>}{latest?.classification_evidence?.length ? <div><dt>Evidencia de clasificación</dt><dd>{latest.classification_evidence.join(" · ")}</dd></div> : null}</dl></details>
@@ -105,7 +106,7 @@ function ConversationDetail({ conversation: c, assignees, body, onBody, onBack, 
       {!c.messages.length && <div className="comm-empty"><MessageCircle size={28} /><p>Esta conversación aún no tiene mensajes registrados.</p></div>}
     </div>
     <form className="comm-composer" onSubmit={submit}>
-      {canReply ? <><label htmlFor={`reply-${c.id}`}>Responder a {contactName(c)}</label><textarea id={`reply-${c.id}`} className={inputClass} rows={2} maxLength={4096} value={body} disabled={sending} onChange={e => { onBody(e.target.value); setSent(false); }} placeholder="Escribe una respuesta…" /><div className="comm-composer-footer"><small>Al enviar, el asistente cede la atención al equipo.</small><button className={primaryButtonClass} disabled={sending || !body.trim()} type="submit"><Send size={16} />{sending ? "Enviando…" : "Enviar"}</button></div></> : <div className="comm-window-closed"><strong>Ventana de respuesta cerrada</strong><p>Para retomar el contacto, utiliza una plantilla aprobada desde WhatsApp Business o espera un nuevo mensaje del contacto.</p>{body && <p>Tu borrador se conserva en esta bandeja.</p>}</div>}
+      {canReply ? <><label htmlFor={`reply-${c.id}`}>Responder a {contactName(c)}</label><textarea id={`reply-${c.id}`} className={inputClass} rows={2} maxLength={4096} value={body} disabled={sending} onChange={e => { onBody(e.target.value); setSent(false); }} placeholder="Escribe una respuesta…" /><div className="comm-composer-footer"><small>Al enviar, el asistente cede la atención al equipo.</small><button className={primaryButtonClass} disabled={sending || !body.trim()} type="submit"><Send size={16} />{sending ? "Enviando…" : "Enviar"}</button></div></> : <div className="comm-window-closed"><strong>{c.manual_send_available === false ? "Envío de este número sin conectar" : "Ventana de respuesta cerrada"}</strong><p>{c.manual_send_available === false ? "Puedes consultar el historial y dar seguimiento. Responde desde el WhatsApp Business de esta sede hasta conectar su envío; no usaremos el número de otra cancha." : "Para retomar el contacto, utiliza una plantilla aprobada o espera un nuevo mensaje del contacto."}</p>{body && <p>Tu borrador se conserva en esta bandeja.</p>}</div>}
       {error && <p className="comm-error" role="alert">{error}</p>}{sent && <p className="comm-success" role="status">Mensaje enviado.</p>}
     </form>
   </div>;

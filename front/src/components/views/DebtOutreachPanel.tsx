@@ -51,6 +51,7 @@ export function DebtOutreachPanel({
           <p className="mt-1 text-sm text-zinc-500">
             Envía la plantilla aprobada de WhatsApp por adeudo. Si no se marca como visto en 3 días, el sistema recomienda llamada telefónica.
           </p>
+          <p className="mt-1 text-sm text-zinc-500">Envío manual, no automático. Las marcas de visto y llamada son anotaciones temporales de esta sesión, no confirmaciones de WhatsApp. Consulta el historial registrado en Comunicaciones.</p>
         </div>
         <span className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
           {pendingCalls.length} por llamar

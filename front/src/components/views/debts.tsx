@@ -185,12 +185,14 @@ function ReasonsDonut({ rows }: { rows: { label: string; value: number }[] }) {
 export function DebtsPanel({
   data,
   token,
+  onOpenCommunications,
 }: {
   data: AppData;
   token: string;
+  onOpenCommunications?: () => void;
 }) {
   const operationalMonth = currentOperationalMonth(data);
-  const today = parseDate(`${operationalMonth}-15`) || new Date();
+  const today = new Date();
   const debts = buildDebtRows(data, today);
   const overdue = debts.filter((debt) => debt.overdueDays > 0);
   const critical = debts.filter((debt) => debt.risk === "critico" || debt.risk === "alto");
@@ -219,11 +221,13 @@ export function DebtsPanel({
         <Metric label="Ingreso esperado del mes" value={`$${money(monthExpected)}`} helper={monthLabel(operationalMonth)} />
       </section>
 
-      <DebtOutreachPanel
-        debts={debts}
-        today={today}
-        token={token}
-      />
+      <section className="rounded-md border border-zinc-200 bg-white p-4">
+        <h2 className="font-semibold">Recordatorios ligados a estos adeudos</h2>
+        <p className="my-2 text-sm text-zinc-600">El seguimiento de WhatsApp de 7, 14 y 21 días se consulta en Comunicaciones → Cobranza por WhatsApp. Los pagos y saldos se administran aquí.</p>
+        {onOpenCommunications && <button className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white" onClick={onOpenCommunications}>Abrir cobranza en Comunicaciones →</button>}
+      </section>
+
+      <DebtOutreachPanel debts={debts} today={today} token={token} />
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[1.4fr_1fr]">
         <BurndownChart rows={burndown} month={operationalMonth} />

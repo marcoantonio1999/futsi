@@ -9,6 +9,7 @@ export const communicationGroups: Array<{
   { label: "Atención", icon: MessageCircle, items: [
     { key: "summary", label: "Resumen" },
     { key: "whatsapp", label: "Bandeja de WhatsApp", shortLabel: "WhatsApp" },
+    { key: "templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas" },
     { key: "calls", label: "Llamadas", admin: true },
   ] },
   { label: "Agenda", icon: CalendarDays, items: [
@@ -16,6 +17,7 @@ export const communicationGroups: Array<{
     { key: "availability", label: "Disponibilidad", shortLabel: "Horarios" },
   ] },
   { label: "Gestión", icon: Settings2, items: [
+    { key: "collections", label: "Cobranza por WhatsApp", shortLabel: "Cobranza" },
     { key: "weekly-stats", label: "Resultados", admin: true },
     { key: "settings", label: "Ajustes del asistente", shortLabel: "Ajustes" , admin: true },
   ] },
