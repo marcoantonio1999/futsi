@@ -1,156 +1,62 @@
-import { BarChart3, CheckCircle2, Clock3, MessageSquareWarning, UsersRound } from "lucide-react";
-import type { WhatsAppResponseStatsSummary, WhatsAppWeeklyStats } from "../../types";
-import { formatDateTime } from "./model";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Clock3 } from "lucide-react";
+import { apiRequest } from "../../api";
+import type { WhatsAppConversation, WhatsAppWeeklyStats } from "../../types";
+import { compareConversations, contactName, conversationAttention, durationLabel, mondayKey, shiftWeek } from "./communicationUtils";
+import { formatDateTime, inputClass, secondaryButtonClass } from "./model";
 
-const contactTypeLabels = {
-  prospect: "Prospectos nuevos",
-  current_client: "Clientes actuales",
-  ambiguous: "Casos ambiguos",
-  unclassified: "Sin clasificar",
-};
-
-function formatSeconds(value: number | null) {
-  if (value === null) return "Sin datos";
-  if (value < 60) return `${value} s`;
-  const hours = Math.floor(value / 3600);
-  const minutes = Math.round((value % 3600) / 60);
-  if (!hours) return `${minutes} min`;
-  return `${hours} h ${minutes} min`;
-}
-
-function formatWeekDate(value: string) {
-  const date = new Date(`${value}T12:00:00`);
-  return new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short" }).format(date);
-}
-
-export function WhatsAppWeeklyStatsPanel({ value }: { value: WhatsAppWeeklyStats | null }) {
-  if (!value) {
-    return (
-      <section className="rounded-md border border-dashed border-zinc-300 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-950">
-        <BarChart3 className="mx-auto text-zinc-400" size={32} />
-        <p className="mt-3 font-semibold text-zinc-900 dark:text-zinc-100">Las estadísticas todavía no están disponibles</p>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Se empezarán a acumular con los próximos mensajes clasificados.</p>
-      </section>
-    );
-  }
-
-  const summary = value.summary;
-  return (
-    <div className="grid min-w-0 gap-4">
-      <section className="flex flex-col gap-3 rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Semana actual</p>
-          <h3 className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-            {formatWeekDate(value.week_start)} al {formatWeekDate(value.week_end)}
-          </h3>
-        </div>
-        <p className="max-w-xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-          Los porcentajes usan como base todos los chats que requerían atención humana, incluidos los que siguen sin respuesta.
-        </p>
-      </section>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard icon={UsersRound} label="Chats para el equipo" value={summary.total} />
-        <MetricCard icon={CheckCircle2} label="Respondidos" value={summary.answered} />
-        <MetricCard icon={MessageSquareWarning} label="Sin respuesta" value={summary.unanswered} />
-        <MetricCard icon={Clock3} label="Promedio" value={formatSeconds(summary.average_response_seconds)} />
-        <MetricCard icon={BarChart3} label="Mediana" value={formatSeconds(summary.median_response_seconds)} />
+export function WhatsAppWeeklyStatsPanel({ value, token, conversations, onOpenConversation }: {
+  conversations: WhatsAppConversation[]; value: WhatsAppWeeklyStats | null; token: string; onOpenConversation: (id: number) => void;
+}) {
+  const currentWeek = value?.week_start ?? mondayKey();
+  const [week, setWeek] = useState(currentWeek);
+  const [result, setResult] = useState<{ week: string; value: WhatsAppWeeklyStats; previous: WhatsAppWeeklyStats | null } | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [reference, setReference] = useState<5 | 10 | 30 | 60>(10);
+  const [comparisonError, setComparisonError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true); setError(""); setComparisonError(false);
+    const fetchWeek = (key: string) => apiRequest<WhatsAppWeeklyStats>(`/whatsapp-conversations/weekly-stats/?week_start=${key}`, token, { signal: controller.signal });
+    Promise.all([fetchWeek(week), week < currentWeek ? fetchWeek(shiftWeek(week, -1)).catch(err => { if (!controller.signal.aborted) setComparisonError(true); return null; }) : Promise.resolve(null)])
+      .then(([next, previous]) => { if (!controller.signal.aborted) setResult({ week, value: next, previous }); })
+      .catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "No se pudieron consultar las estadísticas."); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [week, token, currentWeek, retry]);
+  const stats = result?.week === week ? result.value : week === currentWeek ? value : null;
+  const previous = result?.week === week ? result.previous : null;
+  const isCurrent = week === currentWeek;
+  const summary = stats?.summary;
+  const delta = summary?.average_response_seconds != null && previous?.summary.average_response_seconds != null ? summary.average_response_seconds - previous.summary.average_response_seconds : null;
+  const pending = conversations.filter(c => conversationAttention(c).key === "needs_reply").sort(compareConversations);
+  return <div className="grid min-w-0 gap-4" aria-busy={loading}>
+    <div className="comm-toolbar"><div className="comm-inline comm-week-picker"><button className={secondaryButtonClass} aria-label="Semana anterior" onClick={() => setWeek(shiftWeek(week, -1))}><ArrowLeft size={16} /></button><label>Semana del <input aria-label="Elegir semana" className={inputClass} type="date" value={week} max={currentWeek} onChange={e => { if (e.target.value) setWeek(mondayKey(new Date(e.target.value + "T12:00:00"))); }} /></label><button className={secondaryButtonClass} aria-label="Semana siguiente" disabled={week >= currentWeek} onClick={() => setWeek(shiftWeek(week, 1))}><ArrowRight size={16} /></button>{!isCurrent && <button className="comm-link" onClick={() => setWeek(currentWeek)}>Semana actual</button>}</div><span className="comm-badge">{isCurrent ? "Semana en curso" : "Semana completa"}</span></div>
+    {error && <div className="comm-reference" role="alert"><p className="comm-error">{error}</p><button className="comm-link" onClick={() => setRetry(n => n + 1)}>Volver a intentar</button></div>}
+    {loading && <p className="comm-muted" role="status">Consultando periodo…</p>}
+    {stats && summary ? <>
+      <p className="comm-muted">Del {stats.week_start} al {stats.week_end} · Ciudad de México · Corte: {formatDateTime(stats.generated_at)}</p>
+      <div className="comm-stats-grid">
+        <Stat label="Solicitudes de atención" value={summary.total} helper="Una conversación puede generar varias solicitudes" />
+        <Stat label="Sin primera respuesta humana" value={summary.unanswered} helper="Registro del periodo; no es la cola actual del equipo" />
+        <Stat label="Primera respuesta promedio" value={durationLabel(summary.average_response_seconds)} helper={`Sobre ${summary.answered} solicitudes respondidas`} />
+        <Stat label="Mediana de respuesta" value={durationLabel(summary.median_response_seconds)} helper="La mitad de las respuestas tardó este tiempo o menos" />
       </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <section className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Cumplimiento de primera respuesta humana</h3>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Tiempo desde el primer mensaje pendiente hasta la primera respuesta de una persona.</p>
-          <div className="mt-5 grid gap-4">
-            <SlaBar label="En 5 minutos" value={summary.within_5_minutes_percent} />
-            <SlaBar label="En 10 minutos" value={summary.within_10_minutes_percent} />
-            <SlaBar label="En 30 minutos" value={summary.within_30_minutes_percent} />
-            <SlaBar label="En 60 minutos" value={summary.within_60_minutes_percent} />
-          </div>
-        </section>
-
-        <section className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Mensajes clasificados</h3>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Clasificación previa a cualquier respuesta automática.</p>
-          <div className="mt-4 grid gap-2">
-            <ClassificationRow label="Prospectos nuevos" tone="emerald" value={value.classifications.prospect} />
-            <ClassificationRow label="Clientes actuales" tone="violet" value={value.classifications.current_client} />
-            <ClassificationRow label="Casos ambiguos" tone="amber" value={value.classifications.ambiguous} />
-          </div>
-        </section>
+      <div className="comm-reference">{isCurrent ? "Semana en curso: no se compara con una semana completa. Selecciona una semana anterior para ver la variación." : comparisonError ? "No se pudo cargar la semana anterior para comparar." : delta == null ? "Sin suficientes respuestas en ambas semanas para comparar tiempos." : `Promedio ${durationLabel(Math.abs(delta))} ${delta < 0 ? "más rápido" : delta > 0 ? "más lento" : "de variación"} frente a la semana del ${previous!.week_start} (${previous!.summary.answered} respuestas).`} Los promedios excluyen solicitudes sin responder.</div>
+      {isCurrent && <section className="comm-panel"><header className="comm-section-heading"><div><h3>Nos toca responder ahora <span className="comm-count">{pending.length}</span></h3><p>Último intercambio registrado, independientemente de la semana de inicio.</p></div><Clock3 size={19} /></header>
+        {pending.slice(0, 6).map(c => <button className="comm-action-row comm-priority-row attention-red" key={c.id} onClick={() => onOpenConversation(c.id)}><span className="comm-row-main"><strong>{contactName(c)}</strong><span>Cliente: {formatDateTime(conversationAttention(c).since)}</span><small>{c.human_takeover_active ? "Atención manual · Asistente pausado" : "Sin respuesta posterior registrada"}</small></span><span className="comm-badge red">Nos toca responder</span><ArrowUpRight size={16} /></button>)}
+        {!pending.length && <div className="comm-empty comm-all-clear"><strong>Sin respuestas pendientes del equipo</strong></div>}
+        {pending.length > 6 && <p className="comm-muted p-4">Mostrando 6 de {pending.length}. Consulta la bandeja para ver el resto.</p>}
+      </section>}
+      <div className="comm-summary-columns">
+        <section className="comm-panel"><header className="comm-section-heading"><div><h3>Rapidez de atención</h3><p>Porcentaje sobre todas las solicitudes, incluidas las pendientes.</p></div></header><div className="comm-stats-body"><label className="comm-toolbar">Referencia de respuesta <select aria-label="Referencia de respuesta" className={inputClass} style={{ width: "auto" }} value={reference} onChange={e => setReference(Number(e.target.value) as typeof reference)}>{[5, 10, 30, 60].map(n => <option key={n} value={n}>{n} minutos</option>)}</select></label>{[["Total", summary], ["En horario laboral", stats.business_hours], ["Fuera de horario", stats.outside_business_hours]].map(([label, raw]) => { const group = raw as typeof summary; const percentage = group[`within_${reference}_minutes_percent`]; return <div key={String(label)}><div className="comm-toolbar"><span className="text-xs">{String(label)}</span><strong className="text-xs">{group.total ? `${percentage}%` : "Sin datos"}</strong></div><div className="comm-progress"><span style={{ width: `${group.total ? Math.max(0, Math.min(100, percentage)) : 0}%` }} /></div><small className="comm-muted">{group.answered} respondidas de {group.total} · Promedio {durationLabel(group.average_response_seconds)}</small></div>; })}<small className="comm-muted">Referencia de análisis; no representa un compromiso de servicio configurado.</small></div></section>
+        <section className="comm-panel"><header className="comm-section-heading"><div><h3>Clasificación de mensajes</h3><p>Mensajes recibidos durante el periodo, no personas únicas.</p></div></header><div className="comm-stats-body">{[["Prospectos", stats.classifications.prospect], ["Clientes actuales", stats.classifications.current_client], ["Por confirmar", stats.classifications.ambiguous]].map(([label, count]) => <div className="comm-toolbar" key={label}><span className="text-sm">{label}</span><strong>{count}</strong></div>)}<p className="comm-muted">La clasificación describe la interpretación del asistente. Revisa el contexto del chat antes de decidir.</p></div></section>
       </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <PeriodCard label="Dentro del horario laboral" value={value.business_hours} />
-        <PeriodCard label="Fuera del horario laboral" value={value.outside_business_hours} />
-      </div>
-
-      <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Atención por persona o canal</h3>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">WhatsApp Business no siempre informa qué integrante del equipo respondió; en esos casos se agrupa por canal.</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
-            <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-              <tr><th className="px-5 py-3">Persona o canal</th><th className="px-5 py-3">Chats</th><th className="px-5 py-3">Promedio</th><th className="px-5 py-3">Mediana</th></tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
-              {value.by_responder.map((row) => (
-                <tr key={row.key}><td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-100">{row.name}</td><td className="px-5 py-3">{row.answered}</td><td className="px-5 py-3">{formatSeconds(row.average_response_seconds)}</td><td className="px-5 py-3">{formatSeconds(row.median_response_seconds)}</td></tr>
-              ))}
-              {!value.by_responder.length ? <tr><td className="px-5 py-6 text-center text-zinc-500" colSpan={4}>Aún no hay respuestas humanas registradas esta semana.</td></tr> : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">10 esperas más largas</h3>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Incluye chats todavía pendientes para hacer visibles los retrasos actuales.</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
-            <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-              <tr><th className="px-5 py-3">Contacto</th><th className="px-5 py-3">Tipo</th><th className="px-5 py-3">Entró</th><th className="px-5 py-3">Espera</th><th className="px-5 py-3">Estado</th></tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
-              {value.longest_waits.map((row) => (
-                <tr key={row.id}>
-                  <td className="px-5 py-3"><p className="font-medium text-zinc-900 dark:text-zinc-100">{row.contact_name}</p><p className="text-xs text-zinc-500">{row.contact_phone}</p></td>
-                  <td className="px-5 py-3">{contactTypeLabels[row.contact_type]}</td>
-                  <td className="px-5 py-3">{formatDateTime(row.first_inbound_at)}</td>
-                  <td className="px-5 py-3 font-semibold">{formatSeconds(row.response_seconds)}</td>
-                  <td className="px-5 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${row.responded_at ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>{row.responded_at ? "Respondido" : "Pendiente"}</span></td>
-                </tr>
-              ))}
-              {!value.longest_waits.length ? <tr><td className="px-5 py-6 text-center text-zinc-500" colSpan={5}>No hay chats que requieran atención humana esta semana.</td></tr> : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  );
+      <section className="comm-panel"><header className="comm-section-heading"><div><h3>Atención por responsable</h3><p>Solicitudes respondidas y tiempo de primera respuesta.</p></div></header>{stats.by_responder.length ? <div className="comm-table-wrap"><table className="comm-table"><thead><tr><th>Responsable</th><th>Respondidas</th><th>Promedio</th><th>Mediana</th></tr></thead><tbody>{stats.by_responder.map(item => <tr key={item.key}><td>{item.name}</td><td>{item.answered}</td><td>{durationLabel(item.average_response_seconds)}</td><td>{durationLabel(item.median_response_seconds)}</td></tr>)}</tbody></table></div> : <div className="comm-empty">Todavía no hay respuestas humanas registradas.</div>}</section>
+      <details className="comm-panel"><summary className="cursor-pointer p-4 text-sm font-semibold">Histórico de primera respuesta humana · 10 esperas más largas</summary><div className="comm-table-wrap"><table className="comm-table"><thead><tr><th>Contacto</th><th>Solicitud</th><th>Tiempo</th><th>Primera respuesta humana</th></tr></thead><tbody>{stats.longest_waits.map(item => <tr key={item.id}><td><button className="comm-link" onClick={() => onOpenConversation(item.conversation_id)}>{item.contact_name || item.contact_phone} ↗</button></td><td>{formatDateTime(item.first_inbound_at)}</td><td>{durationLabel(item.response_seconds)}</td><td>{item.responded_at ? formatDateTime(item.responded_at) : "Sin registro humano"}</td></tr>)}</tbody></table>{!stats.longest_waits.length && <p className="comm-empty">Sin solicitudes registradas.</p>}</div></details>
+    </> : !loading && !error && <div className="comm-empty">No hay estadísticas disponibles.</div>}
+  </div>;
 }
-
-function MetricCard({ icon: Icon, label, value }: { icon: typeof Clock3; label: string; value: string | number }) {
-  return <article className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"><span className="grid size-9 place-items-center rounded-md bg-emerald-700 text-white"><Icon size={18} /></span><p className="mt-3 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">{value}</p><p className="mt-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{label}</p></article>;
-}
-
-function SlaBar({ label, value }: { label: string; value: number }) {
-  return <div><div className="mb-1 flex items-center justify-between text-sm"><span className="font-medium text-zinc-700 dark:text-zinc-200">{label}</span><span className="font-semibold text-zinc-950 dark:text-zinc-50">{value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"><div className="h-full rounded-full bg-emerald-700" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div></div>;
-}
-
-function ClassificationRow({ label, tone, value }: { label: string; tone: "emerald" | "violet" | "amber"; value: number }) {
-  const classes = { emerald: "bg-emerald-100 text-emerald-800", violet: "bg-violet-100 text-violet-800", amber: "bg-amber-100 text-amber-800" }[tone];
-  return <div className="flex items-center justify-between rounded-md border border-zinc-200 p-3 dark:border-zinc-800"><span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{label}</span><span className={`rounded-full px-2 py-1 text-xs font-bold ${classes}`}>{value}</span></div>;
-}
-
-function PeriodCard({ label, value }: { label: string; value: WhatsAppResponseStatsSummary }) {
-  return <article className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"><h3 className="font-semibold text-zinc-950 dark:text-zinc-50">{label}</h3><div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"><SmallStat label="Chats" value={value.total} /><SmallStat label="Respondidos" value={value.answered} /><SmallStat label="Pendientes" value={value.unanswered} /><SmallStat label="Promedio" value={formatSeconds(value.average_response_seconds)} /></div></article>;
-}
-
-function SmallStat({ label, value }: { label: string; value: string | number }) {
-  return <div className="rounded-md bg-zinc-50 p-3 dark:bg-zinc-900"><p className="font-semibold text-zinc-950 dark:text-zinc-50">{value}</p><p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{label}</p></div>;
-}
+function Stat({ label, value, helper }: { label: string; value: string | number; helper: string }) { return <article className="comm-panel comm-stat"><p>{label}</p><strong>{value}</strong><small>{helper}</small></article>; }

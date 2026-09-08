@@ -1,387 +1,134 @@
-import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import L from "leaflet";
-import {
-  AlertTriangle,
-  BarChart3,
-  Building2,
-  Camera,
-  Check,
-  ClipboardCheck,
-  CreditCard,
-  Download,
-  FileText,
-  Lock,
-  LogOut,
-  Menu,
-  Moon,
-  Plus,
-  RefreshCw,
-  Upload,
-  Shield,
-  Sun,
-  UserRound,
-  UsersRound,
-  X,
-} from "lucide-react";
-import { Metric } from "../cards/Metric";
+import { useEffect, useState } from "react";
+import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { apiRequest } from "../../api";
+import type { AppData, DashboardSummary, TabKey } from "../../types";
+import { money } from "../../utils/format";
+import { DashboardMetrics } from "../cards/DashboardMetrics";
 import { CollectionFunnel } from "../charts/CollectionFunnel";
-import { FinancialAxisChart } from "../charts/FinancialAxisChart";
 import { FinancialComboChart } from "../charts/FinancialComboChart";
 import { PaymentMethodDonut } from "../charts/PaymentMethodDonut";
 import { PendingBySiteChart } from "../charts/PendingBySiteChart";
 import { StudentStatusDonut } from "../charts/StudentStatusDonut";
-import { API_URL } from "../../api";
-import { roleLabels, statusLabels } from "../../appState";
-import { money } from "../../utils/format";
-import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../types";
-
-import {
-  Avatar,
-  AttendanceButton,
-  FaceAttendanceCard,
-  InfoChip,
-  InvoiceGenerator,
-  InvoiceRows,
-  SelectInput,
-  SimpleList,
-  StaffPaymentInbox,
-  StatusPill,
-  TableHeader,
-  TextInput,
-  average,
-  calculateCashBySite,
-  calculateMonthlyTicketAverage,
-  chargeLabel,
-  chargeStatusLabel,
-  collectionProgress,
-  dateDay,
-  dateMonthKey,
-  expenseStatusLabel,
-  exportAccountingWorkbook,
-  cashMovementLabel,
-  methodLabel,
-  monthLabelFromKey,
-  normalizeText,
-  paymentMethodLabel,
-  paymentMonthKey,
-  paymentPayerKey,
-  paymentStatusLabel,
-  staffPaymentKindLabel,
-  staffPaymentStatusLabel,
-  sumAccountingRows,
-} from "./shared";
 import { SitesMap } from "./dashboardMap";
-import { MonthlySiteFlowPanel } from "./monthlySiteFlow";
+import "./dashboard.css";
 
 export { SitesMap };
 
-export function DashboardPanel({ data }: { data: AppData }) {
-  if (data.dashboardSummary) {
-    return <DashboardSummaryPanel data={data} />;
-  }
-
-  const confirmedPayments = data.payments.filter((payment) => payment.status === "registered" || payment.status === "reconciled");
-  const pendingPayments = data.payments.filter((payment) => payment.status === "processing" || payment.status === "awaiting_confirmation");
-  const totalIncome = confirmedPayments
-    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const approvedExpenses = data.expenses
-    .filter((expense) => expense.status === "approved")
-    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const pendingExpenses = data.expenses
-    .filter((expense) => expense.status === "pending")
-    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const openBalance = data.charges.reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
-  const studentsWithDebt = data.students.filter((student) => student.open_charge_count > 0);
-  const attendanceWithDebt = data.attendanceRecords.filter(
-    (record) => record.status === "present" && record.had_debt_at_capture,
-  );
-  const requestedDiscounts = data.discounts.filter((discount) => discount.status === "requested");
-  const ticketAverage = calculateMonthlyTicketAverage(data.payments);
-
-  const siteRows = data.sites.map((site) => {
-    const payments = confirmedPayments
-      .filter((payment) => data.charges.find((charge) => charge.id === payment.charge)?.site === site.id)
-      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    const expenses = data.expenses
-      .filter((expense) => expense.site === site.id && expense.status === "approved")
-      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-    const balance = data.charges
-      .filter((charge) => charge.site === site.id)
-      .reduce((sum, charge) => sum + Number(charge.balance || 0), 0);
-    const students = data.students.filter((student) => student.site === site.id).length;
-    const attendance = data.attendanceRecords.filter((record) => {
-      const student = data.students.find((item) => item.id === record.student);
-      return student?.site === site.id && record.status === "present";
-    }).length;
-    return {
-      id: site.id,
-      name: site.name,
-      students,
-      payments,
-      expenses,
-      balance,
-      attendance,
-      utility: payments - expenses,
-    };
-  });
-
-  const methodRows: Array<{ label: string; value: number }> = [
-    { label: "Efectivo", value: confirmedPayments.filter((payment) => payment.method === "cash").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
-    { label: "Transferencia", value: confirmedPayments.filter((payment) => payment.method === "transfer").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
-    { label: "Tarjeta", value: confirmedPayments.filter((payment) => payment.method === "card").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
-    { label: "Cortesia", value: confirmedPayments.filter((payment) => payment.method === "courtesy").reduce((sum, payment) => sum + Number(payment.amount || 0), 0) },
-  ];
-  const financialRows = siteRows.map((site) => ({
-    label: site.name,
-    ingresos: site.payments,
-    egresos: site.expenses,
-    utilidad: site.utility,
-  }));
-  const pendingPaymentTotal = pendingPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const studentStatusRows = Object.entries(statusLabels).map(([status, label]) => ({
-    label,
-    value: data.students.filter((student) => student.status === status).length,
-  }));
-  const paymentStatusRows = [
-    { label: "Confirmados", value: totalIncome },
-    { label: "En proceso", value: pendingPaymentTotal },
-    { label: "Cobros pendientes", value: openBalance },
-  ];
-
-  return (
-    <>
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Sedes activas" value={data.sites.filter((site) => site.is_active).length} />
-        <Metric label="Alumnos" value={data.students.length} />
-        <Metric label="Gastos pendientes" value={`$${money(pendingExpenses)}`} />
-        <Metric label="Cobros pendientes" value={`$${money(openBalance)}`} />
-        <Metric
-          label="Ticket promedio mensual"
-          value={`$${money(ticketAverage.amount)}`}
-          helper={`${ticketAverage.monthLabel} - ${ticketAverage.payerCount} pagadores`}
-        />
-      </div>
-
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Ingresos registrados" value={`$${money(totalIncome)}`} />
-        <Metric label="Gastos aprobados" value={`$${money(approvedExpenses)}`} />
-        <Metric label="Utilidad estimada" value={`$${money(totalIncome - approvedExpenses)}`} />
-        <Metric label="Pagos en proceso" value={`$${money(pendingPaymentTotal)}`} />
-        <Metric label="Descuentos por aprobar" value={requestedDiscounts.length} />
-      </div>
-
-      <div className="grid min-w-0 gap-5">
-        <section className="grid gap-3 sm:grid-cols-3">
-          <Metric label="Cobros pendientes" value={`$${money(openBalance)}`} />
-          <Metric label="Alumnos con cobro pendiente" value={studentsWithDebt.length} />
-          <Metric label="Asistieron con pago pendiente" value={attendanceWithDebt.length} />
-        </section>
-
-        <section className="grid min-w-0 gap-5">
-          <FinancialComboChart title="Ingresos, egresos y utilidad por sede" rows={financialRows} />
-        </section>
-
-        <MonthlySiteFlowPanel data={data} />
-
-        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <PaymentMethodDonut title="Ingresos confirmados por metodo" rows={methodRows} />
-          <CollectionFunnel title="Embudo de cobranza" rows={paymentStatusRows} />
-        </section>
-
-        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <PendingBySiteChart title="Cobros pendientes por sede" rows={siteRows.map((site) => ({ label: site.name, value: site.balance }))} />
-          <StudentStatusDonut title="Estado de alumnos" rows={studentStatusRows} />
-        </section>
-
-        <SitesMap sites={data.sites} siteRows={siteRows} />
-
-        <div className="min-w-0 rounded-md border border-zinc-200 bg-white shadow-sm">
-          <TableHeader title="Operacion por sede" count={siteRows.length} />
-          <div className="max-w-full overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">Sede</th>
-                  <th className="px-4 py-3">Alumnos</th>
-                  <th className="px-4 py-3">Asistencias</th>
-                  <th className="px-4 py-3">Ingresos</th>
-                  <th className="px-4 py-3">Gastos</th>
-                  <th className="px-4 py-3">Utilidad</th>
-                  <th className="px-4 py-3">Saldo pendiente</th>
-                </tr>
-              </thead>
-              <tbody>
-                {siteRows.map((site) => (
-                  <tr key={site.id} className="border-b border-zinc-100">
-                    <td className="px-4 py-3 font-medium">{site.name}</td>
-                    <td className="px-4 py-3">{site.students}</td>
-                    <td className="px-4 py-3">{site.attendance}</td>
-                    <td className="px-4 py-3">${money(site.payments)}</td>
-                    <td className="px-4 py-3">${money(site.expenses)}</td>
-                    <td className="px-4 py-3 font-semibold">${money(site.utility)}</td>
-                    <td className="px-4 py-3">${money(site.balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <SimpleList
-            title="Ingresos por metodo"
-            count={methodRows.length}
-            rows={methodRows.map((row, index) => ({
-              id: index,
-              title: row.label,
-              subtitle: `$${money(row.value)}`,
-            }))}
-          />
-          <SimpleList
-            title="Alertas operativas"
-            count={studentsWithDebt.length + requestedDiscounts.length + attendanceWithDebt.length}
-            rows={[
-              ...studentsWithDebt.slice(0, 5).map((student) => ({
-                id: student.id,
-                title: `${student.full_name} tiene cobro pendiente`,
-                subtitle: `${student.site_name} - saldo $${money(student.balance_due)}`,
-              })),
-              ...requestedDiscounts.slice(0, 5).map((discount) => ({
-                id: 10000 + discount.id,
-                title: `Descuento pendiente: ${discount.student_name}`,
-                subtitle: `${discount.reason} - $${money(discount.amount)}`,
-              })),
-              ...attendanceWithDebt.slice(0, 5).map((record) => ({
-                id: 20000 + record.id,
-                title: `${record.student_name} asistio con pago pendiente`,
-                subtitle: record.override_reason || "Autorizacion registrada en cancha",
-              })),
-            ]}
-          />
-        </section>
-      </div>
-    </>
-  );
+function monthLabel(month: string) {
+  return new Date(month + "-01T12:00:00").toLocaleDateString("es-MX", { month: "long", year: "numeric" });
 }
 
-function DashboardSummaryPanel({ data }: { data: AppData }) {
-  const summary = data.dashboardSummary!;
-  const metrics = summary.metrics;
-  const financialRows = summary.site_rows.map((site) => ({
-    label: site.name,
-    ingresos: site.payments,
-    egresos: site.expenses,
-    utilidad: site.utility,
-  }));
-  const monthlyRows = summary.monthly_rows
-    .filter((row) => row.site_id === "all")
-    .map((row) => ({ label: row.label, ingresos: row.ingresos, egresos: row.egresos, utilidad: row.utilidad }));
+export function DashboardPanel({ data, token, onNavigate, availableSections = [] }: {
+  data: AppData; token: string; onNavigate?: (tab: TabKey) => void; availableSections?: TabKey[];
+}) {
+  const [month, setMonth] = useState("all");
+  const [site, setSite] = useState("all");
+  const [view, setView] = useState("finances");
+  const [result, setResult] = useState<{ key: string; baseline: typeof data.dashboardSummary; summary: DashboardSummary } | null>(null);
+  const [failure, setFailure] = useState("");
+  const [retry, setRetry] = useState(0);
+  const key = site + "/" + month;
+  const baseline = data.dashboardSummary;
+  const summary = site === "all" && month === "all" && baseline
+    ? baseline
+    : result?.key === key && result.baseline === baseline ? result.summary : null;
+  useEffect(() => {
+    setFailure("");
+    if (site === "all" && month === "all" && baseline) return;
+    const controller = new AbortController();
+    apiRequest<DashboardSummary>("/dashboard/summary/?" + new URLSearchParams({ site, month }), token, { signal: controller.signal })
+      .then((value) => setResult({ key, baseline, summary: value }))
+      .catch((error: Error) => { if (!controller.signal.aborted) setFailure(error.message); });
+    return () => controller.abort();
+  }, [baseline, key, month, site, token, retry]);
+  const period = month === "all" ? "Todo el historial" : monthLabel(month);
+  const months = baseline?.context?.available_months ?? [...new Set(baseline?.monthly_rows.map(row => row.month) ?? [])].sort();
+  const canNavigate = (tab: TabKey) => Boolean(onNavigate && availableSections.includes(tab));
+  const action = (tab: TabKey, label: string) => canNavigate(tab)
+    ? <button type="button" className="dashboard-action" onClick={() => onNavigate?.(tab)}>{label}<ArrowUpRight size={15} aria-hidden="true" /></button> : null;
 
   return (
-    <>
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Sedes activas" value={metrics.active_sites} />
-        <Metric label="Alumnos" value={metrics.students} />
-        <Metric label="Gastos pendientes" value={`$${money(metrics.pending_expenses)}`} />
-        <Metric label="Cobros pendientes" value={`$${money(metrics.open_balance)}`} />
-        <Metric
-          label="Ticket promedio mensual"
-          value={`$${money(metrics.ticket_average.amount)}`}
-          helper={`${metrics.ticket_average.month_label} - ${metrics.ticket_average.payer_count} pagadores`}
-        />
-      </div>
-
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Ingresos registrados" value={`$${money(metrics.total_income)}`} />
-        <Metric label="Gastos aprobados" value={`$${money(metrics.approved_expenses)}`} />
-        <Metric label="Utilidad estimada" value={`$${money(metrics.utility)}`} />
-        <Metric label="Pagos en proceso" value={`$${money(metrics.pending_payment_total)}`} />
-        <Metric label="Descuentos por aprobar" value={metrics.requested_discounts} />
-      </div>
-
-      <div className="grid min-w-0 gap-5">
-        <section className="grid gap-3 sm:grid-cols-3">
-          <Metric label="Cobros pendientes" value={`$${money(metrics.open_balance)}`} />
-          <Metric label="Alumnos con cobro pendiente" value={metrics.students_with_debt} />
-          <Metric label="Asistieron con pago pendiente" value={metrics.attendance_with_debt} />
-        </section>
-
-        <section className="grid min-w-0 gap-5">
-          <FinancialComboChart title="Ingresos, egresos y utilidad por sede" rows={financialRows} />
-        </section>
-
-        {monthlyRows.length ? (
-          <section className="grid min-w-0 gap-5">
-            <FinancialComboChart title="Timeline mensual financiero" rows={monthlyRows} />
-          </section>
-        ) : null}
-
-        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <PaymentMethodDonut title="Ingresos confirmados por metodo" rows={summary.method_rows} />
-          <CollectionFunnel title="Embudo de cobranza" rows={summary.payment_status_rows} />
-        </section>
-
-        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <PendingBySiteChart title="Cobros pendientes por sede" rows={summary.site_rows.map((site) => ({ label: site.name, value: site.balance }))} />
-          <StudentStatusDonut title="Estado de alumnos" rows={summary.student_status_rows} />
-        </section>
-
-        <SitesMap sites={data.sites} siteRows={summary.site_rows} />
-
-        <div className="min-w-0 rounded-md border border-zinc-200 bg-white shadow-sm">
-          <TableHeader title="Operacion por sede" count={summary.site_rows.length} />
-          <div className="max-w-full overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3">Sede</th>
-                  <th className="px-4 py-3">Alumnos</th>
-                  <th className="px-4 py-3">Asistencias</th>
-                  <th className="px-4 py-3">Ingresos</th>
-                  <th className="px-4 py-3">Gastos</th>
-                  <th className="px-4 py-3">Utilidad</th>
-                  <th className="px-4 py-3">Saldo pendiente</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.site_rows.map((site) => (
-                  <tr key={site.id} className="border-b border-zinc-100">
-                    <td className="px-4 py-3 font-medium">{site.name}</td>
-                    <td className="px-4 py-3">{site.students}</td>
-                    <td className="px-4 py-3">{site.attendance}</td>
-                    <td className="px-4 py-3">${money(site.payments)}</td>
-                    <td className="px-4 py-3">${money(site.expenses)}</td>
-                    <td className="px-4 py-3 font-semibold">${money(site.utility)}</td>
-                    <td className="px-4 py-3">${money(site.balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+    <div className="dashboard-workspace grid min-w-0 gap-5 pt-5">
+      <section className="dashboard-context" aria-label="Filtros del dashboard">
+        <div>
+          <p className="dashboard-eyebrow">CONTROL OPERATIVO</p>
+          <h2 className="text-xl font-semibold">Tu operación, en perspectiva</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            {summary?.context ? "Actualizado: " + new Date(summary.context.generated_at).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" }) : "Resumen financiero y operativo"}
+          </p>
         </div>
+        <div className="dashboard-filters">
+          <label>Sede<select value={site} onChange={event => setSite(event.target.value)}>
+            <option value="all">Todas las sedes</option>
+            {(baseline?.site_rows ?? data.sites).map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+          </select></label>
+          <label>Periodo financiero<select value={month} onChange={event => setMonth(event.target.value)}>
+            <option value="all">Todo el historial</option>
+            {[...months].reverse().map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}
+          </select></label>
+        </div>
+        <p className="dashboard-context-note">Ingresos y gastos: <strong>{period}</strong>. Cobros, pagos en proceso, gastos pendientes y alumnos: estado actual. Asistencias: registros históricos.</p>
+      </section>
 
-        <section className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <SimpleList
-            title="Ingresos por metodo"
-            count={summary.method_rows.length}
-            rows={summary.method_rows.map((row, index) => ({
-              id: index,
-              title: row.label,
-              subtitle: `$${money(row.value)}`,
-            }))}
-          />
-          <SimpleList
-            title="Alertas operativas"
-            count={summary.alerts.length}
-            rows={summary.alerts.map((alert) => ({
-              id: alert.id,
-              title: alert.title,
-              subtitle: alert.subtitle,
-            }))}
-          />
+      {!summary ? <div role={failure ? "alert" : "status"} className="rounded-md border border-zinc-200 bg-white p-6">
+        {failure ? <><p>No se pudo cargar este resumen: {failure}</p><button className="dashboard-action mt-3" onClick={() => setRetry(value => value + 1)}>Reintentar <RefreshCw size={14} /></button></> : "Actualizando el resumen…"}
+      </div> : <>
+        <DashboardMetrics metrics={summary.metrics} periodLabel={period} />
+        <section className="dashboard-tasks" aria-labelledby="dashboard-tasks-title">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><h2 id="dashboard-tasks-title" className="font-semibold">Atención operativa</h2><p className="mt-1 text-xs text-zinc-500">Accesos a los pendientes actuales y al historial de incidencias.</p></div>
+            <div className="flex flex-wrap gap-2">
+              {summary.metrics.open_balance > 0 && action("debts", "Ver adeudos")}
+              {(summary.metrics.pending_payment_total > 0 || summary.metrics.requested_discounts > 0) && action("billing", "Revisar cobros")}
+              {summary.metrics.pending_expenses > 0 && action("expenses", "Revisar gastos")}
+              {summary.metrics.attendance_with_debt > 0 && action("attendance", "Ver asistencias")}
+            </div>
+          </div>
+          {summary.alerts.length ? <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-medium">Ver incidencias · {summary.alerts.length} destacadas</summary>
+            <p className="mt-2 text-xs text-zinc-500">Hasta 5 registros por tipo: mayores adeudos, descuentos pendientes y asistencias más recientes.</p>
+            <ul className="dashboard-alert-list">
+              {summary.alerts.map(alert => {
+                const tab: TabKey = String(alert.id).startsWith("discount-") ? "billing" : String(alert.id).startsWith("attendance-") ? "attendance" : "debts";
+                return <li key={alert.id}><div><p className="text-sm font-medium">{alert.title}</p><p className="mt-1 text-xs text-zinc-500">{alert.subtitle}</p></div>{action(tab, tab === "debts" ? "Ver adeudos" : tab === "billing" ? "Ver cobros" : "Ver asistencias")}</li>;
+              })}
+            </ul>
+          </details> : <p className="mt-3 text-sm text-zinc-500">Sin incidencias destacadas para esta sede.</p>}
         </section>
-      </div>
-    </>
+
+        <div className="dashboard-view-switch" role="group" aria-label="Vista del dashboard">
+          {[["finances", "Finanzas"], ["collection", "Cobranza"], ["sites", "Sedes"]].map(([id, label]) =>
+            <button key={id} type="button" aria-pressed={view === id} onClick={() => setView(id)}>{label}</button>
+          )}
+        </div>
+        <section aria-label={view === "finances" ? "Vista de finanzas" : view === "collection" ? "Vista de cobranza" : "Vista de sedes"} className="grid min-w-0 gap-5">
+          {view === "finances" && <>
+            <FinancialComboChart title="Evolución mensual" mode="time" rows={summary.monthly_rows.filter(row => row.site_id === "all").sort((a, b) => a.month.localeCompare(b.month))} />
+            <FinancialComboChart title="Comparación entre sedes" rows={summary.site_rows.map(row => ({ label: row.name, ingresos: row.payments, egresos: row.expenses, utilidad: row.utility }))} />
+          </>}
+          {view === "collection" && <>
+            <section className="grid min-w-0 gap-5 xl:grid-cols-2">
+              <PaymentMethodDonut title="Ingresos por método de pago" rows={summary.method_rows} />
+              <CollectionFunnel title="Estado de cobranza" rows={summary.payment_status_rows} />
+            </section>
+            <PendingBySiteChart title="Saldo actual por sede" rows={summary.site_rows.map(row => ({ label: row.name, value: row.balance }))} />
+          </>}
+          {view === "sites" && <>
+            <SitesMap sites={data.sites.filter(row => summary.site_rows.some(item => item.id === row.id))} siteRows={summary.site_rows} />
+            <StudentStatusDonut title="Estado actual de alumnos" rows={summary.student_status_rows} />
+            <details className="rounded-md border border-zinc-200 bg-white p-4">
+              <summary className="cursor-pointer font-semibold">Detalle operativo · {summary.site_rows.length} sedes</summary>
+              <p className="mt-2 text-xs text-zinc-500">Finanzas: {period}. Alumnos y saldos actuales. Asistencias históricas.</p>
+              <div className="dashboard-site-details">{summary.site_rows.map(row =>
+                <article key={row.id}><h3 className="font-semibold">{row.name}</h3><dl>
+                  {[["Alumnos", row.students], ["Asistencias históricas", row.attendance], ["Ingresos", "$" + money(row.payments)], ["Gastos", "$" + money(row.expenses)], ["Resultado", "$" + money(row.utility)], ["Saldo actual", "$" + money(row.balance)]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+                </dl></article>
+              )}</div>
+            </details>
+          </>}
+        </section>
+      </>}
+    </div>
   );
 }
 

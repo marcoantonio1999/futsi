@@ -74,3 +74,7 @@ export type AttendanceRecord = {
   had_debt_at_capture: boolean;
   override_reason: string;
 };
+
+export type StudentDeletionConfirmation = { confirmation_token: string; confirmation_name: string };
+export type StudentDeletionResult = { deletion_id: number; cleanup_pending: number };
+export type StudentDeletionPreview = { student_id: number; full_name: string; items: Array<{label: string; count: number}>; file_count: number; confirmation_token: string };

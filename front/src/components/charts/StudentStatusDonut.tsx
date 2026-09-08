@@ -22,10 +22,10 @@ export function StudentStatusDonut({ title, rows }: { title: string; rows: Money
             <PieChart>
               <Pie data={visibleRows} dataKey="value" nameKey="label" innerRadius={56} outerRadius={88} paddingAngle={2} animationDuration={900}>
                 {visibleRows.map((row, index) => (
-                  <Cell key={row.label} fill={chartRows.length ? studentStatusColors[index % studentStatusColors.length] : "#d4d4d8"} />
+                  <Cell key={row.label} fill={chartRows.length ? studentStatusColors[rows.findIndex(item => item.label === row.label) % studentStatusColors.length] : "#d4d4d8"} />
                 ))}
               </Pie>
-              <Tooltip />
+              {chartRows.length > 0 && <Tooltip />}
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">

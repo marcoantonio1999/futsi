@@ -64,9 +64,9 @@ export async function apiRequest<T>(path: string, token: string, options: Reques
   return response.json();
 }
 
-export async function apiFormRequest<T>(path: string, token: string, formData: FormData): Promise<T> {
+export async function apiFormRequest<T>(path: string, token: string, formData: FormData, method: "POST" | "PATCH" = "POST"): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
-    method: "POST",
+    method,
     headers: { Authorization: `Token ${token}` },
     body: formData,
   });

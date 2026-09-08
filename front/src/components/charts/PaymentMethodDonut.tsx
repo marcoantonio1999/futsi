@@ -9,7 +9,7 @@ const incomeMethodColors = ["#059669", "#10b981", "#14b8a6", "#84cc16"];
 export function PaymentMethodDonut({ title, rows }: { title: string; rows: MoneyRow[] }) {
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   const chartRows = rows.filter((row) => row.value > 0);
-  const leader = [...rows].sort((a, b) => b.value - a.value)[0];
+  const leader = [...chartRows].sort((a, b) => b.value - a.value)[0];
   const visibleRows = chartRows.length ? chartRows : [{ label: "Sin ingresos", value: 1 }];
 
   return (
@@ -19,16 +19,16 @@ export function PaymentMethodDonut({ title, rows }: { title: string; rows: Money
         title={title}
         help="La dona muestra la distribucion de ingresos confirmados por metodo de pago. El centro es el total; la lista indica monto por metodo y su peso relativo. Sirve para vigilar dependencia de efectivo, tarjeta o transferencia."
       />
-      <div className="grid gap-4 p-4 sm:grid-cols-[210px_1fr]">
+      <div className="grid gap-4 p-4 sm:grid-cols-[minmax(180px,210px)_minmax(0,1fr)] xl:grid-cols-1 2xl:grid-cols-[210px_minmax(0,1fr)]">
         <div className="relative h-[210px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie data={visibleRows} dataKey="value" nameKey="label" innerRadius={62} outerRadius={92} paddingAngle={3} animationDuration={900}>
                 {visibleRows.map((row, index) => (
-                  <Cell key={row.label} fill={chartRows.length ? incomeMethodColors[index % incomeMethodColors.length] : "#d4d4d8"} />
+                  <Cell key={row.label} fill={chartRows.length ? incomeMethodColors[rows.findIndex(item => item.label === row.label) % incomeMethodColors.length] : "#d4d4d8"} />
                 ))}
               </Pie>
-              <Tooltip content={<MiniMoneyTooltip />} />
+              {chartRows.length > 0 && <Tooltip content={<MiniMoneyTooltip />} />}
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
@@ -53,7 +53,7 @@ export function PaymentMethodDonut({ title, rows }: { title: string; rows: Money
                 <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
                   <div
                     className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${Math.max(3, percent)}%`, backgroundColor: incomeMethodColors[index % incomeMethodColors.length] }}
+                    style={{ width: `${percent}%`, backgroundColor: incomeMethodColors[index % incomeMethodColors.length] }}
                   />
                 </div>
               </div>

@@ -68,6 +68,7 @@ export type UnknownAttendanceRecord = {
 };
 
 export type DashboardSummary = {
+  context?: { generated_at: string; month: string; site: string; available_months: string[] };
   metrics: {
     active_sites: number;
     students: number;

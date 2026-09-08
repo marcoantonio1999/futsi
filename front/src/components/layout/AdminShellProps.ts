@@ -1,3 +1,4 @@
+import type { StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import type { AppData, HistoricalImport, TabKey, ThemeMode, User } from "../../types";
 
 export type AdminShellProps = {
@@ -14,6 +15,9 @@ export type AdminShellProps = {
   onLoadSection: (section: TabKey, options?: { force?: boolean; silent?: boolean }) => Promise<void>;
   onLogout: () => void;
   onCreateRecord: (path: string, payload: unknown, success: string) => Promise<void>;
+  onDeleteTournament: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
+  onDeleteGuardian: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
+  onDeleteStudent: (studentId: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   onUpdateRecord: (path: string, payload: unknown, success: string) => Promise<boolean>;
   onCreateAndReturn: <T>(path: string, payload: unknown) => Promise<T>;
   onUploadHistoricalImport: (formData: FormData) => Promise<HistoricalImport>;

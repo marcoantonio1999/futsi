@@ -3,6 +3,8 @@ import type { AppData, TrialAvailabilityRule, TrialBooking, TrialVisit, User, Vo
 export type VoiceDashboardSection = "summary" | "bookings" | "calls" | "whatsapp" | "weekly-stats" | "availability" | "settings";
 
 export type VoiceDashboardProps = {
+  token: string;
+  onSelectSection: (section: VoiceDashboardSection) => void;
   user: User;
   data: AppData;
   section: VoiceDashboardSection;

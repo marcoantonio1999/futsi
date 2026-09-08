@@ -12,7 +12,7 @@ export type AttendanceSubsection =
   | "unknown-detail"
   | "faceguard-monthly";
 export type BillingSubsection = "program" | "scheduled";
-export type StudentsSubsection = "create" | "registered";
+export type StudentsSubsection = "overview" | "create" | "registered" | "edit";
 export type CommunicationsSubsection = VoiceDashboardSection;
 export type BusinessScope = "academy" | "adult";
 export type SidebarTab = ReturnType<typeof tabItems>[number];
@@ -200,3 +200,7 @@ export function academyData(data: AppData): AppData {
     invoices: data.invoices.filter((invoice) => !adultInvoiceIds.has(invoice.id)),
   };
 }
+
+export type GuardiansSubsection = "registered" | "create" | "edit";
+
+export type SportsSubsection = "exams" | "matches";

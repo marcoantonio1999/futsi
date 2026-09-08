@@ -12,7 +12,8 @@
     "build:android": "vite build --base ./ --mode android",
     "preview": "vite preview",
     "cap:sync": "npm run build:android && cap sync android",
-    "cap:open": "cap open android"
+    "cap:open": "cap open android",
+    "test:communications": "node --experimental-strip-types --test tests/communications.test.mjs"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",

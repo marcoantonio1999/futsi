@@ -1,18 +1,21 @@
+import { Pencil, Trash2 } from "lucide-react";
 import { statusLabels } from "../../appState";
 import { money } from "../../utils/format";
 import type { Student } from "../../types";
-import { Avatar, InfoChip, StatusPill } from "./shared";
+import { InfoChip, StatusPill } from "./shared";
 
-export function StudentCard({ student, onEdit }: { student: Student; onEdit: (student: Student) => void }) {
+import { StudentAvatar } from "./studentPhoto";
+
+export function StudentCard({ student, token, onEdit, onDelete }: { student: Student; token: string; onEdit: (student: Student) => void; onDelete: (student: Student) => void }) {
   return (
     <div className="rounded-md border border-zinc-200 p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 gap-3">
-          <Avatar name={student.full_name} imageUrl={student.photo_url} />
+          <StudentAvatar student={student} token={token} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold">{student.full_name}</p>
-              <StatusPill label={statusLabels[student.status]} />
+              <StatusPill label={statusLabels[student.status]} tone={student.status === "active" ? "ok" : student.status === "paused" || student.status === "injured" ? "warn" : "neutral"} />
               {student.open_charge_count > 0 && <span className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Pago pendiente ${money(student.balance_due)}</span>}
             </div>
             <p className="mt-1 text-sm text-zinc-500">
@@ -23,9 +26,10 @@ export function StudentCard({ student, onEdit }: { student: Student; onEdit: (st
             </p>
           </div>
         </div>
-        <button className="self-start rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium" onClick={() => onEdit(student)}>
-          Editar control
-        </button>
+        <div className="flex shrink-0 items-center gap-2 self-start">
+          <button type="button" className="student-button secondary" onClick={() => onEdit(student)} aria-label={`Editar a ${student.full_name}`}><Pencil size={14} /> Editar</button>
+          <button type="button" className="student-delete-icon" onClick={() => onDelete(student)} title="Eliminar alumno" aria-label={`Eliminar a ${student.full_name}`}><Trash2 size={16} /></button>
+        </div>
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

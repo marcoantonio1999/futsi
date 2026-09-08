@@ -118,6 +118,7 @@ export function MatchScoreCard({
   const [endsAt, setEndsAt] = useState(addMinutesToTime(match.starts_at, match.duration_minutes || 120));
   const [status, setStatus] = useState(match.status);
   const [savingMessage, setSavingMessage] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const durationMinutes = startsAt && endsAt ? durationFromRange(startsAt, endsAt) : match.duration_minutes || 120;
 
@@ -132,6 +133,7 @@ export function MatchScoreCard({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setSaveError("");
     setSavingMessage("Guardando partido...");
     try {
       await onUpdateMatch(match.id, {
@@ -142,6 +144,8 @@ export function MatchScoreCard({
         duration_minutes: durationMinutes,
         status,
       });
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : "No se pudo actualizar el partido.");
     } finally {
       setSavingMessage("");
     }
@@ -149,10 +153,13 @@ export function MatchScoreCard({
 
   async function cancelMatch() {
     setConfirmCancelOpen(false);
+    setSaveError("");
     setSavingMessage("Cancelando partido...");
     try {
       await onUpdateMatch(match.id, { status: "canceled" });
       onMatchCanceled?.(match);
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : "No se pudo actualizar el partido.");
     } finally {
       setSavingMessage("");
     }
@@ -160,6 +167,7 @@ export function MatchScoreCard({
 
   return (
     <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-3 text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+      {saveError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{saveError}</p>}
       {savingMessage ? (
         <div className="fixed inset-0 z-[1200] grid place-items-center bg-zinc-950/25 px-4 backdrop-blur-[1px]">
           <div className="grid min-w-[240px] place-items-center rounded-md border border-zinc-200 bg-white px-6 py-5 text-center shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
@@ -253,7 +261,7 @@ export function StudentStatsCard({ assessment }: { assessment: StudentAssessment
       <div className="border-b border-zinc-200 px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-medium uppercase text-emerald-700">Stats del alumno</p>
+            <p className="text-xs font-medium uppercase text-emerald-700">Evaluación del alumno</p>
             <h2 className="font-semibold">{assessment.student_name}</h2>
             <p className="mt-1 text-sm text-zinc-500">{assessment.category} - {assessment.group_name} - {assessment.assessment_month.slice(0, 7)}</p>
           </div>
@@ -263,14 +271,14 @@ export function StudentStatsCard({ assessment }: { assessment: StudentAssessment
       <div className="grid gap-4 p-4 sm:grid-cols-[240px_1fr]">
         <RadarChart assessment={assessment} />
         <div className="grid gap-2">
-          <p className="text-sm text-zinc-500">Overall Rating <span className="font-bold text-emerald-700">{assessment.overall_rating}</span></p>
+          <p className="text-sm text-zinc-500">Calificación general <span className="font-bold text-emerald-700">{assessment.overall_rating}</span></p>
           {[
             ["Ritmo", assessment.pace],
             ["Tiro", assessment.shooting],
             ["Pase", assessment.passing],
             ["Regate", assessment.dribbling],
             ["Defensa", assessment.defense],
-            ["Fisico", assessment.physical],
+            ["Físico", assessment.physical],
             ["Actitud", assessment.attitude],
           ].map(([label, value]) => (
             <div key={String(label)}>

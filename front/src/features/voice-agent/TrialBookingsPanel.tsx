@@ -1,4 +1,6 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { TrialAgenda } from "./TrialAgenda";
+import { nameNeedsReview } from "./communicationUtils";
 import { createPortal } from "react-dom";
 import { CalendarClock, Mail, MapPin, Pencil, Phone, Search, UserRound, X } from "lucide-react";
 import type { AppData, TrialBooking, TrialBookingSource, TrialBookingStatus, TrialVisit, TrialVisitStatus } from "../../types";
@@ -36,15 +38,20 @@ const sourceLabels: Record<TrialBookingSource, string> = {
 
 export function TrialBookingsPanel({
   data,
+  initialBookingId,
   onUpdateBooking,
   onUpdateVisit,
-}: { data: AppData } & BookingActions) {
+}: { data: AppData; initialBookingId?: number | null } & BookingActions) {
+  const [view, setView] = useState("agenda");
+  const [range, setRange] = useState("week");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | TrialBookingStatus>("all");
   const [site, setSite] = useState("all");
   const [editingBooking, setEditingBooking] = useState<TrialBooking | null>(null);
   const [editingVisit, setEditingVisit] = useState<TrialVisit | null>(null);
 
+  useEffect(() => { if (initialBookingId != null) { setView("bookings"); setEditingBooking(data.trialBookings.find(b => b.id === initialBookingId) ?? null); } }, [initialBookingId]);
+  const overdue = data.trialBookings.filter(b => b.status !== "canceled").flatMap(b => b.visits).filter(v => v.status === "scheduled" && new Date(v.ends_at).getTime() < Date.now()).length;
   const filteredBookings = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("es-MX");
     return [...data.trialBookings]
@@ -67,44 +74,42 @@ export function TrialBookingsPanel({
       });
   }, [data.trialBookings, query, site, status]);
 
-  const scheduled = data.trialBookings.filter((booking) => booking.status === "scheduled").length;
-  const completed = data.trialBookings.filter((booking) => booking.status === "completed").length;
-  const noShowVisits = data.trialBookings.flatMap((booking) => booking.visits).filter((visit) => visit.status === "no_show").length;
+
+
+
 
   return (
     <div className="grid min-w-0 gap-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <MiniMetric label="Reservas agendadas" value={scheduled} tone="emerald" />
-        <MiniMetric label="Pruebas completadas" value={completed} tone="blue" />
-        <MiniMetric label="Inasistencias" value={noShowVisits} tone="amber" />
-      </div>
+      <div className="comm-toolbar"><div className="comm-tabs"><button aria-pressed={view === "agenda"} onClick={() => setView("agenda")}>Agenda de visitas</button><button aria-pressed={view === "bookings"} onClick={() => setView("bookings")}>Historial de reservas</button></div>{view === "agenda" && <label>Periodo <select aria-label="Periodo de agenda" className={inputClass} value={range} onChange={e => setRange(e.target.value)}><option value="today">Hoy</option><option value="week">Próximos 7 días</option><option value="month">Próximos 30 días</option><option value="overdue">Pendientes de resultado</option><option value="all">Todas las visitas</option></select></label>}</div>
+      {overdue > 0 && <div className="comm-reference comm-toolbar"><span>{overdue} visitas pasadas siguen agendadas. Registra su resultado.</span><button className="comm-link" onClick={() => { setView("agenda"); setRange("overdue"); setStatus("all"); setSite("all"); setQuery(""); }}>Revisar visitas →</button></div>}
 
       <section className="rounded-md border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_180px_200px]">
-          <label className="relative">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-[minmax(220px,1fr)_180px_200px]">
+          <label className="relative col-span-2 md:col-span-1">
             <Search className="pointer-events-none absolute left-3 top-2.5 text-zinc-400" size={17} />
             <input
               className={`${inputClass} pl-9`}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="Buscar reservas"
               placeholder="Buscar niño, responsable o teléfono"
               type="search"
               value={query}
             />
           </label>
-          <select className={inputClass} onChange={(event) => setStatus(event.target.value as typeof status)} value={status}>
+          <select aria-label="Estado de reserva" className={inputClass} onChange={(event) => setStatus(event.target.value as typeof status)} value={status}>
             <option value="all">Todos los estados</option>
             {Object.entries(bookingStatusLabels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
-          <select className={inputClass} onChange={(event) => setSite(event.target.value)} value={site}>
+          <select aria-label="Sede de reserva" className={inputClass} onChange={(event) => setSite(event.target.value)} value={site}>
             <option value="all">Todas las sedes</option>
             {data.sites.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </div>
       </section>
 
-      <div className="grid gap-3">
+      {view === "agenda" ? <TrialAgenda bookings={filteredBookings} range={range} onEditBooking={setEditingBooking} onEditVisit={setEditingVisit} onUpdateVisit={onUpdateVisit} /> : <div className="grid gap-3">
         {filteredBookings.map((booking) => (
           <BookingCard
             booking={booking}
@@ -119,7 +124,7 @@ export function TrialBookingsPanel({
             text={data.trialBookings.length ? "Cambia la búsqueda o los filtros." : "Las citas que confirme el agente aparecerán aquí con sus dos visitas."}
           />
         ) : null}
-      </div>
+      </div>}
 
       {editingBooking ? (
         <BookingEditor
@@ -166,6 +171,7 @@ function BookingCard({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">{booking.child_first_name || "Nombre por completar"}</h3>
             <BookingStatus status={booking.status} />
+            {nameNeedsReview(booking.child_first_name) && <span className="comm-badge amber">Confirmar nombre del niño</span>}
             <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-200">
               {sourceLabels[booking.source]}
             </span>
@@ -251,6 +257,7 @@ function BookingEditor({
     notes: booking.notes,
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -260,6 +267,8 @@ function BookingEditor({
         ...form,
         child_age: form.child_age ? Number(form.child_age) : null,
       });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar. Intenta de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -268,6 +277,8 @@ function BookingEditor({
   return createPortal(
     <Modal title={`Editar prueba de ${booking.child_first_name}`} eyebrow={booking.site_name} onClose={onClose}>
       <form className="grid gap-4" onSubmit={submit}>
+        {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+        {nameNeedsReview(form.child_first_name) && <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">El nombre registrado puede ser una consulta, no el nombre del niño. Confírmalo con el responsable antes de cambiarlo.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Responsable" required>
             <input className={inputClass} required value={form.responsible_name} onChange={(event) => setForm({ ...form, responsible_name: event.target.value })} />
@@ -340,6 +351,8 @@ function VisitEditor({
         status: form.status,
         notes: form.notes,
       });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar. Intenta de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -389,9 +402,11 @@ function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const dialog = dialogRef.current; dialog?.showModal(); return () => { dialog?.close(); }; }, []);
   return (
-    <div className="fixed inset-0 z-[1300] flex items-start justify-center overflow-y-auto bg-zinc-950/55 px-3 py-6">
-      <div className="motion-card w-full max-w-2xl overflow-hidden rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+    <dialog ref={dialogRef} onCancel={onClose} aria-label={title} className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none overflow-y-auto bg-transparent px-3 py-6 backdrop:bg-zinc-950/55">
+      <div className="motion-card mx-auto w-full max-w-2xl overflow-hidden rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">{eyebrow}</p>
@@ -401,7 +416,7 @@ function Modal({
         </div>
         <div className="p-4">{children}</div>
       </div>
-    </div>
+    </dialog>
   );
 }
 
@@ -441,20 +456,6 @@ function VisitStatus({ status }: { status: TrialVisitStatus }) {
     canceled: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200",
   };
   return <span className={`rounded-md px-2 py-1 text-xs font-semibold ${styles[status]}`}>{visitStatusLabels[status]}</span>;
-}
-
-function MiniMetric({ label, value, tone }: { label: string; value: number; tone: "emerald" | "blue" | "amber" }) {
-  const tones = {
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-50",
-    blue: "border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/25 dark:text-blue-50",
-    amber: "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-50",
-  };
-  return (
-    <article className={`rounded-md border p-4 ${tones[tone]}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-    </article>
-  );
 }
 
 function EmptyState({ title, text }: { title: string; text: string }) {

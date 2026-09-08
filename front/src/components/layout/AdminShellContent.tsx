@@ -1,15 +1,18 @@
+import type { StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { RefreshSkeletonBar, SectionSkeleton } from "../loading/AppSkeleton";
 import type {
   AppData,
   AttendanceRecord,
   AttendanceSession,
   FaceRecognitionResponse,
+  Guardian,
+  Student,
   HistoricalImport,
   TabKey,
   User,
 } from "../../types";
 import { fullWidthTabs } from "./adminNavigation";
-import type { AttendanceSubsection, BillingSubsection, BusinessScope, CommunicationsSubsection, StudentsSubsection } from "./adminShellModel";
+import type { AttendanceSubsection, BillingSubsection, BusinessScope, CommunicationsSubsection, StudentsSubsection, GuardiansSubsection, SportsSubsection } from "./adminShellModel";
 import { AutomaticAttendancePanel, VideoOccupancyPanel } from "../../features/automatic-attendance";
 import { BillingCollectionPanel, BillingPanel } from "../../features/billing";
 import { CoachDashboardPanel, CoachesConsolidatedPanel } from "../../features/coach";
@@ -42,6 +45,9 @@ import {
 } from "../FutsiViews";
 
 type AdminShellContentProps = {
+  onSelectCommunicationsSection: (section: CommunicationsSubsection) => void;
+  onNavigateDashboard: (tab: TabKey) => void;
+  dashboardSections: TabKey[];
   token: string;
   user: User;
   data: AppData;
@@ -57,8 +63,20 @@ type AdminShellContentProps = {
   attendanceSubsection: AttendanceSubsection;
   billingSection: BillingSubsection;
   communicationsSection: CommunicationsSubsection;
+  guardiansSection: GuardiansSubsection;
+  guardianToEdit: number | null;
+  onEditGuardian: (id: number) => void;
+  onSelectGuardiansSection: (section: GuardiansSubsection) => void;
+  sportsSection: SportsSubsection;
   studentsSection: StudentsSubsection;
+  studentToEdit: number | null;
+  onEditStudent: (studentId: number) => void;
+  onSelectStudentsSection: (section: StudentsSubsection) => void;
+  onDeleteTournament: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
+  onDeleteGuardian: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
+  onDeleteStudent: (studentId: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   tournamentSection: TournamentSection;
+  onSelectTournamentSection: (section: TournamentSection) => void;
   unknownDetailDate: string;
   unknownDetailReport: unknown;
   unknownSubjectToRegister: string;
@@ -143,11 +161,13 @@ function ActivePanel(props: AdminShellContentProps) {
             onDownloadFile={onDownloadFile}
           />
         ) : (
-          <DashboardPanel data={data} />
+          <DashboardPanel data={data} token={token} onNavigate={props.onNavigateDashboard} availableSections={props.dashboardSections} />
         )
       )}
       {effectiveActiveTab === "communications" && (
         <VoiceDashboardPanel
+          token={token}
+          onSelectSection={props.onSelectCommunicationsSection}
           user={user}
           data={data}
           section={communicationsSection}
@@ -167,13 +187,17 @@ function ActivePanel(props: AdminShellContentProps) {
         />
       )}
       {effectiveActiveTab === "calendar" && <CalendarPanel data={scopedData} scope={businessScope} />}
-      {effectiveActiveTab === "sports" && <SportsPanel data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />}
+      {effectiveActiveTab === "sports" && <SportsPanel section={props.sportsSection} data={scopedData} canEditMatches canEditAssessments onUpdateMatch={onUpdateMatchScore} onSaveAssessment={onSaveStudentAssessment} />}
       {effectiveActiveTab === "tournaments" && (
         <TournamentsPanel
           data={scopedData}
           user={user}
           scope={businessScope}
           section={tournamentSection}
+          token={token}
+          onDeleteTournament={props.onDeleteTournament}
+          onSelectSection={props.onSelectTournamentSection}
+          onUpdateRegistration={(id, payload) => onUpdateRecord(`/student-tournament-registrations/${id}/`, payload, "Inscripción actualizada.")}
           readOnly={user.role === "coach"}
           onCreateTournament={(payload) => onCreateAndReturn("/tournaments/", payload)}
           onCreateTeam={(payload) => onCreateAndReturn("/teams/", payload)}
@@ -248,8 +272,8 @@ function ActivePanel(props: AdminShellContentProps) {
           onCreateCashMovement={(payload) => onCreateRecord("/cash-movements/", payload, "Movimiento de caja registrado.")}
         />
       )}
-      {effectiveActiveTab === "students" && <StudentsPanel data={scopedData} section={studentsSection} onCreate={(payload) => onCreateRecord("/students/", payload, "Alumno creado.")} onUpdate={(studentId, payload) => onUpdateRecord(`/students/${studentId}/`, payload, "Alumno actualizado.")} />}
-      {effectiveActiveTab === "guardians" && <GuardiansPanel guardians={scopedData.guardians} onCreate={(payload) => onCreateRecord("/guardians/", payload, "Representante creado.")} />}
+      {effectiveActiveTab === "students" && <StudentsPanel data={scopedData} token={token} section={studentsSection} editingId={props.studentToEdit} onEdit={props.onEditStudent} onSelectSection={props.onSelectStudentsSection} onDelete={props.onDeleteStudent} onCreate={(payload) => onCreateAndReturn<Student>("/students/", payload)} onCreateGuardian={(payload) => onCreateAndReturn<Guardian>("/guardians/", payload)} onUpdate={(studentId, payload) => onUpdateRecord(`/students/${studentId}/`, payload, "Alumno actualizado.")} />}
+      {effectiveActiveTab === "guardians" && <GuardiansPanel data={scopedData} token={token} section={props.guardiansSection} editingId={props.guardianToEdit} onEdit={props.onEditGuardian} onSelectSection={props.onSelectGuardiansSection} onDelete={props.onDeleteGuardian} onCreate={(payload) => onCreateAndReturn<Guardian>("/guardians/", payload)} onUpdate={(id, payload) => onUpdateRecord(`/guardians/${id}/`, payload, "Tutor actualizado.")} />}
       {effectiveActiveTab === "sites" && <SitesPanel sites={data.sites} onCreate={(payload) => onCreateRecord("/sites/", payload, "Sede creada.")} />}
       {effectiveActiveTab === "users" && isAdmin && <UsersPanel data={scopedData} onCreate={(payload) => onCreateRecord("/users/", payload, "Usuario creado.")} onUpdate={(userId, payload) => onUpdateRecord(`/users/${userId}/`, payload, "Permisos actualizados.")} />}
       {effectiveActiveTab === "invoices" && <InvoicesPanel data={scopedData} onCreateInvoice={(payload) => onCreateRecord("/invoices/simulate/", payload, "Factura simulada generada.")} onDownloadFile={onDownloadFile} />}

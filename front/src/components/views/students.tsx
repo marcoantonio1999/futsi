@@ -1,104 +1,42 @@
-import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
-import { Metric } from "../cards/Metric";
+import type { StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
+import React, { useEffect, useMemo, useState } from "react";
 import { statusLabels } from "../../appState";
-import type { AppData, Student } from "../../types";
+import type { AppData, Guardian, Student } from "../../types";
 import { SelectInput, TextInput } from "./shared";
 import { StudentCard } from "./studentCard";
 import type { StudentsSubsection } from "../layout/adminShellModel";
 
+import { StudentEnrollment } from "./studentEnrollment";
+import { StudentEditor } from "./studentEditor";
+import { StudentOverview, emptyStudentFilters } from "./studentOverview";
+import { StudentDeleteDialog } from "./studentDeleteDialog";
+
 export function StudentsPanel({
   data,
-  section = "registered",
+  section = "overview",
+  editingId, onEdit, onSelectSection, onDelete,
   onCreate,
+  onCreateGuardian,
+  token,
   onUpdate,
 }: {
   data: AppData;
+  editingId: number | null;
+  onEdit: (id: number) => void;
+  onSelectSection: (section: StudentsSubsection) => void;
+  onDelete: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   section?: StudentsSubsection;
-  onCreate: (payload: unknown) => void;
-  onUpdate: (studentId: number, payload: unknown) => void;
+  token: string;
+  onCreate: (payload: FormData) => Promise<Student>;
+  onCreateGuardian: (payload: unknown) => Promise<Guardian>;
+  onUpdate: (studentId: number, payload: unknown) => Promise<boolean>;
 }) {
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const editingStudent = data.students.find((student) => student.id === editingId) ?? null;
-  const [editForm, setEditForm] = useState({
-    photo_url: "",
-    waiver_url: "",
-    medical_notes: "",
-    emergency_contact: "",
-    emergency_phone: "",
-    uniform_status: "pending",
-    pause_start: "",
-    pause_end: "",
-    pause_reason: "",
-  });
-  const [filters, setFilters] = useState({
-    query: "",
-    site: "",
-    group: "",
-    status: "",
-    uniform: "",
-    waiver: "",
-    payment: "",
-    medical: "",
-  });
+  const editingStudent = data.students.find(student => student.id === editingId);
+  const [filters, setFilters] = useState(emptyStudentFilters);
   const [studentPage, setStudentPage] = useState(0);
-  const [form, setForm] = useState({
-    full_name: "",
-    site: "",
-    guardian: "",
-    birth_date: "",
-    category: "Sub-10",
-    group_name: "",
-    status: "trial",
-    photo_url: "",
-    waiver_url: "",
-    medical_notes: "",
-    emergency_contact: "",
-    emergency_phone: "",
-    uniform_status: "pending",
-    pause_start: "",
-    pause_end: "",
-    pause_reason: "",
-  });
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    onCreate({
-      ...form,
-      site: Number(form.site),
-      guardian: Number(form.guardian),
-      birth_date: form.birth_date || null,
-      pause_start: form.pause_start || null,
-      pause_end: form.pause_end || null,
-    });
-    setForm({ ...form, full_name: "", group_name: "", birth_date: "" });
-  }
-
-  function startEdit(student: Student) {
-    setEditingId(student.id);
-    setEditForm({
-      photo_url: student.photo_url || "",
-      waiver_url: student.waiver_url || "",
-      medical_notes: student.medical_notes || "",
-      emergency_contact: student.emergency_contact || "",
-      emergency_phone: student.emergency_phone || "",
-      uniform_status: student.uniform_status || "pending",
-      pause_start: student.pause_start || "",
-      pause_end: student.pause_end || "",
-      pause_reason: student.pause_reason || "",
-    });
-  }
-
-  function submitEdit(event: FormEvent) {
-    event.preventDefault();
-    if (!editingId) return;
-    onUpdate(editingId, {
-      ...editForm,
-      pause_start: editForm.pause_start || null,
-      pause_end: editForm.pause_end || null,
-    });
-    setEditingId(null);
-  }
+  const [deletingStudent, setDeletingStudent] = useState<Student | null>(null);
+  const [notice, setNotice] = useState("");
+  useEffect(() => { setDeletingStudent(null); setNotice(""); }, [section]);
 
   const groups = useMemo(() => {
     return Array.from(new Set(data.students.map((student) => student.group_name).filter(Boolean))).sort();
@@ -134,86 +72,21 @@ export function StudentsPanel({
     if (studentPage >= studentPageCount) setStudentPage(studentPageCount - 1);
   }, [studentPage, studentPageCount]);
 
-  const filterSummary = {
-    pendingPayment: filteredStudents.filter((student) => student.open_charge_count > 0).length,
-    missingWaiver: filteredStudents.filter((student) => !student.waiver_url).length,
-    medical: filteredStudents.filter((student) => student.medical_notes).length,
-  };
+  function clearFilters() { setFilters(emptyStudentFilters); }
 
-  function clearFilters() {
-    setFilters({ query: "", site: "", group: "", status: "", uniform: "", waiver: "", payment: "", medical: "" });
-  }
+  if (section === "edit") return editingStudent
+    ? <StudentEditor key={editingStudent.id} student={editingStudent} data={data} token={token} onUpdate={onUpdate} onBack={() => onSelectSection("registered")} />
+    : <div className="student-enrollment student-section"><h2>Alumno no disponible</h2><button className="student-button secondary mt-4" onClick={() => onSelectSection("registered")}>Volver a gestionar alumnos</button></div>;
 
   return (
     <>
-      {section === "create" && (
-      <form onSubmit={submit} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          <Plus size={16} /> Nuevo alumno
-        </h2>
-        <div className="mt-4 grid gap-3">
-          <TextInput label="Nombre completo" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-          <SelectInput label="Sede" required value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })}>
-            <option value="">Seleccionar</option>
-            {data.sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name}
-              </option>
-            ))}
-          </SelectInput>
-          <SelectInput
-            label="Representante"
-            required
-            value={form.guardian}
-            onChange={(e) => setForm({ ...form, guardian: e.target.value })}
-          >
-            <option value="">Seleccionar</option>
-            {data.guardians.map((guardian) => (
-              <option key={guardian.id} value={guardian.id}>
-                {guardian.full_name}
-              </option>
-            ))}
-          </SelectInput>
-          <TextInput label="Fecha nacimiento" type="date" value={form.birth_date} onChange={(e) => setForm({ ...form, birth_date: e.target.value })} />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextInput label="Categoria" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
-            <TextInput label="Grupo" value={form.group_name} onChange={(e) => setForm({ ...form, group_name: e.target.value })} />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextInput label="Foto URL" value={form.photo_url} onChange={(e) => setForm({ ...form, photo_url: e.target.value })} />
-            <TextInput label="Responsiva URL" value={form.waiver_url} onChange={(e) => setForm({ ...form, waiver_url: e.target.value })} />
-          </div>
-          <SelectInput label="Estado" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-            {Object.entries(statusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </SelectInput>
-          <SelectInput label="Uniforme" value={form.uniform_status} onChange={(e) => setForm({ ...form, uniform_status: e.target.value })}>
-            <option value="pending">Pendiente</option>
-            <option value="paid">Pagado</option>
-            <option value="delivered">Entregado</option>
-          </SelectInput>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextInput label="Inicio pausa" type="date" value={form.pause_start} onChange={(e) => setForm({ ...form, pause_start: e.target.value })} />
-            <TextInput label="Fin pausa" type="date" value={form.pause_end} onChange={(e) => setForm({ ...form, pause_end: e.target.value })} />
-          </div>
-          <TextInput label="Motivo pausa" value={form.pause_reason} onChange={(e) => setForm({ ...form, pause_reason: e.target.value })} />
-          <TextInput label="Contacto emergencia" value={form.emergency_contact} onChange={(e) => setForm({ ...form, emergency_contact: e.target.value })} />
-          <TextInput label="Telefono emergencia" value={form.emergency_phone} onChange={(e) => setForm({ ...form, emergency_phone: e.target.value })} />
-          <TextInput label="Informacion medica" value={form.medical_notes} onChange={(e) => setForm({ ...form, medical_notes: e.target.value })} />
-          <button className="flex items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white">
-            <Plus size={16} /> Guardar alumno
-          </button>
-        </div>
-      </form>
-      )}
+      {section === "overview" && <StudentOverview data={data} onCreate={() => onSelectSection("create")} onManage={next => { setFilters({ ...emptyStudentFilters, ...next }); onSelectSection("registered"); }} />}
+      {section === "create" && <StudentEnrollment data={data} onCreate={onCreate} onCreateGuardian={onCreateGuardian} />}
       {section === "registered" && (
       <section className="rounded-md border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-col gap-2 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="font-semibold">Alumnos registrados</h2>
+            <h2 className="font-semibold">Gestionar alumnos</h2>
             <p className="mt-1 text-sm text-zinc-500">
               {filteredStudents.length} de {data.students.length} alumnos filtrados · mostrando {visibleStudents.length} por pagina
             </p>
@@ -245,6 +118,7 @@ export function StudentsPanel({
             </button>
           </div>
         </div>
+        {notice && <p role="status" className="m-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
         <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
           <TextInput label="Buscar" placeholder="Alumno, tutor, grupo" value={filters.query} onChange={(e) => setFilters({ ...filters, query: e.target.value })} />
           <SelectInput label="Sede" value={filters.site} onChange={(e) => setFilters({ ...filters, site: e.target.value })}>
@@ -287,50 +161,15 @@ export function StudentsPanel({
             <option value="no">Sin nota medica</option>
           </SelectInput>
         </div>
-        <div className="grid gap-3 border-t border-zinc-100 px-4 py-3 sm:grid-cols-4">
-          <Metric label="Filtrados" value={filteredStudents.length} />
-          <Metric label="Pago pendiente" value={filterSummary.pendingPayment} />
-          <Metric label="Responsiva pendiente" value={filterSummary.missingWaiver} />
-          <Metric label="Con nota medica" value={filterSummary.medical} />
-        </div>
         <div className="grid gap-3 border-t border-zinc-200 p-4 xl:grid-cols-2">
           {visibleStudents.map((student) => (
-            <StudentCard key={student.id} student={student} onEdit={startEdit} />
+            <StudentCard key={student.id} student={student} token={token} onEdit={student => onEdit(student.id)} onDelete={setDeletingStudent} />
           ))}
           {filteredStudents.length === 0 && <p className="px-4 py-8 text-sm text-zinc-500">No hay alumnos con estos filtros.</p>}
         </div>
       </section>
       )}
-      {section === "registered" && editingStudent && (
-        <form onSubmit={submitEdit} className="rounded-md border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-base font-semibold">Editar control de {editingStudent.full_name}</h2>
-          <div className="mt-4 grid gap-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <TextInput label="Foto URL" value={editForm.photo_url} onChange={(e) => setEditForm({ ...editForm, photo_url: e.target.value })} />
-              <TextInput label="Responsiva URL" value={editForm.waiver_url} onChange={(e) => setEditForm({ ...editForm, waiver_url: e.target.value })} />
-            </div>
-            <SelectInput label="Uniforme" value={editForm.uniform_status} onChange={(e) => setEditForm({ ...editForm, uniform_status: e.target.value })}>
-              <option value="pending">Pendiente</option>
-              <option value="paid">Pagado</option>
-              <option value="delivered">Entregado</option>
-            </SelectInput>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <TextInput label="Inicio pausa" type="date" value={editForm.pause_start} onChange={(e) => setEditForm({ ...editForm, pause_start: e.target.value })} />
-              <TextInput label="Fin pausa" type="date" value={editForm.pause_end} onChange={(e) => setEditForm({ ...editForm, pause_end: e.target.value })} />
-            </div>
-            <TextInput label="Motivo pausa" value={editForm.pause_reason} onChange={(e) => setEditForm({ ...editForm, pause_reason: e.target.value })} />
-            <TextInput label="Contacto emergencia" value={editForm.emergency_contact} onChange={(e) => setEditForm({ ...editForm, emergency_contact: e.target.value })} />
-            <TextInput label="Telefono emergencia" value={editForm.emergency_phone} onChange={(e) => setEditForm({ ...editForm, emergency_phone: e.target.value })} />
-            <TextInput label="Informacion medica" value={editForm.medical_notes} onChange={(e) => setEditForm({ ...editForm, medical_notes: e.target.value })} />
-            <div className="flex gap-2">
-              <button className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white">Guardar cambios</button>
-              <button type="button" className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium" onClick={() => setEditingId(null)}>
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
+      {section === "registered" && deletingStudent && <StudentDeleteDialog token={token} student={deletingStudent} onClose={() => setDeletingStudent(null)} onDelete={async (id, confirmation) => { const result = await onDelete(id, confirmation); setNotice("Alumno e historial eliminados."); return result; }} />}
     </>
   );
 }

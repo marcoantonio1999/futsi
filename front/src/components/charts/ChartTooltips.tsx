@@ -24,8 +24,8 @@ export function FinancialChartTooltip({ active, payload, label }: { active?: boo
       <p className="font-semibold text-zinc-900">{label}</p>
       <p className="mt-1 text-emerald-700">Ingresos: ${money(ingresos)}</p>
       <p className="text-red-700">Egresos: ${money(Number(values.egresos || 0))}</p>
-      <p className={utilidad >= 0 ? "text-zinc-900" : "text-red-700"}>Utilidad: ${money(utilidad)}</p>
-      <p className="text-zinc-500">Margen: {margen.toFixed(1)}%</p>
+      <p className={utilidad >= 0 ? "text-zinc-900" : "text-red-700"}>Resultado: ${money(utilidad)}</p>
+      <p className="text-zinc-500">Margen: {ingresos ? `${margen.toFixed(1)}%` : "No aplica"}</p>
     </div>
   );
 }

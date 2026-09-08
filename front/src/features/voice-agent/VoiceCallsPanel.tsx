@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CheckCircle2,
@@ -52,6 +52,7 @@ export function VoiceCallsPanel({
   const [outcome, setOutcome] = useState<"all" | CallOutcome>("all");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [failureCall, setFailureCall] = useState<VoiceCall | null>(null);
+  const [error, setError] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
 
   const bookingById = useMemo(() => new Map(bookings.map((booking) => [booking.id, booking])), [bookings]);
@@ -83,19 +84,27 @@ export function VoiceCallsPanel({
   const unsuccessful = calls.filter((call) => call.review_outcome === "unsuccessful").length;
 
   async function markSuccessful(call: VoiceCall) {
+    if (savingId !== null) return;
+    setError("");
     setSavingId(call.id);
     try {
       await onReviewCall(call, { review_outcome: "successful" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la revisión.");
     } finally {
       setSavingId(null);
     }
   }
 
   async function markUnsuccessful(call: VoiceCall, failureReason: string) {
+    if (savingId !== null) return;
+    setError("");
     setSavingId(call.id);
     try {
       await onReviewCall(call, { review_outcome: "unsuccessful", failure_reason: failureReason });
       setFailureCall(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la revisión.");
     } finally {
       setSavingId(null);
     }
@@ -103,6 +112,8 @@ export function VoiceCallsPanel({
 
   return (
     <div className="grid min-w-0 gap-4">
+      {error && <p role="alert" className="comm-error">{error}</p>}
+      <p className="comm-muted">Histórico de llamadas · Los resultados se registran después de revisar cada llamada.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <CallMetric icon={CircleDashed} label="Pendientes de revisión" tone="amber" value={pending} />
         <CallMetric icon={CheckCircle2} label="Llamadas exitosas" tone="emerald" value={successful} />
@@ -116,12 +127,13 @@ export function VoiceCallsPanel({
             <input
               className={`${inputClass} pl-9`}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="Buscar llamadas"
               placeholder="Buscar número, persona o llamada"
               type="search"
               value={query}
             />
           </label>
-          <select className={inputClass} onChange={(event) => setOutcome(event.target.value as typeof outcome)} value={outcome}>
+          <select aria-label="Resultado de llamada" className={inputClass} onChange={(event) => setOutcome(event.target.value as typeof outcome)} value={outcome}>
             <option value="all">Todos los resultados</option>
             {Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
@@ -235,6 +247,7 @@ export function VoiceCallsPanel({
 
       {failureCall ? (
         <FailureReasonModal
+          error={error}
           call={failureCall}
           saving={savingId === failureCall.id}
           onClose={() => setFailureCall(null)}
@@ -291,17 +304,21 @@ function Transcript({ call }: { call: VoiceCall }) {
 }
 
 function FailureReasonModal({
+  error,
   call,
   saving,
   onClose,
   onSave,
 }: {
+  error: string;
   call: VoiceCall;
   saving: boolean;
   onClose: () => void;
   onSave: (reason: string) => Promise<void>;
 }) {
   const [reason, setReason] = useState(call.failure_reason);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const dialog = dialogRef.current; dialog?.showModal(); return () => dialog?.close(); }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -309,8 +326,8 @@ function FailureReasonModal({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[1300] grid place-items-center overflow-y-auto bg-zinc-950/55 px-3 py-6">
-      <form className="motion-card w-full max-w-lg overflow-hidden rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950" onSubmit={submit}>
+    <dialog ref={dialogRef} onCancel={onClose} aria-label="Resultado de llamada" className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none overflow-y-auto bg-transparent px-3 py-6 backdrop:bg-zinc-950/55">
+      <form className="motion-card mx-auto w-full max-w-lg overflow-hidden rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950" onSubmit={submit}>
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">Resultado de llamada</p>
@@ -332,6 +349,7 @@ function FailureReasonModal({
               value={reason}
             />
           </label>
+          {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
           <div className="flex flex-col-reverse gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800 sm:flex-row sm:justify-end">
             <button className={secondaryButtonClass} disabled={saving} onClick={onClose} type="button">Cancelar</button>
             <button className={primaryButtonClass} disabled={saving || !reason.trim()} type="submit">
@@ -340,7 +358,7 @@ function FailureReasonModal({
           </div>
         </div>
       </form>
-    </div>,
+    </dialog>,
     document.body,
   );
 }

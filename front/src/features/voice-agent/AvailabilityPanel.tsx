@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Clock3, MapPin, Pencil, Plus, Power, Search, UsersRound, X } from "lucide-react";
 import type { AppData, TrialAvailabilityRule } from "../../types";
@@ -18,8 +18,15 @@ export function AvailabilityPanel({
   const [query, setQuery] = useState("");
   const [site, setSite] = useState("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
+  const [toggleError, setToggleError] = useState("");
+  const [toggling, setToggling] = useState<number | null>(null);
   const [editor, setEditor] = useState<TrialAvailabilityRule | "new" | null>(null);
 
+  async function toggleRule(rule: TrialAvailabilityRule) {
+    if (toggling !== null) return;
+    setToggling(rule.id); setToggleError("");
+    try { await onUpdateRule(rule, { is_active: !rule.is_active }); } catch (err) { setToggleError(err instanceof Error ? err.message : "No se pudo actualizar el horario."); } finally { setToggling(null); }
+  }
   const filteredRules = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("es-MX");
     return [...data.trialAvailabilityRules]
@@ -42,6 +49,7 @@ export function AvailabilityPanel({
 
   return (
     <div className="grid min-w-0 gap-4">
+      {toggleError && <p role="alert" className="comm-error">{toggleError}</p>}
       <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-50">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -64,22 +72,25 @@ export function AvailabilityPanel({
             <input
               className={`${inputClass} pl-9`}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="Buscar disponibilidad"
               placeholder="Buscar sede, cancha o día"
               type="search"
               value={query}
             />
           </label>
-          <select className={inputClass} onChange={(event) => setSite(event.target.value)} value={site}>
+          <select aria-label="Sede de disponibilidad" className={inputClass} onChange={(event) => setSite(event.target.value)} value={site}>
             <option value="all">Todas las sedes</option>
             {data.sites.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
-          <select className={inputClass} onChange={(event) => setActiveFilter(event.target.value as typeof activeFilter)} value={activeFilter}>
+          <select aria-label="Estado de disponibilidad" className={inputClass} onChange={(event) => setActiveFilter(event.target.value as typeof activeFilter)} value={activeFilter}>
             <option value="all">Activos e inactivos</option>
             <option value="active">Solo activos</option>
             <option value="inactive">Solo inactivos</option>
           </select>
         </div>
       </section>
+
+      <section aria-label="Disponibilidad semanal"><p className="comm-muted mb-3">Semana habitual · Horarios según los filtros seleccionados</p><div className="comm-week">{weekdayLabels.map((day, index) => <div className="comm-week-day" key={day}><h3>{day}</h3>{filteredRules.filter(rule => rule.weekday === index).map(rule => <button type="button" className="comm-week-slot w-full text-left" key={rule.id} onClick={() => setEditor(rule)}>{shortTime(rule.starts_at)}–{shortTime(rule.ends_at)}<small>{rule.site_name} · {rule.capacity} lugares por horario{rule.is_active ? "" : " · Inactiva"}</small></button>)}{!filteredRules.some(rule => rule.weekday === index) && <small>Sin horarios</small>}</div>)}</div></section>
 
       <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
         {filteredRules.map((rule) => (
@@ -119,7 +130,8 @@ export function AvailabilityPanel({
               </button>
               <button
                 className={`${secondaryButtonClass} ${rule.is_active ? "" : "border-emerald-200 text-emerald-700 dark:text-emerald-300"}`}
-                onClick={() => void onUpdateRule(rule, { is_active: !rule.is_active })}
+                disabled={toggling !== null}
+                onClick={() => void toggleRule(rule)}
                 type="button"
               >
                 <Power size={15} /> {rule.is_active ? "Desactivar" : "Activar"}
@@ -205,6 +217,8 @@ function AvailabilityEditor({
         capacity: Number(form.capacity),
         is_active: form.is_active,
       });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el horario.");
     } finally {
       setSaving(false);
     }
@@ -214,9 +228,11 @@ function AvailabilityEditor({
     setForm({ ...form, site: nextSite, court: "" });
   }
 
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const dialog = dialogRef.current; dialog?.showModal(); return () => dialog?.close(); }, []);
   return createPortal(
-    <div className="fixed inset-0 z-[1300] flex items-start justify-center overflow-y-auto bg-zinc-950/55 px-3 py-6">
-      <form className="motion-card w-full max-w-2xl overflow-hidden rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950" onSubmit={submit}>
+    <dialog ref={dialogRef} onCancel={onClose} aria-label={rule ? "Editar horario" : "Agregar horario"} className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none overflow-y-auto bg-transparent px-3 py-6 backdrop:bg-zinc-950/55">
+      <form className="motion-card mx-auto w-full max-w-2xl overflow-hidden rounded-md border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950" onSubmit={submit}>
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Disponibilidad de pruebas</p>
@@ -266,7 +282,7 @@ function AvailabilityEditor({
           </div>
         </div>
       </form>
-    </div>,
+    </dialog>,
     document.body,
   );
 }

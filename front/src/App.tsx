@@ -32,6 +32,9 @@ export default function App() {
     logout,
     createRecord,
     updateRecord,
+    deleteStudent,
+    deleteTournament,
+    deleteGuardian,
     createAndReturn,
     uploadHistoricalImport,
     commitHistoricalImport,
@@ -56,9 +59,8 @@ export default function App() {
   if (!token || !currentUser) {
     return (
       <>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
         <Suspense fallback={<LandingFallback />}>
-          <FutsiLanding onLogin={handleLogin} />
+          <FutsiLanding onLogin={handleLogin} theme={theme} onToggleTheme={toggleTheme} />
         </Suspense>
       </>
     );
@@ -169,6 +171,9 @@ export default function App() {
           onLogout={logout}
           onCreateRecord={createRecord}
           onUpdateRecord={updateRecord}
+          onDeleteStudent={deleteStudent}
+          onDeleteTournament={deleteTournament}
+          onDeleteGuardian={deleteGuardian}
           onCreateAndReturn={createAndReturn}
           onUploadHistoricalImport={uploadHistoricalImport}
           onCommitHistoricalImport={commitHistoricalImport}
@@ -186,8 +191,8 @@ export default function App() {
 
 function LandingFallback() {
   return (
-    <main className="motion-page grid min-h-screen place-items-center bg-zinc-950 px-4 text-white">
-      <div className="size-10 animate-spin rounded-full border-4 border-emerald-100/20 border-t-emerald-300" />
+    <main className="grid min-h-screen place-items-center bg-[#f6f7f2] px-4 text-emerald-800 dark:bg-[#101e19] dark:text-emerald-200" aria-label="Cargando Futsi" role="status">
+      <div className="size-8 animate-spin rounded-full border-2 border-emerald-700/20 border-t-emerald-600" aria-hidden="true" />
     </main>
   );
 }

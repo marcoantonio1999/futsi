@@ -6,8 +6,6 @@ import { AdminShellHeader } from "./AdminShellHeader";
 import { AdminShellMobileMenu } from "./AdminShellMobileMenu";
 import type { AdminShellProps } from "./AdminShellProps";
 import { AdminShellSidebar } from "./AdminShellSidebar";
-import { UnknownSubjectNotification } from "./UnknownSubjectNotification";
-import { useUnknownSubjectAlert } from "./useUnknownSubjectAlert";
 import type { TournamentSection } from "../../features/tournaments";
 import {
   academyDefaultTab,
@@ -17,17 +15,15 @@ import {
   adultLeagueData,
   adultMenuTabs,
   adultTabLabels,
-  desktopSidebarAutoCollapseMs,
-  desktopSidebarNearPx,
-  desktopSidebarOpenEdgePx,
   shellToneForScope,
   type AttendanceSubsection,
   type BillingSubsection,
   type BusinessScope,
   type CommunicationsSubsection,
   type StudentsSubsection,
+  type SportsSubsection,
+  type GuardiansSubsection,
 } from "./adminShellModel";
-import { ThemeToggle } from "./ThemeToggle";
 
 export function AdminShell({
   token,
@@ -44,6 +40,9 @@ export function AdminShell({
   onLogout,
   onCreateRecord,
   onUpdateRecord,
+  onDeleteStudent,
+  onDeleteTournament,
+  onDeleteGuardian,
   onCreateAndReturn,
   onUploadHistoricalImport,
   onCommitHistoricalImport,
@@ -57,20 +56,29 @@ export function AdminShell({
   const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
   const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
+  const [communicationsMenuExpanded, setCommunicationsMenuExpanded] = useState(false);
   const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>("summary");
-  const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("registered");
+  const [sportsSection, setSportsSection] = useState<SportsSubsection>("exams");
+  const [sportsMenuExpanded, setSportsMenuExpanded] = useState(false);
+  const [studentsMenuExpanded, setStudentsMenuExpanded] = useState(false);
+  const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("overview");
+  const [guardiansSection, setGuardiansSection] = useState<GuardiansSubsection>("registered");
+  const [guardianToEdit, setGuardianToEdit] = useState<number | null>(null);
+  const [guardiansMenuExpanded, setGuardiansMenuExpanded] = useState(false);
+  const [studentToEdit, setStudentToEdit] = useState<number | null>(null);
+  const [tournamentsMenuExpanded, setTournamentsMenuExpanded] = useState(false);
   const [tournamentSection, setTournamentSection] = useState<TournamentSection>("overview");
   const [unknownDetailDate, setUnknownDetailDate] = useState("");
   const [unknownDetailReport, setUnknownDetailReport] = useState<unknown>(null);
   const [unknownSubjectToRegister, setUnknownSubjectToRegister] = useState("");
   const [businessScope, setBusinessScope] = useState<BusinessScope>("academy");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+    try { return localStorage.getItem("futsi_sidebar_expanded") !== "false"; } catch { return true; }
+  });
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const mobileSwipeStartX = useRef<number | null>(null);
   const desktopSidebarRef = useRef<HTMLElement | null>(null);
-  const desktopSidebarCollapseTimer = useRef<number | null>(null);
-  const latestPointerPosition = useRef<{ x: number; y: number } | null>(null);
 
   const isAdmin = user.role === "admin" || user.role === "owner" || user.role === "dev";
   const canManageCommunications = ["admin", "owner", "dev", "site_coordinator"].includes(user.role);
@@ -99,7 +107,6 @@ export function AdminShell({
   const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
   const isFirstSectionLoad = sectionLoading === effectiveActiveTab && !loadedSections.includes(effectiveActiveTab);
   const shellTone = shellToneForScope(businessScope);
-  const unknownSubjectAlert = useUnknownSubjectAlert(token);
   const showBillingSubsections = businessScope === "academy";
   const canProgramBilling = showBillingSubsections && user.role !== "cashier";
 
@@ -137,66 +144,11 @@ export function AdminShell({
   }, []);
 
   useEffect(() => {
-    const handleDesktopPointerMove = (event: PointerEvent) => {
-      if (!isDesktopSidebarViewport()) return;
-      latestPointerPosition.current = { x: event.clientX, y: event.clientY };
-      if (event.clientX <= desktopSidebarOpenEdgePx) {
-        setSidebarExpanded(true);
-        clearDesktopSidebarCollapse();
-        return;
-      }
-      if (!sidebarExpanded) return;
-      if (isPointerNearDesktopSidebar(event.clientX, event.clientY)) clearDesktopSidebarCollapse();
-      else startDesktopSidebarCollapse();
-    };
-
-    window.addEventListener("pointermove", handleDesktopPointerMove, { passive: true });
-    return () => window.removeEventListener("pointermove", handleDesktopPointerMove);
+    try { localStorage.setItem("futsi_sidebar_expanded", String(sidebarExpanded)); } catch { /* Storage may be unavailable. */ }
   }, [sidebarExpanded]);
-
-  useEffect(() => {
-    if (!sidebarExpanded) {
-      clearDesktopSidebarCollapse();
-      return;
-    }
-    const pointer = latestPointerPosition.current;
-    if (!pointer || !isPointerNearDesktopSidebar(pointer.x, pointer.y)) startDesktopSidebarCollapse();
-  }, [sidebarExpanded]);
-
-  useEffect(() => () => clearDesktopSidebarCollapse(), []);
 
   function refreshActiveSection() {
     void onLoadSection(effectiveActiveTab, { force: true });
-  }
-
-  function clearDesktopSidebarCollapse() {
-    if (desktopSidebarCollapseTimer.current === null) return;
-    window.clearTimeout(desktopSidebarCollapseTimer.current);
-    desktopSidebarCollapseTimer.current = null;
-  }
-
-  function startDesktopSidebarCollapse() {
-    if (!sidebarExpanded || desktopSidebarCollapseTimer.current !== null) return;
-    desktopSidebarCollapseTimer.current = window.setTimeout(() => {
-      setSidebarExpanded(false);
-      desktopSidebarCollapseTimer.current = null;
-    }, desktopSidebarAutoCollapseMs);
-  }
-
-  function isDesktopSidebarViewport() {
-    return window.innerWidth >= 1024;
-  }
-
-  function openDesktopSidebarFromHover() {
-    if (!isDesktopSidebarViewport()) return;
-    setSidebarExpanded(true);
-    clearDesktopSidebarCollapse();
-  }
-
-  function isPointerNearDesktopSidebar(x: number, y: number) {
-    const rect = desktopSidebarRef.current?.getBoundingClientRect();
-    if (!rect) return x <= desktopSidebarOpenEdgePx;
-    return x >= rect.left - desktopSidebarNearPx && x <= rect.right + desktopSidebarNearPx && y >= rect.top - desktopSidebarNearPx && y <= rect.bottom + desktopSidebarNearPx;
   }
 
   function scrollToTop() {
@@ -208,14 +160,33 @@ export function AdminShell({
     scrollToTop();
   }
 
+  function toggleTournamentsMenu() {
+    if (effectiveActiveTab !== "tournaments") {
+      setActiveTab("tournaments"); setTournamentsMenuExpanded(true); scrollToTop(); return;
+    }
+    setTournamentsMenuExpanded(expanded => !expanded);
+  }
+
   function selectTournamentSection(section: TournamentSection) {
+    setTournamentsMenuExpanded(true);
     setTournamentSection(section);
     setActiveTab("tournaments");
     setMobileMenuOpen(false);
     scrollToTop();
   }
 
+  function toggleCommunicationsMenu() {
+    if (effectiveActiveTab !== "communications") {
+      setActiveTab("communications");
+      setCommunicationsMenuExpanded(true);
+      scrollToTop();
+      return;
+    }
+    setCommunicationsMenuExpanded(expanded => !expanded);
+  }
+
   function selectCommunicationsSection(section: CommunicationsSubsection) {
+    if (effectiveActiveTab !== "communications") setCommunicationsMenuExpanded(true);
     setCommunicationsSection(section);
     setActiveTab("communications");
     setMobileMenuOpen(false);
@@ -229,7 +200,40 @@ export function AdminShell({
     scrollToTop();
   }
 
+  function toggleGuardiansMenu() {
+    if (effectiveActiveTab !== "guardians") {
+      setActiveTab("guardians"); setGuardiansMenuExpanded(true); scrollToTop(); return;
+    }
+    setGuardiansMenuExpanded(expanded => !expanded);
+  }
+
+  function selectGuardiansSection(section: GuardiansSubsection) {
+    setGuardianToEdit(null); setGuardiansSection(section); setActiveTab("guardians");
+    setGuardiansMenuExpanded(true); setMobileMenuOpen(false); scrollToTop();
+  }
+
+  function toggleSportsMenu() {
+    if (effectiveActiveTab !== "sports") {
+      setActiveTab("sports"); setSportsMenuExpanded(true); scrollToTop(); return;
+    }
+    setSportsMenuExpanded(expanded => !expanded);
+  }
+
+  function selectSportsSection(section: SportsSubsection) {
+    setSportsSection(section); setSportsMenuExpanded(true); setActiveTab("sports");
+    setMobileMenuOpen(false); scrollToTop();
+  }
+
+  function toggleStudentsMenu() {
+    if (effectiveActiveTab !== "students") {
+      setActiveTab("students"); setStudentsMenuExpanded(true); scrollToTop(); return;
+    }
+    setStudentsMenuExpanded(expanded => !expanded);
+  }
+
   function selectStudentsSection(section: StudentsSubsection) {
+    setStudentsMenuExpanded(true);
+    setStudentToEdit(null);
     setStudentsSection(section);
     setActiveTab("students");
     setMobileMenuOpen(false);
@@ -278,13 +282,6 @@ export function AdminShell({
     scrollToTop();
   }
 
-  function openUnknownSubjectRegistration(subjectId: string) {
-    setUnknownSubjectToRegister(subjectId);
-    setActiveTab("unknowns");
-    setMobileMenuOpen(false);
-    scrollToTop();
-  }
-
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
     mobileSwipeStartX.current = event.touches[0]?.clientX ?? null;
   }
@@ -306,14 +303,21 @@ export function AdminShell({
       onTouchEnd={handleMobileTouchEnd}
       data-testid="admin-portal"
     >
-      <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-      <UnknownSubjectNotification subject={unknownSubjectAlert.primarySubject} onOpenSubject={openUnknownSubjectRegistration} />
       <AdminShellMobileMenu
         isOpen={mobileMenuOpen}
         sidebarTabs={sidebarTabs}
         effectiveActiveTab={effectiveActiveTab}
         billingSection={billingSection}
         communicationsSection={communicationsSection}
+        communicationsMenuExpanded={communicationsMenuExpanded}
+        guardiansMenuExpanded={guardiansMenuExpanded}
+        studentsMenuExpanded={studentsMenuExpanded}
+        sportsSection={sportsSection}
+        sportsMenuExpanded={sportsMenuExpanded}
+        tournamentsMenuExpanded={tournamentsMenuExpanded}
+        onSelectSportsSection={selectSportsSection}
+        onSelectGuardiansSection={selectGuardiansSection}
+        guardiansSection={guardiansSection}
         studentsSection={studentsSection}
         canReviewCommunicationCalls={canReviewCommunicationCalls}
         canProgramBilling={canProgramBilling}
@@ -327,6 +331,11 @@ export function AdminShell({
           setMobileMenuOpen(false);
         }}
         onSelectBillingSection={selectBillingSection}
+        onToggleCommunicationsMenu={toggleCommunicationsMenu}
+        onToggleGuardiansMenu={toggleGuardiansMenu}
+        onToggleStudentsMenu={toggleStudentsMenu}
+        onToggleSportsMenu={toggleSportsMenu}
+        onToggleTournamentsMenu={toggleTournamentsMenu}
         onSelectCommunicationsSection={selectCommunicationsSection}
         onSelectStudentsSection={selectStudentsSection}
         onSelectTournamentSection={selectTournamentSection}
@@ -341,7 +350,16 @@ export function AdminShell({
           effectiveActiveTab={effectiveActiveTab}
           billingSection={billingSection}
           communicationsSection={communicationsSection}
-          studentsSection={studentsSection}
+        communicationsMenuExpanded={communicationsMenuExpanded}
+        guardiansMenuExpanded={guardiansMenuExpanded}
+        studentsMenuExpanded={studentsMenuExpanded}
+        sportsSection={sportsSection}
+        sportsMenuExpanded={sportsMenuExpanded}
+        tournamentsMenuExpanded={tournamentsMenuExpanded}
+        onSelectSportsSection={selectSportsSection}
+        onSelectGuardiansSection={selectGuardiansSection}
+          guardiansSection={guardiansSection}
+        studentsSection={studentsSection}
           canReviewCommunicationCalls={canReviewCommunicationCalls}
           canProgramBilling={canProgramBilling}
           showBillingSubsections={showBillingSubsections}
@@ -351,30 +369,76 @@ export function AdminShell({
           onSwitchScope={switchBusinessScope}
           onSelectTab={selectTab}
           onSelectBillingSection={selectBillingSection}
+          onToggleTournamentsMenu={() => {
+            if (!sidebarExpanded) {
+              setSidebarExpanded(true); setTournamentsMenuExpanded(true);
+              if (effectiveActiveTab !== "tournaments") { setActiveTab("tournaments"); scrollToTop(); }
+            } else toggleTournamentsMenu();
+          }}
+          onToggleSportsMenu={() => {
+            if (!sidebarExpanded) {
+              setSidebarExpanded(true); setSportsMenuExpanded(true);
+              if (effectiveActiveTab !== "sports") { setActiveTab("sports"); scrollToTop(); }
+            } else toggleSportsMenu();
+          }}
+          onToggleStudentsMenu={() => {
+            if (!sidebarExpanded) {
+              setSidebarExpanded(true); setStudentsMenuExpanded(true);
+              if (effectiveActiveTab !== "students") { setActiveTab("students"); scrollToTop(); }
+            } else toggleStudentsMenu();
+          }}
+          onToggleGuardiansMenu={() => {
+            if (!sidebarExpanded) {
+              setSidebarExpanded(true); setGuardiansMenuExpanded(true);
+              if (effectiveActiveTab !== "guardians") { setActiveTab("guardians"); scrollToTop(); }
+            } else toggleGuardiansMenu();
+          }}
+          onToggleCommunicationsMenu={() => {
+            if (!sidebarExpanded) {
+              setSidebarExpanded(true);
+              setCommunicationsMenuExpanded(true);
+              if (effectiveActiveTab !== "communications") { setActiveTab("communications"); scrollToTop(); }
+            } else toggleCommunicationsMenu();
+          }}
           onSelectCommunicationsSection={selectCommunicationsSection}
           onSelectStudentsSection={selectStudentsSection}
           onSelectTournamentSection={selectTournamentSection}
           onRefresh={refreshActiveSection}
           onLogout={onLogout}
-          onMouseEnter={openDesktopSidebarFromHover}
-          onMouseLeave={startDesktopSidebarCollapse}
         />
-        <div className={`min-w-0 flex-1 pt-[76px] transition-[margin] duration-200 sm:pt-20 lg:pt-0 ${sidebarExpanded ? "lg:ml-[17rem]" : "lg:ml-[5.75rem]"}`}>
+        <div className={`min-w-0 flex-1 pt-[116px] transition-[margin] duration-200 sm:pt-[116px] lg:pt-0 ${sidebarExpanded ? "lg:ml-[17rem]" : "lg:ml-[5.75rem]"}`}>
           <AdminShellHeader
+            theme={theme}
+            onToggleTheme={onToggleTheme}
             user={user}
             businessScope={businessScope}
             canToggleAdultDashboard={canToggleAdultDashboard}
             headerScrolled={headerScrolled}
             effectiveActiveTabMeta={effectiveActiveTabMeta}
-            unknownSubjectCount={unknownSubjectAlert.count}
-            primaryUnknownSubject={unknownSubjectAlert.primarySubject}
             onOpenMobileMenu={() => setMobileMenuOpen(true)}
             onRefresh={refreshActiveSection}
             onSwitchScope={switchBusinessScope}
-            onOpenUnknownSubject={openUnknownSubjectRegistration}
             onLogout={onLogout}
           />
           <AdminShellContent
+            onSelectTournamentSection={selectTournamentSection}
+            sportsSection={sportsSection}
+            onSelectStudentsSection={selectStudentsSection}
+            studentToEdit={studentToEdit}
+            onEditStudent={(id) => { setStudentToEdit(id); setStudentsSection("edit"); scrollToTop(); }}
+            onDeleteStudent={onDeleteStudent}
+            onDeleteTournament={onDeleteTournament}
+            onDeleteGuardian={onDeleteGuardian}
+            onSelectGuardiansSection={selectGuardiansSection}
+            guardianToEdit={guardianToEdit}
+            onEditGuardian={(id) => { setGuardianToEdit(id); setGuardiansSection("edit"); scrollToTop(); }}
+            onSelectCommunicationsSection={selectCommunicationsSection}
+            onNavigateDashboard={(tab) => {
+              if (tab === "billing") setBillingSection("scheduled");
+              if (tab === "attendance") setAttendanceSubsection("general");
+              selectTab(tab);
+            }}
+            dashboardSections={sidebarTabs.map(tab => tab.key)}
             token={token}
             user={user}
             data={data}
@@ -390,7 +454,8 @@ export function AdminShell({
             attendanceSubsection={attendanceSubsection}
             billingSection={billingSection}
             communicationsSection={communicationsSection}
-            studentsSection={studentsSection}
+            guardiansSection={guardiansSection}
+        studentsSection={studentsSection}
             tournamentSection={tournamentSection}
             unknownDetailDate={unknownDetailDate}
             unknownDetailReport={unknownDetailReport}

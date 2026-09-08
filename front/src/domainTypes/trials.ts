@@ -160,6 +160,10 @@ export type WhatsAppMessage = {
 export type WhatsAppAutomationSettings = {
   id: number | null;
   business_address: string;
+  site: number | null;
+  site_name: string;
+  openai_model: string;
+  effective_model: string;
   human_first_enabled: boolean;
   business_days: number[];
   business_hours_start: string;
@@ -228,6 +232,7 @@ export type WhatsAppFollowUpAssignee = {
 };
 
 export type WhatsAppConversation = {
+  attention_resolution?: { message_id: number; resolved_at: string } | null;
   id: number;
   kind: "menu" | "faq" | "trial_booking" | "payment_reminder" | string;
   contact_name?: string | null;

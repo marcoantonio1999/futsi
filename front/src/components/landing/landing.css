@@ -1,0 +1,128 @@
+.futsi-welcome {
+  --welcome-bg: #f6f7f2;
+  --welcome-surface: #fff;
+  --welcome-ink: #153b32;
+  --welcome-muted: #61716a;
+  --welcome-line: #dde4dc;
+  --welcome-green: #297661;
+  min-height: 100svh;
+  background: #082f22;
+  color: #fff;
+}
+.dark .futsi-welcome {
+  --welcome-bg: #101e19;
+  --welcome-surface: #192b23;
+  --welcome-ink: #edf4ed;
+  --welcome-muted: #a9b9af;
+  --welcome-line: #33483c;
+  --welcome-green: #8ed5b3;
+}
+.futsi-welcome :is(a, button, input):focus-visible { outline: 3px solid #b6e7a9; outline-offset: 4px; }
+.stadium-hero { position: relative; isolation: isolate; min-height: max(650px, 84svh); display: flex; align-items: center; overflow: hidden; }
+.welcome-header { position: absolute; top: 0; left: 0; right: 0; z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 25px clamp(24px, 4.5vw, 72px); }
+.welcome-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: #fff; }
+.welcome-brand img { background: white; border-radius: 9px; padding: 4px; }
+.welcome-brand > span { display: grid; gap: 3px; }
+.welcome-brand strong { font-size: 20px; font-weight: 700; letter-spacing: -.5px; }
+.welcome-brand > span > span { font-size: 11px; color: #bfd4c9; }
+.welcome-header-actions { display: flex; align-items: center; gap: 15px; }
+.welcome-theme { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #ffffff35; border-radius: 8px; background: #082f2255; color: #fff; cursor: pointer; }
+.welcome-theme:hover { background: #ffffff15; }
+.welcome-access-link { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 0 18px; border: 1px solid #ffffff45; border-radius: 8px; background: #ffffff; color: #143e2d; font-size: 13px; font-weight: 650; cursor: pointer; }
+.welcome-access-link:hover { background: #e9f4e5; }
+.stadium-copy { position: relative; z-index: 2; width: 49%; padding: 125px 0 70px clamp(24px, 4.5vw, 72px); }
+.welcome-eyebrow { display: flex; align-items: center; gap: 9px; margin-bottom: 24px; color: #b9d6c2; font-size: 10px; letter-spacing: 1.9px; font-weight: 650; }
+.welcome-eyebrow > span { width: 6px; height: 6px; border-radius: 50%; background: #bce5a3; flex: none; }
+.stadium-copy h1 { margin: 0; font-size: clamp(48px, 5vw, 74px); line-height: 1.08; letter-spacing: -2.6px; font-weight: 650; color: #fff; }
+.stadium-copy h1 > span { color: #c3e8ab; }
+.welcome-description { max-width: 420px; margin: 26px 0 29px; color: #d3e2da; font-size: 17px; line-height: 1.8; }
+.stadium-primary { display: inline-flex; align-items: center; justify-content: center; gap: 25px; min-height: 50px; padding: 0 23px; border: 1px solid #dcf2cd; border-radius: 8px; color: #123525; background: #c3e8ab; font-size: 14px; font-weight: 700; cursor: pointer; }
+.stadium-primary:hover { background: #dcf2cd; }
+.stadium-access-note { font-size: 11px; color: #a7c4b4; margin-top: 16px; }
+.stadium-scene { position: absolute; inset: 0 0 0 23%; z-index: 0; }
+.stadium-canvas { position: absolute; inset: 0; }
+.stadium-shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(90deg, #082f22 0%, #082f22 25%, #082f22ee 36%, #082f2266 52%, #082f2200 67%), linear-gradient(0deg, #082f22 0%, #082f2200 22%); }
+.stadium-fallback { position: absolute; inset: 0; background: linear-gradient(#082f22 38%, #1c5138); }
+.stadium-fallback > div { position: absolute; top: 42%; left: 28%; width: 44%; height: 27%; border: 3px solid #bfd4c9; background-image: linear-gradient(#ffffff20 1px, transparent 1px), linear-gradient(90deg, #ffffff20 1px, transparent 1px); background-size: 24px 24px; }
+.welcome-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; padding: 34px clamp(24px, 4.5vw, 72px); background: #0a2119; border-top: 1px solid #ffffff13; }
+.welcome-feature { display: flex; align-items: flex-start; gap: 16px; }
+.welcome-feature > svg { color: #b5d49e; flex: none; margin-top: 2px; }
+.welcome-feature + .welcome-feature { border-left: 1px solid #ffffff18; padding-left: 30px; }
+.welcome-feature h2 { font-size: 14px; line-height: 1.5; color: #edf4eb; margin: 0 0 6px; font-weight: 600; }
+.welcome-feature p { font-size: 12px; color: #b2c6ba; line-height: 1.7; max-width: 290px; margin: 0; }
+.welcome-login-dialog { position: fixed; inset: 0; margin: auto; padding: 0; width: min(440px, calc(100% - 32px)); max-height: calc(100svh - 32px); overflow-y: auto; background: var(--welcome-surface); color: var(--welcome-ink); border: 1px solid var(--welcome-line); border-radius: 18px; box-shadow: 0 24px 90px #0005; }
+.welcome-login-dialog::backdrop { background: #031b14b8; backdrop-filter: blur(7px); }
+.welcome-login-content { position: relative; padding-top: 24px; }
+.welcome-close { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 7px; color: var(--welcome-muted); background: transparent; border: 0; cursor: pointer; z-index: 1; }
+.welcome-close:hover { background: var(--welcome-bg); }
+html:has(.welcome-login-dialog[open]) { overflow: hidden; }
+.futsi-welcome .welcome-login-form { max-width: none; width: 100%; background: var(--welcome-surface); color: var(--welcome-ink); padding: 35px; border: 1px solid var(--welcome-line); border-radius: 18px; box-shadow: 0 14px 45px -28px #143c3240; }
+.welcome-login-eyebrow { display: flex; align-items: center; gap: 7px; margin-bottom: 22px; font-size: 10px; letter-spacing: 1.3px; font-weight: 600; color: var(--welcome-muted); }
+.welcome-login-heading { font-size: 28px; line-height: 1.2; letter-spacing: -.8px; font-weight: 650; margin: 0; }
+.welcome-login-intro { font-size: 13px; line-height: 1.6; color: var(--welcome-muted); margin: 9px 0 29px; }
+.futsi-welcome .welcome-login-form label { color: var(--welcome-ink); font-size: 12px; font-weight: 600; }
+.futsi-welcome .welcome-login-form input { height: 48px; border: 1px solid var(--welcome-line); border-radius: 8px; background: var(--welcome-bg); color: var(--welcome-ink); font-size: 15px; padding: 0 13px; width: 100%; }
+.futsi-welcome .welcome-login-form input::placeholder { color: var(--welcome-muted); opacity: .8; }
+.futsi-welcome .welcome-login-form input:focus { border-color: var(--welcome-green); }
+/* Keep the welcome palette independent of the application's global form overrides. */
+.dark .futsi-welcome .welcome-login-form { background: var(--welcome-surface) !important; border-color: var(--welcome-line) !important; color: var(--welcome-ink) !important; }
+.futsi-welcome .welcome-login-form input,
+.futsi-welcome .welcome-login-form input:required:invalid { background: var(--welcome-bg) !important; border-color: var(--welcome-line) !important; color: var(--welcome-ink) !important; }
+.futsi-welcome .welcome-login-form input:focus { border-color: var(--welcome-green) !important; }
+.futsi-welcome .welcome-login-form input:user-invalid { border-color: #c54d43 !important; }
+.futsi-welcome .welcome-login-form input::placeholder { color: var(--welcome-muted) !important; }
+.login-password-wrap { position: relative; }
+.login-password-wrap input { padding-right: 48px !important; }
+.login-password-toggle { position: absolute; right: 4px; top: 50%; width: 40px; height: 40px; display: grid; place-items: center; color: inherit; background: transparent; border: 0; border-radius: 5px; cursor: pointer; }
+.futsi-welcome .welcome-login-submit { margin-top: 25px; min-height: 48px; border: 0; border-radius: 8px; background: #22664e; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+.futsi-welcome .welcome-login-submit:hover { background: #194e3b; }
+.futsi-welcome .welcome-login-submit:disabled { cursor: wait; opacity: .65; }
+.dark .futsi-welcome .welcome-login-submit { background: #22664e !important; }
+.dark .futsi-welcome .welcome-login-submit:hover { background: #194e3b !important; }
+.welcome-login-note { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10px; color: var(--welcome-muted); margin: 20px 0 0; }
+.welcome-account-help { text-align: center; font-size: 12px; line-height: 1.8; color: var(--welcome-muted); margin: 20px 0 0; }
+.futsi-welcome .welcome-login-dialog .welcome-login-form { border: 0; box-shadow: none; padding-bottom: 16px; }
+.welcome-login-content .welcome-account-help { padding: 0 20px 26px; margin: 0; }
+.futsi-welcome .welcome-login-dialog :is(button, input):focus-visible { outline-color: var(--welcome-green); }
+@media (max-width: 1000px) and (min-width: 681px) {
+  .stadium-copy { width: 55%; }
+  .stadium-copy h1 { font-size: 52px; }
+  .welcome-description { max-width: 340px; font-size: 16px; }
+  .stadium-shade { background: linear-gradient(90deg, #082f22 0%, #082f22 30%, #082f22d9 44%, #082f2200 75%); }
+  .welcome-feature + .welcome-feature { padding-left: 18px; }
+  .welcome-features { gap: 18px; }
+}
+@media (max-width: 680px) {
+  .stadium-hero { display: flex; flex-direction: column; align-items: stretch; min-height: 0; }
+  .welcome-header { padding: 19px 20px; gap: 12px; }
+  .welcome-brand { gap: 9px; }
+  .welcome-brand img { width: 38px; height: 38px; }
+  .welcome-brand strong { font-size: 18px; }
+  .welcome-brand > span > span { font-size: 10px; }
+  .welcome-header-actions { gap: 8px; }
+  .welcome-theme { width: 38px; height: 42px; }
+  .welcome-access-link { font-size: 11px; min-height: 42px; padding: 0 11px; gap: 6px; }
+  .welcome-access-link svg { width: 14px; }
+  .stadium-copy { width: 100%; padding: 123px 24px 0; }
+  .welcome-eyebrow { font-size: 9px; letter-spacing: 1.5px; margin-bottom: 20px; }
+  .stadium-copy h1 { font-size: clamp(40px, 10.6vw, 62px); letter-spacing: -1.8px; }
+  .welcome-description { margin: 21px 0 23px; font-size: 15px; max-width: 440px; line-height: 1.7; }
+  .stadium-primary { min-height: 48px; }
+  .stadium-access-note { margin-top: 13px; }
+  .stadium-scene { position: relative; inset: auto; width: 100%; height: 290px; margin-top: 5px; }
+  .stadium-scene::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(#082f22 0%, transparent 22%, transparent 86%, #082f22 100%); }
+  .stadium-shade { display: none; }
+  .welcome-features { grid-template-columns: 1fr; padding: 25px 24px; gap: 21px; }
+  .welcome-feature + .welcome-feature { border-left: 0; border-top: 1px solid #ffffff18; padding: 20px 0 0; }
+  .welcome-feature p { max-width: 440px; }
+  .futsi-welcome .welcome-login-form { padding: 26px; }
+  .welcome-login-heading { font-size: 25px; }
+  .futsi-welcome .welcome-login-form input { font-size: 16px; }
+}
+@media (max-width: 360px) {
+  .welcome-header { padding-left: 16px; padding-right: 16px; }
+  .welcome-brand > span > span { display: none; }
+  .welcome-theme { width: 34px; }
+  .stadium-copy { padding-left: 20px; padding-right: 20px; }
+  .welcome-eyebrow { font-size: 8px; }
+}

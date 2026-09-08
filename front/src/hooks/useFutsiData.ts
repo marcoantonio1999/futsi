@@ -7,6 +7,11 @@ import type {
   AttendanceSession,
   HistoricalDiscrepancyReport,
   HistoricalImport,
+  Guardian,
+  Student,
+  StudentAssessment,
+  StudentDeletionConfirmation,
+  StudentDeletionResult,
   Match,
   PlayerAttendanceRecord,
   StandingRow,
@@ -151,11 +156,20 @@ export function useFutsiData() {
     setError("");
     setActionLoadingMessage(loadingLabel);
     try {
-      const result = await apiRequest<unknown>(path, token, {
+      const result = payload instanceof FormData ? await apiFormRequest<unknown>(path, token, payload, "PATCH") : await apiRequest<unknown>(path, token, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
-      if (path === "/whatsapp-automation-settings/current/") {
+      if (/^\/students\/\d+\/$/.test(path)) {
+        setData((current) => ({ ...current, students: current.students.map(student => student.id === (result as Student).id ? result as Student : student) }));
+      } else if (/^\/student-tournament-registrations\/\d+\/$/.test(path)) {
+        setData(current => ({ ...current, studentTournamentRegistrations: current.studentTournamentRegistrations.map(row => row.id === (result as StudentTournamentRegistration).id ? result as StudentTournamentRegistration : row) }));
+        setLoadedSections([activeSection]);
+      } else if (/^\/guardians\/\d+\/$/.test(path)) {
+        setData(current => ({ ...current, guardians: current.guardians.map(row => row.id === (result as Guardian).id ? result as Guardian : row) }));
+        setLoadedSections([activeSection]);
+        await loadSection(activeSection, { force: true, silent: true });
+      } else if (path === "/whatsapp-automation-settings/current/") {
         setData((current) => ({
           ...current,
           whatsappAutomationSettings: result as WhatsAppAutomationSettings,
@@ -167,10 +181,46 @@ export function useFutsiData() {
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar.");
+      if (/^\/(students|guardians|student-tournament-registrations|matches)\/\d+\/$/.test(path)) throw err;
       return false;
     } finally {
       setActionLoadingMessage("");
     }
+  }
+
+  async function deleteStudent(studentId: number, confirmation: StudentDeletionConfirmation): Promise<StudentDeletionResult> {
+    setMessage(""); setError("");
+    const result = await apiRequest<StudentDeletionResult>(`/students/${studentId}/`, token, { method: "DELETE", body: JSON.stringify(confirmation) });
+    setData(current => ({ ...current, students: current.students.filter(student => student.id !== studentId) }));
+    // Financial and attendance totals change too; reload them on next navigation.
+    setLoadedSections([activeSection]);
+    await loadSection(activeSection, { force: true, silent: true });
+    return result;
+  }
+
+  async function deleteTournament(id: number, confirmation: StudentDeletionConfirmation): Promise<StudentDeletionResult> {
+    setMessage(""); setError("");
+    const result = await apiRequest<StudentDeletionResult>(`/tournaments/${id}/`, token, { method: "DELETE", body: JSON.stringify(confirmation) });
+    setData(current => ({
+      ...current,
+      tournaments: current.tournaments.filter(row => row.id !== id),
+      teams: current.teams.filter(row => row.tournament !== id),
+      matches: current.matches.filter(row => row.tournament !== id),
+      standings: current.standings.filter(row => row.tournament !== id),
+      studentTournamentRegistrations: current.studentTournamentRegistrations.filter(row => row.tournament !== id),
+    }));
+    setLoadedSections([activeSection]);
+    await loadSection(activeSection, { force: true, silent: true });
+    return result;
+  }
+
+  async function deleteGuardian(id: number, confirmation: StudentDeletionConfirmation): Promise<StudentDeletionResult> {
+    setMessage(""); setError("");
+    const result = await apiRequest<StudentDeletionResult>(`/guardians/${id}/`, token, { method: "DELETE", body: JSON.stringify(confirmation) });
+    setData(current => ({ ...current, guardians: current.guardians.filter(row => row.id !== id), students: current.students.filter(row => row.guardian !== id) }));
+    setLoadedSections([activeSection]);
+    await loadSection(activeSection, { force: true, silent: true });
+    return result;
   }
 
   async function createAndReturn<T>(path: string, payload: unknown): Promise<T> {
@@ -178,7 +228,7 @@ export function useFutsiData() {
     setError("");
     setActionLoadingMessage("Guardando...");
     try {
-      const result = await apiRequest<T>(path, token, {
+      const result = payload instanceof FormData ? await apiFormRequest<T>(path, token, payload) : await apiRequest<T>(path, token, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -196,6 +246,18 @@ export function useFutsiData() {
   }
 
   async function applyCreatedRecord<T>(path: string, result: T): Promise<boolean> {
+    if (path === "/guardians/") {
+      setData((current) => ({ ...current, guardians: upsertById(current.guardians, result as Guardian) }));
+      return true;
+    }
+    if (path === "/students/") {
+      setData((current) => ({ ...current, students: upsertById(current.students, result as Student) }));
+      return true;
+    }
+    if (path === "/student-assessments/") {
+      setData(current => ({ ...current, studentAssessments: upsertById(current.studentAssessments, result as StudentAssessment) }));
+      return true;
+    }
     if (path === "/tournaments/") {
       setData((current) => ({ ...current, tournaments: upsertById(current.tournaments, result as Tournament) }));
       return true;
@@ -212,16 +274,9 @@ export function useFutsiData() {
       return true;
     }
     if (path === "/matches/") {
-      const [standings, attendanceSessions] = await Promise.all([
-        apiRequest<StandingRow[]>("/matches/standings/", token),
-        apiRequest<AttendanceSession[]>("/attendance-sessions/", token),
-      ]);
-      setData((current) => ({
-        ...current,
-        matches: upsertById(current.matches, result as Match),
-        standings,
-        attendanceSessions,
-      }));
+      setData(current => ({ ...current, matches: upsertById(current.matches, result as Match) }));
+      setLoadedSections([activeSection]);
+      await loadSection(activeSection, { force: true, silent: true });
       return true;
     }
     if (path === "/attendance-sessions/") {
@@ -334,11 +389,12 @@ export function useFutsiData() {
 
   async function updateMatchScore(matchId: number, payload: unknown) {
     const isCancel = Boolean(payload && typeof payload === "object" && "status" in payload && (payload as { status?: unknown }).status === "canceled");
-    await updateRecord(`/matches/${matchId}/`, payload, "Partido actualizado.", isCancel ? "Cancelando partido..." : "Guardando partido...");
+    if (!await updateRecord(`/matches/${matchId}/`, payload, "Partido actualizado.", isCancel ? "Cancelando partido..." : "Guardando partido...")) throw new Error("No se pudo actualizar el partido.");
   }
 
   async function saveStudentAssessment(payload: unknown) {
-    await createRecord("/student-assessments/", payload, "Evaluacion deportiva guardada.");
+    await createAndReturn<StudentAssessment>("/student-assessments/", payload);
+    setMessage("Examen mensual guardado correctamente.");
   }
 
   async function markAdultPlayer(payload: unknown) {
@@ -377,6 +433,9 @@ export function useFutsiData() {
     logout,
     createRecord,
     updateRecord,
+    deleteStudent,
+    deleteTournament,
+    deleteGuardian,
     createAndReturn,
     uploadHistoricalImport,
     commitHistoricalImport,

@@ -1,7 +1,8 @@
-import { LogOut, X } from "lucide-react";
+import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
+import { ChevronDown, LogOut, X } from "lucide-react";
 import type { TabKey } from "../../types";
 import type { TournamentSection } from "../../features/tournaments";
-import type { BillingSubsection, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection } from "./adminShellModel";
+import type { BillingSubsection, CommunicationsSubsection, ShellTone, SidebarTab, StudentsSubsection, GuardiansSubsection, SportsSubsection } from "./adminShellModel";
 
 type AdminShellMobileMenuProps = {
   isOpen: boolean;
@@ -9,7 +10,21 @@ type AdminShellMobileMenuProps = {
   effectiveActiveTab: TabKey;
   billingSection: BillingSubsection;
   communicationsSection: CommunicationsSubsection;
+  communicationsMenuExpanded: boolean;
+  onToggleCommunicationsMenu: () => void;
+  guardiansSection: GuardiansSubsection;
+  guardiansMenuExpanded: boolean;
+  onToggleGuardiansMenu: () => void;
+  onSelectGuardiansSection: (section: GuardiansSubsection) => void;
   studentsSection: StudentsSubsection;
+  sportsSection: SportsSubsection;
+  sportsMenuExpanded: boolean;
+  tournamentsMenuExpanded: boolean;
+  onToggleTournamentsMenu: () => void;
+  onToggleSportsMenu: () => void;
+  onSelectSportsSection: (section: SportsSubsection) => void;
+  studentsMenuExpanded: boolean;
+  onToggleStudentsMenu: () => void;
   canReviewCommunicationCalls: boolean;
   canProgramBilling: boolean;
   showBillingSubsections: boolean;
@@ -30,7 +45,10 @@ export function AdminShellMobileMenu({
   effectiveActiveTab,
   billingSection,
   communicationsSection,
-  studentsSection,
+  communicationsMenuExpanded,
+  onToggleCommunicationsMenu,
+  guardiansSection, guardiansMenuExpanded, onToggleGuardiansMenu, onSelectGuardiansSection,
+  sportsSection, sportsMenuExpanded, tournamentsMenuExpanded, onToggleTournamentsMenu, onToggleSportsMenu, onSelectSportsSection, studentsSection, studentsMenuExpanded, onToggleStudentsMenu,
   canReviewCommunicationCalls,
   canProgramBilling,
   showBillingSubsections,
@@ -70,46 +88,49 @@ export function AdminShellMobileMenu({
             <div key={tab.key}>
               <button
                 data-testid={`menu-tab-${tab.key}`}
+                aria-expanded={tab.key === "tournaments" ? effectiveActiveTab === "tournaments" && tournamentsMenuExpanded : tab.key === "sports" ? effectiveActiveTab === "sports" && sportsMenuExpanded : tab.key === "students" ? effectiveActiveTab === "students" && studentsMenuExpanded : tab.key === "guardians" ? effectiveActiveTab === "guardians" && guardiansMenuExpanded : tab.key === "communications" ? effectiveActiveTab === "communications" && communicationsMenuExpanded : undefined}
+                aria-controls={tab.key === "tournaments" ? "tournaments-mobile-submenu" : tab.key === "sports" ? "sports-mobile-submenu" : tab.key === "students" ? "students-mobile-submenu" : tab.key === "guardians" ? "guardians-mobile-submenu" : tab.key === "communications" ? "communications-mobile-submenu" : undefined}
                 className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
                   effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
                 }`}
-                onClick={() => tab.key === "communications" ? onSelectCommunicationsSection("summary") : tab.key === "tournaments" ? onSelectTournamentSection("overview") : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onSelectStudentsSection("registered") : onSelectTab(tab.key)}
+                onClick={() => tab.key === "sports" ? onToggleSportsMenu() : tab.key === "guardians" ? onToggleGuardiansMenu() : tab.key === "communications" ? onToggleCommunicationsMenu() : tab.key === "tournaments" ? onToggleTournamentsMenu() : tab.key === "billing" && showBillingSubsections ? onSelectBillingSection("scheduled") : tab.key === "students" ? onToggleStudentsMenu() : onSelectTab(tab.key)}
                 type="button"
               >
                 {tab.icon}
-                {tab.label}
+                <span>{tab.label}</span>
+                {tab.key === "communications" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "communications" && communicationsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
+{tab.key === "guardians" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
+          {tab.key === "students" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "students" && studentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
+          {tab.key === "sports" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "sports" && sportsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
+          {tab.key === "tournaments" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
               </button>
-              {tab.key === "communications" && (
-                <div className="ml-9 mt-1 grid gap-1">
-                  <CommunicationsMobileSubButton active={communicationsSection === "summary"} label="Resumen" section="summary" onClick={onSelectCommunicationsSection} />
-                  <CommunicationsMobileSubButton active={communicationsSection === "bookings"} label="Pruebas gratuitas" section="bookings" onClick={onSelectCommunicationsSection} />
-                  {canReviewCommunicationCalls && <CommunicationsMobileSubButton active={communicationsSection === "calls"} label="Llamadas y transcripciones" section="calls" onClick={onSelectCommunicationsSection} />}
-                  <CommunicationsMobileSubButton active={communicationsSection === "whatsapp"} label="WhatsApp" section="whatsapp" onClick={onSelectCommunicationsSection} />
-                  {canReviewCommunicationCalls && <CommunicationsMobileSubButton active={communicationsSection === "weekly-stats"} label="Estadísticas semanales" section="weekly-stats" onClick={onSelectCommunicationsSection} />}
-                  <CommunicationsMobileSubButton active={communicationsSection === "availability"} label="Disponibilidad" section="availability" onClick={onSelectCommunicationsSection} />
-                  {canReviewCommunicationCalls && <CommunicationsMobileSubButton active={communicationsSection === "settings"} label="Configuración del bot" section="settings" onClick={onSelectCommunicationsSection} />}
-                </div>
-              )}
+        {tab.key === "sports" && <div id="sports-mobile-submenu" hidden={effectiveActiveTab !== "sports" || !sportsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
+          <StudentsMobileSubButton active={sportsSection === "exams"} label="Examen mensual" onClick={() => onSelectSportsSection("exams")} />
+          <StudentsMobileSubButton active={sportsSection === "matches"} label="Marcadores y posiciones" onClick={() => onSelectSportsSection("matches")} />
+        </div></div>}
+        {tab.key === "guardians" && <div id="guardians-mobile-submenu" hidden={effectiveActiveTab !== "guardians" || !guardiansMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
+          <StudentsMobileSubButton active={guardiansSection !== "create"} label="Gestionar tutores" onClick={() => onSelectGuardiansSection("registered")} />
+          <StudentsMobileSubButton active={guardiansSection === "create"} label="Crear tutor" onClick={() => onSelectGuardiansSection("create")} />
+        </div></div>}
+        {tab.key === "communications" && <div id="communications-mobile-submenu" hidden={effectiveActiveTab !== "communications" || !communicationsMenuExpanded}><CommunicationsNav section={communicationsSection} canReview={canReviewCommunicationCalls} onSelect={onSelectCommunicationsSection} /></div>}
               {showBillingSubsections && tab.key === "billing" && effectiveActiveTab === "billing" && (
                 <div className="ml-9 mt-1 grid gap-1">
                   {canProgramBilling && <BillingMobileSubButton active={billingSection === "program"} label="Programar cobro" onClick={() => onSelectBillingSection("program")} />}
                   <BillingMobileSubButton active={billingSection === "scheduled"} label="Cobranza programada" onClick={() => onSelectBillingSection("scheduled")} />
                 </div>
               )}
-              {tab.key === "tournaments" && effectiveActiveTab === "tournaments" && (
-                <div className="ml-9 mt-1 grid gap-1">
-                  <TournamentMobileSubButton active={tournamentSection === "overview"} label="Resumen" onClick={() => onSelectTournamentSection("overview")} />
-                  <TournamentMobileSubButton active={tournamentSection === "teams"} label="Crear equipos" onClick={() => onSelectTournamentSection("teams")} />
-                  <TournamentMobileSubButton active={tournamentSection === "registrations"} label="Inscribir alumnos" onClick={() => onSelectTournamentSection("registrations")} />
-                  <TournamentMobileSubButton active={tournamentSection === "schedule"} label="Agendar partido" onClick={() => onSelectTournamentSection("schedule")} />
-                </div>
-              )}
-              {tab.key === "students" && effectiveActiveTab === "students" && (
-                <div className="ml-9 mt-1 grid gap-1">
+              {tab.key === "tournaments" && <div id="tournaments-mobile-submenu" hidden={effectiveActiveTab !== "tournaments" || !tournamentsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
+          <TournamentMobileSubButton active={tournamentSection === "overview" || tournamentSection === "detail"} label="Torneos activos" onClick={() => onSelectTournamentSection("overview")} />
+          <TournamentMobileSubButton active={tournamentSection === "create"} label="Crear torneo" onClick={() => onSelectTournamentSection("create")} />
+          <TournamentMobileSubButton active={tournamentSection === "teams"} label="Equipos" onClick={() => onSelectTournamentSection("teams")} />
+          {showBillingSubsections && <TournamentMobileSubButton active={tournamentSection === "registrations"} label="Alumnos inscritos" onClick={() => onSelectTournamentSection("registrations")} />}
+          <TournamentMobileSubButton active={tournamentSection === "schedule"} label="Partidos" onClick={() => onSelectTournamentSection("schedule")} />
+        </div></div>}
+              {tab.key === "students" && <div id="students-mobile-submenu" hidden={effectiveActiveTab !== "students" || !studentsMenuExpanded}><div className="ml-9 mt-1 grid gap-1">
+                  <StudentsMobileSubButton active={studentsSection === "overview"} label="Resumen de alumnos" onClick={() => onSelectStudentsSection("overview")} />
+                  <StudentsMobileSubButton active={studentsSection === "registered" || studentsSection === "edit"} label="Gestionar alumnos" onClick={() => onSelectStudentsSection("registered")} />
                   <StudentsMobileSubButton active={studentsSection === "create"} label="Crear alumno" onClick={() => onSelectStudentsSection("create")} />
-                  <StudentsMobileSubButton active={studentsSection === "registered"} label="Alumnos registrados" onClick={() => onSelectStudentsSection("registered")} />
-                </div>
-              )}
+                </div></div>}
             </div>
           ))}
         </nav>
@@ -119,14 +140,6 @@ export function AdminShellMobileMenu({
         </button>
       </aside>
     </div>
-  );
-}
-
-function CommunicationsMobileSubButton({ active, label, section, onClick }: { active: boolean; label: string; section: CommunicationsSubsection; onClick: (section: CommunicationsSubsection) => void }) {
-  return (
-    <button data-testid={`communications-subsection-${section}`} className={`rounded-md px-3 py-2 text-left text-xs font-semibold ${active ? "bg-emerald-700 text-white" : "text-zinc-500 hover:bg-zinc-50"}`} onClick={() => onClick(section)} type="button">
-      {label}
-    </button>
   );
 }
 
