@@ -5,10 +5,18 @@ from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import PermissionDenied
+from core.veronica_access import is_veronica_only, veronica_route_allowed
 
 
 class ExpiringTokenAuthentication(TokenAuthentication):
     """DRF token authentication with server-side token expiration."""
+
+    def authenticate(self, request):
+        result = super().authenticate(request)
+        if result and is_veronica_only(result[0]) and not veronica_route_allowed(request.path_info, request.method):
+            raise PermissionDenied("Esta cuenta solo tiene acceso a Comunicaciones de Verónica.")
+        return result
 
     def authenticate_credentials(self, key):
         cache_key = f"auth:token:{key}"

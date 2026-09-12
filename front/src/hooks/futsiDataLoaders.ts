@@ -60,6 +60,7 @@ export function mergeAppData(current: AppData, patch: AppDataPatch): AppData {
 }
 
 export function initialTabForUser(user: User): TabKey {
+  if (user.section_permissions?.includes("veronica_only")) return "communications";
   if (user.role === "cashier") return "billing";
   if (user.role === "adult_representative" || user.role === "adult_player") return "adult-dashboard";
   if (user.role === "guardian") return "sports";
@@ -92,6 +93,7 @@ async function loadCommunicationsData(authToken: string, user: User): Promise<Ap
 }
 
 export async function loadSectionData(authToken: string, user: User, tab: TabKey): Promise<AppDataPatch> {
+  if (user.section_permissions?.includes("veronica_only")) return {};
   if (tab === "dashboard") return loadDashboardData(authToken);
   if (tab === "communications") return loadCommunicationsData(authToken, user);
 

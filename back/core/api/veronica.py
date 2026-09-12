@@ -8,11 +8,11 @@ from urllib.error import HTTPError, URLError
 from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from core.permissions import IsAdminRole
+from core.veronica_access import CanUseVeronica
 
 
 class VeronicaConsoleView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [CanUseVeronica]
 
     def get(self, request, operation):
         if operation not in {'inbox', 'history', 'templates'}:

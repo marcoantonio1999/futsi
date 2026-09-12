@@ -73,6 +73,7 @@ export function tabItems(): Array<{ key: TabKey; label: string; icon: React.Reac
 
 export function defaultSectionsByRole(tabs: Array<{ key: TabKey }>): Record<Role, TabKey[]> {
   return {
+    collaborator: [],
     admin: tabs.map((tab) => tab.key),
     dev: tabs.map((tab) => tab.key),
     owner: tabs.map((tab) => tab.key),

@@ -1,4 +1,4 @@
-export type Role = "admin" | "dev" | "accounting" | "owner" | "site_coordinator" | "cashier" | "coach" | "guardian" | "adult_representative" | "adult_player";
+export type Role = "admin" | "dev" | "accounting" | "owner" | "site_coordinator" | "cashier" | "coach" | "guardian" | "adult_representative" | "adult_player" | "collaborator";
 export type StudentStatus = "trial" | "active" | "paused" | "injured" | "dropped";
 export type ThemeMode = "light" | "dark";
 

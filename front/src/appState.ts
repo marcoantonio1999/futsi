@@ -1,6 +1,7 @@
 import type { AppData, Role, StudentStatus } from "./types";
 
 export const roleLabels: Record<Role, string> = {
+  collaborator: "Colaborador",
   admin: "Administrador",
   dev: "Dev App",
   accounting: "Contador",
