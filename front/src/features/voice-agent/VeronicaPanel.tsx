@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFormRequest, apiRequest } from "../../api";
 import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } from "./model";
 import "./veronica.css";
+import { deliveryProblem } from "./veronicaDelivery";
 
 type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null };
 type Message = { id: number; body: string; direction: string; created_at: string; status: string; error_codes: number[] };
@@ -10,6 +11,17 @@ type Template = { name: string; language: string; text: string; status: string; 
 type SendResult = { conversation_id: number; status: string; detail: string; message_id: string };
 const labels: Record<string, string> = { accepted: "Aceptado por la API · aún no confirma entrega", sent: "Enviado", delivered: "Entregado", read: "Leído", failed: "Fallido", sending: "Procesando · no repetir", uncertain: "Resultado incierto · no repetir" };
 const emptyHistory: History = { messages: [], can_reply: false, window_end: null, has_more: false };
+
+function DeliveryAlert({ message, phone }: { message: Message; phone?: string }) {
+  const problem = deliveryProblem(message.status, message.error_codes);
+  if (!problem) return null;
+  return <div className="vero-delivery-alert" role="alert">
+    <strong>⚠ {problem.title}</strong>
+    {phone && <p>Destinatario: {phone} · {formatDateTime(message.created_at)}</p>}
+    <p>{problem.explanation}</p><p><b>Qué hacer:</b> {problem.action}</p>
+    {message.error_codes.length > 0 && <details><summary>Detalle técnico para soporte</summary><p>Código de WhatsApp: {message.error_codes.join(", ")}</p></details>}
+  </div>;
+}
 
 export function VeronicaPanel({ token }: { token: string }) {
   const [tab, setTab] = useState<"text" | "template" | "document">("template");
@@ -96,10 +108,12 @@ export function VeronicaPanel({ token }: { token: string }) {
     finally { setBusy(false); lock.current = false; }
   }
   const canSend = !busy && /^\+?[1-9]\d{7,14}$/.test(phone) && !chat?.opted_out && (tab === "template" ? !!selected?.sendable : history.can_reply && (tab === "text" ? !!body.trim() : !!file));
+  const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
   return <div className="veronica-console">
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
     <p className="vero-note">Las plantillas pueden tener costo en Meta. Un envío aceptado no confirma la entrega. Si aparece el error 131042, revisa la facturación de la cuenta de Verónica.</p>
-    {error && <p className="comm-error" role="alert">{error}</p>}{notice && <p className="vero-note" role="status">{notice}</p>}
+    {error && <p className="comm-error" role="alert">{error}</p>}
+    {chat && lastProblem ? <DeliveryAlert message={lastProblem} phone={chat.phone} /> : notice && <p className="vero-note" role="status">{notice}</p>}
     <div className="vero-layout"><aside className="comm-panel">
       <h3>Conversaciones</h3><input aria-label="Buscar contacto de Verónica" className={inputClass} placeholder="Buscar teléfono o nombre" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} />
       <button className={primaryButtonClass} disabled={busy} onClick={() => choose(null)}>Nuevo destinatario</button>
