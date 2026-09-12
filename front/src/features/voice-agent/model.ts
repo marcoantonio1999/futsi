@@ -1,6 +1,6 @@
 import type { AppData, TrialAvailabilityRule, TrialBooking, TrialVisit, User, VoiceCall } from "../../types";
 
-export type VoiceDashboardSection = "summary" | "bookings" | "calls" | "whatsapp" | "weekly-stats" | "availability" | "settings" | "collections" | "templates";
+export type VoiceDashboardSection = "summary" | "bookings" | "calls" | "whatsapp" | "weekly-stats" | "availability" | "settings" | "collections" | "templates" | "veronica";
 
 export type VoiceDashboardProps = {
   onOpenDebts?: () => void;

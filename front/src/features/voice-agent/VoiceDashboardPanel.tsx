@@ -14,11 +14,13 @@ import { WhatsAppSiteSettings } from "./WhatsAppSiteSettings";
 import { WhatsAppWeeklyStatsPanel } from "./WhatsAppWeeklyStatsPanel";
 import { DebtCommunicationsPanel } from "./DebtCommunicationsPanel";
 import { WhatsAppTemplatesPanel } from "./WhatsAppTemplatesPanel";
+import { VeronicaPanel } from "./VeronicaPanel";
 import { inputClass, type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
 const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
+  veronica: { title: "Verónica · atención manual" },
   templates: { title: "Plantillas de WhatsApp" },
   collections: { title: "Cobranza por WhatsApp" },
   summary: { title: "Resumen de comunicaciones" },
@@ -139,6 +141,10 @@ export function VoiceDashboardPanel({
   }
 
   if (!canManageTrials) return null;
+  if (section === "veronica") return canReviewCalls ? <div className="communications">
+    <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
+    <VeronicaPanel token={token} />
+  </div> : null;
 
   const sectionDetail = sectionDetails[section];
   const sectionGroup = communicationGroups.find(group => group.items.some(item => item.key === section))?.label;

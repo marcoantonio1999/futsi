@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from core.api.veronica import VeronicaConsoleView
 
 from core.api.automatic_attendance import (
     AutomaticAttendanceCancelJobView,
@@ -68,6 +69,7 @@ from futsi_api.health import (
 
 
 urlpatterns = [
+    path("api/veronica/<str:operation>/", VeronicaConsoleView.as_view()),
     path("", index),
     path("health/", health),
     path("health/db/", db_health),

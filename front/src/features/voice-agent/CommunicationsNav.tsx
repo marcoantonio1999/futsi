@@ -10,6 +10,7 @@ export const communicationGroups: Array<{
     { key: "summary", label: "Resumen" },
     { key: "whatsapp", label: "Bandeja de WhatsApp", shortLabel: "WhatsApp" },
     { key: "templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas" },
+    { key: "veronica", label: "Verónica · atención manual", shortLabel: "Verónica", admin: true },
     { key: "calls", label: "Llamadas", admin: true },
   ] },
   { label: "Agenda", icon: CalendarDays, items: [

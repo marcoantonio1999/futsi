@@ -337,6 +337,7 @@ class WhatsAppConversationViewSet(
             channel_site_id=Coalesce(models.Subquery(profile.values("site_id")[:1]), models.F("site_id"), output_field=models.BigIntegerField()),
             channel_site_name=Coalesce(models.Subquery(profile.values("site__name")[:1]), models.F("site__name")),
         )
+        queryset = queryset.exclude(pk__in=WhatsAppConversation.objects.filter(context__kind='veronica_manual').values('pk'))
         user = self.request.user
         if user.role not in ADMIN_ROLES:
             if user.role != "site_coordinator" or not user.primary_site_id:
