@@ -30,7 +30,6 @@ export function VeronicaPanel({ token }: { token: string }) {
   const [offset, setOffset] = useState(0), [more, setMore] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null), [phone, setPhone] = useState("");
   const [contactName, setContactName] = useState("");
-  const [pdfAutomation, setPdfAutomation] = useState<{ ready: boolean; detail: string } | null>(null);
   const [history, setHistory] = useState<History>(emptyHistory);
   const [templates, setTemplates] = useState<Template[]>([]), [templateKey, setTemplateKey] = useState("");
   const [cursor, setCursor] = useState("");
@@ -47,8 +46,8 @@ export function VeronicaPanel({ token }: { token: string }) {
     const controller = new AbortController();
     setLoading(true);
     const timer = window.setTimeout(() => {
-      apiRequest<{ conversations: Chat[]; has_more: boolean; pdf_automation?: { ready: boolean; detail: string } }>(`/veronica/inbox/?q=${encodeURIComponent(query)}&offset=${offset}`, token, { signal: controller.signal })
-        .then(r => { setChats(r.conversations); setMore(r.has_more); setPdfAutomation(r.pdf_automation || null); })
+      apiRequest<{ conversations: Chat[]; has_more: boolean }>(`/veronica/inbox/?q=${encodeURIComponent(query)}&offset=${offset}`, token, { signal: controller.signal })
+        .then(r => { setChats(r.conversations); setMore(r.has_more); })
         .catch(e => { if (!controller.signal.aborted) setError(e.message); })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 200);
@@ -115,9 +114,7 @@ export function VeronicaPanel({ token }: { token: string }) {
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
   return <div className="veronica-console">
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
-    <p className="vero-note">Las plantillas pueden tener costo en Meta. Un envío aceptado no confirma la entrega. Si aparece el error 131042, revisa la facturación de la cuenta de Verónica.</p>
     {error && <p className="comm-error" role="alert">{error}</p>}
-    {pdfAutomation && <p className={pdfAutomation.ready ? 'vero-note' : 'vero-delivery-alert'} role={pdfAutomation.ready ? 'status' : 'alert'}><strong>PDF automático: {pdfAutomation.ready ? 'configurado' : 'pendiente de configuración'}. </strong>{pdfAutomation.detail}</p>}
     {chat && lastProblem ? <DeliveryAlert message={lastProblem} phone={chat.phone} /> : notice && <p className="vero-note" role="status">{notice}</p>}
     <VeronicaAutomaticPdf token={token} onSaved={() => setRefresh(n => n+1)} />
     <div className="vero-layout"><aside className="comm-panel">
