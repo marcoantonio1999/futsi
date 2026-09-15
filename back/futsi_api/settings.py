@@ -251,7 +251,11 @@ CSRF_TRUSTED_ORIGINS = env_origin_list(
     "CSRF_TRUSTED_ORIGINS",
     DEFAULT_CSRF_ORIGINS,
 )
-for required_origin in ("https://marcoantonio1999.github.io",):
+for required_origin in (
+    "https://marcoantonio1999.github.io",
+    "https://futsi-web.onrender.com",
+    "https://futsi.bpoweracademy.mx",
+):
     if required_origin not in CORS_ALLOWED_ORIGINS:
         CORS_ALLOWED_ORIGINS.append(required_origin)
     if required_origin not in CSRF_TRUSTED_ORIGINS:
