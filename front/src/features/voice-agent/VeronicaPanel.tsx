@@ -82,10 +82,14 @@ export function VeronicaPanel({ token }: { token: string }) {
   }
   function choose(c: Chat | null) {
     setContactName(c && c.name !== c.phone ? c.name : "");
-    setChat(c); setPhone(c?.phone ?? ""); setHistory(emptyHistory); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
+    const savedPhone = c?.phone.replace(/^\+/, '') ?? '';
+    const localPhone = /^52\d{10}$/.test(savedPhone) ? savedPhone.slice(2) : /^521\d{10}$/.test(savedPhone) ? savedPhone.slice(3) : savedPhone;
+    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
   }
   async function send() {
     if (lock.current) return;
+    if (!chat && !/^[1-9]\d{9}$/.test(phone)) { setError('Escribe los 10 dígitos del número de México, sin +52.'); return; }
+    const destination = chat?.phone ?? `+52${phone}`;
     setConfirming(false);
     lock.current = true; setBusy(true); setError(""); setNotice("");
     const fingerprint = JSON.stringify([phone, tab, body, templateKey, file?.name, file?.size, file?.lastModified]);
@@ -99,18 +103,18 @@ export function VeronicaPanel({ token }: { token: string }) {
         mediaToken = uploaded.media_token;
       }
       const r = await apiRequest<SendResult>("/veronica/send/", token, { method: "POST", body: JSON.stringify({
-        phone, kind: tab, body, template_name: selected?.name, language: selected?.language,
+        phone: destination, kind: tab, body, template_name: selected?.name, language: selected?.language,
         media_token: mediaToken, request_id: request.current.id,
       }) });
       setNotice(labels[r.status] || r.status);
       if (r.status === "accepted") { setBody(""); setFile(null); request.current = null; }
       if (r.status === "failed") setError(r.detail || "La API rechazó el envío. Revisa la conexión antes de intentar otro envío.");
-      if (!chat) setChat({ id: r.conversation_id, phone, name: phone, last_message_at: null, opted_out: false });
+      if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, last_message_at: null, opted_out: false });
       setRefresh(n => n + 1);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); lock.current = false; }
   }
-  const canSend = !busy && /^\+?[1-9]\d{7,14}$/.test(phone) && !chat?.opted_out && (tab === "template" ? !!selected?.sendable : history.can_reply && (tab === "text" ? !!body.trim() : !!file));
+  const canSend = !busy && (chat ? /^\+?[1-9]\d{7,14}$/.test(chat.phone) : /^[1-9]\d{9}$/.test(phone)) && !chat?.opted_out && (tab === "template" ? !!selected?.sendable : history.can_reply && (tab === "text" ? !!body.trim() : !!file));
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
   return <div className="veronica-console">
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
@@ -124,7 +128,8 @@ export function VeronicaPanel({ token }: { token: string }) {
       <div className="vero-contacts">{chats.map(c => <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small></button>)}</div>
       <nav aria-label="Páginas de conversaciones"><button disabled={!offset || busy} onClick={() => setOffset(n => Math.max(0, n - 30))}>Anterior</button><span>{offset / 30 + 1}</span><button disabled={!more || busy} onClick={() => setOffset(n => n + 30)}>Siguiente</button></nav>
     </aside><section className="comm-panel">
-      <label>Destinatario (código de país y número)<input className={inputClass} value={phone} readOnly={!!chat} disabled={busy} placeholder="+525574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>
+      <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} readOnly={!!chat} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>
+      {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
       {chat && <div><label>Nombre del contacto<input className={inputClass} value={contactName} maxLength={120} disabled={busy} placeholder="Escribe su nombre si aún no aparece" onChange={e => setContactName(e.target.value)} /></label><button className={secondaryButtonClass} disabled={busy || !contactName.trim() || contactName.trim() === chat.name} onClick={async () => {
         setBusy(true); setError('');
         try {
