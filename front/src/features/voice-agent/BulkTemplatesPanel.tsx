@@ -3,7 +3,7 @@ import { apiRequest, apiFormRequest } from '../../api';
 import './bulk-templates.css';
 
 type Kind = 'veronica' | 'academy';
-type Template = { name: string; language: string; category: string; text: string; sendable: boolean; reason?: string; parameters: { key: string; label: string }[] };
+type Template = { name: string; language: string; category: string; text: string; sendable: boolean; reason?: string; parameters: { key: string; label: string; contact_name?: boolean }[] };
 type Review = { phones: string[]; names?: Record<string, string>; count: number; duplicates: number; invalid: { row: number; value: string; reason: string }[]; needs_column?: boolean; columns?: { index: number; label: string }[] };
 type Job = { id: string; title: string; channel: string; status: string; detail: string; created_at: string; heartbeat_at: string | null; percent: number; processed: number; total: number; counts: Record<string, number>; template: { name: string; language: string; text: string }; quote: { total: string; currency: string; unit: string; category: string; note: string; verified_on: string; source: string }; recipients?: { id: number; phone: string; name?: string; status: string; detail: string }[]; has_more?: boolean };
 const labels: Record<string, string> = { draft: 'Por confirmar', queued: 'En cola', running: 'Enviando', completed: 'Intentos terminados', cancelled: 'Cancelado', paused: 'Detenido: requiere revisión', pending: 'Pendiente', sending: 'En proceso', accepted: 'Aceptado, sin entrega confirmada', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Resultado sin confirmar', skipped: 'Excluido: no desea mensajes' };
@@ -43,6 +43,8 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
     : selected.parameters.some(p => !parameters[p.key]?.trim()) ? `Completa los campos de la plantilla: ${selected.parameters.filter(p => !parameters[p.key]?.trim()).map(p => p.label).join(', ')}.`
     : review?.needs_column ? 'Selecciona la columna de teléfonos y vuelve a cargar el archivo.'
     : !review?.count ? 'Carga y revisa al menos un número válido en el paso 2.' : '';
+  const missingNames = Object.values(parameters).includes('{{contact_name}}') ? review?.phones.filter(p => !review.names?.[p]?.trim()).length || 0 : 0;
+  const blockedReason = prepareReason || (missingNames ? `Completa el nombre de ${missingNames} destinatarios en el paso 2.` : '');
   const activeId = job?.id;
   const post = <T,>(op: string, body: unknown) => apiRequest<T>(base+op+'/', token, { method: 'POST', body: JSON.stringify(body) });
   function invalidate() { setReview(null); setReviewPage(0); requestId.current = crypto.randomUUID(); }
@@ -60,6 +62,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   }, [base, token]);
   useEffect(() => {
     setTemplates([]); setTemplateKey(''); setParameters({}); setCursor('');
+    setReview(null); setReviewPage(0);
     requestId.current = crypto.randomUUID();
   }, [channel]);
   useEffect(() => {
@@ -93,6 +96,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   async function loadNumbers() {
     await action(async () => {
       const form = new FormData();
+      form.set('channel', channel);
       if (mode === 'file' && file) form.set('file', file);
       else form.set('text', text);
       if (column !== '') form.set('column', column);
@@ -110,9 +114,10 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
         <div className="bulk-fields"><label>Enviar desde<select value={channel} disabled={busy || !channels.length} onChange={e => { setChannel(e.target.value); setJobsPage(0); }}><option value="" disabled>Selecciona un canal</option>{channels.map(c => <option key={c.channel} value={c.channel}>{c.label}</option>)}</select></label>
           <button disabled={busy || !channel} onClick={() => void loadTemplates()}>Consultar plantillas</button></div>
         {!channels.length && <p>No hay canales conectados disponibles. No se pueden realizar envíos.</p>}
-        {!!templates.length && <><label>Plantilla aprobada<select value={templateKey} disabled={busy} onChange={e => { setTemplateKey(e.target.value); setParameters({}); requestId.current = crypto.randomUUID(); }}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={`${t.name}:${t.language}`} disabled={!t.sendable} value={`${t.name}:${t.language}`}>{t.name} · {t.language}{!t.sendable ? ' · No disponible para masivos' : ''}</option>)}</select></label>
+        {!!templates.length && <><label>Plantilla aprobada<select value={templateKey} disabled={busy} onChange={e => { setTemplateKey(e.target.value); const next = templates.find(t => `${t.name}:${t.language}` === e.target.value); setParameters(Object.fromEntries((next?.parameters || []).filter(p => p.contact_name).map(p => [p.key, '{{contact_name}}']))); requestId.current = crypto.randomUUID(); }}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={`${t.name}:${t.language}`} disabled={!t.sendable} value={`${t.name}:${t.language}`}>{t.name} · {t.language}{!t.sendable ? ' · No disponible para masivos' : ''}</option>)}</select></label>
           {selected && <div className="bulk-template"><strong>{selected.name} · {selected.category}</strong><p>{selected.text}</p></div>}
-          {selected?.parameters.map(p => <label key={p.key}>{p.label} (se usa en todos los destinatarios)<input disabled={busy} maxLength={500} value={parameters[p.key] || ''} onChange={e => { setParameters(v => ({ ...v, [p.key]: e.target.value })); requestId.current = crypto.randomUUID(); }} /></label>)}</>}
+          {!!selected?.parameters.length && <p>La plantilla ya contiene el mensaje completo. Solo completa sus datos variables.</p>}
+          {selected?.parameters.map(p => <div key={p.key}><label>{p.label}<select disabled={busy} value={parameters[p.key] === '{{contact_name}}' ? 'name' : 'fixed'} onChange={e => { setParameters(v => ({ ...v, [p.key]: e.target.value === 'name' ? '{{contact_name}}' : '' })); requestId.current = crypto.randomUUID(); }}><option value="name">Nombre de cada destinatario</option><option value="fixed">Escribir un dato igual para todos</option></select></label>{parameters[p.key] === '{{contact_name}}' ? <p>Se utilizará el nombre de cada fila del paso 2. Puedes revisarlo y corregirlo antes de enviar.</p> : <label>Dato para sustituir en la plantilla<input disabled={busy} maxLength={500} value={parameters[p.key] || ''} onChange={e => { setParameters(v => ({ ...v, [p.key]: e.target.value })); requestId.current = crypto.randomUUID(); }} /></label>}</div>)}</>}
         {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
       </section>
       <section className="bulk-card"><h3>2. ¿A quiénes se enviará?</h3><p>Solo números de México de 10 dígitos. No escribas código de país. Hasta 1,000 números por lote.</p>
@@ -126,15 +131,16 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
         <button className="primary" disabled={busy || (mode === 'file' ? !file : !text.trim())} onClick={() => void loadNumbers()}>{busy ? 'Procesando…' : 'Cargar y revisar números'}</button>
         {review && !review.needs_column && <div className="bulk-review" aria-live="polite"><h4>{review.count} números válidos · {review.duplicates} duplicados excluidos · {review.invalid.length} inválidos excluidos</h4>
           <p>Solo los números que aparecen aquí se agregarán al lote. Ningún mensaje se ha enviado.</p>
-          <div className="bulk-numbers">{review.phones.slice(reviewPage*50, reviewPage*50+50).map(p => <span key={p}>{review.names?.[p] && <strong>{review.names[p]} · </strong>}{p}</span>)}</div>
+          <p>Usamos los nombres del archivo y completamos los faltantes con los contactos de este canal. Puedes escribir o corregir cualquier nombre.</p>
+          <div className="bulk-table-wrap"><table><thead><tr><th>Número</th><th>Nombre del destinatario</th></tr></thead><tbody>{review.phones.slice(reviewPage*50, reviewPage*50+50).map(p => <tr key={p}><td>{p}</td><td><input aria-label={`Nombre de ${p}`} placeholder="Escribe el nombre" disabled={busy} maxLength={120} value={review.names?.[p] || ''} onChange={e => { const name = e.target.value; setReview(old => old ? { ...old, names: { ...old.names, [p]: name } } : old); requestId.current = crypto.randomUUID(); }} /></td></tr>)}</tbody></table></div>
           {review.count > 50 && <div className="bulk-pages"><button disabled={!reviewPage} onClick={() => setReviewPage(p => p-1)}>Anterior</button><span>Página {reviewPage+1} de {Math.ceil(review.count/50)}</span><button disabled={(reviewPage+1)*50 >= review.count} onClick={() => setReviewPage(p => p+1)}>Siguiente</button></div>}
           {!!review.invalid.length && <details><summary>Ver números excluidos y corregir ({review.invalid.length})</summary><div className="bulk-exclusions">{review.invalid.map((r, i) => <p key={i}>Fila {r.row}: {r.value} — {r.reason}</p>)}</div><p>Corrige el texto o el archivo y vuelve a cargarlo.</p></details>}
         </div>}
       </section>
-      {prepareReason && <div id="bulk-prepare-reason" className="bulk-alert" role="status"><strong>Para continuar: </strong>{prepareReason}</div>}
+      {blockedReason && <div id="bulk-prepare-reason" className="bulk-alert" role="status"><strong>Para continuar: </strong>{blockedReason}</div>}
       {error && <div role="alert" className="bulk-alert error">{error}</div>}
-      <button className="primary bulk-prepare" aria-describedby={prepareReason ? 'bulk-prepare-reason' : undefined} disabled={!!prepareReason} onClick={() => void action(async () => {
-        if (prepareReason) return;
+      <button className="primary bulk-prepare" aria-describedby={blockedReason ? 'bulk-prepare-reason' : undefined} disabled={!!blockedReason} onClick={() => void action(async () => {
+        if (blockedReason) return;
         const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, parameters, phones: review?.phones, names: review?.names || {} });
         setJob(saved); setOffset(0); setConsent(false);
       })}>3. Revisar costo y confirmar lote</button>

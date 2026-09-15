@@ -74,3 +74,13 @@ def test_only_admin_and_vero_can_use_bulk(auth_client):
     client, _, _ = auth_client(role='admin')
     for prefix in ('/api/veronica/bulk/', '/api/whatsapp-bulk/'):
         assert client.post(prefix+'import/', {'text': '5512345678'}).status_code == 200
+
+@pytest.mark.django_db
+def test_import_enriches_missing_names_and_preserves_excel_names(auth_client):
+    client, _, _ = auth_client(role='admin')
+    with patch('core.api.bulk.BulkView.forward', return_value=Response({'names': {'5512345678': 'Saved', '5587654321': 'Known'}})) as lookup:
+        result = client.post('/api/whatsapp-bulk/import/', {'channel': 'meta:123', 'file': file('n.csv', b'Nombre,Telefono\nExcel,5512345678\n,5587654321')}, format='multipart')
+        assert result.status_code == 200
+        assert result.data['names'] == {'5512345678': 'Excel', '5587654321': 'Known'}
+        assert lookup.call_args.args == ('academy', 'names')
+        assert lookup.call_args.kwargs['data']['channel'] == 'meta:123'

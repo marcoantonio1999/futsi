@@ -27,7 +27,14 @@ class BulkView(APIView):
             return Response({'detail': 'Sin acceso a este canal.'}, status=403)
         if operation == 'import':
             try:
-                return Response(import_recipients(request.FILES.get('file'), request.data.get('text', ''), request.data.get('column')))
+                result = import_recipients(request.FILES.get('file'), request.data.get('text', ''), request.data.get('column'))
+                if result.get('phones') and request.data.get('channel'):
+                    lookup = self.forward(kind, 'names', data={'actor_id': request.user.pk,
+                        'channel': request.data['channel'], 'phones': result['phones']})
+                    if lookup.status_code != 200:
+                        return lookup
+                    result['names'] = {**lookup.data.get('names', {}), **result.get('names', {})}
+                return Response(result)
             except (ValueError, TypeError) as exc:
                 # Authored validation messages are safe; never expose parser internals.
                 return Response({'detail': str(exc) or 'No se pudo leer el archivo.'}, status=400)
