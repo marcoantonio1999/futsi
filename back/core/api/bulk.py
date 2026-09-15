@@ -18,9 +18,14 @@ class BulkView(APIView):
     def get(self, request, kind, operation):
         if not self.allowed(request, kind):
             return Response({'detail': 'Sin acceso a este canal.'}, status=403)
-        if operation not in {'channels', 'catalog', 'list', 'detail', 'connections'}:
+        if operation not in {'channels', 'catalog', 'list', 'detail', 'connections', 'contacts', 'contact-detail'}:
             return Response(status=405)
-        return self.forward(kind, operation, query={k: request.query_params[k] for k in ('channel', 'id', 'offset', 'after') if k in request.query_params})
+        if kind != 'academy' and operation in {'contacts', 'contact-detail'}:
+            return Response(status=403)
+        keys = ('channel', 'id', 'offset', 'after', 'contact_id', 'q', 'relationship', 'interest', 'confidence', 'priority',
+                'consent_source', 'campaign_source', 'review_state', 'no_contact', 'needs_review', 'sensitive',
+                'age', 'since', 'until', 'min_messages', 'ordinal_from', 'ordinal_to', 'outreach', 'sort', 'limit', 'selectable_only')
+        return self.forward(kind, operation, query={k: request.query_params[k] for k in keys if k in request.query_params})
 
     def post(self, request, kind, operation):
         if not self.allowed(request, kind):
@@ -40,9 +45,14 @@ class BulkView(APIView):
                 return Response({'detail': str(exc) or 'No se pudo leer el archivo.'}, status=400)
             except Exception:
                 return Response({'detail': 'Archivo inválido. Usa un Excel .xlsx sin contraseña, CSV o TXT.'}, status=400)
-        if operation not in {'create', 'start', 'cancel'} or not isinstance(request.data, dict):
+        if operation not in {'create', 'start', 'cancel', 'contact-select', 'contact-update'} or not isinstance(request.data, dict):
             return Response(status=405)
-        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'phones', 'names'), 'start': ('id', 'consent'), 'cancel': ('id',)}
+        if kind != 'academy' and operation in {'contact-select', 'contact-update'}:
+            return Response(status=403)
+        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'phones', 'names', 'contact_ids'),
+                   'start': ('id', 'consent', 'review_confirmed'), 'cancel': ('id',),
+                   'contact-select': ('channel', 'contact_ids'),
+                   'contact-update': ('channel', 'contact_id', 'name', 'priority', 'notes', 'manually_blocked')}
         data = {k: request.data[k] for k in allowed[operation] if k in request.data}
         data['actor_id'] = request.user.pk
         return self.forward(kind, operation, data=data)

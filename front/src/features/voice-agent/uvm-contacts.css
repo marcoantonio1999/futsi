@@ -1,0 +1,24 @@
+.uvm-directory { display: grid; gap: 1rem; }
+.uvm-filter-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 1rem; }
+.uvm-filter-grid label { display: grid; gap: .4rem; font-size: .92rem; font-weight: 600; }
+.uvm-more-filters { border-bottom: 1px solid var(--border, #d7e1dc); padding-bottom: 1rem; }
+.uvm-more-filters summary { cursor: pointer; font-weight: 600; margin-bottom: .8rem; }
+.uvm-selection-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; align-items: center; }
+.uvm-selection-bar span, .uvm-contact-table td span, .uvm-contact-table td small { display: block; margin-top: .25rem; }
+.uvm-contact-table td small, .uvm-source { color: var(--muted, #61726a); font-size: .82rem; }
+.uvm-contact-table td { min-width: 110px; vertical-align: top; }
+.uvm-contact-table { max-height: 540px; overflow: auto; }
+.uvm-contact-table thead { position: sticky; top: 0; background: var(--surface, white); z-index: 1; }
+.uvm-contact-table th:first-child, .uvm-contact-table td:first-child { min-width: 44px; width: 44px; }
+.uvm-contact-table input[type=checkbox], .uvm-block-checkbox input { width: 20px; height: 20px; accent-color: #17764d; }
+.uvm-review { color: #885310; font-size: .8rem; }
+.uvm-blocked { color: #a02c23; }
+.uvm-detail-modal { padding: 0; border: 1px solid #d7e1dc; border-radius: 18px; width: min(850px,94vw); max-height: 88vh; overflow: auto; color: inherit; background: var(--surface, white); }
+.uvm-detail-modal::backdrop { background: #102c2366; }
+.uvm-detail-modal .bulk-card { margin: 0; display: grid; gap: 1rem; }
+.uvm-evidence { display: grid; gap: .8rem; }
+.uvm-evidence div { border-bottom: 1px solid #d7e1dc; padding-bottom: .65rem; }
+.uvm-evidence dt { font-weight: 600; font-size: .85rem; color: var(--muted, #61726a); }
+.uvm-evidence dd { margin: .25rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.uvm-block-checkbox { display: flex !important; align-items: center; gap: .6rem; }
+@media(max-width: 700px) { .uvm-filter-grid { grid-template-columns: 1fr; } .uvm-selection-bar .bulk-actions { width: 100%; } .uvm-selection-bar .bulk-actions button { flex: 1; } }
