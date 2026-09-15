@@ -1,5 +1,7 @@
 import { CalendarDays, MessageCircle, Settings2 } from "lucide-react";
 import type { VoiceDashboardSection } from "./model";
+import { useContext } from 'react';
+import { VeronicaOnlyContext, isVeronicaSection } from './CommunicationsAccess';
 
 export const communicationGroups: Array<{
   label: string;
@@ -29,9 +31,10 @@ export const communicationGroups: Array<{
 export function CommunicationsNav({ section, canReview, onSelect, compact = false }: {
   section: VoiceDashboardSection; canReview: boolean; onSelect: (section: VoiceDashboardSection) => void; compact?: boolean;
 }) {
+  const veronicaOnly = useContext(VeronicaOnlyContext);
   return <nav aria-label={compact ? "Subsecciones de comunicaciones" : "Comunicaciones"} className={compact ? "comm-mobile-nav comm-section-map" : "comm-nav"}>
     {communicationGroups.map(group => {
-      const items = group.items.filter(item => !item.admin || canReview);
+      const items = group.items.filter(item => veronicaOnly ? isVeronicaSection(item.key) : !item.admin || canReview);
       if (!items.length) return null;
       const Icon = group.icon;
       return <div className="comm-nav-group" key={group.label}>

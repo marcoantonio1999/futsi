@@ -12,7 +12,6 @@ const GuardianPortal = lazy(() => import("./components/views/guardian").then((mo
 const AccountingPortal = lazy(() => import("./components/views/accounting").then((module) => ({ default: module.AccountingPortal })));
 const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults").then((module) => ({ default: module.AdultLeagueDashboardPanel })));
 const AdminShell = lazy(() => import("./components/layout/AdminShell").then((module) => ({ default: module.AdminShell })));
-const VeronicaPortal = lazy(() => import("./features/voice-agent/VeronicaPortal"));
 
 export default function App() {
   const { theme, toggleTheme } = useThemeMode();
@@ -69,10 +68,6 @@ export default function App() {
 
   const hasCustomSectionPermissions = Boolean(currentUser.section_permissions?.length);
 
-  if (currentUser.section_permissions?.includes("veronica_only")) return <>
-    <ThemeToggle theme={theme} onToggle={toggleTheme} />
-    <Suspense fallback={<AppSkeleton />}><VeronicaPortal token={token} name={currentUser.first_name || currentUser.username} onLogout={logout} /></Suspense>
-  </>;
 
   if (currentUser.role === "guardian") {
     return (

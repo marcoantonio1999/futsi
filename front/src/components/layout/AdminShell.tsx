@@ -1,4 +1,8 @@
 import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
+import { VeronicaOnlyContext, isVeronicaSection } from '../../features/voice-agent/CommunicationsAccess';
+import { VeronicaPanel } from '../../features/voice-agent/VeronicaPanel';
+import { BulkTemplatesPanel } from '../../features/voice-agent/BulkTemplatesPanel';
+import '../../features/voice-agent/communications.css';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { TabKey } from "../../types";
 import { defaultSectionsByRole, tabItems } from "./adminNavigation";
@@ -53,11 +57,12 @@ export function AdminShell({
   onSaveStudentAssessment,
   onMarkAdultPlayer,
 }: AdminShellProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>(() => (user.role === "cashier" ? "billing" : "dashboard"));
+  const veronicaOnly = user.section_permissions?.includes('veronica_only') ?? false;
+  const [activeTab, setActiveTab] = useState<TabKey>(() => veronicaOnly ? 'communications' : (user.role === "cashier" ? "billing" : "dashboard"));
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
   const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
-  const [communicationsMenuExpanded, setCommunicationsMenuExpanded] = useState(false);
-  const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>("summary");
+  const [communicationsMenuExpanded, setCommunicationsMenuExpanded] = useState(veronicaOnly);
+  const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>(veronicaOnly ? 'veronica' : "summary");
   const [studentsMenuExpanded, setStudentsMenuExpanded] = useState(false);
   const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("overview");
   const [coachesSection, setCoachesSection] = useState<CoachesSection>("overview");
@@ -90,7 +95,7 @@ export function AdminShell({
   ]);
   const visibleTabs = tabs.filter(
     (tab) =>
-      (isAdmin || allowedSections.has(tab.key))
+      veronicaOnly ? tab.key === 'communications' : (isAdmin || allowedSections.has(tab.key))
       && (tab.key !== "communications" || canManageCommunications),
   );
   const menuOrder = businessScope === "adult" ? adultMenuTabs : academyMenuTabs;
@@ -111,6 +116,7 @@ export function AdminShell({
   const canProgramBilling = showBillingSubsections && user.role !== "cashier";
 
   useEffect(() => {
+    if (veronicaOnly) return;
     onLoadSection(effectiveActiveTab);
   }, [effectiveActiveTab, user.id]);
 
@@ -121,6 +127,11 @@ export function AdminShell({
   }, [activeTab, fallbackTab, sidebarTabs]);
 
   useEffect(() => {
+    if (veronicaOnly) {
+      setActiveTab('communications'); setBusinessScope('academy');
+      setCommunicationsSection('veronica'); setCommunicationsMenuExpanded(true);
+      return;
+    }
     if (user.role === "adult_representative" || user.role === "adult_player") {
       setActiveTab(adultDefaultTab);
       setBusinessScope("adult");
@@ -128,7 +139,7 @@ export function AdminShell({
     }
     setActiveTab(user.role === "cashier" ? "billing" : academyDefaultTab);
     setBusinessScope("academy");
-  }, [user.id, user.role]);
+  }, [user.id, user.role, veronicaOnly]);
 
   useEffect(() => {
     if ((!showBillingSubsections || !canProgramBilling) && billingSection === "program") {
@@ -186,6 +197,7 @@ export function AdminShell({
   }
 
   function selectCommunicationsSection(section: CommunicationsSubsection) {
+    if (veronicaOnly && !isVeronicaSection(section)) return;
     if (effectiveActiveTab !== "communications") setCommunicationsMenuExpanded(true);
     setCommunicationsSection(section);
     setActiveTab("communications");
@@ -297,6 +309,7 @@ export function AdminShell({
   }
 
   return (
+    <VeronicaOnlyContext.Provider value={veronicaOnly}>
     <main
       className={`app-motion min-h-screen text-zinc-950 ${businessScope === "adult" ? "bg-blue-50/45" : "bg-stone-50"}`}
       onTouchStart={handleMobileTouchStart}
@@ -422,7 +435,9 @@ export function AdminShell({
             onSwitchScope={switchBusinessScope}
             onLogout={onLogout}
           />
-          <AdminShellContent
+          {veronicaOnly ? <div className="communications"><div className="mt-5">
+            {communicationsSection === 'bulk-veronica' ? <BulkTemplatesPanel token={token} kind="veronica" /> : <VeronicaPanel token={token} />}
+          </div></div> : <AdminShellContent
             coachesSection={coachesSection}
             onSelectCoachesSection={selectCoachesSection}
             onSelectTournamentSection={selectTournamentSection}
@@ -479,9 +494,10 @@ export function AdminShell({
             onUpdateMatchScore={onUpdateMatchScore}
             onSaveStudentAssessment={onSaveStudentAssessment}
             onMarkAdultPlayer={onMarkAdultPlayer}
-          />
+          />}
         </div>
       </div>
     </main>
+    </VeronicaOnlyContext.Provider>
   );
 }
