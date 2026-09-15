@@ -35,6 +35,14 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   const [dragging, setDragging] = useState(false);
   const requestId = useRef(crypto.randomUUID());
   const selected = templates.find(t => `${t.name}:${t.language}` === templateKey);
+  const prepareReason = busy ? 'Espera a que termine la operación actual.'
+    : !channel ? 'Selecciona el número desde el que enviarás en el paso 1.'
+    : !templates.length ? 'Primero pulsa «Consultar plantillas» en el paso 1 y selecciona una plantilla aprobada.'
+    : !selected ? 'Falta seleccionar una plantilla aprobada en el paso 1.'
+    : !selected.sendable ? selected.reason || 'La plantilla seleccionada no está disponible para envíos masivos.'
+    : selected.parameters.some(p => !parameters[p.key]?.trim()) ? `Completa los campos de la plantilla: ${selected.parameters.filter(p => !parameters[p.key]?.trim()).map(p => p.label).join(', ')}.`
+    : review?.needs_column ? 'Selecciona la columna de teléfonos y vuelve a cargar el archivo.'
+    : !review?.count ? 'Carga y revisa al menos un número válido en el paso 2.' : '';
   const activeId = job?.id;
   const post = <T,>(op: string, body: unknown) => apiRequest<T>(base+op+'/', token, { method: 'POST', body: JSON.stringify(body) });
   function invalidate() { setReview(null); setReviewPage(0); requestId.current = crypto.randomUUID(); }
@@ -123,7 +131,10 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
           {!!review.invalid.length && <details><summary>Ver números excluidos y corregir ({review.invalid.length})</summary><div className="bulk-exclusions">{review.invalid.map((r, i) => <p key={i}>Fila {r.row}: {r.value} — {r.reason}</p>)}</div><p>Corrige el texto o el archivo y vuelve a cargarlo.</p></details>}
         </div>}
       </section>
-      <button className="primary bulk-prepare" disabled={busy || !selected?.sendable || !review?.count || review.needs_column || selected.parameters.some(p => !parameters[p.key]?.trim())} onClick={() => void action(async () => {
+      {prepareReason && <div id="bulk-prepare-reason" className="bulk-alert" role="status"><strong>Para continuar: </strong>{prepareReason}</div>}
+      {error && <div role="alert" className="bulk-alert error">{error}</div>}
+      <button className="primary bulk-prepare" aria-describedby={prepareReason ? 'bulk-prepare-reason' : undefined} disabled={!!prepareReason} onClick={() => void action(async () => {
+        if (prepareReason) return;
         const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, parameters, phones: review?.phones, names: review?.names || {} });
         setJob(saved); setOffset(0); setConsent(false);
       })}>3. Revisar costo y confirmar lote</button>
