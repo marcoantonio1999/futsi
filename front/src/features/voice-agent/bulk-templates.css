@@ -1,0 +1,32 @@
+.bulk-templates { display:grid; gap:20px; color:var(--comm-text, #193c30); }
+.bulk-templates h2 { font-size:1.8rem; font-weight:750; } .bulk-templates h3 { font-size:1.2rem; font-weight:700; } .bulk-templates h4 { font-weight:700; }
+.bulk-heading { display:flex; align-items:start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.bulk-card { background:var(--comm-panel, white); border:1px solid #cbd8d2; border-radius:16px; padding:24px; display:grid; gap:16px; min-width:0; }
+.bulk-templates label { display:grid; gap:8px; font-weight:600; }
+.bulk-templates input:not([type=checkbox]), .bulk-templates select, .bulk-templates textarea { width:100%; border:1px solid #a4b9ad; padding:12px; border-radius:8px; background:transparent; color:inherit; font:inherit; }
+.bulk-templates button { padding:11px 16px; border:1px solid #a4b9ad; border-radius:8px; font-weight:650; min-height:44px; background:var(--comm-panel, white); }
+.bulk-templates button:disabled { opacity:.5; cursor:not-allowed; } .bulk-templates button:not(:disabled):hover { border-color:#007951; }
+.bulk-templates .primary, .bulk-tabs button[aria-pressed=true] { background:#087b55; color:white; border-color:#087b55; }
+.bulk-fields { display:grid; grid-template-columns:minmax(200px, 1fr) auto; align-items:end; gap:16px; }
+.bulk-template { white-space:pre-wrap; overflow-wrap:anywhere; padding:16px; background:#edf5f0; border-left:4px solid #087b55; border-radius:8px; }
+.bulk-tabs, .bulk-pages, .bulk-counts { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+.bulk-drop { padding:30px; text-align:center; border:2px dashed #669b83; border-radius:12px; background:#f4faf6; cursor:pointer; }
+.bulk-drop.dragging { background:#d5edde; border-color:#087b55; }
+.bulk-drop input { max-width:450px; margin:auto; }
+.bulk-review { display:grid; gap:14px; border-top:1px solid #cbd8d2; padding-top:20px; }
+.bulk-numbers { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; }
+.bulk-numbers span { padding:8px; border:1px solid #cbd8d2; border-radius:6px; font-variant-numeric:tabular-nums; }
+.bulk-exclusions { max-height:200px; overflow:auto; color:#a12b24; }
+.bulk-alert { padding:16px; border:1px solid; border-radius:10px; } .bulk-alert.error { color:#91251d; background:#fff1ee; border-color:#d78479; }
+.bulk-cost { padding:20px; background:#f2f8f4; border:1px solid #b9d4c6; border-radius:12px; display:grid; gap:8px; }
+.bulk-cost div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; } .bulk-cost strong { font-size:1.5rem; } .bulk-cost a { text-decoration:underline; }
+.bulk-confirm, .bulk-progress { display:grid; gap:16px; } .bulk-confirm label { display:flex; align-items:start; gap:12px; } .bulk-confirm input { margin-top:5px; width:20px; height:20px; }
+.bulk-progress progress { width:100%; height:24px; accent-color:#087b55; }
+.bulk-state { display:inline-block; border-radius:6px; padding:5px 9px; background:#edf1ef; color:#35473e; font-size:.9rem; }
+.bulk-state.failed, .bulk-state.paused, .bulk-state.uncertain { background:#ffe5e0; color:#962b23; }
+.bulk-state.delivered, .bulk-state.read, .bulk-state.completed { background:#d9f3e2; color:#165333; }
+.bulk-table-wrap { overflow:auto; } .bulk-templates table { width:100%; text-align:left; border-collapse:collapse; } .bulk-templates td, .bulk-templates th { padding:12px; border-bottom:1px solid #d9e4dd; }
+.bulk-jobs { display:grid; gap:8px; } .bulk-jobs button { display:flex; justify-content:space-between; align-items:center; gap:12px; text-align:left; } .bulk-jobs small { display:block; font-weight:400; margin-top:4px; }
+.bulk-templates :focus-visible { outline:3px solid #0e9365; outline-offset:3px; } .bulk-templates summary { cursor:pointer; }
+@media(max-width:640px) { .bulk-card {padding:16px;} .bulk-fields {grid-template-columns:1fr;} .bulk-jobs button {align-items:start;flex-direction:column;} }
+.dark .bulk-templates { color:#e2eee7; } .dark .bulk-card, .dark .bulk-templates button { background:#172820; } .dark .bulk-templates .primary, .dark .bulk-tabs button[aria-pressed=true] { background:#087b55; } .dark .bulk-template, .dark .bulk-drop, .dark .bulk-cost { background:#213a2d; }
