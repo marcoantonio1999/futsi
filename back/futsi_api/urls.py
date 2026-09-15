@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView
+from core.api.bulk import BulkView
 
 from core.api.automatic_attendance import (
     AutomaticAttendanceCancelJobView,
@@ -69,6 +70,8 @@ from futsi_api.health import (
 
 
 urlpatterns = [
+    path("api/veronica/bulk/<str:operation>/", BulkView.as_view(), {"kind": "veronica"}),
+    path("api/whatsapp-bulk/<str:operation>/", BulkView.as_view(), {"kind": "academy"}),
     path("api/veronica/<str:operation>/", VeronicaConsoleView.as_view()),
     path("", index),
     path("health/", health),
