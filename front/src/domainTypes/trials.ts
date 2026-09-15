@@ -164,6 +164,7 @@ export type WhatsAppAutomationSettings = {
   site_name: string;
   openai_model: string;
   effective_model: string;
+  bot_enabled?: boolean;
   human_first_enabled: boolean;
   business_days: number[];
   business_hours_start: string;

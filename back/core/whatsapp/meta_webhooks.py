@@ -26,7 +26,7 @@ from core.models import (
     WhatsAppOutboundDispatchStatus,
 )
 from core.whatsapp.ai_faq import OpenAIWhatsAppError, answer_faq, is_greeting_only
-from core.whatsapp.automation_settings import get_whatsapp_assistant_profile
+from core.whatsapp.automation_settings import get_whatsapp_assistant_profile, is_bot_enabled
 from core.whatsapp.meta_api import (
     MetaWhatsAppError,
     configured_business_address,
@@ -790,6 +790,11 @@ def _claim_outbound_dispatch(dispatch_id: int) -> dict | None:
         dispatch = WhatsAppOutboundDispatch.objects.select_for_update().get(pk=dispatch_id)
         if dispatch.status != WhatsAppOutboundDispatchStatus.RESERVED:
             return None
+        if not is_bot_enabled(dispatch.conversation.to_address):
+            dispatch.status = WhatsAppOutboundDispatchStatus.FAILED
+            dispatch.error_message = "Automatic reply cancelled: chatbot disabled."
+            dispatch.save(update_fields=["status", "error_message", "updated_at"])
+            return None
         dispatch.status = WhatsAppOutboundDispatchStatus.SENDING
         dispatch.save(update_fields=["status", "updated_at"])
         return {
@@ -934,6 +939,18 @@ def _process_message(*, message: dict, metadata: dict, contact_name: str = "") -
             )
             .first()
         )
+        if not is_bot_enabled(to_address):
+            if conversation is None:
+                conversation = _new_menu_conversation(
+                    from_address=from_address, to_address=to_address, contact_phone=contact_phone,
+                )
+            WhatsAppMessage.objects.create(
+                conversation=conversation, provider_sid=message_id,
+                direction=WhatsAppMessageDirection.INBOUND, body=body,
+            )
+            conversation.last_message_at = timezone.now()
+            conversation.save(update_fields=["last_message_at", "updated_at"])
+            return
         conversation, reply = _route_message(
             conversation=conversation,
             from_address=from_address,

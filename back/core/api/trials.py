@@ -830,6 +830,9 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
             )
             serializer.is_valid(raise_exception=True)
             instance = serializer.save()
+            if "bot_enabled" in serializer.validated_data:
+                from core.whatsapp.automation_settings import cancel_pending_bot_replies
+                cancel_pending_bot_replies(business_address)
             new_values = WhatsAppAutomationSettingsSerializer(instance).data
             AuditLog.objects.create(
                 actor=request.user,

@@ -532,6 +532,7 @@ class WhatsAppAutomationSettingsSerializer(serializers.ModelSerializer):
             "site_name",
             "openai_model",
             "effective_model",
+            "bot_enabled",
             "human_first_enabled",
             "business_days",
             "business_hours_start",

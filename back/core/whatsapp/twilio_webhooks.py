@@ -30,6 +30,7 @@ from core.whatsapp.interactive import (
     send_confirmation_buttons,
     send_list_picker,
 )
+from core.whatsapp.automation_settings import is_bot_enabled
 from core.voice.scheduling import (
     SchedulingError,
     book_two_trial_visits_from_whatsapp,
@@ -606,6 +607,21 @@ def incoming_message(request: HttpRequest) -> HttpResponse:
     selection = request.POST.get("ButtonPayload", "")[:200] or body
     contact_phone = from_match.group(1)
     with transaction.atomic():
+        if not is_bot_enabled(to_address):
+            conversation = WhatsAppConversation.objects.filter(
+                contact_phone=contact_phone, to_address=to_address, status="active",
+            ).first()
+            if conversation is None:
+                conversation = WhatsAppConversation.objects.create(
+                    contact_phone=contact_phone, from_address=from_address, to_address=to_address,
+                )
+            WhatsAppMessage.objects.get_or_create(
+                provider_sid=message_sid, direction=WhatsAppMessageDirection.INBOUND,
+                defaults={"conversation": conversation, "body": body},
+            )
+            conversation.last_message_at = timezone.now()
+            conversation.save(update_fields=["last_message_at", "updated_at"])
+            return _xml_message("")
         duplicate = WhatsAppMessage.objects.select_for_update().filter(
             provider_sid=message_sid,
             direction=WhatsAppMessageDirection.INBOUND,

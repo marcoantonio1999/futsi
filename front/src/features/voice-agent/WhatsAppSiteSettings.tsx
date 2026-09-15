@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../../api";
 import type { Site, WhatsAppAutomationSettings } from "../../types";
 import { WhatsAppAutomationSettingsPanel } from "./WhatsAppAutomationSettingsPanel";
+import { WhatsAppBotSwitch } from "./WhatsAppBotSwitch";
 import { inputClass, secondaryButtonClass } from "./model";
 
 const endpoint = "/whatsapp-automation-settings/";
@@ -49,6 +50,17 @@ export function WhatsAppSiteSettings({ token, sites, initial, selectedAddress, o
     else { setDirty(false); setAddress(next); }
   }
   return <div className="grid gap-4">
+    {!loading && value && <WhatsAppBotSwitch key={address} value={value} disabled={dirty || saving} onSave={async enabled => {
+      setSaving(true);
+      try {
+        const next = await apiRequest<WhatsAppAutomationSettings>(endpoint + "current/?business_address=" + encodeURIComponent(address), token,
+          { method: "PATCH", body: JSON.stringify({ bot_enabled: enabled }) });
+        if (next.bot_enabled !== enabled) throw new Error("El servidor no confirmó el cambio. Actualiza e intenta de nuevo.");
+        setValue(next);
+        setOptions(rows => [...rows.filter(item => item.business_address !== next.business_address), next]);
+        onChannelSaved?.(next);
+      } finally { setSaving(false); }
+    }} />}
     <section className="comm-panel">
       <header className="comm-section-heading"><div><h3>Configuración por sede y número</h3><p>Selecciona el canal que quieres editar. No cambia la configuración de los demás.</p></div></header>
       <div className="comm-stats-body grid gap-4 sm:grid-cols-2">
