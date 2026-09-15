@@ -21,6 +21,18 @@ def test_invalid_phone(value):
 def test_csv_header_and_semicolon():
     r = import_recipients(file('numbers.csv', 'nombre;teléfono\nUno;5512345678\nDos;5587654321'.encode()))
     assert r['phones'] == ['5512345678', '5587654321']
+    assert r['names'] == {'5512345678': 'Uno', '5587654321': 'Dos'}
+
+def test_names_follow_valid_phone_after_dedup_and_no_formula():
+    data = 'Nombre,Teléfono\n,5512345678\nSantiago,5512345678\nOtro,5512345678\nIncorrecto,123\n=SUM(1),5587654321'
+    r = import_recipients(file('names.csv', data.encode()))
+    assert r['names'] == {'5512345678': 'Santiago'}
+    assert r['duplicates'] == 2
+
+def test_excel_names_and_reversed_columns():
+    w = Workbook(); w.active.append(['Teléfono', 'Nombre']); w.active.append([5512345678, '  María   López '])
+    b = io.BytesIO(); w.save(b)
+    assert import_recipients(file('n.xlsx', b.getvalue()))['names'] == {'5512345678': 'María López'}
 
 def test_multiple_columns_require_selection():
     content = b'Nombre,Contacto\nUno,5512345678'

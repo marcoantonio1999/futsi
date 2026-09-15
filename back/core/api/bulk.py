@@ -35,7 +35,7 @@ class BulkView(APIView):
                 return Response({'detail': 'Archivo inválido. Usa un Excel .xlsx sin contraseña, CSV o TXT.'}, status=400)
         if operation not in {'create', 'start', 'cancel'} or not isinstance(request.data, dict):
             return Response(status=405)
-        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'phones'), 'start': ('id', 'consent'), 'cancel': ('id',)}
+        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'phones', 'names'), 'start': ('id', 'consent'), 'cancel': ('id',)}
         data = {k: request.data[k] for k in allowed[operation] if k in request.data}
         data['actor_id'] = request.user.pk
         return self.forward(kind, operation, data=data)

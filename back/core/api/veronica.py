@@ -21,6 +21,9 @@ class VeronicaConsoleView(APIView):
         return self.forward(operation, query=query)
 
     def post(self, request, operation):
+        if operation == 'contact':
+            payload = {k: request.data.get(k) for k in ('conversation_id', 'name')}
+            return self.forward(operation, body=json.dumps(payload).encode(), content_type='application/json')
         if operation == 'send':
             if not isinstance(request.data, dict):
                 return Response({'detail': 'Solicitud inválida.'}, status=400)

@@ -25,6 +25,7 @@ class WhatsAppBulkCampaign(models.Model):
 class WhatsAppBulkRecipient(models.Model):
     campaign = models.ForeignKey("WhatsAppBulkCampaign", on_delete=models.CASCADE, related_name="recipients")
     phone = models.CharField(max_length=16)
+    name = models.CharField(max_length=120, blank=True, default='', db_default='')
     status = models.CharField(max_length=20, default="pending", db_index=True)
     message_id = models.CharField(max_length=255, blank=True, db_index=True)
     detail = models.CharField(max_length=500, blank=True)
@@ -46,4 +47,3 @@ class WhatsAppBulkReceipt(models.Model):
         db_table = "whatsapp_bulk_receipts"
         managed = True
         constraints = [models.UniqueConstraint(fields=["channel", "message_id"], name="uq_bulk_receipt_channel_sid")]
-

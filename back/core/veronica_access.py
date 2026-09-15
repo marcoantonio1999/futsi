@@ -16,6 +16,7 @@ def veronica_route_allowed(path, method):
         "/api/veronica/templates/": {"GET", "HEAD"},
         "/api/veronica/send/": {"POST"},
         "/api/veronica/upload/": {"POST"},
+        "/api/veronica/contact/": {"POST"},
     }
     for operation in ('channels', 'catalog', 'list', 'detail'):
         allowed[f'/api/veronica/bulk/{operation}/'] = {'GET', 'HEAD'}

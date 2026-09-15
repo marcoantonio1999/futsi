@@ -28,6 +28,8 @@ export function VeronicaPanel({ token }: { token: string }) {
   const [chats, setChats] = useState<Chat[]>([]), [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0), [more, setMore] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null), [phone, setPhone] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [pdfAutomation, setPdfAutomation] = useState<{ ready: boolean; detail: string } | null>(null);
   const [history, setHistory] = useState<History>(emptyHistory);
   const [templates, setTemplates] = useState<Template[]>([]), [templateKey, setTemplateKey] = useState("");
   const [cursor, setCursor] = useState("");
@@ -44,8 +46,8 @@ export function VeronicaPanel({ token }: { token: string }) {
     const controller = new AbortController();
     setLoading(true);
     const timer = window.setTimeout(() => {
-      apiRequest<{ conversations: Chat[]; has_more: boolean }>(`/veronica/inbox/?q=${encodeURIComponent(query)}&offset=${offset}`, token, { signal: controller.signal })
-        .then(r => { setChats(r.conversations); setMore(r.has_more); })
+      apiRequest<{ conversations: Chat[]; has_more: boolean; pdf_automation?: { ready: boolean; detail: string } }>(`/veronica/inbox/?q=${encodeURIComponent(query)}&offset=${offset}`, token, { signal: controller.signal })
+        .then(r => { setChats(r.conversations); setMore(r.has_more); setPdfAutomation(r.pdf_automation || null); })
         .catch(e => { if (!controller.signal.aborted) setError(e.message); })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 200);
@@ -79,6 +81,7 @@ export function VeronicaPanel({ token }: { token: string }) {
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   function choose(c: Chat | null) {
+    setContactName(c && c.name !== c.phone ? c.name : "");
     setChat(c); setPhone(c?.phone ?? ""); setHistory(emptyHistory); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
   }
   async function send() {
@@ -113,6 +116,7 @@ export function VeronicaPanel({ token }: { token: string }) {
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
     <p className="vero-note">Las plantillas pueden tener costo en Meta. Un envío aceptado no confirma la entrega. Si aparece el error 131042, revisa la facturación de la cuenta de Verónica.</p>
     {error && <p className="comm-error" role="alert">{error}</p>}
+    {pdfAutomation && <p className={pdfAutomation.ready ? 'vero-note' : 'vero-delivery-alert'} role={pdfAutomation.ready ? 'status' : 'alert'}><strong>PDF automático: {pdfAutomation.ready ? 'configurado' : 'pendiente de configuración'}. </strong>{pdfAutomation.detail}</p>}
     {chat && lastProblem ? <DeliveryAlert message={lastProblem} phone={chat.phone} /> : notice && <p className="vero-note" role="status">{notice}</p>}
     <div className="vero-layout"><aside className="comm-panel">
       <h3>Conversaciones</h3><input aria-label="Buscar contacto de Verónica" className={inputClass} placeholder="Buscar teléfono o nombre" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} />
@@ -122,6 +126,13 @@ export function VeronicaPanel({ token }: { token: string }) {
       <nav aria-label="Páginas de conversaciones"><button disabled={!offset || busy} onClick={() => setOffset(n => Math.max(0, n - 30))}>Anterior</button><span>{offset / 30 + 1}</span><button disabled={!more || busy} onClick={() => setOffset(n => n + 30)}>Siguiente</button></nav>
     </aside><section className="comm-panel">
       <label>Destinatario (código de país y número)<input className={inputClass} value={phone} readOnly={!!chat} disabled={busy} placeholder="+525574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>
+      {chat && <div><label>Nombre del contacto<input className={inputClass} value={contactName} maxLength={120} disabled={busy} placeholder="Escribe su nombre si aún no aparece" onChange={e => setContactName(e.target.value)} /></label><button className={secondaryButtonClass} disabled={busy || !contactName.trim() || contactName.trim() === chat.name} onClick={async () => {
+        setBusy(true); setError('');
+        try {
+          const saved = await apiRequest<{ name: string }>('/veronica/contact/', token, { method: 'POST', body: JSON.stringify({ conversation_id: chat.id, name: contactName }) });
+          setChat({ ...chat, name: saved.name }); setContactName(saved.name); setRefresh(n => n+1);
+        } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+      }}>Guardar nombre</button><small>El nombre guardado aquí tiene prioridad sobre el perfil de WhatsApp y los archivos importados.</small></div>}
       {chat && <><h3>Historial</h3>{history.has_more && <button disabled={busy} onClick={older}>Ver mensajes anteriores</button>}<div className="vero-history" aria-label="Historial de Verónica">{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>Sin mensajes registrados. El historial empieza con los eventos guardados por el servicio; no importa automáticamente chats anteriores.</p>}</div></>}
       <div className="vero-tabs" role="tablist" aria-label="Tipo de envío">{([['template', 'Plantillas'], ['text', 'Mensaje'], ['document', 'PDF']] as const).map(([key, label]) => <button role="tab" aria-selected={tab === key} disabled={busy} key={key} onClick={() => { setTab(key); setBody(""); }}>{label}</button>)}</div>
       {tab === "template" ? <div><button disabled={busy} className={secondaryButtonClass} onClick={() => void loadTemplates()}>Consultar plantillas de Verónica</button>
@@ -134,7 +145,7 @@ export function VeronicaPanel({ token }: { token: string }) {
         <label>{tab === "document" ? "Descripción del PDF (opcional)" : "Mensaje"}<textarea className={inputClass} rows={4} maxLength={tab === "document" ? 1024 : 4000} disabled={busy || !history.can_reply} value={body} onChange={e => setBody(e.target.value)} /></label></>}
       {chat?.opted_out && <p role="alert">Este contacto pidió no recibir mensajes. Envío bloqueado.</p>}
       <button className={primaryButtonClass} disabled={!canSend} onClick={() => setConfirming(true)}>{busy ? "Procesando…" : "Enviar desde Verónica"}</button>
-      <p className="vero-footnote">Envío individual con confirmación. Esta sección no activa respuestas automáticas ni el bot de la academia.</p>
+      <p className="vero-footnote">Envío individual con confirmación. La respuesta a la plantilla de reclutamiento activa el PDF configurado una sola vez; no activa el bot de la academia.</p>
     </section></div>
     {confirming && <div className="vero-confirm-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="vero-confirm-title" className="vero-confirm">
       <h3 id="vero-confirm-title">Confirmar envío desde Verónica</h3>

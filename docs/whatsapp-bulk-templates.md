@@ -36,3 +36,10 @@ Backend Futsi: `pytest core/tests/test_bulk_templates.py core/tests/test_veronic
 Servicio: `manage.py test core.tests.test_bulk core.tests.test_veronica core.tests.test_veronica_console core.tests.test_accounts` con DB_ENGINE=sqlite y worker desactivado.
 Frontend: `npm run typecheck` y `npm run build`.
 Los cambios locales de cobranza preexistentes no forman parte de esta funcionalidad.
+# Nombres de contactos
+
+Excel y CSV aceptan una columna opcional `Nombre` junto a `Teléfono` (10 dígitos).
+El nombre se muestra al revisar el archivo y en los destinatarios del lote; se
+guarda en la conversación del canal al procesar el envío. No cruza nombres entre
+canales ni sobrescribe un nombre editado manualmente. TXT conserva el formato
+de números separados por comas. Los nombres no reemplazan variables de plantilla.

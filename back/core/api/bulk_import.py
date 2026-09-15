@@ -21,7 +21,7 @@ def normalize_phone(value):
         raise ValueError()
     return text
 
-def review(values):
+def review(values, names=None):
     values = [(i, v) for i, v in values if v is not None and str(v).strip()]
     if len(values) > MAX_ROWS:
         raise ValueError('Carga hasta 1,000 números por lote.')
@@ -37,7 +37,20 @@ def review(values):
         else:
             seen.add(phone)
             valid.append(phone)
-    return {'phones': valid, 'invalid': invalid, 'duplicates': duplicates, 'count': len(valid)}
+    names = names or {}
+    # Only keep names associated with accepted numbers. Never evaluate formulas.
+    kept_names = {}
+    for index, value in values:
+        try:
+            phone = normalize_phone(value)
+        except ValueError:
+            continue
+        name = names.get(index)
+        if isinstance(name, str) and not name.lstrip().startswith('='):
+            name = ' '.join(name.split())[:120]
+            if name and phone not in kept_names:
+                kept_names[phone] = name
+    return {'phones': valid, 'names': kept_names, 'invalid': invalid, 'duplicates': duplicates, 'count': len(valid)}
 
 def import_recipients(file=None, text='', column=None):
     if file and text:
@@ -106,4 +119,7 @@ def import_recipients(file=None, text='', column=None):
             normalize_phone(rows[0][chosen])
         except ValueError:
             has_header = True
-    return review([(i+1, row[chosen] if chosen < len(row) else None) for i, row in enumerate(rows) if not (i == 0 and has_header)])
+    name_columns = [i for i, v in enumerate(rows[0]) if i != chosen and header(v) in {'nombre', 'nombre completo', 'name', 'contact name'}]
+    name_column = name_columns[0] if has_header and len(name_columns) == 1 else None
+    names = {i+1: row[name_column] for i, row in enumerate(rows) if i > 0 and name_column is not None and name_column < len(row)}
+    return review([(i+1, row[chosen] if chosen < len(row) else None) for i, row in enumerate(rows) if not (i == 0 and has_header)], names)
