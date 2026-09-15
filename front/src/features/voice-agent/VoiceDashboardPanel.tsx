@@ -16,11 +16,13 @@ import { DebtCommunicationsPanel } from "./DebtCommunicationsPanel";
 import { WhatsAppTemplatesPanel } from "./WhatsAppTemplatesPanel";
 import { VeronicaPanel } from "./VeronicaPanel";
 import { BulkTemplatesPanel } from "./BulkTemplatesPanel";
+import { ConnectionsPanel } from "./ConnectionsPanel";
 import { inputClass, type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
 const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
+  connections: { title: "Conexiones" },
   "bulk-veronica": { title: "Verónica · envíos masivos" },
   "bulk-academy": { title: "Canchas · envíos masivos" },
   veronica: { title: "Verónica · atención manual" },
@@ -144,6 +146,7 @@ export function VoiceDashboardPanel({
   }
 
   if (!canManageTrials) return null;
+  if (section === 'connections') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><ConnectionsPanel token={token} /></div> : null;
   if (section === 'bulk-veronica' || section === 'bulk-academy') return canReviewCalls ? <div className="communications">
     <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
     <BulkTemplatesPanel key={section} token={token} kind={section === 'bulk-veronica' ? 'veronica' : 'academy'} />

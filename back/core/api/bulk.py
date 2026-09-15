@@ -18,7 +18,7 @@ class BulkView(APIView):
     def get(self, request, kind, operation):
         if not self.allowed(request, kind):
             return Response({'detail': 'Sin acceso a este canal.'}, status=403)
-        if operation not in {'channels', 'catalog', 'list', 'detail'}:
+        if operation not in {'channels', 'catalog', 'list', 'detail', 'connections'}:
             return Response(status=405)
         return self.forward(kind, operation, query={k: request.query_params[k] for k in ('channel', 'id', 'offset', 'after') if k in request.query_params})
 

@@ -1,0 +1,14 @@
+.connections-panel{display:grid;gap:20px;color:var(--comm-text,#193c30)}
+.connections-panel button{padding:10px 16px;border:1px solid var(--comm-line,#cbd8d2);border-radius:10px;background:var(--comm-bg,white);color:inherit;min-height:44px;font-weight:600}
+.connections-panel button:disabled{opacity:.55;cursor:wait}.connections-panel :focus-visible{outline:3px solid #087b55;outline-offset:3px}
+.connections-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px}
+.connections-panel .connection-card{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:8px;padding:18px;overflow-wrap:anywhere}
+.connections-panel .connection-card[aria-pressed=true]{border:2px solid #087b55;background:var(--comm-tint,#edf8f1)}
+.connection-phone{font-size:1.1rem;font-variant-numeric:tabular-nums}.connection-card small{font-weight:400}
+.connection-badge{display:inline-block;padding:5px 9px;border-radius:7px;font-size:.85rem;white-space:normal}.connection-badge.good{background:#d9f3e2;color:#165333}.connection-badge.neutral{background:#fff1d1;color:#795315}.connection-badge.bad{background:#ffe5e0;color:#962b23}
+.connection-catalog{display:grid;gap:16px;border:1px solid var(--comm-line,#cbd8d2);border-radius:16px;background:var(--comm-bg,white);padding:24px;min-width:0}
+.connection-catalog>header,.connection-template header{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap}.connection-catalog h3{font-size:1.2rem}.connection-template h4{font-weight:650;overflow-wrap:anywhere}
+.connection-filters{display:grid;grid-template-columns:2fr 1fr;gap:16px}.connection-filters label{display:grid;gap:8px}.connection-filters input,.connection-filters select{width:100%;min-width:0;border:1px solid var(--comm-line,#cbd8d2);border-radius:8px;padding:12px;background:var(--comm-bg,white);color:inherit}
+.connection-template-list{display:grid;gap:12px}.connection-template{border:1px solid var(--comm-line,#cbd8d2);border-radius:12px;padding:16px;display:grid;gap:12px}.connection-template-text{white-space:pre-wrap;overflow-wrap:anywhere;padding-top:12px}
+.connections-panel summary{cursor:pointer}.connection-technical{font-size:.85rem;color:var(--comm-muted,#60766b)}.connection-technical p{margin-top:8px}
+@media(max-width:640px){.connection-catalog{padding:16px}.connection-filters{grid-template-columns:1fr}}
