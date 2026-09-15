@@ -11,11 +11,12 @@ def test_veronica_only_login_and_allowed_channel(auth_client):
     with patch('core.api.veronica.VeronicaConsoleView.forward') as forward:
         from rest_framework.response import Response
         forward.return_value = Response({"conversations": []})
-        for operation in ('inbox', 'history', 'templates'):
+        for operation in ('inbox', 'history', 'templates', 'auto-pdf'):
             assert client.get('/api/veronica/' + operation + '/').status_code == 200
         assert client.post('/api/veronica/send/', {}, format='json').status_code == 200
         assert client.post('/api/veronica/contact/', {'conversation_id': 1, 'name': 'Santiago'}, format='json').status_code == 200
         assert b'Santiago' in forward.call_args.kwargs['body']
+        assert client.post('/api/veronica/auto-pdf/', {'enabled': 'false', 'caption': 'Pausa'}, format='multipart').status_code == 200
     assert not user.is_staff and not user.is_superuser
     assert client.post('/api/auth/logout/').status_code == 204
     assert client.get('/api/auth/me/').status_code == 401

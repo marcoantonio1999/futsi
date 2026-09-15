@@ -40,6 +40,23 @@ def test_rejects_non_pdf_before_network(auth_client):
     send.assert_not_called()
 
 @pytest.mark.django_db
+@override_settings(WHATSAPP_SERVICE_URL='https://service.example',WHATSAPP_SERVICE_TOKEN='server-only')
+def test_automatic_pdf_gateway_forces_actor_and_accepts_replacement(auth_client):
+    client,_,user=auth_client()
+    response=MagicMock(); response.__enter__.return_value.read.return_value=b'{"configured":true}'
+    with patch('core.api.veronica.urlopen',return_value=response) as send:
+        result=client.post(BASE+'auto-pdf/',{'file':SimpleUploadedFile('Solicitud.pdf',b'%PDF-1.7\ntest'),'enabled':'true','caption':'Gracias','actor_id':'999'},format='multipart')
+    assert result.status_code==200
+    req=send.call_args.args[0]
+    assert req.full_url.endswith('/api/internal/veronica/auto-pdf/')
+    assert f'name="actor_id"\r\n\r\n{user.pk}\r\n'.encode() in req.data
+    assert b'%PDF-1.7' in req.data
+    with patch('core.api.veronica.urlopen') as send:
+        result=client.post(BASE+'auto-pdf/',{'file':SimpleUploadedFile('bad.pdf',b'bad'),'enabled':'true'},format='multipart')
+        assert result.status_code==400
+        send.assert_not_called()
+
+@pytest.mark.django_db
 @override_settings(WHATSAPP_SERVICE_URL='http://unsafe.example',WHATSAPP_SERVICE_TOKEN='test')
 def test_requires_https(auth_client):
     client,_,_=auth_client()

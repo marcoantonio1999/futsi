@@ -3,6 +3,7 @@ import { apiFormRequest, apiRequest } from "../../api";
 import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } from "./model";
 import "./veronica.css";
 import { deliveryProblem } from "./veronicaDelivery";
+import { VeronicaAutomaticPdf } from './VeronicaAutomaticPdf';
 
 type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null };
 type Message = { id: number; body: string; direction: string; created_at: string; status: string; error_codes: number[] };
@@ -118,6 +119,7 @@ export function VeronicaPanel({ token }: { token: string }) {
     {error && <p className="comm-error" role="alert">{error}</p>}
     {pdfAutomation && <p className={pdfAutomation.ready ? 'vero-note' : 'vero-delivery-alert'} role={pdfAutomation.ready ? 'status' : 'alert'}><strong>PDF automático: {pdfAutomation.ready ? 'configurado' : 'pendiente de configuración'}. </strong>{pdfAutomation.detail}</p>}
     {chat && lastProblem ? <DeliveryAlert message={lastProblem} phone={chat.phone} /> : notice && <p className="vero-note" role="status">{notice}</p>}
+    <VeronicaAutomaticPdf token={token} onSaved={() => setRefresh(n => n+1)} />
     <div className="vero-layout"><aside className="comm-panel">
       <h3>Conversaciones</h3><input aria-label="Buscar contacto de Verónica" className={inputClass} placeholder="Buscar teléfono o nombre" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} />
       <button className={primaryButtonClass} disabled={busy} onClick={() => choose(null)}>Nuevo destinatario</button>

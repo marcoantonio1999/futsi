@@ -15,12 +15,33 @@ class VeronicaConsoleView(APIView):
     permission_classes = [CanUseVeronica]
 
     def get(self, request, operation):
-        if operation not in {'inbox', 'history', 'templates'}:
+        if operation not in {'inbox', 'history', 'templates', 'auto-pdf'}:
             return Response({'detail': 'Operación no permitida.'}, status=405)
         query = {k: request.query_params[k] for k in ('q', 'offset', 'conversation_id', 'before', 'after') if k in request.query_params}
         return self.forward(operation, query=query)
 
     def post(self, request, operation):
+        if operation == 'auto-pdf':
+            file = request.FILES.get('file')
+            caption = request.data.get('caption', '')
+            enabled = request.data.get('enabled')
+            if not isinstance(caption, str) or len(caption) > 1024 or enabled not in ('true', 'false'):
+                return Response({'detail': 'Revisa el mensaje del PDF y su activación.'}, status=400)
+            boundary = 'futsi' + uuid.uuid4().hex
+            body = b''
+            for key, value in {'caption': caption, 'enabled': enabled, 'actor_id': str(request.user.pk)}.items():
+                body += (f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n').encode()
+            if file:
+                if file.size > 5 * 1024 * 1024 or not file.name.lower().endswith('.pdf'):
+                    return Response({'detail': 'Selecciona un PDF de máximo 5 MB.'}, status=400)
+                content = file.read(5 * 1024 * 1024 + 1)
+                if len(content) > 5 * 1024 * 1024 or not content.startswith(b'%PDF-'):
+                    return Response({'detail': 'El archivo no es un PDF válido.'}, status=400)
+                import re
+                filename = re.sub(r'[^\w .()-]', '_', file.name)[:100]
+                body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: application/pdf\r\n\r\n').encode() + content + b'\r\n'
+            body += f'--{boundary}--\r\n'.encode()
+            return self.forward(operation, body=body, content_type='multipart/form-data; boundary='+boundary)
         if operation == 'contact':
             payload = {k: request.data.get(k) for k in ('conversation_id', 'name')}
             return self.forward(operation, body=json.dumps(payload).encode(), content_type='application/json')

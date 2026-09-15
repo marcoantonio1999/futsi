@@ -6,6 +6,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from core.bulk_models import WhatsAppBulkCampaign, WhatsAppBulkRecipient, WhatsAppBulkReceipt
+from core.document_models import WhatsAppChannelDocument
 
 from core.whatsapp.defaults import (
     DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS,
