@@ -44,7 +44,6 @@ export function VeronicaPanel({ token }: { token: string }) {
   const [chats, setChats] = useState<Chat[]>([]), [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0), [more, setMore] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null), [phone, setPhone] = useState("");
-  const [contactName, setContactName] = useState("");
   const [history, setHistory] = useState<History>(emptyHistory);
   const [templates, setTemplates] = useState<Template[]>([]), [templateKey, setTemplateKey] = useState("");
   const [cursor, setCursor] = useState("");
@@ -54,7 +53,6 @@ export function VeronicaPanel({ token }: { token: string }) {
   const [confirming, setConfirming] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
-  const [historyLoaded, setHistoryLoaded] = useState(false);
   const request = useRef<{ fingerprint: string; id: string } | null>(null);
   const lock = useRef(false);
   const selected = templates.find(t => t.name + ":" + t.language === templateKey);
@@ -76,11 +74,10 @@ export function VeronicaPanel({ token }: { token: string }) {
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [token, query, offset, refresh]);
   useEffect(() => {
-    if (!chat) { setHistory(emptyHistory); setHistoryLoaded(false); return; }
+    if (!chat) { setHistory(emptyHistory); return; }
     const controller = new AbortController();
-    setHistoryLoaded(false);
     const load = () => apiRequest<History>(`/veronica/history/?conversation_id=${chat.id}`, token, { signal: controller.signal })
-      .then(result => { setHistory(result); setHistoryLoaded(true); }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+      .then(setHistory).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     void load();
     const interval = window.setInterval(() => { if (!document.hidden) void load(); }, 15000);
     return () => { controller.abort(); window.clearInterval(interval); };
@@ -104,10 +101,9 @@ export function VeronicaPanel({ token }: { token: string }) {
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   function choose(c: Chat | null) {
-    setContactName(c && c.name !== c.phone ? c.name : "");
     const savedPhone = c?.phone.replace(/^\+/, '') ?? '';
     const localPhone = /^52\d{10}$/.test(savedPhone) ? savedPhone.slice(2) : /^521\d{10}$/.test(savedPhone) ? savedPhone.slice(3) : savedPhone;
-    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
+    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
   }
   async function send() {
     if (lock.current) return;
@@ -139,9 +135,6 @@ export function VeronicaPanel({ token }: { token: string }) {
   }
   const canSend = !busy && (chat ? /^\+?[1-9]\d{7,14}$/.test(chat.phone) : /^[1-9]\d{9}$/.test(phone)) && !chat?.opted_out && (tab === "template" ? !!selected?.sendable : history.can_reply && (tab === "text" ? !!body.trim() : !!file));
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
-  const selectedWindowEnd = historyLoaded ? history.window_end : chat?.window_end ?? null;
-  const selectedCanReply = historyLoaded ? history.can_reply : Boolean(chat?.can_reply);
-  const selectedWindowOpen = replyWindowOpen(selectedWindowEnd, selectedCanReply, clock);
   return <div className="veronica-console">
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
     {error && <p className="comm-error" role="alert">{error}</p>}
@@ -157,16 +150,8 @@ export function VeronicaPanel({ token }: { token: string }) {
       })}</div>
       <nav aria-label="Páginas de conversaciones"><button disabled={!offset || busy} onClick={() => setOffset(n => Math.max(0, n - 30))}>Anterior</button><span>{offset / 30 + 1}</span><button disabled={!more || busy} onClick={() => setOffset(n => n + 30)}>Siguiente</button></nav>
     </aside><section className="comm-panel">
-      <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} readOnly={!!chat} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>
+      {chat ? <dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
       {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
-      {chat && <div><label>Nombre del contacto<input className={inputClass} value={contactName} maxLength={120} disabled={busy} placeholder="Escribe su nombre si aún no aparece" onChange={e => setContactName(e.target.value)} /></label><button className={secondaryButtonClass} disabled={busy || !contactName.trim() || contactName.trim() === chat.name} onClick={async () => {
-        setBusy(true); setError('');
-        try {
-          const saved = await apiRequest<{ name: string }>('/veronica/contact/', token, { method: 'POST', body: JSON.stringify({ conversation_id: chat.id, name: contactName }) });
-          setChat({ ...chat, name: saved.name }); setContactName(saved.name); setRefresh(n => n+1);
-        } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-      }}>Guardar nombre</button><small>El nombre guardado aquí tiene prioridad sobre el perfil de WhatsApp y los archivos importados.</small></div>}
-      {chat && <div className={`vero-window-status ${selectedWindowOpen ? "open" : "closed"}`} role="status"><strong>{selectedWindowOpen ? "Ventana de 24 horas abierta" : "Ventana de 24 horas cerrada"}</strong><span>{selectedWindowOpen ? `Puedes responder desde Futsi durante ${replyWindowRemaining(selectedWindowEnd, clock)} más. Cierra ${formatDateTime(selectedWindowEnd)}.` : chat.opted_out ? "Este contacto solicitó no recibir más mensajes." : "Para volver a escribirle, usa una plantilla aprobada o espera un nuevo mensaje del contacto."}</span></div>}
       {chat && <><h3>Historial</h3>{history.has_more && <button disabled={busy} onClick={older}>Ver mensajes anteriores</button>}<div className="vero-history" aria-label="Historial de Verónica">{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>Sin mensajes registrados. El historial empieza con los eventos guardados por el servicio; no importa automáticamente chats anteriores.</p>}</div></>}
       <div className="vero-tabs" role="tablist" aria-label="Tipo de envío">{([['template', 'Plantillas'], ['text', 'Mensaje'], ['document', 'PDF']] as const).map(([key, label]) => <button role="tab" aria-selected={tab === key} disabled={busy} key={key} onClick={() => { setTab(key); setBody(""); }}>{label}</button>)}</div>
       {tab === "template" ? <div><button disabled={busy} className={secondaryButtonClass} onClick={() => void loadTemplates()}>Consultar plantillas de Verónica</button>
