@@ -21,18 +21,27 @@ export function SitesWorkspace({ sites, token, onRefresh }: { sites: Site[]; tok
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { setEditing(null); setForm(emptyForm); setError(""); }, [section, revision]);
   useEffect(() => { if (deleting) dialog.current?.showModal(); }, [deleting]);
   useEffect(() => {
     if (!deleting) return;
     let current = true;
-    setPreview(null); setConfirmation(""); setAccepted(false);
-    apiRequest<DeletionPreview>(`/sites/${deleting.id}/deletion-preview/`, token)
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    setPreview(null); setConfirmation(""); setAccepted(false); setError("");
+    apiRequest<DeletionPreview>(`/sites/${deleting.id}/deletion-preview/`, token, { signal: controller.signal })
       .then(value => { if (current) setPreview(value); })
-      .catch(err => { if (current) setError(err instanceof Error ? err.message : "No se pudo consultar el detalle."); });
-    return () => { current = false; };
-  }, [deleting, token]);
+      .catch(err => {
+        if (!current) return;
+        setError(err instanceof DOMException && err.name === "AbortError"
+          ? "La consulta tardó más de 15 segundos y se canceló. Verifica la conexión e inténtalo de nuevo."
+          : err instanceof Error ? err.message : "No se pudo consultar el detalle.");
+      })
+      .finally(() => window.clearTimeout(timeout));
+    return () => { current = false; window.clearTimeout(timeout); controller.abort(); };
+  }, [deleting, token, previewAttempt]);
 
   function edit(site: Site) {
     setEditing(site); setError(""); setNotice("");
@@ -100,6 +109,7 @@ export function SitesWorkspace({ sites, token, onRefresh }: { sites: Site[]; tok
         {!preview.blockers.length && <><TextInput label={`Escribe ${deleting.name} para confirmar`} value={confirmation} disabled={busy} onChange={e => setConfirmation(e.target.value)} /><label className="flex items-start gap-2"><input type="checkbox" checked={accepted} disabled={busy} onChange={e => setAccepted(e.target.checked)} /><span>Entiendo qué registros se eliminarán y qué cuentas, adeudos y pagos se conservarán según este resumen.</span></label></>}
       </div>}
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 p-3 text-red-800">{error}</p>}
+      {error && !preview && <button type="button" className={secondary} onClick={() => setPreviewAttempt(value => value + 1)}>Reintentar consulta</button>}
       <div className="mt-5 flex justify-end gap-3"><button type="button" autoFocus disabled={busy} className={secondary} onClick={() => { setDeleting(null); setError(""); }}>Cancelar</button><button type="button" disabled={busy || !preview || !!preview.blockers.length || !accepted || confirmation.trim() !== deleting.name.trim()} className="rounded-md bg-red-700 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={remove}>{busy ? "Eliminando…" : "Eliminar sede y sus datos"}</button></div>
     </dialog>}
   </div>;
