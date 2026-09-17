@@ -48,7 +48,6 @@ export function VeronicaAutomaticPdf({ token, onSaved }: { token: string; onSave
   return <section className="comm-panel" aria-label="Configuración del PDF automático">
     <h3>PDF automático</h3>
     <p><strong>{saved?.enabled && saved.configured ? 'Activo' : 'Inactivo'}</strong> · {saved?.filename || 'Sin archivo seleccionado'}</p>
-    <p>Se envía una sola vez después de cualquier respuesta a la plantilla de reclutamiento. Cambiar el archivo no vuelve a enviarlo a quienes ya lo recibieron.</p>
     {error && <p className="comm-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <details><summary>{saved?.configured ? 'Cambiar PDF o mensaje' : 'Elegir PDF y configurar'}</summary>
