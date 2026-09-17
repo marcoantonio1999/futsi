@@ -130,13 +130,20 @@ def test_failed_storage_cleanup_is_durable_and_retryable_in_scope(auth_client):
     assert response.status_code == 200
     result = response.json()
     assert result["cleanup_pending"] == 1
+    assert result["cleanup_items"] == [{
+        "name": "owned.jpg",
+        "kind": "Foto privada",
+        "error": "provider failure",
+    }]
     assert not Student.objects.filter(pk=student.pk).exists()
+    assert AuditLog.objects.get(pk=result["deletion_id"]).metadata["cleanup_errors"] == result["cleanup_items"]
     other_client, _, _ = auth_client(role="cashier", primary_site=make_site())
     assert other_client.post("/api/students/deletion-cleanup/", {"deletion_id": result["deletion_id"]}, format="json").status_code == 404
     with patch("core.services.student_deletion.delete_private_file", return_value=True) as delete_file:
         retry = client.post("/api/students/deletion-cleanup/", {"deletion_id": result["deletion_id"]}, format="json")
     assert retry.status_code == 200
     assert retry.json()["cleanup_pending"] == 0
+    assert retry.json()["cleanup_items"] == []
     delete_file.assert_called_once_with("student-private-photos", "owned.jpg")
     assert AuditLog.objects.get(pk=result["deletion_id"]).metadata["pending_files"] == []
 

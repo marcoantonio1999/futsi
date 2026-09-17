@@ -72,13 +72,14 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete }: 
       <div className="student-actions"><button ref={successButton} type="button" className="student-button primary" onClick={onClose}>Entendido</button></div>
     </> : <>
     <div className="student-delete-symbol">{preview ? <AlertTriangle size={24} /> : <Trash2 size={24} />}</div>
-    <h2 id="student-delete-title">{cleanup ? "Falta borrar archivos" : preview ? (isTournament ? "Eliminar torneo e historial" : isGuardian ? "Eliminar tutor, alumnos e historial" : "Eliminar alumno e historial") : isTournament ? "¿Eliminar este torneo?" : `¿Eliminar a este ${noun}?`}</h2>
+    <h2 id="student-delete-title">{cleanup ? `${isTournament ? "Torneo" : isGuardian ? "Tutor" : "Alumno"} eliminado; falta borrar ${cleanup.cleanup_pending === 1 ? "un archivo" : `${cleanup.cleanup_pending} archivos`}` : preview ? (isTournament ? "Eliminar torneo e historial" : isGuardian ? "Eliminar tutor, alumnos e historial" : "Eliminar alumno e historial") : isTournament ? "¿Eliminar este torneo?" : `¿Eliminar a este ${noun}?`}</h2>
     <p className="student-delete-name">{record.full_name}</p><p className="student-hint">{record.site_name}</p>
     <p id="student-delete-detail">{cleanup
-      ? `La ficha y el historial ya se eliminaron. Quedan ${cleanup.cleanup_pending} archivos pendientes por un error del almacenamiento. Puedes reintentar sin repetir el borrado del registro.`
+      ? `La ficha y el historial ya se eliminaron correctamente. Solo queda pendiente la limpieza del almacenamiento; reintentar no vuelve a borrar el registro.`
       : preview
         ? "Esta eliminación es definitiva. También desaparecerán los siguientes registros y cambiarán los totales de cobranza, pagos y asistencias."
         : isTournament ? "También se eliminarán sus equipos, inscripciones, partidos y los cargos, pagos y asistencias vinculados al torneo. Revisa el detalle antes de continuar." : isGuardian ? "Si tiene alumnos a su cargo, también se eliminarán ellos y su historial. Revisa el detalle antes de continuar." : "Antes de eliminarlo, revisa los datos asociados que también se borrarán. Su papá o tutor y los demás alumnos a su cargo se conservarán."}</p>
+    {cleanup && Boolean(cleanup.cleanup_items?.length) && <ul className="student-delete-inventory" aria-label="Archivos pendientes">{cleanup.cleanup_items?.map((item, index) => <li key={`${item.name}-${index}`}><span><strong>{item.kind}:</strong> {item.name}<small className="block student-hint">{item.error}</small></span><strong>Pendiente</strong></li>)}</ul>}
     {preview && !cleanup && <>
       {isGuardian && Boolean(preview.students?.length) && <div className="student-error my-3"><strong>También se eliminarán estos alumnos:</strong><ul>{preview.students?.map(row => <li key={row.id}>{row.full_name}</li>)}</ul><p>Si deben seguir en la academia, cancela y asígnalos a otro tutor desde Editar alumno antes de borrar este tutor.</p></div>}
       <ul className="student-delete-inventory" aria-label="Datos que se eliminarán">{preview.items.map(item => <li key={item.label}><span>{item.label}</span><strong>{item.count}</strong></li>)}{preview.file_count > 0 && <li><span>Archivos propios en Futsi</span><strong>{preview.file_count}</strong></li>}</ul>

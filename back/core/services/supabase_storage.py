@@ -5,8 +5,9 @@ import json
 import mimetypes
 import os
 import tempfile
+import time
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -215,10 +216,20 @@ def delete_private_file(bucket: str, object_path: str) -> bool:
     encoded_path = "/".join(quote(part) for part in object_path.replace("\\", "/").split("/"))
     endpoint = f"{supabase_url()}/storage/v1/object/{bucket}/{encoded_path}"
     request = Request(endpoint, method="DELETE", headers=storage_headers())
-    try:
-        with urlopen(request, timeout=60) as response:
-            return response.status < 400
-    except HTTPError as exc:
-        if exc.code == 404:
-            return False
-        raise RuntimeError(f"Supabase Storage delete fallo con HTTP {exc.code}: {exc.read().decode('utf-8', errors='ignore')}") from exc
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=60) as response:
+                return response.status < 400
+        except HTTPError as exc:
+            # Deleting an object that is already gone is a successful cleanup.
+            if exc.code == 404:
+                return False
+            raise RuntimeError(f"Supabase Storage delete fallo con HTTP {exc.code}: {exc.read().decode('utf-8', errors='ignore')}") from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            if attempt < 2:
+                time.sleep(0.25 * (2**attempt))
+                continue
+            reason = getattr(exc, "reason", exc)
+            raise RuntimeError(
+                f"No se pudo conectar con Supabase Storage tras 3 intentos: {reason}"
+            ) from exc

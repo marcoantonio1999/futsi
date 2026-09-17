@@ -76,5 +76,9 @@ export type AttendanceRecord = {
 };
 
 export type StudentDeletionConfirmation = { confirmation_token: string; confirmation_name: string };
-export type StudentDeletionResult = { deletion_id: number; cleanup_pending: number };
+export type StudentDeletionResult = {
+  deletion_id: number;
+  cleanup_pending: number;
+  cleanup_items?: Array<{ name: string; kind: string; error: string }>;
+};
 export type StudentDeletionPreview = { student_id: number; full_name: string; items: Array<{label: string; count: number}>; file_count: number; confirmation_token: string };

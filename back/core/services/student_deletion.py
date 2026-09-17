@@ -2,6 +2,7 @@
 import hashlib
 import json
 from collections.abc import Mapping
+from pathlib import PurePosixPath
 
 from django.apps import apps
 from django.core import signing
@@ -121,18 +122,36 @@ def preview(student, actor):
 def cleanup_files(audit):
     """Keep failures durable so retry never has to recreate a deleted student."""
     pending = []
+    cleanup_errors = []
     for item in audit.metadata.get("pending_files", []):
         try:
             if item["kind"] == "supabase":
-                delete_private_file(*parse_storage_uri(item["uri"]))
+                parsed = parse_storage_uri(item["uri"])
+                if not parsed:
+                    raise ValueError("La referencia de Storage no es válida.")
+                delete_private_file(*parsed)
             else:
                 model = apps.get_model(item["model"])
                 model._meta.get_field(item["field"]).storage.delete(item["name"])
-        except Exception:
+        except Exception as exc:
             pending.append(item)
-    audit.metadata = {**audit.metadata, "pending_files": pending}
+            raw_name = item.get("name") or item.get("uri") or "archivo"
+            cleanup_errors.append({
+                "name": PurePosixPath(str(raw_name).replace("\\", "/")).name,
+                "kind": "Foto privada" if item.get("kind") == "supabase" else "Archivo adjunto",
+                "error": str(exc)[:500] or type(exc).__name__,
+            })
+    audit.metadata = {
+        **audit.metadata,
+        "pending_files": pending,
+        "cleanup_errors": cleanup_errors,
+    }
     audit.save(update_fields=["metadata", "updated_at"])
-    return {"deletion_id": audit.pk, "cleanup_pending": len(pending)}
+    return {
+        "deletion_id": audit.pk,
+        "cleanup_pending": len(pending),
+        "cleanup_items": cleanup_errors,
+    }
 
 
 def permanently_delete(student, actor, payload):
