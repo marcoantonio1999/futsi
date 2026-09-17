@@ -15,6 +15,11 @@ class BasePage:
         return self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, f"[data-testid='{value}']")))
 
     def click_testid(self, value):
+        element = self.clickable_testid(value)
+        self.driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});",
+            element,
+        )
         self.clickable_testid(value).click()
 
     def fill_testid(self, value, text):

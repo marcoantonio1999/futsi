@@ -405,6 +405,10 @@ class WhatsAppConversationViewSet(
         for profile in profiles:
             if profile.site_id or profile.business_address not in records:
                 records[profile.business_address] = {"business_address": profile.business_address, "site": profile.site_id, "site_name": profile.site.name if profile.site_id else "", "channel_label": profile.channel_label}
+        if request.user.role in ADMIN_ROLES:
+            current = configured_business_address()
+            if current:
+                records.setdefault(current, {"business_address": current, "site": None, "site_name": "", "channel_label": ""})
         return Response(sorted(records.values(), key=lambda row: (row["site_name"], row["channel_label"], row["business_address"])))
 
     @action(detail=False, methods=["get"], url_path="templates")

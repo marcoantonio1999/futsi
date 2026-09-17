@@ -165,8 +165,7 @@ def table_exists(table_name: str) -> bool:
     if table_name in TABLE_EXISTS_CACHE:
         return TABLE_EXISTS_CACHE[table_name]
     with connection.cursor() as cursor:
-        cursor.execute("select to_regclass(%s)", [f"public.{table_name}"])
-        exists = bool(cursor.fetchone()[0])
+        exists = table_name in connection.introspection.table_names(cursor)
     TABLE_EXISTS_CACHE[table_name] = exists
     return exists
 

@@ -1,5 +1,6 @@
 import pytest
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
 
 from .pages.base import BasePage
 from .pages.login_page import LoginPage
@@ -53,13 +54,17 @@ def test_admin_can_save_whatsapp_business_days_without_unrelated_reload_error(dr
 
     page.click_testid("menu-tab-communications")
     page.click_testid("communications-subsection-settings")
-    page.wait_text("Configuración del bot")
+    page.wait_text("Configuración por sede y número")
+
+    number_select = page.testid("communications-number-select")
+    page.wait.until(lambda _driver: len(Select(number_select).options) > 1)
+    Select(number_select).select_by_index(1)
 
     saturday = page.clickable_testid("whatsapp-business-day-5")
     if saturday.get_attribute("aria-pressed") == "true":
-        saturday.click()
+        page.click_testid("whatsapp-business-day-5")
         saturday = page.clickable_testid("whatsapp-business-day-5")
-    saturday.click()
+    page.click_testid("whatsapp-business-day-5")
 
     driver.execute_script(
         """
@@ -72,7 +77,7 @@ def test_admin_can_save_whatsapp_business_days_without_unrelated_reload_error(dr
         """
     )
     page.click_testid("whatsapp-settings-save")
-    page.wait_text("Configuración del bot actualizada.")
+    page.wait_text("Todos los cambios están guardados.")
 
     assert page.testid("whatsapp-business-day-5").get_attribute("aria-pressed") == "true"
     assert not page.has_text("No se pudo completar la accion.")

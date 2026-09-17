@@ -59,6 +59,18 @@ def test_channels_include_empty_sites_and_enforce_coordinator_scope(auth_client,
     assert api_client.get(BASE + "channels/").status_code in (401, 403)
 
 
+def test_channels_include_configured_number_without_history_for_admin(auth_client, settings):
+    settings.META_WHATSAPP_DISPLAY_NUMBER = A.replace("whatsapp:", "")
+    admin, _, _ = auth_client()
+
+    assert admin.get(BASE + "channels/").json() == [{
+        "business_address": A,
+        "site": None,
+        "site_name": "",
+        "channel_label": "",
+    }]
+
+
 def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client):
     client, _, _ = auth_client()
     franco = make_site(name="Colegio Franco")

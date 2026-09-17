@@ -173,11 +173,11 @@ export function VoiceDashboardPanel({
     <div className="communications">
       <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{sectionDetail.title}</h2></div></header>
       <section className="comm-panel comm-scope" aria-label="Ámbito de comunicaciones">
-        <label>Sede<select aria-label="Sede de comunicaciones" className={inputClass} value={selectedSite} disabled={settingsBusy || user.role === "site_coordinator"} onChange={e => { if (canChangeScope()) { setSettingsDirty(false); setSelectedSite(e.target.value); setSelectedAddress("all"); setConversationId(null); setBookingId(null); } }}>
+        <label>Sede<select data-testid="communications-site-select" aria-label="Sede de comunicaciones" className={inputClass} value={selectedSite} disabled={settingsBusy || user.role === "site_coordinator"} onChange={e => { if (canChangeScope()) { setSettingsDirty(false); setSelectedSite(e.target.value); setSelectedAddress("all"); setConversationId(null); setBookingId(null); } }}>
           {user.role !== "site_coordinator" && <><option value="all">Todas las sedes · Consolidado</option>{hasUnassigned && <option value="unassigned">Canales pendientes de vincular</option>}</>}
           {permittedData.sites.map(site => <option value={site.id} key={site.id}>{site.name}</option>)}
         </select></label>
-        <label>Número de atención<select aria-label="Número de comunicaciones" className={inputClass} value={selectedAddress} disabled={settingsBusy || !channelsReady} onChange={e => changeAddress(e.target.value)}>
+        <label>Número de atención<select data-testid="communications-number-select" aria-label="Número de comunicaciones" className={inputClass} value={selectedAddress} disabled={settingsBusy || !channelsReady} onChange={e => changeAddress(e.target.value)}>
           <option value="all">Todos los números de la selección</option>
           {selectedAddress !== "all" && !channelOptions.some(c => c.business_address === selectedAddress) && <option value={selectedAddress}>{selectedAddress.replace("whatsapp:", "").replace("meta:", "ID ")} · Sin vínculo</option>}
           {channelOptions.map(channel => <option key={channel.business_address} value={channel.business_address}>{channel.channel_label || channel.business_address.replace("whatsapp:", "").replace("meta:", "ID ")} · {channel.site_name || "Sin sede vinculada"}</option>)}

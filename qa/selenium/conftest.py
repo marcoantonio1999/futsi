@@ -128,6 +128,24 @@ def live_backend(e2e_config):
     python = sys.executable
     _run_checked([python, "manage.py", "migrate", "--noinput"], cwd=BACK_DIR, env=env)
     _run_checked([python, "manage.py", "seed_demo", "--reset"], cwd=BACK_DIR, env=env)
+    _run_checked(
+        [
+            python,
+            "manage.py",
+            "shell",
+            "-c",
+            (
+                "from core.models import Site, WhatsAppAutomationSettings; "
+                "WhatsAppAutomationSettings.objects.update_or_create("
+                "business_address='whatsapp:+525574858165', "
+                "defaults={'site': Site.objects.get(code='roma'), "
+                "'channel_label': 'Canal demo Roma', "
+                "'openai_model': 'gpt-5.6-luna'})"
+            ),
+        ],
+        cwd=BACK_DIR,
+        env=env,
+    )
 
     backend_log = (ARTIFACT_DIR / "django-e2e.log").open("w", encoding="utf-8")
     process = subprocess.Popen(
