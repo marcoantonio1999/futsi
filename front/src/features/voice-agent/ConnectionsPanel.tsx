@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../../api';
+import { reportedTemplateReason } from './templateReason';
 import './connections.css';
 
 type Kind = 'academy' | 'veronica';
@@ -92,7 +93,10 @@ export function ConnectionsPanel({ token, veronicaOnly = false }: { token: strin
       {catalogError && <p className="comm-error" role="alert">{catalogError}</p>}
       {catalogLoading && <p role="status">Consultando plantillas…</p>}
       {fetchedAt && <p className="comm-muted">{templates.length} plantillas cargadas · Consultado: {date(fetchedAt)}{nextCursor ? ' · Hay más por cargar' : ''}</p>}
-      <div className="connection-template-list">{visible.map(t => <article key={`${t.name}:${t.language}`} className="connection-template"><header><div><h4>{t.name}</h4><small>{t.language} · {categories[t.category] || t.category}</small></div><strong className={`connection-badge ${t.status === 'APPROVED' ? 'good' : t.status === 'REJECTED' || t.status === 'DISABLED' ? 'bad' : 'neutral'}`}>{templateStates[t.status.toUpperCase()] || t.status || 'Estado desconocido'}</strong></header><details><summary>Ver mensaje</summary><p className="connection-template-text">{t.text}</p></details>{t.rejected_reason && <p className="comm-error">Motivo de rechazo: {t.rejected_reason}</p>}</article>)}</div>
+      <div className="connection-template-list">{visible.map(t => {
+        const rejectionReason = reportedTemplateReason(t.rejected_reason);
+        return <article key={`${t.name}:${t.language}`} className="connection-template"><header><div><h4>{t.name}</h4><small>{t.language} · {categories[t.category] || t.category}</small></div><strong className={`connection-badge ${t.status === 'APPROVED' ? 'good' : t.status === 'REJECTED' || t.status === 'DISABLED' ? 'bad' : 'neutral'}`}>{templateStates[t.status.toUpperCase()] || t.status || 'Estado desconocido'}</strong></header><details><summary>Ver mensaje</summary><p className="connection-template-text">{t.text}</p></details>{rejectionReason && <p className="comm-error">Motivo de rechazo: {rejectionReason}</p>}</article>;
+      })}</div>
       {!catalogLoading && !catalogError && !visible.length && <p>{templates.length ? 'Ninguna plantilla coincide con el filtro.' : 'Esta cuenta todavía no tiene plantillas.'}</p>}
       {nextCursor && <button disabled={catalogLoading} onClick={() => setCursor(nextCursor)}>Cargar más plantillas</button>}
     </section>}
