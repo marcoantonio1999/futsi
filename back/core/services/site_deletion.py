@@ -2,9 +2,11 @@
 import hashlib
 import json
 from collections import defaultdict
+from decimal import Decimal
 
 from django.core import signing
 from django.db import transaction
+from django.db.models import Exists, OuterRef, Sum
 from django.db.models.deletion import ProtectedError, RestrictedError
 from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.authtoken.models import Token
@@ -14,6 +16,10 @@ from core.domain_serializers.money import charge_balance
 from .student_deletion import collect_owned_files
 
 SALT = 'futsi.site-deletion.v3'
+OWNERSHIP_FIELDS = {
+    'site', 'primary_site', 'tournament', 'team', 'student', 'session', 'device', 'report',
+    'booking', 'conversation', 'charge', 'payment', 'home_team', 'away_team', 'round',
+}
 LABELS = {
     'Site': 'Sede', 'User': 'Cuentas de caja a eliminar', 'Guardian': 'Fichas de tutores',
     'Student': 'Alumnos', 'Court': 'Canchas', 'Tournament': 'Torneos', 'Team': 'Equipos',
@@ -44,40 +50,105 @@ class DeletionConflict(APIException):
     default_detail = 'Los datos cambiaron. Actualiza el detalle y vuelve a confirmar.'
 
 
-def owner_sites(row, seen=None):
+def owner_sites(row, seen=None, cache=None):
     seen = set() if seen is None else seen
+    cache = {} if cache is None else cache
     key = (type(row), row.pk)
+    if key in cache:
+        return cache[key]
     if key in seen:
         return set()
     seen.add(key)
     if isinstance(row, Site):
         return {row.pk}
     owners = set()
-    ownership = {'site', 'primary_site', 'tournament', 'team', 'student', 'session', 'device', 'report',
-                 'booking', 'conversation', 'charge', 'payment', 'home_team', 'away_team', 'round'}
     for field in row._meta.fields:
-        if field.name in ownership and field.is_relation and getattr(row, field.attname):
-            owners.update(owner_sites(getattr(row, field.name), seen))
+        if field.name in OWNERSHIP_FIELDS and field.is_relation and getattr(row, field.attname):
+            owners.update(owner_sites(getattr(row, field.name), seen, cache))
+    cache[key] = owners
     return owners
+
+
+def ownership_select_paths(model):
+    """Forward relation paths needed by owner_sites, suitable for select_related."""
+    paths = []
+
+    def visit(current_model, prefix, ancestors):
+        if current_model in ancestors:
+            return
+        ancestors = ancestors | {current_model}
+        for field in current_model._meta.fields:
+            if field.name not in OWNERSHIP_FIELDS or not field.is_relation:
+                continue
+            path = f'{prefix}__{field.name}' if prefix else field.name
+            paths.append(path)
+            if field.related_model != Site:
+                visit(field.related_model, path, ancestors)
+
+    visit(model, '', set())
+    return paths
 
 
 def plan(site, actor, lock=False):
     records = defaultdict(dict)
     retained = {}
     blocked = set()
-    queue = []
-    shared = list(Guardian.objects.filter(students__site=site).distinct())
-    shared = [g for g in shared if g.students.exclude(site=site).exists()]
-    active_users = {g.user_id: g.students.exclude(site=site).order_by('site_id').first().site_id
-                    for g in shared if g.user_id}
-    debts = [c for c in Charge.objects.filter(site=site, student__guardian__in=shared)
-             .select_related('student__guardian').exclude(status__in=['paid', 'canceled']) if charge_balance(c) > 0]
+    queue = defaultdict(dict)
+    ownership_cache = {}
+
+    def row_owner_sites(row):
+        return owner_sites(row, cache=ownership_cache)
+
+    site_guardians = list(
+        Guardian.objects.filter(students__site=site)
+        .annotate(
+            has_other_site=Exists(
+                Student.objects.filter(guardian_id=OuterRef('pk')).exclude(site=site)
+            )
+        )
+        .select_related('user__primary_site')
+        .distinct()
+    )
+    shared = [guardian for guardian in site_guardians if guardian.has_other_site]
+    surviving_sites = {}
+    for guardian_id, site_id in (
+        Student.objects.filter(guardian__in=shared).exclude(site=site)
+        .order_by('guardian_id', 'site_id').values_list('guardian_id', 'site_id')
+    ):
+        surviving_sites.setdefault(guardian_id, site_id)
+    active_users = {
+        guardian.user_id: surviving_sites[guardian.pk]
+        for guardian in shared if guardian.user_id and guardian.pk in surviving_sites
+    }
+    debt_candidates = list(
+        Charge.objects.filter(site=site, student__guardian__in=shared)
+        .select_related('student__guardian').exclude(status__in=['paid', 'canceled'])
+    )
+    candidate_ids = [charge.pk for charge in debt_candidates]
+    paid_by_charge = dict(
+        Payment.objects.filter(charge_id__in=candidate_ids, status__in=['registered', 'reconciled'])
+        .values('charge_id').annotate(total=Sum('amount')).values_list('charge_id', 'total')
+    )
+    discounted_by_charge = dict(
+        Discount.objects.filter(charge_id__in=candidate_ids, status='approved')
+        .values('charge_id').annotate(total=Sum('amount')).values_list('charge_id', 'total')
+    )
+    debts = []
+    for charge in debt_candidates:
+        charge._site_deletion_balance = max(
+            charge.amount
+            - (paid_by_charge.get(charge.pk) or Decimal('0'))
+            - (discounted_by_charge.get(charge.pk) or Decimal('0')),
+            Decimal('0'),
+        )
+        if charge._site_deletion_balance > 0:
+            debts.append(charge)
     preserved = {(Charge, c.pk): c for c in debts}
     for model in (Payment, Discount):
         for row in model.objects.filter(charge__in=debts):
             preserved[(model, row.pk)] = row
     for row in preserved.values():
-        if owner_sites(row) - {site.pk}:
+        if row_owner_sites(row) - {site.pk}:
             blocked.add('Un adeudo que se conservaría tiene referencias financieras inconsistentes con otra sede. Revisa ese registro antes de eliminar.')
     releases = {}
 
@@ -90,55 +161,72 @@ def plan(site, actor, lock=False):
             return
         if row.pk in records[model] or (isinstance(row, User) and row.pk in retained):
             return
-        if owner_sites(row) - {site.pk}:
+        if row_owner_sites(row) - {site.pk}:
             blocked.add(f'Hay registros de {LABELS.get(model.__name__, model.__name__)} relacionados con otra sede. Es necesario separar esas relaciones antes de eliminar; no se borrarán datos de otras sedes.')
             return
         if isinstance(row, User) and row.pk == actor.pk:
             blocked.add('Tu cuenta está asignada a esta sede. Otra cuenta administradora debe realizar la eliminación.')
-        if lock:
-            row = model._base_manager.select_for_update().get(pk=row.pk)
         # Keep identities for future enrolment/reassignment. Do not traverse
         # their historical actor references into unrelated records.
         if isinstance(row, User) and row.role != 'cashier':
             retained[row.pk] = row
             return
         records[model][row.pk] = row
-        queue.append(row)
+        queue[model][row.pk] = row
 
     add(site)
     # Tutors and their logins are forward references, not owned reverse FKs.
-    for guardian in Guardian.objects.filter(students__site=site).distinct():
-        if guardian.students.exclude(site=site).exists():
+    for guardian in site_guardians:
+        if guardian.has_other_site:
             continue  # Keep the tutor and their access in the surviving site.
         else:
             add(guardian)
             if guardian.user_id:
                 add(guardian.user)
     while queue:
-        row = queue.pop(0)
+        model = next(iter(queue))
+        batch = list(queue.pop(model).values())
+        batch_by_pk = {row.pk: row for row in batch}
         # Include adult logins even for older imports lacking primary_site.
-        if row._meta.model_name == 'player' and row.user_id:
-            add(row.user)
-        if row._meta.model_name == 'team' and row.representative_user_id:
-            add(row.representative_user)
-        for relation in row._meta.related_objects:
+        forward_user_ids = set()
+        if model._meta.model_name == 'player':
+            forward_user_ids.update(row.user_id for row in batch if row.user_id)
+        if model._meta.model_name == 'team':
+            forward_user_ids.update(row.representative_user_id for row in batch if row.representative_user_id)
+        for user in User.objects.filter(pk__in=forward_user_ids).select_related(*ownership_select_paths(User)):
+            add(user)
+        for relation in model._meta.related_objects:
             if relation.many_to_many:
                 continue  # Memberships disappear, shared roles/groups do not.
-            for dependent in relation.related_model._base_manager.filter(**{relation.field.name: row}).order_by('pk'):
-                if isinstance(row, User) and (owner_sites(dependent) - {site.pk} or (type(dependent), dependent.pk) in preserved):
+            dependents = relation.related_model._base_manager.filter(
+                **{f'{relation.field.name}__in': batch}
+            ).select_related(*ownership_select_paths(relation.related_model)).order_by('pk')
+            for dependent in dependents:
+                if model == User and (row_owner_sites(dependent) - {site.pk} or (type(dependent), dependent.pk) in preserved):
                     if relation.field.null:
-                        release_actor(dependent, relation.field, row)
+                        parent = batch_by_pk[getattr(dependent, relation.field.attname)]
+                        release_actor(dependent, relation.field, parent)
                         continue
                 add(dependent)
     groups = [{'model': model, 'label': LABELS.get(model.__name__, str(model._meta.verbose_name_plural)),
                'rows': list(rows.values())} for model, rows in sorted(records.items(), key=lambda pair: pair[0]._meta.label) if rows]
+    if lock:
+        for group in groups:
+            list(
+                group['model']._base_manager.select_for_update()
+                .filter(pk__in=[row.pk for row in group['rows']])
+                .values_list('pk', flat=True)
+            )
     files = collect_owned_files(groups)
     watched = list(preserved.values()) + list(User.objects.filter(pk__in=active_users))
     watched += list(Student.objects.filter(guardian__in=shared))
     watched += [r for r, _, _ in releases.values()]
     if lock:
+        watched_by_model = defaultdict(set)
         for row in watched:
-            type(row).objects.select_for_update().get(pk=row.pk)
+            watched_by_model[type(row)].add(row.pk)
+        for model, ids in watched_by_model.items():
+            list(model.objects.select_for_update().filter(pk__in=ids).values_list('pk', flat=True))
     fingerprint_groups = groups + [{'model': User, 'rows': list(retained.values())}]
     fingerprint_groups += [{'model': type(row), 'rows': [row]} for row in watched]
     fingerprint = hashlib.sha256(json.dumps([
@@ -156,7 +244,8 @@ def preview(site, actor):
         'items': [{'label': g['label'], 'count': len(g['rows'])} for g in data['groups']],
         'accounts': [{'username': u.username, 'role': u.get_role_display()} for g in data['groups'] if g['model'] == User for u in g['rows']],
         'retained_accounts': [{'username': u.username, 'role': u.get_role_display()} for u in data['retained']],
-        'preserved_debts': [{'student': c.student.full_name, 'guardian': c.student.guardian.full_name, 'balance': str(charge_balance(c))} for c in data['debts']],
+        'preserved_debts': [{'student': c.student.full_name, 'guardian': c.student.guardian.full_name,
+                             'balance': str(c._site_deletion_balance if hasattr(c, '_site_deletion_balance') else charge_balance(c))} for c in data['debts']],
         'active_guardians': len(data['active_users']),
         'preserved_payments': sum(isinstance(r, Payment) for r in data['preserved']),
         'detached_actor_references': len(data['releases']),

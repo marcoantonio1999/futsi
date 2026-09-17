@@ -55,14 +55,14 @@ export function SitesWorkspace({ sites, token, onRefresh }: { sites: Site[]; tok
     if (!deleting) return;
     let current = true;
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    const timeout = window.setTimeout(() => controller.abort(), 60_000);
     setPreview(null); setConfirmation(""); setAccepted(false); setError("");
     apiRequest<DeletionPreview>(`/sites/${deleting.id}/deletion-preview/`, token, { signal: controller.signal })
       .then(value => { if (current) setPreview(value); })
       .catch(err => {
         if (!current) return;
         setError(err instanceof DOMException && err.name === "AbortError"
-          ? "La consulta tardó más de 15 segundos y se canceló. Verifica la conexión e inténtalo de nuevo."
+          ? "La consulta tardó más de un minuto y se canceló. Inténtalo nuevamente."
           : err instanceof Error ? err.message : "No se pudo consultar el detalle.");
       })
       .finally(() => window.clearTimeout(timeout));
