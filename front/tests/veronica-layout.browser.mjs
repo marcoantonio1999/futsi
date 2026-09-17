@@ -32,7 +32,7 @@ try {
   assert.equal(await page.locator('dialog[open]').count(),0);
   await page.locator('.vero-heading-actions').getByRole('button',{name:'Actualizar',exact:true}).waitFor({state:'visible'});
   if(width===1440)await page.screenshot({path:'tests/veronica-layout-desktop.png'});
-  if(width===390){await page.screenshot({path:'tests/veronica-layout-mobile.png'});await page.getByRole('button',{name:'Conversaciones',exact:true}).click();await page.getByRole('button',{name:'Nuevo destinatario'}).click();await page.getByRole('textbox',{name:'Destinatario (10 dígitos)'}).waitFor();}
+  if(width===390){await page.screenshot({path:'tests/veronica-layout-mobile.png'});await page.getByRole('button',{name:'Conversaciones',exact:true}).click();await page.getByRole('button',{name:'Nuevo destinatario'}).click();await page.getByRole('textbox',{name:'Destinatario (10 dígitos)'}).waitFor();await page.locator('.vero-new-recipient-state').getByText('Nuevo destinatario',{exact:true}).waitFor();}
   assert.deepEqual(errors,[]);console.log(JSON.stringify({width,height,passed:true,geometry}));
   await page.close();
  }
@@ -48,4 +48,15 @@ try {
  await openPage.goto(base+'?open');await openPage.getByRole('button',{name:/Contacto de prueba/}).click();
  await openPage.locator('.vero-composer textarea').waitFor();assert.equal(await openPage.locator('.vero-composer select').count(),0);
  console.log('Open-window free-text composer passed.');await openPage.close();
+ const recipientPage=await browser.newPage({viewport:{width:1366,height:768}});
+ await recipientPage.goto(base);await recipientPage.getByRole('button',{name:'Nuevo destinatario'}).click();
+ await recipientPage.getByRole('textbox',{name:'Nombre del destinatario'}).waitFor();
+ await recipientPage.waitForTimeout(250);
+ await recipientPage.getByRole('textbox',{name:'Destinatario (10 dígitos)'}).fill('5522578778');
+ await recipientPage.getByRole('textbox',{name:'Nombre del destinatario'}).fill('Vero');
+ await recipientPage.getByRole('button',{name:'Enviar plantilla',exact:true}).click();
+ await recipientPage.getByRole('button',{name:'Confirmar envío',exact:true}).click();
+ await recipientPage.getByRole('status').filter({hasText:'Aceptado por la API · aún no confirma entrega'}).waitFor();
+ assert.deepEqual(await recipientPage.evaluate(()=>window.__lastVeronicaSend.parameters),{'body:1':'Vero'});
+ console.log('New-recipient template variables passed through the UI.');await recipientPage.close();
 } finally {await browser.close();}

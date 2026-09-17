@@ -48,7 +48,12 @@ class VeronicaConsoleView(APIView):
         if operation == 'send':
             if not isinstance(request.data, dict):
                 return Response({'detail': 'Solicitud inválida.'}, status=400)
-            allowed = ('phone', 'kind', 'body', 'template_name', 'language', 'request_id', 'media_token')
+            parameters = request.data.get('parameters', {})
+            if (not isinstance(parameters, dict) or len(parameters) > 20 or
+                    any(not isinstance(key, str) or not isinstance(value, str) or
+                        len(key) > 100 or len(value) > 500 for key, value in parameters.items())):
+                return Response({'detail': 'Revisa las variables de la plantilla.'}, status=400)
+            allowed = ('phone', 'kind', 'body', 'template_name', 'language', 'request_id', 'media_token', 'parameters')
             payload = {k: request.data[k] for k in allowed if k in request.data}
             payload['actor_id'] = request.user.pk
             return self.forward(operation, body=json.dumps(payload).encode(), content_type='application/json')

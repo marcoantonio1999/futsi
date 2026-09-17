@@ -31,6 +31,31 @@ def test_proxy_forces_actor_and_hides_credentials(auth_client):
     assert req.get_header('Authorization')=='Bearer server-only'
     assert b'server-only' not in result.content
 
+
+@pytest.mark.django_db
+@override_settings(WHATSAPP_SERVICE_URL='https://service.example',WHATSAPP_SERVICE_TOKEN='server-only')
+def test_proxy_preserves_valid_template_parameters(auth_client):
+    client,_,_=auth_client()
+    response=MagicMock(); response.__enter__.return_value.read.return_value=b'{"status":"accepted"}'
+    with patch('core.api.veronica.urlopen',return_value=response) as send:
+        result=client.post(BASE+'send/',{
+            'phone':'+525522578778','kind':'template','template_name':'seguimiento_postulacion_occ',
+            'language':'es_MX','parameters':{'body:1':'Vero'},'request_id':'template-test',
+        },format='json')
+    assert result.status_code==200
+    assert json.loads(send.call_args.args[0].data)['parameters']=={'body:1':'Vero'}
+
+
+@pytest.mark.django_db
+@override_settings(WHATSAPP_SERVICE_URL='https://service.example',WHATSAPP_SERVICE_TOKEN='server-only')
+def test_proxy_rejects_invalid_template_parameters(auth_client):
+    client,_,_=auth_client()
+    with patch('core.api.veronica.urlopen') as send:
+        result=client.post(BASE+'send/',{'parameters':['Vero']},format='json')
+    assert result.status_code==400
+    assert result.json()['detail']=='Revisa las variables de la plantilla.'
+    send.assert_not_called()
+
 @pytest.mark.django_db
 def test_rejects_non_pdf_before_network(auth_client):
     client,_,_=auth_client()

@@ -67,8 +67,8 @@ export function VeronicaPanel({ token }: { token: string }) {
   const selected = templates.find(t => t.name + ":" + t.language === templateKey);
   const selectedStatus = selected ? templateStatusMeta(selected.status) : null;
   const knownContactName = chat && chat.name !== chat.phone && !/^\+?\d+$/.test(chat.name) ? chat.name : "";
-  const parameterDefaults = (template?: Template) => Object.fromEntries((template?.parameters || []).map(parameter =>
-    [parameter.key, parameter.contact_name ? knownContactName : ""]));
+  const parameterDefaults = (template?: Template, contactName = knownContactName) => Object.fromEntries((template?.parameters || []).map(parameter =>
+    [parameter.key, parameter.contact_name ? contactName : ""]));
   const renderedTemplate = selected?.text.replace(/{{\s*(\d+)\s*}}/g, (match, number: string) =>
     templateParameters[`body:${number}`]?.trim() || match) || "";
 
@@ -143,7 +143,8 @@ export function VeronicaPanel({ token }: { token: string }) {
     setMobileConversation(true); followLatest.current = true;
     const savedPhone = c?.phone.replace(/^\+/, '') ?? '';
     const localPhone = /^52\d{10}$/.test(savedPhone) ? savedPhone.slice(2) : /^521\d{10}$/.test(savedPhone) ? savedPhone.slice(3) : savedPhone;
-    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setTemplateParameters({}); setNotice(""); setError(""); request.current = null;
+    const contactName = c && c.name !== c.phone && !/^\+?\d+$/.test(c.name) ? c.name : "";
+    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setTemplateParameters(parameterDefaults(selected, contactName)); setNotice(""); setError(""); request.current = null;
   }
   async function send() {
     if (lock.current) return;
@@ -195,7 +196,7 @@ export function VeronicaPanel({ token }: { token: string }) {
       {chat ? <dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
       {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
       <div ref={historyRef} className="vero-history" aria-label="Historial de Verónica" tabIndex={0} onScroll={e => { const el = e.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
-      {chat ? <>{history.has_more && <button disabled={busy} onClick={() => { followLatest.current = false; void older(); }}>Ver mensajes anteriores</button>}{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>{historyLoaded ? 'Sin mensajes registrados.' : 'Cargando mensajes…'}</p>}</> : <p className="vero-empty-chat">Selecciona una conversación o escribe el número de un nuevo destinatario.</p>}
+      {chat ? <>{history.has_more && <button disabled={busy} onClick={() => { followLatest.current = false; void older(); }}>Ver mensajes anteriores</button>}{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>{historyLoaded ? 'Sin mensajes registrados.' : 'Cargando mensajes…'}</p>}</> : <div className="vero-new-recipient-state"><strong>Nuevo destinatario</strong><span>Escribe los 10 dígitos, completa los datos de la plantilla y confirma el envío para iniciar la conversación.</span></div>}
       </div><div className={`vero-composer${templateRequired ? ' template-only' : ''}`}>
       {templateRequired && <div className="vero-window-closed-notice" role="status"><strong>Ventana de atención cerrada</strong><span>El mensaje libre está desactivado. Para iniciar una nueva conversación, envía una plantilla aprobada.</span></div>}
       {templateRequired ? <><label><span className="vero-template-heading"><span>Plantilla</span>{selectedStatus && <span className={`vero-template-status ${selectedStatus.tone}`} aria-label={`Estado de la plantilla: ${selectedStatus.label}`}>{selectedStatus.label}</span>}</span><select className={inputClass} disabled={busy} value={templateKey} onChange={e => { const next = templates.find(t => t.name + ":" + t.language === e.target.value); setTemplateKey(e.target.value); setTemplateParameters(parameterDefaults(next)); request.current = null; }}><option value="">Selecciona una plantilla</option>{templates.map(t => { const status = templateStatusMeta(t.status); return <option key={t.name + t.language} value={t.name + ":" + t.language}>{t.name} · {status.label}</option>; })}</select></label>
