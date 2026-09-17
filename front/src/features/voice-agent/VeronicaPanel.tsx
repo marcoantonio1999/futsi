@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, FileText, RefreshCw, X } from "lucide-react";
 import { apiRequest } from "../../api";
 import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } from "./model";
 import "./veronica.css";
@@ -52,6 +53,12 @@ export function VeronicaPanel({ token }: { token: string }) {
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [mobileConversation, setMobileConversation] = useState(false);
+  const consoleRef = useRef<HTMLDivElement>(null);
+  const pdfDialog = useRef<HTMLDialogElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
   const [refresh, setRefresh] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -64,6 +71,29 @@ export function VeronicaPanel({ token }: { token: string }) {
     [parameter.key, parameter.contact_name ? knownContactName : ""]));
   const renderedTemplate = selected?.text.replace(/{{\s*(\d+)\s*}}/g, (match, number: string) =>
     templateParameters[`body:${number}`]?.trim() || match) || "";
+
+  useEffect(() => {
+    const element = consoleRef.current;
+    if (!element) return;
+    const fit = () => {
+      const viewport = window.visualViewport;
+      const bottom = viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
+      element.style.height = `${Math.max(0, bottom - element.getBoundingClientRect().top - 16)}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    if (element.parentElement) observer.observe(element.parentElement);
+    window.addEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit);
+    return () => { observer.disconnect(); window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); };
+  }, []);
+  useEffect(() => {
+    if (pdfOpen) pdfDialog.current?.showModal();
+    else pdfDialog.current?.close();
+  }, [pdfOpen]);
+  useEffect(() => {
+    if (followLatest.current && historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight;
+  }, [history.messages]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 60000);
@@ -110,6 +140,7 @@ export function VeronicaPanel({ token }: { token: string }) {
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   function choose(c: Chat | null) {
+    setMobileConversation(true); followLatest.current = true;
     const savedPhone = c?.phone.replace(/^\+/, '') ?? '';
     const localPhone = /^52\d{10}$/.test(savedPhone) ? savedPhone.slice(2) : /^521\d{10}$/.test(savedPhone) ? savedPhone.slice(3) : savedPhone;
     setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setTemplateParameters({}); setNotice(""); setError(""); request.current = null;
@@ -144,12 +175,13 @@ export function VeronicaPanel({ token }: { token: string }) {
     if (templateRequired && !templates.length) void loadTemplates();
   }, [templateRequired, templates.length]);
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
-  return <div className="veronica-console">
-    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => { setRefresh(n => n + 1); void loadTemplates(); }}>Actualizar</button></header>
+  return <div ref={consoleRef} className={`veronica-console${mobileConversation ? ' has-conversation' : ''}`}>
+    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes</h2></div><div className="vero-heading-actions"><button className="vero-toolbar-button" onClick={() => setPdfOpen(true)}><FileText size={18} aria-hidden="true" />PDF automático</button><button className="vero-toolbar-button" disabled={busy} onClick={() => { setRefresh(n => n + 1); void loadTemplates(); }}><RefreshCw size={18} aria-hidden="true" />Actualizar</button></div></header>
+    <div className="vero-feedback">
     {error && <p className="comm-error" role="alert">{error}</p>}
     {chat && lastProblem ? <DeliveryAlert message={lastProblem} phone={chat.phone} /> : notice && <p className="vero-note" role="status">{notice}</p>}
-    <VeronicaAutomaticPdf token={token} onSaved={() => setRefresh(n => n+1)} />
-    <div className="vero-layout"><aside className="comm-panel">
+    </div>
+    <div className="vero-layout"><aside className="comm-panel vero-sidebar">
       <h3>Conversaciones</h3><input aria-label="Buscar contacto de Verónica" className={inputClass} placeholder="Buscar teléfono o nombre" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} />
       <button className={primaryButtonClass} disabled={busy} onClick={() => choose(null)}>Nuevo destinatario</button>
       {loading && <p role="status">Cargando…</p>}{!loading && !chats.length && <p>No hay conversaciones en esta búsqueda.</p>}
@@ -158,17 +190,25 @@ export function VeronicaPanel({ token }: { token: string }) {
         return <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small><span className={`vero-window-chip ${open ? "open" : "closed"}`}>{open ? `Ventana abierta · ${replyWindowRemaining(c.window_end, clock)}` : "Ventana cerrada"}</span></button>;
       })}</div>
       <nav aria-label="Páginas de conversaciones"><button disabled={!offset || busy} onClick={() => setOffset(n => Math.max(0, n - 30))}>Anterior</button><span>{offset / 30 + 1}</span><button disabled={!more || busy} onClick={() => setOffset(n => n + 30)}>Siguiente</button></nav>
-    </aside><section className="comm-panel">
+    </aside><section className="comm-panel vero-conversation">
+      <button className="vero-mobile-back vero-toolbar-button" onClick={() => setMobileConversation(false)}><ArrowLeft size={18} />Conversaciones</button>
       {chat ? <dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
       {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
-      {chat && <><h3>Historial</h3>{history.has_more && <button disabled={busy} onClick={older}>Ver mensajes anteriores</button>}<div className="vero-history" aria-label="Historial de Verónica">{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>Sin mensajes registrados. El historial empieza con los eventos guardados por el servicio; no importa automáticamente chats anteriores.</p>}</div></>}
+      <div ref={historyRef} className="vero-history" aria-label="Historial de Verónica" tabIndex={0} onScroll={e => { const el = e.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
+      {chat ? <>{history.has_more && <button disabled={busy} onClick={() => { followLatest.current = false; void older(); }}>Ver mensajes anteriores</button>}{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>{historyLoaded ? 'Sin mensajes registrados.' : 'Cargando mensajes…'}</p>}</> : <p className="vero-empty-chat">Selecciona una conversación o escribe el número de un nuevo destinatario.</p>}
+      </div><div className={`vero-composer${templateRequired ? ' template-only' : ''}`}>
+      {templateRequired && <div className="vero-window-closed-notice" role="status"><strong>Ventana de atención cerrada</strong><span>El mensaje libre está desactivado. Para iniciar una nueva conversación, envía una plantilla aprobada.</span></div>}
       {templateRequired ? <><label><span className="vero-template-heading"><span>Plantilla</span>{selectedStatus && <span className={`vero-template-status ${selectedStatus.tone}`} aria-label={`Estado de la plantilla: ${selectedStatus.label}`}>{selectedStatus.label}</span>}</span><select className={inputClass} disabled={busy} value={templateKey} onChange={e => { const next = templates.find(t => t.name + ":" + t.language === e.target.value); setTemplateKey(e.target.value); setTemplateParameters(parameterDefaults(next)); request.current = null; }}><option value="">Selecciona una plantilla</option>{templates.map(t => { const status = templateStatusMeta(t.status); return <option key={t.name + t.language} value={t.name + ":" + t.language}>{t.name} · {status.label}</option>; })}</select></label>
         {selected && !selected.sendable && <small className="vero-template-help" role="status">{selected.reason || "Esta plantilla todavía no puede enviarse. Espera a que Meta la apruebe y pulsa Actualizar."}</small>}
         {(selected?.parameters || []).map(parameter => <label key={parameter.key}>{parameter.label}<input className={inputClass} maxLength={500} disabled={busy} value={templateParameters[parameter.key] || ""} placeholder={parameter.contact_name ? "Nombre" : "Dato de la plantilla"} onChange={e => { setTemplateParameters(values => ({ ...values, [parameter.key]: e.target.value })); request.current = null; }} /></label>)}</>
-        : <label>Mensaje<textarea autoFocus className={inputClass} rows={4} maxLength={4000} disabled={busy} value={body} onChange={e => setBody(e.target.value)} /></label>}
+        : <label>Mensaje<textarea className={inputClass} rows={2} maxLength={4000} disabled={busy} value={body} onChange={e => setBody(e.target.value)} /></label>}
       {chat?.opted_out && <p role="alert">Este contacto pidió no recibir mensajes. Envío bloqueado.</p>}
       <button className={primaryButtonClass} disabled={!canSend} onClick={() => setConfirming(true)}>{busy ? "Procesando…" : templateRequired ? "Enviar plantilla" : "Enviar mensaje"}</button>
-    </section></div>
+    </div></section></div>
+    <dialog ref={pdfDialog} className="vero-pdf-modal" aria-labelledby="vero-pdf-title" onCancel={() => setPdfOpen(false)} onClose={() => setPdfOpen(false)}>
+      <header className="vero-modal-heading"><h2 id="vero-pdf-title">PDF automático</h2><button className="vero-toolbar-button" aria-label="Cerrar configuración del PDF" onClick={() => setPdfOpen(false)}><X size={20} /></button></header>
+      {pdfOpen && <VeronicaAutomaticPdf token={token} onSaved={() => setRefresh(n => n+1)} />}
+    </dialog>
     {confirming && <div className="vero-confirm-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="vero-confirm-title" className="vero-confirm">
       <h3 id="vero-confirm-title">Confirmar envío desde Verónica</h3>
       <p>Destinatario: <strong>{phone}</strong></p>

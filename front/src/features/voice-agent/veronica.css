@@ -12,3 +12,37 @@
 .vero-window-chip{display:inline-flex;margin-top:7px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700}.vero-window-chip.open{background:#dff3e7;color:#17643a}.vero-window-chip.closed{background:#ecefed;color:#64716b}.dark .vero-window-chip.open{background:#183c2a;color:#b3f3ce}.dark .vero-window-chip.closed{background:#222a26;color:#bac5bf}
 .vero-contact-info{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 16px}.vero-contact-info div{min-width:0}.vero-contact-info dt{font-size:12px;color:#52665f}.vero-contact-info dd{margin:3px 0 0;font-weight:700;overflow-wrap:anywhere}.dark .vero-contact-info dt{color:#c3d3c9}@media(max-width:600px){.vero-contact-info{grid-template-columns:1fr}}
 .vero-template-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.vero-template-status{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:750;line-height:1.2}.vero-template-status.approved{background:#dff3e7;color:#17643a}.vero-template-status.pending{background:#fff3cd;color:#815b00}.vero-template-status.rejected{background:#fde4df;color:#973729}.vero-template-status.inactive{background:#ecefed;color:#56635d}.veronica-console .vero-template-help{margin-top:-8px;color:#815b00}.dark .vero-template-status.approved{background:#183c2a;color:#b3f3ce}.dark .vero-template-status.pending{background:#493711;color:#ffe08a}.dark .vero-template-status.rejected{background:#4a211c;color:#ffb4a8}.dark .vero-template-status.inactive{background:#222a26;color:#bac5bf}.dark .veronica-console .vero-template-help{color:#ffe08a}
+.veronica-console{display:flex;flex-direction:column;min-height:0;overflow:hidden;gap:12px}
+html:has(.veronica-console),body:has(.veronica-console){overflow:hidden}
+.veronica-console>.comm-page-heading{align-items:center;flex-shrink:0}
+.vero-heading-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.veronica-console .vero-toolbar-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:9px 13px;border:1px solid #c8d4cd;border-radius:10px;background:white;color:#285540;font-size:14px;font-weight:600;line-height:20px;cursor:pointer;white-space:nowrap}
+.veronica-console .vero-toolbar-button:hover:not(:disabled){background:#edf5f0;border-color:#719d86}
+.veronica-console button:focus-visible{outline:3px solid #40b88b;outline-offset:2px}
+.veronica-console .vero-layout{flex:1;min-height:0;gap:12px;overflow:hidden}
+.veronica-console .vero-sidebar,.veronica-console .vero-conversation{display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:16px}
+.veronica-console .vero-sidebar>h3{margin:0 0 10px}
+.veronica-console .vero-sidebar>input{margin-bottom:8px}
+.veronica-console .vero-sidebar>nav{flex-shrink:0;margin:8px 0 0;justify-content:space-between}
+.veronica-console .vero-contacts{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain;margin:10px 0}
+.veronica-console .vero-history{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain;padding:12px}
+.veronica-console .vero-contact-info{flex-shrink:0;margin-bottom:10px}
+.veronica-console .vero-composer{flex-shrink:0;max-height:45%;overflow-y:auto;padding-top:8px}
+.veronica-console .vero-composer label{margin:0 0 8px;font-size:13px}
+.veronica-console .vero-composer textarea{resize:none}
+.vero-window-closed-notice{display:grid;gap:2px;margin-bottom:8px;padding:9px 11px;border:1px solid #e4c46d;border-radius:9px;background:#fff7dd;color:#614a0d;font-size:12px;line-height:1.35}
+.vero-window-closed-notice strong{font-size:13px}.vero-window-closed-notice span{font-weight:400}
+.dark .vero-window-closed-notice{border-color:#765d1c;background:#352e19;color:#fff1bf}
+.vero-feedback{flex-shrink:0;max-height:20%;overflow:auto}
+.vero-feedback:empty{display:none}
+.vero-feedback .vero-delivery-alert,.vero-feedback .vero-note,.vero-feedback .comm-error{margin:0;padding:10px 14px}
+.vero-feedback .vero-delivery-alert>strong{font-size:15px}
+.vero-empty-chat{display:grid;place-content:center;height:100%;text-align:center;color:#52665f}
+.veronica-console .vero-mobile-back{display:none}
+.vero-pdf-modal{margin:auto;padding:0;width:min(620px,calc(100vw - 24px));max-height:calc(100dvh - 32px);overflow-y:auto;border:1px solid #c8d4cd;border-radius:16px;background:white;color:#183a31;box-shadow:0 24px 80px #0004}
+.vero-pdf-modal::backdrop{background:#10231d99;backdrop-filter:blur(3px)}
+.vero-modal-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;border-bottom:1px solid #dce5df;position:sticky;top:0;background:inherit;z-index:1}
+.vero-modal-heading h2{font-size:20px;font-weight:700}
+.vero-pdf-modal .comm-panel{border:0;border-radius:0;margin:0}
+.dark .veronica-console .vero-toolbar-button,.dark .vero-pdf-modal{background:#172620;color:#edf4ef;border-color:#456652}
+@media(max-width:850px){.veronica-console .vero-layout{grid-template-columns:minmax(0,1fr)}.veronica-console:not(.has-conversation) .vero-conversation{display:none}.veronica-console.has-conversation .vero-sidebar{display:none}.veronica-console .vero-mobile-back{display:inline-flex;align-self:flex-start;margin-bottom:8px}.veronica-console>.comm-page-heading{align-items:flex-start;gap:8px}.vero-heading-actions{justify-content:flex-end}.veronica-console .vero-toolbar-button{font-size:12px;padding:8px}.veronica-console .vero-contact-info{grid-template-columns:repeat(2,minmax(0,1fr))}.veronica-console .vero-sidebar,.veronica-console .vero-conversation{padding:10px}}
