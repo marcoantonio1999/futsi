@@ -7,17 +7,23 @@ if (!import.meta.env.DEV) throw new Error('Development fixture only');
 const contacts = Array.from({ length: 130 }, (_, n) => ({ id: n+1, ordinal: n+1, phone: '55'+String(n+1).padStart(8,'0'), name: n % 3 ? `Contacto de prueba ${n+1}` : '', footballer: `Alumno ejemplo ${n+1}`, age: '8 años mencionados', relationship: n%2 ? 'Prospecto' : 'Alumno probable', interest: 'Academia', confidence: 'Alta', priority: '', last_date: '2026-08-31', consent_source: 'No comprobado', needs_review: n%3===0, sensitive: false, no_contact: n===1, selectable: n!==1, last_status: null, in_active_job: false, notes: '', manually_blocked: false, source_no_contact: n===1, source_data: { Contacto: 'Nombre original', Mensajes: 12 }, evidence: { Resumen: 'Solicitó información sobre entrenamientos y horarios.', 'Evidencia principal': '¿Cuáles son los horarios?', 'Razón de clasificación': 'Consulta de información, sin inscripción confirmada.' }, audios: [{ Archivo: 'ejemplo.opus', Transcripción: 'Quiero conocer los horarios.' }] }));
 const template = { name: 'invitacion_uvm', language: 'es', category: 'MARKETING', text: 'Hola {{1}}, te invitamos a entrenar con nosotros. Responde si te interesa.', sendable: true, parameters: [{ key: 'body:1', label: 'Nombre del destinatario', contact_name: true }] };
 let job: any = null;
+const directories: Record<string, { key: string; label: string; domain: string }> = {
+  'demo-uvm': { key: 'uvm', label: 'UVM', domain: 'academy' },
+  'demo-franco': { key: 'franco_academia', label: 'Colegio Franco · Academia', domain: 'academy' },
+  'demo-liga': { key: 'liga_franco', label: 'Colegio Franco · Liga', domain: 'league' },
+};
 window.fetch = async (input, init) => {
   const url = new URL(String(input), location.origin); const op = url.pathname.split('/').filter(Boolean).at(-1);
   const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
-  if (op === 'channels') return Response.json({ channels: [{ channel: 'demo-uvm', label: 'UVM · prueba', contact_directory: 'uvm' }, { channel: 'demo-franco', label: 'Franco Academia · prueba' }] });
+  if (op === 'channels') return Response.json({ channels: Object.entries(directories).map(([channel, d]) => ({ channel, label: d.label, contact_directory: d.key, directory_label: d.label })) });
   if (op === 'catalog') return Response.json({ templates: [template], next_cursor: '' });
   if (op === 'list') return Response.json({ jobs: job ? [job] : [], has_more: false });
   if (op === 'contacts') {
+    const d = directories[url.searchParams.get('channel') || 'demo-uvm'];
     let rows = contacts.filter(c => !url.searchParams.get('relationship') || c.relationship===url.searchParams.get('relationship'));
     if (url.searchParams.get('selectable_only') === 'true') rows=rows.filter(c => c.selectable);
     const offset=Number(url.searchParams.get('offset')||0), limit=Number(url.searchParams.get('limit')||50);
-    return Response.json({ contacts: rows.slice(offset,offset+limit), total: rows.length, dataset_total: contacts.length, has_more: offset+limit<rows.length, facets: { relationship: ['Prospecto','Alumno probable'], interest:['Academia'],confidence:['Alta'],consent_source:['No comprobado'] }, source_file:'Excel de prueba UVM.xlsx' });
+    return Response.json({ contacts: rows.slice(offset,offset+limit).map(c => ({ ...c, ...(d.domain === 'league' ? { league_role: 'Capitán', teams: 'Toros', league_relevance: 'Prospecto de liga', footballer: '', interest: 'Inscripción de equipo' } : {}) })), total: rows.length, dataset_total: contacts.length, has_more: offset+limit<rows.length, facets: { relationship: ['Prospecto','Alumno probable'], interest:['Academia'],confidence:['Alta'],consent_source:['No comprobado'], league_role:['Capitán'],league_relevance:['Prospecto de liga'] }, source_file:`Excel de prueba ${d.key}.xlsx`, dataset_label:d.label, domain:d.domain, filter_labels:{ relationship:d.domain==='league'?'Estado en la liga':'Relación academia', league_role:'Rol en la liga',league_relevance:'Relevancia para liga' } });
   }
   if (op === 'contact-detail') return Response.json(contacts.find(c => c.id===Number(url.searchParams.get('contact_id'))));
   if (op === 'contact-update') { const c=contacts.find(c => c.id===body.contact_id)!; Object.assign(c,body); return Response.json(c); }

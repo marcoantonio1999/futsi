@@ -12,7 +12,7 @@ const money = (n: string) => Number(n).toLocaleString('es-MX', { minimumFraction
 
 export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind }) {
   const base = kind === 'veronica' ? '/veronica/bulk/' : '/whatsapp-bulk/';
-  const [channels, setChannels] = useState<{ channel: string; label: string; contact_directory?: string }[]>([]);
+  const [channels, setChannels] = useState<{ channel: string; label: string; contact_directory?: string; directory_label?: string }[]>([]);
   const [channel, setChannel] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateKey, setTemplateKey] = useState('');
@@ -31,7 +31,9 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   const [offset, setOffset] = useState(0);
   const [consent, setConsent] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
-  const hasDirectory = kind === 'academy' && channels.find(c => c.channel === channel)?.contact_directory === 'uvm';
+  const directoryChannel = channels.find(c => c.channel === channel);
+  const hasDirectory = kind === 'academy' && !!directoryChannel?.contact_directory;
+  const directoryLabel = directoryChannel?.directory_label || directoryChannel?.label || 'este número';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pollError, setPollError] = useState('');
@@ -161,9 +163,9 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
         {selected && !templateReady && <p role="status">Completa los datos de la plantilla para continuar.</p>}
         <div className="bulk-actions"><button className="primary" disabled={busy || catalogLoading || !templateReady} onClick={() => { setStep(2); setError(''); }}>Continuar con destinatarios</button></div>
       </section>}
-      {step === 2 && <section className="bulk-card"><h3 ref={stepHeadingRef} tabIndex={-1}>¿A quiénes se enviará?</h3><p>{mode === 'directory' ? 'Filtra los contactos de UVM y selecciona hasta 100 por lote.' : 'Solo números de México de 10 dígitos. No escribas código de país. Hasta 1,000 números por lote.'}</p>
-        <div className="bulk-tabs">{hasDirectory && <button aria-pressed={mode === 'directory'} disabled={busy} onClick={() => { setMode('directory'); invalidate(); }}>Contactos UVM</button>}<button aria-pressed={mode === 'text'} disabled={busy} onClick={() => { setMode('text'); invalidate(); }}>Escribir o pegar números</button><button aria-pressed={mode === 'file'} disabled={busy} onClick={() => { setMode('file'); invalidate(); }}>Agregar Excel, CSV o TXT</button></div>
-        {mode === 'directory' && hasDirectory ? <UvmContactPicker key={channel} token={token} channel={channel} onLoad={r => { setReview(r); setReviewPage(0); requestId.current = crypto.randomUUID(); setStep(3); }} /> : <>
+      {step === 2 && <section className="bulk-card"><h3 ref={stepHeadingRef} tabIndex={-1}>¿A quiénes se enviará?</h3><p>{mode === 'directory' ? `Filtra los contactos de ${directoryLabel} y selecciona hasta 100 por lote.` : 'Solo números de México de 10 dígitos. No escribas código de país. Hasta 1,000 números por lote.'}</p>
+        <div className="bulk-tabs">{hasDirectory && <button aria-pressed={mode === 'directory'} disabled={busy} onClick={() => { setMode('directory'); invalidate(); }}>Contactos de {directoryLabel}</button>}<button aria-pressed={mode === 'text'} disabled={busy} onClick={() => { setMode('text'); invalidate(); }}>Escribir o pegar números</button><button aria-pressed={mode === 'file'} disabled={busy} onClick={() => { setMode('file'); invalidate(); }}>Agregar Excel, CSV o TXT</button></div>
+        {mode === 'directory' && hasDirectory ? <UvmContactPicker key={channel} token={token} channel={channel} label={directoryLabel} onLoad={r => { setReview(r); setReviewPage(0); requestId.current = crypto.randomUUID(); setStep(3); }} /> : <>
         {mode === 'text' ? <label>Números separados por comas<textarea disabled={busy} rows={4} value={text} maxLength={25000} placeholder="5512345678, 5587654321" onChange={e => { setText(e.target.value); invalidate(); }} /></label> : <>
           <label className={`bulk-drop ${dragging ? 'dragging' : ''}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); if (!busy) chooseFile(e.dataTransfer.files[0] || null); }}>
             <strong>{file ? file.name : 'Arrastra tu archivo aquí'}</strong><span>o pulsa para elegir Excel (.xlsx), CSV o TXT · hasta 2 MB</span><input type="file" accept=".xlsx,.csv,.txt" disabled={busy} onChange={e => chooseFile(e.target.files?.[0] || null)} />
@@ -199,7 +201,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
       {['draft', 'queued', 'running', 'paused'].includes(job.status) && <button disabled={busy} onClick={() => void action(async () => { setJob(await post<Job>('cancel', { id: job.id })); })}>Cancelar pendientes</button>}
       <h4>Destinatarios del lote</h4><div className="bulk-table-wrap"><table><thead><tr><th>Nombre</th><th>Número</th><th>Estado</th><th>Qué ocurrió</th></tr></thead><tbody>{job.recipients?.map(r => <tr key={r.id}><td>{r.name || 'Sin nombre'}</td><td>{r.phone}</td><td><span className={`bulk-state ${r.status}`}>{labels[r.status] || r.status}</span></td><td>{r.detail || '—'}</td></tr>)}</tbody></table></div>
       <div className="bulk-pages"><button disabled={!offset} onClick={() => setOffset(n => n-50)}>Anterior</button><span>Página {Math.floor(offset/50)+1} de {Math.max(1, Math.ceil(job.total/50))}</span><button disabled={!job.has_more} onClick={() => setOffset(n => n+50)}>Siguiente</button></div>
-      {hasDirectory && job.directory?.dataset === 'uvm' && <button className="primary" disabled={busy} onClick={() => { setJob(null); setConsent(false); invalidate(); setStep(2); setMode('directory'); }}>Elegir el siguiente lote de contactos UVM</button>}
+      {hasDirectory && job.directory?.dataset === directoryChannel?.contact_directory && <button className="primary" disabled={busy} onClick={() => { setJob(null); setConsent(false); invalidate(); setStep(2); setMode('directory'); }}>Elegir el siguiente lote de {directoryLabel}</button>}
     </section>}
     <dialog ref={dialogRef} className="bulk-modal" aria-labelledby="bulk-confirm-title" onCancel={e => { e.preventDefault(); closeConfirmation(); }}>
       {draft && <div className="bulk-card"><header className="bulk-heading"><h3 id="bulk-confirm-title">Confirmar envío</h3><button aria-label="Cerrar confirmación" disabled={busy} onClick={closeConfirmation}>Cerrar</button></header>

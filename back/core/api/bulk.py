@@ -24,7 +24,8 @@ class BulkView(APIView):
             return Response(status=403)
         keys = ('channel', 'id', 'offset', 'after', 'contact_id', 'q', 'relationship', 'interest', 'confidence', 'priority',
                 'consent_source', 'campaign_source', 'review_state', 'no_contact', 'needs_review', 'sensitive',
-                'age', 'since', 'until', 'min_messages', 'ordinal_from', 'ordinal_to', 'outreach', 'sort', 'limit', 'selectable_only')
+                'age', 'since', 'until', 'min_messages', 'ordinal_from', 'ordinal_to', 'outreach', 'sort', 'limit', 'selectable_only',
+                'league_role', 'league_relevance', 'team')
         return self.forward(kind, operation, query={k: request.query_params[k] for k in keys if k in request.query_params})
 
     def post(self, request, kind, operation):

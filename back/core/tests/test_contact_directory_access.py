@@ -11,9 +11,12 @@ def test_uvm_directory_only_admin_scope():
     user = User.objects.create_user(username='uvm-access-admin', password='test', role='admin')
     client.force_authenticate(user)
     with patch('core.api.bulk.BulkView.forward', return_value=Response({'contacts': []})) as forward:
-        response = client.get('/api/whatsapp-bulk/contacts/', {'channel': 'uvm', 'relationship': 'Prospecto', 'no_contact': 'false', 'outreach': 'new'})
+        response = client.get('/api/whatsapp-bulk/contacts/', {'channel': 'meta:1187630384444567', 'relationship': 'Prospecto', 'no_contact': 'false', 'outreach': 'new', 'league_role': 'Capitán', 'league_relevance': 'Prospecto de liga', 'team': 'Toros'})
         assert response.status_code == 200
         assert forward.call_args.kwargs['query']['relationship'] == 'Prospecto'
+        assert forward.call_args.kwargs['query']['league_role'] == 'Capitán'
+        assert forward.call_args.kwargs['query']['league_relevance'] == 'Prospecto de liga'
+        assert forward.call_args.kwargs['query']['team'] == 'Toros'
         assert client.get('/api/veronica/bulk/contacts/').status_code == 403
         client.post('/api/whatsapp-bulk/contact-update/', {'channel': 'uvm', 'contact_id': 1, 'actor_id': 999, 'name': 'Ejemplo', 'priority': 'Alta', 'notes': '', 'manually_blocked': False}, format='json')
         assert forward.call_args.kwargs['data']['actor_id'] == user.pk
