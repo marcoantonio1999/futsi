@@ -88,3 +88,18 @@
 .comm-scope label { display:grid; gap:6px; font-size:13px; font-weight:600; }
 .comm-scope p { grid-column:1/-1; font-size:12px; color:var(--comm-muted,#71717a); margin:0; }
 @media(max-width:640px) { .comm-scope { grid-template-columns:1fr; } }
+
+/* The inbox owns the remaining viewport; contacts and messages scroll inside it. */
+.comm-inbox.comm-inbox-fit{min-height:0;max-height:none}
+html:has(.comm-inbox-fit),body:has(.comm-inbox-fit){overflow:hidden}
+@media(max-width:767px){
+  html:has(.comm-inbox-fit:not(.has-selection)),body:has(.comm-inbox-fit:not(.has-selection)){overflow:auto}
+  .communications:has(.comm-inbox.has-selection)>.comm-scope{display:none}
+  .comm-inbox.comm-inbox-fit{min-height:0}
+  .comm-inbox-fit.has-selection .comm-chat-context{max-height:120px}
+}
+@media(max-width:1100px){
+  .communications:has(.comm-inbox.has-selection)>.comm-page-heading,
+  .communications:has(.comm-inbox.has-selection)>.comm-scope,
+  .communications:has(.comm-inbox.has-selection)>.comm-section-map{display:none}
+}

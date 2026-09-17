@@ -20,6 +20,7 @@ export function WhatsAppConversationsPanel({ conversations, assignees, initialFi
   const [status, setStatus] = useState("all");
   const [selectedId, setSelectedId] = useState<number | null>(initialConversationId ?? null);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const inboxRef = useRef<HTMLElement>(null);
   useEffect(() => { setFilter(initialFilter); }, [initialFilter]);
   useEffect(() => { if (initialConversationId != null) { setSelectedId(initialConversationId); setQuery(""); setFilter("all"); setStatus("all"); } }, [initialConversationId]);
   const pendingCount = conversations.filter(c => conversationAttention(c).key === "needs_reply").length;
@@ -38,7 +39,24 @@ export function WhatsAppConversationsPanel({ conversations, assignees, initialFi
     }
   }, [selectedId]);
   const selected = conversations.find(c => c.id === selectedId);
-  return <section className={`comm-inbox ${selected ? "has-selection" : ""}`} aria-label="Bandeja de WhatsApp">
+  useEffect(() => {
+    const inbox = inboxRef.current;
+    if (!inbox) return;
+    if (selectedId !== null && window.innerWidth <= 1100) window.scrollTo({ top: 0, behavior: "auto" });
+    const fit = () => {
+      const viewport = window.visualViewport;
+      const bottom = viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
+      const minimum = selectedId === null && window.innerWidth <= 767 ? 460 : 180;
+      inbox.style.height = `${Math.max(minimum, bottom - inbox.getBoundingClientRect().top - 16)}px`;
+    };
+    const frame = window.requestAnimationFrame(fit);
+    const observer = new ResizeObserver(fit);
+    if (inbox.parentElement) observer.observe(inbox.parentElement);
+    window.addEventListener("resize", fit);
+    window.visualViewport?.addEventListener("resize", fit);
+    return () => { window.cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("resize", fit); window.visualViewport?.removeEventListener("resize", fit); };
+  }, [selectedId]);
+  return <section ref={inboxRef} className={`comm-inbox comm-inbox-fit ${selected ? "has-selection" : ""}`} aria-label="Bandeja de WhatsApp">
     <div className="comm-inbox-list">
       <div className="comm-inbox-tools"><div className="comm-section-heading"><h3>Bandeja <span className="comm-count">{conversations.length}</span></h3><span className={`comm-badge ${pendingCount ? "red" : "green"}`}>{pendingCount ? `${pendingCount} por responder` : "Sin respuestas pendientes"}</span></div>
         <label className="comm-search"><Search size={17} /><input aria-label="Buscar conversaciones" placeholder="Nombre, teléfono o mensaje" type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>
@@ -72,8 +90,10 @@ function ConversationDetail({ conversation: c, assignees, body, onBody, onBack, 
   const [sent, setSent] = useState(false);
   const [now, setNow] = useState(Date.now());
   const history = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer); }, []);
-  useEffect(() => { if (history.current) history.current.scrollTop = history.current.scrollHeight; }, [c.id, c.messages.length]);
+  useEffect(() => { followLatest.current = true; }, [c.id]);
+  useEffect(() => { if (followLatest.current && history.current) history.current.scrollTop = history.current.scrollHeight; }, [c.id, c.messages.length]);
   const canReply = replyWindowOpen(c, now) && c.manual_send_available !== false;
   const messages = orderedMessages(c);
   const latest = messages.filter(m => m.direction === "inbound" && m.event_type !== "revoked").at(-1);
@@ -98,7 +118,7 @@ function ConversationDetail({ conversation: c, assignees, body, onBody, onBack, 
       {editing && <FollowUpEditor assignees={assignees} conversation={c} onCancel={() => setEditing(false)} onSave={async payload => { await onSave(payload); setEditing(false); }} />}
       <details><summary>Datos del contacto y automatización</summary><dl className="comm-details"><div><dt>Estado del flujo</dt><dd>{statusLabels[c.status]}</dd></div><div><dt>Asistente</dt><dd>{c.human_takeover_active ? "Pausado por atención humana" : c.bot_response_pending ? "Respuesta pendiente" : "Sin pausa registrada"}</dd></div><div><dt>Clasificación del último mensaje</dt><dd>{({ prospect: "Prospecto", current_client: "Cliente actual", ambiguous: "Por confirmar", unclassified: "Sin clasificar" })[latest?.contact_type ?? "unclassified"]} {latest?.classification_confidence != null ? `· Confianza ${latest.classification_confidence}%` : ""}</dd></div><div><dt>Notas de seguimiento</dt><dd>{c.follow_up_notes || "Sin notas"}</dd></div>{c.failure_reason && <div><dt>Error registrado</dt><dd>{c.failure_reason}</dd></div>}{latest?.classification_evidence?.length ? <div><dt>Evidencia de clasificación</dt><dd>{latest.classification_evidence.join(" · ")}</dd></div> : null}</dl></details>
     </div>
-    <div className="comm-messages" ref={history} aria-label="Historial de mensajes" tabIndex={0}>
+    <div className="comm-messages" ref={history} aria-label="Historial de mensajes" tabIndex={0} onScroll={event => { const element = event.currentTarget; followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60; }}>
       {messages.map((message, index) => <div key={message.id}>
         {(index === 0 || new Date(message.created_at).toDateString() !== new Date(messages[index - 1].created_at).toDateString()) && <div className="comm-day-divider">{new Date(message.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}</div>}
         <article className={`comm-message ${message.direction === "outbound" ? "outbound" : "inbound"}`}><header><strong>{message.direction === "inbound" ? contactName(c) : messageAuthor(message)}</strong><time title={formatDateTime(message.created_at)}>{new Date(message.created_at).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</time></header>{message.event_type === "revoked" ? <i>Mensaje eliminado</i> : <MessageBody body={message.body} />}</article>

@@ -14,12 +14,12 @@ let settings = channels.map((channel, i) => ({ ...channel, id: i + 1, openai_mod
 const now = new Date().toISOString();
 const manualAttempts: Record<number, { stage: number; state: string; created_at: string; detail: string; template_name: string }> = {};
 let manualPreview: { charge: number; stage: number; body: string; address: string } | null = null;
-const conversations = [1, 2, 2].map((site, index) => ({
+const conversations = Array.from({ length: 30 }, (_, index) => (index % 2) + 1).map((site, index) => ({
   id: index + 1, site, site_name: sites[site - 1].name, channel_site: site, channel_site_name: sites[site - 1].name,
   business_address: channels[site - 1].business_address, contact_phone: "+525511110000", contact_name: `Contacto ${sites[site - 1].name} ${index + 1}`,
   status: "active", kind: "faq", current_step: "faq", created_at: now, last_message_at: now, last_inbound_at: now,
-  human_takeover_active: true, follow_up_required: false, follow_up_notes: "", free_form_window_open: true, free_form_window_expires_at: new Date(Date.now() + 86400000).toISOString(), manual_send_available: false,
-  messages: [{ id: index + 1, direction: "inbound", response_source: "unknown", body: `Información de ${sites[site - 1].name}`, created_at: now, event_type: "message" }],
+  human_takeover_active: true, follow_up_required: false, follow_up_notes: "", free_form_window_open: true, free_form_window_expires_at: new Date(Date.now() + 86400000).toISOString(), manual_send_available: true,
+  messages: Array.from({ length: 60 }, (_, messageIndex) => ({ id: index * 100 + messageIndex + 1, direction: messageIndex % 2 ? "outbound" : "inbound", response_source: messageIndex % 2 ? "human" : "unknown", body: `Mensaje ${messageIndex + 1} de ${sites[site - 1].name}`, created_at: new Date(Date.now() - (60-messageIndex)*60000).toISOString(), event_type: "message" })),
 })) as WhatsAppConversation[];
 const data: AppData = { ...emptyData, sites, whatsappConversations: conversations, whatsappAutomationSettings: settings[0],
   trialBookings: [1, 2].map(site => ({ id: site, site, site_name: sites[site - 1].name, responsible_name: "Prueba", responsible_phone: "+525511110000", child_first_name: `Alumno ${sites[site - 1].name}`, status: "scheduled", source: "manual", visits: [], created_at: now })) as AppData["trialBookings"],
@@ -77,7 +77,8 @@ window.fetch = async (input, init) => {
   throw new Error("QA blocks requests outside its fixture");
 };
 function Preview() {
-  const [section, setSection] = useState<VoiceDashboardSection>(new URLSearchParams(location.search).get("section") === "collections" ? "collections" : "summary");
+  const requested = new URLSearchParams(location.search).get("section");
+  const [section, setSection] = useState<VoiceDashboardSection>(requested === "collections" ? "collections" : requested === "whatsapp" ? "whatsapp" : "summary");
   const blocked = async (): Promise<never> => { throw new Error("No se envían mensajes ni se editan datos reales en esta prueba"); };
   return <main className="p-5"><p>Prueba local · datos ficticios · no envía mensajes</p><VoiceDashboardPanel user={{ role: "admin" } as User} token="qa-only" section={section} onSelectSection={setSection} data={data} onCreateRecord={blocked} onUpdateRecord={blocked} onCreateAndReturn={blocked} /></main>;
 }
