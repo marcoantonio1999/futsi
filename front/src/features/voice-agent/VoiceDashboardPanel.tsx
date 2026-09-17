@@ -189,7 +189,7 @@ export function VoiceDashboardPanel({
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
       {channelsReady && <div key={query}>
-      {section === "templates" && <WhatsAppTemplatesPanel key={selectedAddress} token={token} address={selectedAddress} onOpenCollections={() => onSelectSection("collections")} />}
+      {section === "templates" && <WhatsAppTemplatesPanel key={selectedAddress} token={token} address={selectedAddress} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
       {section === "summary" && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} onOpenConversation={openConversation} onOpenBooking={openBooking} />}
 

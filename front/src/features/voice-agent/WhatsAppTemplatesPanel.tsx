@@ -10,7 +10,7 @@ export type Template = {
 type Catalog = { business_address: string; waba_id: string; fetched_at: string; templates: Template[]; next_cursor: string };
 const statuses: Record<string, string> = { APPROVED: "Aprobada", PENDING: "En revisión", REJECTED: "Rechazada", PAUSED: "Pausada", DISABLED: "Deshabilitada", IN_APPEAL: "En apelación", DELETED: "Eliminada", PENDING_DELETION: "Pendiente de eliminación" };
 
-export function WhatsAppTemplatesPanel({ token, address, onOpenCollections }: { token: string; address: string; onOpenCollections?: () => void }) {
+export function WhatsAppTemplatesPanel({ token, address }: { token: string; address: string }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,8 +39,8 @@ export function WhatsAppTemplatesPanel({ token, address, onOpenCollections }: { 
   const visible = templates.filter(t => (filter === "all" || (filter === "approved") === (t.status.toUpperCase() === "APPROVED")) &&
     [t.name, t.language, t.category, ...t.components.map(c => c.text)].some(value => value.toLocaleLowerCase("es-MX").includes(needle)));
   return <div className="grid gap-4">
-    <section className="comm-panel"><header className="comm-section-heading"><div><h3>Plantillas de WhatsApp</h3><p>{address.replace("whatsapp:", "")} · Consulta de solo lectura</p></div><button disabled={loading} className={secondaryButtonClass} onClick={() => { setCursor(""); setCatalog(null); setRetry(n => n + 1); }}>Actualizar catálogo</button></header>
-      <div className="p-4 text-sm grid gap-2"><p>El catálogo pertenece a la cuenta de WhatsApp (WABA). Los números de una misma cuenta pueden compartir plantillas.</p>{catalog && <p className="comm-muted">WABA {catalog.waba_id} · Consultado: {formatDateTime(catalog.fetched_at)} · {templates.length} cargadas{catalog.next_cursor ? " · Hay más por cargar" : ""}</p>}</div>
+    <section className="comm-panel"><header className="comm-section-heading"><div><h3>Plantillas de WhatsApp</h3><p>{address.replace("whatsapp:", "")} · Plantillas disponibles</p></div><button disabled={loading} className={secondaryButtonClass} onClick={() => { setCursor(""); setCatalog(null); setRetry(n => n + 1); }}>Actualizar catálogo</button></header>
+      {catalog && <div className="p-4 text-sm"><p className="comm-muted">Actualizado: {formatDateTime(catalog.fetched_at)} · {templates.length} {templates.length === 1 ? "plantilla cargada" : "plantillas cargadas"}{catalog.next_cursor ? " · Hay más por cargar" : ""}</p></div>}
     </section>
     {error && <div role="alert" className="comm-error">{error} <button className={secondaryButtonClass} disabled={loading} onClick={() => setRetry(n => n + 1)}>Reintentar</button></div>}
     {loading && <p role="status">Consultando plantillas…</p>}
@@ -55,6 +55,5 @@ export function WhatsAppTemplatesPanel({ token, address, onOpenCollections }: { 
       {!visible.length && <p className="comm-empty">{templates.length ? "No hay plantillas cargadas que coincidan con estos filtros." : "El proveedor no devolvió plantillas en esta cuenta."}</p>}
       {catalog.next_cursor && <button className={secondaryButtonClass} disabled={loading} onClick={() => setCursor(catalog.next_cursor)}>Cargar más plantillas</button>}
     </>}
-    <section className="comm-panel p-4"><h3>Enviar recordatorios manualmente</h3><p className="my-2 text-sm">En Cobranza puedes elegir el adeudo, la etapa y una plantilla aprobada para cada envío. No hay asignaciones automáticas: revisa que el texto corresponda al recordatorio.</p>{onOpenCollections && <button className={secondaryButtonClass} onClick={onOpenCollections}>Ir a Cobranza y elegir destinatario →</button>}<p className="comm-muted mt-2">Si aún no creaste la plantilla de cobranza, créala y espera su aprobación antes de enviar.</p><a className="comm-link mt-3" href="https://dualhook.com" target="_blank" rel="noreferrer">Administrar plantillas en Dualhook ↗</a></section>
   </div>;
 }
