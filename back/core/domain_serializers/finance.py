@@ -1,6 +1,28 @@
 from .common import *
 from .money import charge_balance, sync_charge_status
 
+
+def validate_billing_site(site, student=None, team=None, registration=None):
+    if not site:
+        raise serializers.ValidationError("El cobro necesita una sede asignada.")
+    if student and student.site_id != site.pk:
+        raise serializers.ValidationError("El alumno y el cargo deben pertenecer a la misma sede.")
+    if team and team.tournament.site_id != site.pk:
+        raise serializers.ValidationError("El equipo y el cargo deben pertenecer a la misma sede.")
+    if registration:
+        if registration.tournament.site_id != site.pk or registration.student.site_id != site.pk:
+            raise serializers.ValidationError("El torneo, el alumno y el cargo deben pertenecer a la misma sede.")
+        if not student or registration.student_id != student.pk:
+            raise serializers.ValidationError("La inscripción no corresponde al alumno del cargo.")
+        if team and registration.team_id != team.pk:
+            raise serializers.ValidationError("La inscripción no corresponde al equipo del cargo.")
+
+
+def validate_cashier_site(request, site):
+    if request and request.user.is_authenticated and request.user.role in {"cashier", "site_coordinator"}:
+        if not site or not request.user.primary_site_id or request.user.primary_site_id != site.pk:
+            raise serializers.ValidationError("Solo puedes registrar cobros y pagos de tu sede asignada.")
+
 class ChargeSerializer(serializers.ModelSerializer):
     student = serializers.PrimaryKeyRelatedField(
         queryset=Student.objects.select_related("guardian").only(
@@ -16,10 +38,12 @@ class ChargeSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     tournament_registration = serializers.PrimaryKeyRelatedField(
-        queryset=StudentTournamentRegistration.objects.select_related("tournament").only(
+        queryset=StudentTournamentRegistration.objects.select_related("tournament", "student").only(
             "id",
+            "student_id", "student__id", "student__site_id", "team_id",
             "tournament_id",
             "tournament__id",
+            "tournament__site_id",
             "tournament__name",
         ),
         required=False,
@@ -42,7 +66,26 @@ class ChargeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Charge
         fields = "__all__"
-        read_only_fields = ["created_by"]
+        read_only_fields = ["created_by", "billing_plan", "retained_guardian", "original_student_name", "original_site_name"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.retained_guardian_id:
+            data['student_name'] = instance.original_student_name
+            data['site_name'] = instance.original_site_name + ' (sede eliminada)'
+        return data
+
+    def validate(self, attrs):
+        def value(name):
+            return attrs.get(name, getattr(self.instance, name, None))
+        site = value("site")
+        validate_billing_site(site, value("student"), value("team"), value("tournament_registration"))
+        validate_cashier_site(self.context.get("request"), site)
+        if self.instance and self.instance.payments.exists():
+            for field in ("site", "student", "team", "tournament_registration"):
+                if field in attrs and getattr(attrs[field], "pk", None) != getattr(self.instance, f"{field}_id"):
+                    raise serializers.ValidationError("No puedes cambiar la sede ni el destinatario de un cargo que ya tiene pagos.")
+        return attrs
 
     def _confirmed_payment_total(self, obj):
         if hasattr(obj, "_futsi_confirmed_payment_total"):
@@ -113,6 +156,8 @@ class ChargeSerializer(serializers.ModelSerializer):
         return ""
 
     def get_payer_name(self, obj):
+        if obj.retained_guardian_id:
+            return obj.retained_guardian.full_name
         if obj.student_id and obj.student and obj.student.guardian_id:
             return obj.student.guardian.full_name
         if obj.team_id and obj.team:
@@ -120,6 +165,8 @@ class ChargeSerializer(serializers.ModelSerializer):
         return ""
 
     def get_payer_phone(self, obj):
+        if obj.retained_guardian_id:
+            return obj.retained_guardian.phone
         if obj.student_id and obj.student and obj.student.guardian_id:
             return obj.student.guardian.phone
         if obj.team_id and obj.team:
@@ -148,6 +195,8 @@ class PaymentSerializer(serializers.ModelSerializer):
     charge = serializers.PrimaryKeyRelatedField(
         queryset=Charge.objects.select_related("site", "student", "student__guardian", "team").only(
             "id",
+            "tournament_registration_id",
+            "retained_guardian_id",
             "site_id",
             "student_id",
             "team_id",
@@ -157,6 +206,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             "site__id",
             "site__name",
             "student__id",
+            "student__site_id",
             "student__full_name",
             "student__guardian_id",
             "student__guardian__id",
@@ -170,6 +220,13 @@ class PaymentSerializer(serializers.ModelSerializer):
     team_name = serializers.CharField(source="team.name", read_only=True)
     charge_concept = serializers.CharField(source="charge.concept", read_only=True)
     received_by_username = serializers.CharField(source="received_by.username", read_only=True)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not instance.student_id and instance.charge_id and instance.charge.retained_guardian_id:
+            data['student_name'] = instance.charge.original_student_name
+            data['site_name'] = instance.charge.original_site_name + ' (sede eliminada)'
+        return data
 
     class Meta:
         model = Payment
@@ -189,14 +246,26 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context.get("request")
-        charge = attrs.get("charge")
+        charge = attrs.get("charge", getattr(self.instance, "charge", None))
         amount = attrs.get("amount")
+        if self.instance and "charge" in attrs and getattr(charge, "pk", None) != self.instance.charge_id:
+            raise serializers.ValidationError("No puedes trasladar un pago a otro cargo.")
+        if charge:
+            if not charge.retained_guardian_id:
+                validate_billing_site(charge.site, charge.student, charge.team, charge.tournament_registration)
+            elif request and request.user.role == 'guardian' and charge.retained_guardian.user_id != request.user.pk:
+                raise serializers.ValidationError('Este adeudo no pertenece a tu cuenta.')
+            validate_cashier_site(request, charge.site)
+            if self.instance and (self.instance.site_id, self.instance.student_id, self.instance.team_id) != (charge.site_id, charge.student_id, charge.team_id):
+                raise serializers.ValidationError("El pago tiene datos inconsistentes con su cargo. Requiere revisión administrativa.")
         if amount is not None and amount <= 0:
             raise serializers.ValidationError({"amount": "El monto debe ser mayor a cero."})
         if charge:
-            if charge.status in {"paid", "canceled"}:
+            if charge.status == "canceled" or (not self.instance and charge.status == "paid"):
                 raise serializers.ValidationError("Este cargo ya no acepta pagos.")
             balance = charge_balance(charge)
+            if self.instance and self.instance.status in {"registered", "reconciled"}:
+                balance += self.instance.amount
             if amount is not None and amount > balance:
                 raise serializers.ValidationError({"amount": f"El monto no puede exceder el saldo pendiente de ${balance}."})
         if request and request.user.is_authenticated and request.user.role == "cashier":
@@ -205,6 +274,12 @@ class PaymentSerializer(serializers.ModelSerializer):
             if request.user.primary_site_id != charge.site_id:
                 raise serializers.ValidationError("El cajero solo puede cobrar cargos de su sede.")
         return attrs
+
+    def update(self, instance, validated_data):
+        payment = super().update(instance, validated_data)
+        if payment.charge:
+            sync_charge_status(payment.charge)
+        return payment
 
     def create(self, validated_data):
         request = self.context.get("request")
@@ -236,7 +311,8 @@ class PaymentSerializer(serializers.ModelSerializer):
         token = uuid4().hex[:10].upper()
         if method == "transfer":
             validated_data["status"] = "processing"
-            validated_data["reference"] = f"CLABE-{charge.student.guardian.virtual_clabe}" if charge and charge.student else f"SPEI-{token}"
+            guardian = (charge.retained_guardian if charge.retained_guardian_id else charge.student.guardian if charge.student_id else None) if charge else None
+            validated_data["reference"] = f"CLABE-{guardian.virtual_clabe}" if guardian else f"SPEI-{token}"
             validated_data["expires_at"] = timezone.now() + timedelta(hours=72)
             validated_data["notes"] = "Simulacion: esperando webhook SPEI. Si no llega en 72 horas, vuelve a adeudo."
         elif method == "cash":

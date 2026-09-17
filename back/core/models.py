@@ -479,8 +479,30 @@ class ChargeStatus(models.TextChoices):
     CANCELED = "canceled", "Cancelado"
 
 
+class BillingPlan(TimestampedModel):
+    """Finite schedule. Installments are pending charges, never received payments."""
+    request_key = models.UUIDField(unique=True)
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="billing_plans")
+    tournament_registration = models.ForeignKey(StudentTournamentRegistration, null=True, blank=True, on_delete=models.PROTECT, related_name="billing_plans")
+    concept = models.CharField(max_length=80)
+    first_due_date = models.DateField()
+    day_of_month = models.PositiveSmallIntegerField()
+    interval_months = models.PositiveSmallIntegerField(default=1)
+    installments = models.PositiveSmallIntegerField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+
+    class Meta:
+        db_table = "billing_plans"
+
+
 class Charge(TimestampedModel):
-    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="charges")
+    retained_guardian = models.ForeignKey(Guardian, null=True, blank=True, on_delete=models.PROTECT, related_name="retained_charges")
+    original_student_name = models.CharField(max_length=160, blank=True)
+    original_site_name = models.CharField(max_length=120, blank=True)
+    billing_plan = models.ForeignKey(BillingPlan, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
+    site = models.ForeignKey(Site, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
     team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
     tournament_registration = models.ForeignKey(StudentTournamentRegistration, null=True, blank=True, on_delete=models.PROTECT, related_name="charges")
@@ -490,7 +512,7 @@ class Charge(TimestampedModel):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     due_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=ChargeStatus.choices, default=ChargeStatus.PENDING)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_charges")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="created_charges")
 
     class Meta:
         db_table = "charges"
@@ -500,6 +522,7 @@ class Charge(TimestampedModel):
                 condition=(
                     Q(student__isnull=False, team__isnull=True)
                     | Q(student__isnull=True, team__isnull=False)
+                    | Q(student__isnull=True, team__isnull=True, retained_guardian__isnull=False)
                 ),
                 name="ck_charge_subject",
             ),
@@ -537,7 +560,7 @@ class PaymentChannel(models.TextChoices):
 
 
 class Payment(TimestampedModel):
-    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="payments")
+    site = models.ForeignKey(Site, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
     charge = models.ForeignKey(Charge, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
     team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
@@ -552,7 +575,7 @@ class Payment(TimestampedModel):
     tracking_key = models.CharField(max_length=120, blank=True)
     payment_url = models.URLField(blank=True)
     receipt_file = models.FileField(upload_to="payments/receipts/", blank=True)
-    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="received_payments")
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="received_payments")
     notes = models.TextField(blank=True)
 
     class Meta:
@@ -575,7 +598,7 @@ class DiscountStatus(models.TextChoices):
 
 
 class Discount(TimestampedModel):
-    site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="discounts")
+    site = models.ForeignKey(Site, null=True, blank=True, on_delete=models.PROTECT, related_name="discounts")
     charge = models.ForeignKey(Charge, null=True, blank=True, on_delete=models.PROTECT, related_name="discounts")
     student = models.ForeignKey(Student, null=True, blank=True, on_delete=models.PROTECT, related_name="discounts")
     team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.PROTECT, related_name="discounts")
@@ -583,7 +606,7 @@ class Discount(TimestampedModel):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=20, choices=DiscountStatus.choices, default=DiscountStatus.REQUESTED)
     evidence_file = models.FileField(upload_to="discounts/evidence/", blank=True)
-    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="requested_discounts")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="requested_discounts")
     signed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

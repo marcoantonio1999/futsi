@@ -980,6 +980,9 @@ class Command(BaseCommand):
             return f"{current_month}-{day_number:02d}"
 
         def create_charge_payment(subject, concept, description, amount, due_day, method, channel, paid_day, receiver, status="registered", paid_amount=None):
+            subject_site = subject.site if isinstance(subject, Student) else subject.tournament.site
+            if receiver.role == "cashier" and receiver.primary_site_id != subject_site.pk:
+                raise CommandError("No se puede generar un pago demo con un cajero de otra sede.")
             subject_kwargs = {"student": subject, "team": None} if isinstance(subject, Student) else {"student": None, "team": subject}
             charge, _ = Charge.objects.update_or_create(
                 concept=concept,
@@ -1146,7 +1149,12 @@ class Command(BaseCommand):
             ("iztapalapa", 4900, 31800, 30200),
         ]
         for site_code, extra_income, expected_income, expense_amount in expansion_financials:
-            receiver = caja_roma if site_code in {"polanco", "del-valle", "narvarte", "lomas", "interlomas"} else caja_coyoacan
+            receiver, _ = User.objects.get_or_create(
+                username=f"caja.{site_code}",
+                defaults={"role": "cashier", "primary_site": site_map[site_code], "is_active": False},
+            )
+            if receiver.role != "cashier" or receiver.primary_site_id != site_map[site_code].pk:
+                raise CommandError(f"La cuenta demo caja.{site_code} no corresponde a su sede.")
             for student_index, method_data in enumerate(methods_cycle, start=1):
                 method, channel = method_data
                 create_charge_payment(

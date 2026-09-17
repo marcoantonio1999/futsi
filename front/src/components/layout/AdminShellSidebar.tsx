@@ -1,3 +1,4 @@
+import { SitesSubmenu } from "../views/sitesNavigation";
 import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
 import { ChevronDown, GraduationCap, LogOut, Menu, RefreshCw, UsersRound } from "lucide-react";
@@ -204,12 +205,14 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
           {effectiveActiveTab === tab.key && <span className={`absolute h-7 w-1 rounded-r-full ${sidebarExpanded ? "-left-4" : "-left-3"} ${shellTone.indicatorClass}`} />}
           <span className="grid size-5 shrink-0 place-items-center">{tab.icon}</span>
           {sidebarExpanded && <span className="truncate">{tab.label}</span>}
+          {sidebarExpanded && tab.key === "sites" && <ChevronDown size={15} className={`ml-auto ${effectiveActiveTab === "sites" ? "" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "coaches" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "coaches" && coachesMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "communications" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "communications" && communicationsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
 {sidebarExpanded && tab.key === "guardians" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "students" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "students" && studentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "tournaments" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
         </button>
+        {tab.key === "sites" && sidebarExpanded && effectiveActiveTab === "sites" && <SitesSubmenu onSelect={() => onSelectTab("sites")} />}
         {tab.key === "coaches" && <div id="coaches-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "coaches" || !coachesMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           {coachSections.filter(item => item.key !== "create" || canManageCoaches).map(item => <StudentsSubButton key={item.key} active={coachesSection === item.key} label={item.label} onClick={() => onSelectCoachesSection(item.key)} />)}
         </div></div>}

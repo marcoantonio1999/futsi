@@ -1,3 +1,4 @@
+import { SitesProvider } from "../views/sitesNavigation";
 import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { VeronicaOnlyContext, isVeronicaSection } from '../../features/voice-agent/CommunicationsAccess';
 import { VeronicaPanel } from '../../features/voice-agent/VeronicaPanel';
@@ -310,7 +311,7 @@ export function AdminShell({
   }
 
   return (
-    <VeronicaOnlyContext.Provider value={veronicaOnly}>
+    <SitesProvider canManage={isAdmin}><VeronicaOnlyContext.Provider value={veronicaOnly}>
     <main
       className={`app-motion min-h-screen text-zinc-950 ${businessScope === "adult" ? "bg-blue-50/45" : "bg-stone-50"}`}
       onTouchStart={handleMobileTouchStart}
@@ -343,7 +344,7 @@ export function AdminShell({
         onLogout={onLogout}
         onSelectTab={(tab) => {
           selectTab(tab);
-          setMobileMenuOpen(false);
+          if (tab !== "sites") setMobileMenuOpen(false);
         }}
         onSelectBillingSection={selectBillingSection}
         onToggleCommunicationsMenu={toggleCommunicationsMenu}
@@ -499,6 +500,6 @@ export function AdminShell({
         </div>
       </div>
     </main>
-    </VeronicaOnlyContext.Provider>
+    </VeronicaOnlyContext.Provider></SitesProvider>
   );
 }

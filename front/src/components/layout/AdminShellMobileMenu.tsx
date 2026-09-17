@@ -1,3 +1,4 @@
+import { SitesSubmenu } from "../views/sitesNavigation";
 import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
 import { ChevronDown, LogOut, X } from "lucide-react";
@@ -100,6 +101,7 @@ export function AdminShellMobileMenu({
               >
                 {tab.icon}
                 <span>{tab.label}</span>
+                {tab.key === "sites" && <ChevronDown size={15} className={`ml-auto ${effectiveActiveTab === "sites" ? "" : "-rotate-90"}`} />}
                 {tab.key === "coaches" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "coaches" && coachesMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {tab.key === "communications" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "communications" && communicationsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
 {tab.key === "guardians" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
@@ -109,6 +111,7 @@ export function AdminShellMobileMenu({
         {tab.key === "coaches" && <div id="coaches-mobile-submenu" hidden={effectiveActiveTab !== "coaches" || !coachesMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           {coachSections.filter(item => item.key !== "create" || canManageCoaches).map(item => <StudentsMobileSubButton key={item.key} active={coachesSection === item.key} label={item.label} onClick={() => onSelectCoachesSection(item.key)} />)}
         </div></div>}
+        {tab.key === "sites" && effectiveActiveTab === "sites" && <SitesSubmenu onSelect={() => { onSelectTab("sites"); onClose(); }} />}
         {tab.key === "guardians" && <div id="guardians-mobile-submenu" hidden={effectiveActiveTab !== "guardians" || !guardiansMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           <StudentsMobileSubButton active={guardiansSection !== "create"} label="Gestionar tutores" onClick={() => onSelectGuardiansSection("registered")} />
           <StudentsMobileSubButton active={guardiansSection === "create"} label="Crear tutor" onClick={() => onSelectGuardiansSection("create")} />

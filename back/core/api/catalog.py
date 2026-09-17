@@ -1,12 +1,13 @@
 from .common import *
 from django.db import transaction
+from django.db.models.deletion import ProtectedError, RestrictedError
 from django.db.models import Prefetch, Exists, OuterRef, CharField, Q
 from django.db.models.functions import Cast
 from pathlib import Path
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from django.shortcuts import get_object_or_404
 from core.services.student_deletion import preview as student_deletion_preview, permanently_delete, cleanup_files
-from core.services import guardian_deletion, tournament_deletion
+from core.services import guardian_deletion, tournament_deletion, site_deletion
 from core.services.student_photos import save_student, PHOTO_BUCKET, StudentPhotoUnavailable
 from core.services.supabase_storage import download_private_file, parse_storage_uri
 
@@ -20,6 +21,13 @@ class SiteViewSet(viewsets.ModelViewSet):
     queryset = Site.objects.annotate(student_count=Count("students")).all()
     serializer_class = SiteSerializer
     permission_classes = [IsAdminForWrites]
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(site_deletion.permanently_delete(self.get_object(), request.user, request.data))
+
+    @action(detail=True, methods=["get"], url_path="deletion-preview", permission_classes=[IsAdminRole])
+    def deletion_preview(self, request, pk=None):
+        return Response(site_deletion.preview(self.get_object(), request.user))
 
     def get_queryset(self):
         queryset = super().get_queryset()

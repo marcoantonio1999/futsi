@@ -1,3 +1,4 @@
+import { SitesWorkspace } from "../views/SitesWorkspace";
 import { CoachesWorkspace } from "../../features/coach/CoachesWorkspace";
 import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import type { StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
@@ -279,7 +280,7 @@ function ActivePanel(props: AdminShellContentProps) {
       )}
       {effectiveActiveTab === "students" && <StudentsPanel data={scopedData} token={token} section={studentsSection} editingId={props.studentToEdit} onEdit={props.onEditStudent} onSelectSection={props.onSelectStudentsSection} onDelete={props.onDeleteStudent} onCreate={(payload) => onCreateAndReturn<Student>("/students/", payload)} onCreateGuardian={(payload) => onCreateAndReturn<Guardian>("/guardians/", payload)} onUpdate={(studentId, payload) => onUpdateRecord(`/students/${studentId}/`, payload, "Alumno actualizado.")} />}
       {effectiveActiveTab === "guardians" && <GuardiansPanel data={scopedData} token={token} section={props.guardiansSection} editingId={props.guardianToEdit} onEdit={props.onEditGuardian} onSelectSection={props.onSelectGuardiansSection} onDelete={props.onDeleteGuardian} onCreate={(payload) => onCreateAndReturn<Guardian>("/guardians/", payload)} onUpdate={(id, payload) => onUpdateRecord(`/guardians/${id}/`, payload, "Tutor actualizado.")} />}
-      {effectiveActiveTab === "sites" && <SitesPanel sites={data.sites} onCreate={(payload) => onCreateRecord("/sites/", payload, "Sede creada.")} />}
+      {effectiveActiveTab === "sites" && <SitesWorkspace sites={data.sites} token={token} onRefresh={onRefreshActiveSection} />}
       {effectiveActiveTab === "users" && isAdmin && <UsersPanel data={scopedData} onCreate={(payload) => onCreateRecord("/users/", payload, "Usuario creado.")} onUpdate={(userId, payload) => onUpdateRecord(`/users/${userId}/`, payload, "Permisos actualizados.")} />}
       {effectiveActiveTab === "invoices" && <InvoicesPanel data={scopedData} onCreateInvoice={(payload) => onCreateRecord("/invoices/simulate/", payload, "Factura simulada generada.")} onDownloadFile={onDownloadFile} />}
       {effectiveActiveTab === "historical" && <HistoricalImportsPanel data={scopedData} onUpload={onUploadHistoricalImport} onCommit={onCommitHistoricalImport} />}

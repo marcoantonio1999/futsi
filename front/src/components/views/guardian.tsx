@@ -223,7 +223,7 @@ export function GuardianPortal({
               rows={openCharges.slice(0, 10).map((charge) => ({
                 id: charge.id,
                 title: `${charge.student_name} - ${charge.concept}`,
-                subtitle: `Saldo $${money(charge.balance)} - vence ${charge.due_date || "sin fecha"} - ${chargeStatusLabel(charge.status)}`,
+                subtitle: `${charge.site_name || ""} · Saldo $${money(charge.balance)} - vence ${charge.due_date || "sin fecha"} - ${chargeStatusLabel(charge.status)}`,
               }))}
             />
             <SimpleList

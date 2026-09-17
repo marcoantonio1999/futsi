@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 
 from .common import *
 from .billing_generators import generate_scheduled_charges_for_user, generate_student_tournament_charges_for_user
@@ -35,13 +35,13 @@ class ChargeViewSet(viewsets.ModelViewSet):
         if self.request.user.role == "site_coordinator":
             queryset = queryset.filter(site_id=self.request.user.primary_site_id) if self.request.user.primary_site_id else queryset.none()
         if self.request.user.role == "guardian":
-            queryset = queryset.filter(student__guardian__user=self.request.user)
+            queryset = queryset.filter(Q(student__guardian__user=self.request.user) | Q(retained_guardian__user=self.request.user))
         if self.request.user.role == "adult_representative":
             queryset = queryset.filter(team__representative_user=self.request.user)
         if self.request.user.role == "adult_player":
             queryset = queryset.filter(team__players__user=self.request.user)
         if self.request.user.role == "cashier":
-            queryset = queryset.filter(site=self.request.user.primary_site)
+            queryset = queryset.filter(site=self.request.user.primary_site) if self.request.user.primary_site_id else queryset.none()
         status_value = self.request.query_params.get("status")
         student = self.request.query_params.get("student")
         if status_value:
@@ -132,6 +132,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
         "site__name",
         "charge__id",
         "charge__concept",
+        "charge__retained_guardian_id",
+        "charge__original_student_name",
+        "charge__original_site_name",
         "student__id",
         "student__full_name",
         "team__id",
@@ -224,13 +227,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         if self.request.user.role == "guardian":
-            queryset = queryset.filter(student__guardian__user=self.request.user)
+            queryset = queryset.filter(Q(student__guardian__user=self.request.user) | Q(charge__retained_guardian__user=self.request.user))
         if self.request.user.role == "adult_representative":
             queryset = queryset.filter(team__representative_user=self.request.user)
         if self.request.user.role == "adult_player":
             queryset = queryset.filter(team__players__user=self.request.user)
         if self.request.user.role == "cashier":
-            queryset = queryset.filter(site=self.request.user.primary_site)
+            queryset = queryset.filter(site=self.request.user.primary_site) if self.request.user.primary_site_id else queryset.none()
         charge = self.request.query_params.get("charge")
         if charge:
             queryset = queryset.filter(charge_id=charge)
@@ -247,7 +250,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment = self.get_object()
         if payment.method != "cash" or payment.status != "awaiting_confirmation":
             return Response({"detail": "Este pago no espera aceptacion de efectivo."}, status=status.HTTP_400_BAD_REQUEST)
-        if request.user.role == "guardian" and payment.student.guardian.user_id != request.user.id:
+        if request.user.role == "guardian" and not ((payment.student_id and payment.student.guardian.user_id == request.user.id) or (payment.charge_id and payment.charge.retained_guardian_id and payment.charge.retained_guardian.user_id == request.user.id)):
             return Response({"detail": "No puedes aceptar pagos de otro representante."}, status=status.HTTP_403_FORBIDDEN)
         if payment.charge and payment.amount > charge_balance(payment.charge):
             return Response(
@@ -269,7 +272,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Este pago no esta en proceso."}, status=status.HTTP_400_BAD_REQUEST)
         if request.user.role == "guardian" and payment.channel != "card_link":
             return Response({"detail": "Solo puedes simular el pago de un link enviado a tu portal."}, status=status.HTTP_403_FORBIDDEN)
-        if request.user.role == "guardian" and payment.student.guardian.user_id != request.user.id:
+        if request.user.role == "guardian" and not ((payment.student_id and payment.student.guardian.user_id == request.user.id) or (payment.charge_id and payment.charge.retained_guardian_id and payment.charge.retained_guardian.user_id == request.user.id)):
             return Response({"detail": "No puedes pagar links de otro representante."}, status=status.HTTP_403_FORBIDDEN)
         if payment.charge and payment.amount > charge_balance(payment.charge):
             return Response(
@@ -351,7 +354,7 @@ class DiscountViewSet(viewsets.ModelViewSet):
         if self.request.user.role == "guardian":
             queryset = queryset.filter(student__guardian__user=self.request.user)
         if self.request.user.role == "cashier":
-            queryset = queryset.filter(site=self.request.user.primary_site)
+            queryset = queryset.filter(site=self.request.user.primary_site) if self.request.user.primary_site_id else queryset.none()
         if self.request.user.role == "adult_representative":
             queryset = queryset.filter(team__representative_user=self.request.user)
         if self.request.user.role == "adult_player":

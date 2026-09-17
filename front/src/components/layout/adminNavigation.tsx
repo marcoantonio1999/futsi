@@ -18,6 +18,7 @@ import {
 import type { Role, TabKey } from "../../types";
 
 export const fullWidthTabs = new Set<TabKey>([
+  "sites",
   "dashboard",
   "communications",
   "adult-dashboard",
