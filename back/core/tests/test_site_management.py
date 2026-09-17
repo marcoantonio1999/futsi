@@ -25,6 +25,37 @@ def test_admin_can_create_edit_and_delete_empty_site(api_client):
     assert not Site.objects.filter(pk=site_id).exists()
 
 
+def test_admin_can_inspect_site_associations_without_changing_data(api_client):
+    from core.tests.factories import make_team, make_tournament
+
+    site = make_site(name='Scorpions', code='scorpions')
+    student = make_student(site=site)
+    court = Court.objects.create(site=site, name='Cancha principal')
+    team = make_team(tournament=make_tournament(site=site), name='Scorpions A')
+    user = make_user(role='cashier', primary_site=site)
+    api_client.force_authenticate(make_user())
+
+    response = api_client.get(f'/api/sites/{site.pk}/associations/')
+
+    assert response.status_code == 200, response.content
+    data = response.json()
+    assert data['read_only'] is True
+    assert data['site']['name'] == 'Scorpions'
+    assert data['accounts'] == [{'username': user.username, 'role': 'cashier', 'is_active': True}]
+    assert data['students'][0]['id'] == student.pk
+    assert data['courts'][0]['id'] == court.pk
+    assert data['tournaments'][0]['teams'][0]['id'] == team.pk
+    assert Site.objects.filter(pk=site.pk).exists()
+    assert type(student).objects.filter(pk=student.pk).exists()
+
+
+@pytest.mark.parametrize('role', ['collaborator', 'cashier', 'coach', 'site_coordinator'])
+def test_non_admin_cannot_inspect_site_associations(api_client, role):
+    site = make_site()
+    api_client.force_authenticate(make_user(role=role, primary_site=site))
+    assert api_client.get(f'/api/sites/{site.pk}/associations/').status_code == 403
+
+
 @pytest.mark.parametrize('related', ['student', 'court', 'user'])
 def test_site_deletion_removes_reviewed_linked_records(api_client, related):
     site = make_site()

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
 import type { Site } from "../../types";
 import { apiRequest } from "../../api";
 import { TextInput } from "./shared";
@@ -9,10 +9,22 @@ const emptyForm = { name: "", code: "", address: "", latitude: "", longitude: ""
 const secondary = "rounded-md border border-zinc-300 bg-white px-4 py-2 font-medium disabled:opacity-50";
 const primary = "rounded-md bg-emerald-800 px-4 py-2 font-semibold text-white disabled:opacity-50";
 type DeletionPreview = { full_name: string; items: { label: string; count: number }[]; accounts: { username: string; role: string }[]; retained_accounts: { username: string; role: string }[]; preserved_debts: { student: string; guardian: string; balance: string }[]; active_guardians: number; preserved_payments: number; detached_actor_references: number; file_count: number; blockers: string[]; confirmation_token: string };
+type SiteAssociations = {
+  site: { id: number; name: string; code: string; address: string; is_active: boolean };
+  items: { label: string; count: number }[];
+  accounts: { username: string; role: string; is_active: boolean }[];
+  students: { id: number; full_name: string; status: string }[];
+  courts: { id: number; name: string; is_active: boolean }[];
+  tournaments: { id: number; name: string; billing_type: string; is_active: boolean; match_count: number; teams: { id: number; name: string; player_count: number; is_active: boolean }[] }[];
+  read_only: true;
+};
 
 export function SitesWorkspace({ sites, token, onRefresh }: { sites: Site[]; token: string; onRefresh: () => void }) {
   const { section, revision, select, canManage } = useSitesNavigation();
   const [editing, setEditing] = useState<Site | null>(null);
+  const [inspecting, setInspecting] = useState<Site | null>(null);
+  const [associations, setAssociations] = useState<SiteAssociations | null>(null);
+  const [associationError, setAssociationError] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [deleting, setDeleting] = useState<Site | null>(null);
   const [preview, setPreview] = useState<DeletionPreview | null>(null);
@@ -23,8 +35,22 @@ export function SitesWorkspace({ sites, token, onRefresh }: { sites: Site[]; tok
   const [notice, setNotice] = useState("");
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
+  const inspectionDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { setEditing(null); setForm(emptyForm); setError(""); }, [section, revision]);
   useEffect(() => { if (deleting) dialog.current?.showModal(); }, [deleting]);
+  useEffect(() => { if (inspecting) inspectionDialog.current?.showModal(); }, [inspecting]);
+  useEffect(() => {
+    if (!inspecting) return;
+    let current = true;
+    const controller = new AbortController();
+    setAssociations(null); setAssociationError("");
+    apiRequest<SiteAssociations>(`/sites/${inspecting.id}/associations/`, token, { signal: controller.signal })
+      .then(value => { if (current) setAssociations(value); })
+      .catch(err => {
+        if (current) setAssociationError(err instanceof Error ? err.message : "No se pudieron consultar los datos asociados.");
+      });
+    return () => { current = false; controller.abort(); };
+  }, [inspecting, token]);
   useEffect(() => {
     if (!deleting) return;
     let current = true;
@@ -89,10 +115,25 @@ export function SitesWorkspace({ sites, token, onRefresh }: { sites: Site[]; tok
       <table className="w-full text-left"><caption className="p-4 text-left text-sm text-zinc-600">{sites.length} sedes · {sites.filter(site => site.is_active).length} activas</caption><thead className="bg-zinc-50"><tr>{["Sede", "Dirección", "Alumnos", "Estado", ...(canManage ? ["Acciones"] : [])].map(label => <th key={label} scope="col" className="p-4">{label}</th>)}</tr></thead>
         <tbody>{sites.map(site => <tr key={site.id} className="border-t border-zinc-100">
           <td className="p-4"><span className="font-semibold">{site.name}</span><span className="block text-sm text-zinc-500">{site.code}</span></td><td className="p-4">{site.address || "Sin dirección"}</td><td className="p-4">{site.student_count ?? 0}</td><td className="p-4">{site.is_active ? "Activa" : "Inactiva"}</td>
-          {canManage && <td className="p-4"><div className="flex gap-2"><button type="button" className={`${secondary} flex items-center gap-2`} aria-label={`Editar ${site.name}`} onClick={() => edit(site)}><Pencil size={16} /><span>Editar</span></button><button type="button" className={`${secondary} flex items-center gap-2 text-red-700`} aria-label={`Eliminar ${site.name}`} onClick={() => { setError(""); setNotice(""); setDeleting(site); }}><Trash2 size={16} /><span>Eliminar</span></button></div></td>}
+          {canManage && <td className="p-4"><div className="flex flex-wrap gap-2"><button type="button" className={`${secondary} flex items-center gap-2`} aria-label={`Ver datos asociados a ${site.name}`} onClick={() => setInspecting(site)}><Eye size={16} /><span>Ver datos</span></button><button type="button" className={`${secondary} flex items-center gap-2`} aria-label={`Editar ${site.name}`} onClick={() => edit(site)}><Pencil size={16} /><span>Editar</span></button><button type="button" className={`${secondary} flex items-center gap-2 text-red-700`} aria-label={`Eliminar ${site.name}`} onClick={() => { setError(""); setNotice(""); setDeleting(site); }}><Trash2 size={16} /><span>Eliminar</span></button></div></td>}
         </tr>)}</tbody>
       </table>{!sites.length && <p className="p-6 text-zinc-500">Todavía no hay sedes registradas.</p>}
     </div>}
+    {inspecting && <dialog ref={inspectionDialog} aria-labelledby="inspect-site-title" onCancel={() => setInspecting(null)} className="m-auto max-h-[90vh] w-[min(94vw,760px)] overflow-y-auto rounded-xl p-6 shadow-xl backdrop:bg-black/40">
+      <h3 id="inspect-site-title" className="text-xl font-bold">Datos asociados a «{inspecting.name}»</h3>
+      <p className="my-3 rounded-md bg-emerald-50 p-3 text-emerald-950">Esta consulta es únicamente informativa. No modifica ni elimina ningún registro.</p>
+      {!associations && !associationError && <p role="status">Consultando datos asociados…</p>}
+      {associationError && <p role="alert" className="rounded-md bg-red-50 p-3 text-red-800">{associationError}</p>}
+      {associations && <div className="space-y-4">
+        <div><p><strong>Código:</strong> {associations.site.code}</p><p><strong>Dirección:</strong> {associations.site.address || "Sin dirección"}</p><p><strong>Estado:</strong> {associations.site.is_active ? "Activa" : "Inactiva"}</p></div>
+        <section><h4 className="mb-2 font-semibold">Resumen de registros</h4>{associations.items.length ? <ul className="grid gap-x-6 rounded-md border p-3 sm:grid-cols-2">{associations.items.map(item => <li key={item.label} className="flex justify-between gap-3 border-b border-zinc-100 py-2"><span>{item.label}</span><strong>{item.count}</strong></li>)}</ul> : <p className="text-zinc-600">No tiene registros asociados.</p>}</section>
+        {!!associations.tournaments.length && <section><h4 className="mb-2 font-semibold">Torneos y equipos</h4><div className="space-y-3">{associations.tournaments.map(tournament => <article key={tournament.id} className="rounded-md border p-3"><div className="flex flex-wrap justify-between gap-2"><strong>{tournament.name}</strong><span>{tournament.billing_type} · {tournament.match_count} partidos</span></div>{tournament.teams.length ? <ul className="mt-2 divide-y">{tournament.teams.map(team => <li key={team.id} className="flex justify-between py-2"><span>{team.name}</span><span>{team.player_count} jugadores</span></li>)}</ul> : <p className="mt-2 text-sm text-zinc-600">Sin equipos.</p>}</article>)}</div></section>}
+        {!!associations.courts.length && <details><summary className="cursor-pointer font-semibold">Canchas ({associations.courts.length})</summary><ul className="p-3">{associations.courts.map(court => <li key={court.id}>{court.name} · {court.is_active ? "Activa" : "Inactiva"}</li>)}</ul></details>}
+        {!!associations.accounts.length && <details><summary className="cursor-pointer font-semibold">Cuentas asignadas ({associations.accounts.length})</summary><ul className="p-3">{associations.accounts.map(account => <li key={account.username}>{account.username} · {account.role} · {account.is_active ? "Activa" : "Inactiva"}</li>)}</ul></details>}
+        {!!associations.students.length && <details><summary className="cursor-pointer font-semibold">Alumnos ({associations.students.length}{associations.items.find(item => item.label === "Alumnos")?.count === 100 ? "+" : ""})</summary><ul className="max-h-52 overflow-y-auto p-3">{associations.students.map(student => <li key={student.id}>{student.full_name} · {student.status}</li>)}</ul></details>}
+      </div>}
+      <div className="mt-5 flex justify-end"><button type="button" autoFocus className={secondary} onClick={() => setInspecting(null)}>Cerrar</button></div>
+    </dialog>}
     {deleting && <dialog ref={dialog} aria-labelledby="delete-site-title" onCancel={e => { if (busy) e.preventDefault(); else { setDeleting(null); setError(""); } }} className="m-auto max-h-[90vh] w-[min(92vw,680px)] overflow-y-auto rounded-xl p-6 shadow-xl backdrop:bg-black/40">
       <h3 id="delete-site-title" className="text-xl font-bold">¿Eliminar «{deleting.name}» y todos sus datos?</h3>
       <p className="my-4 rounded-md bg-red-50 p-3 text-red-900">Esta acción es permanente. Se eliminarán los registros listados y las cuentas de caja. Los tutores con hijos en otra sede conservarán su acceso y sus adeudos pendientes, con sus abonos. Las demás cuentas personales se conservarán inactivas y sin sede.</p>

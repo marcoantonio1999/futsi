@@ -7,7 +7,7 @@ from pathlib import Path
 from rest_framework.exceptions import NotFound, ValidationError
 from django.shortcuts import get_object_or_404
 from core.services.student_deletion import preview as student_deletion_preview, permanently_delete, cleanup_files
-from core.services import guardian_deletion, tournament_deletion, site_deletion
+from core.services import guardian_deletion, tournament_deletion, site_deletion, site_associations
 from core.services.student_photos import save_student, PHOTO_BUCKET, StudentPhotoUnavailable
 from core.services.supabase_storage import download_private_file, parse_storage_uri
 
@@ -28,6 +28,10 @@ class SiteViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="deletion-preview", permission_classes=[IsAdminRole])
     def deletion_preview(self, request, pk=None):
         return Response(site_deletion.preview(self.get_object(), request.user))
+
+    @action(detail=True, methods=["get"], url_path="associations", permission_classes=[IsAdminRole])
+    def associations(self, request, pk=None):
+        return Response(site_associations.summary(self.get_object()))
 
     def get_queryset(self):
         queryset = super().get_queryset()
