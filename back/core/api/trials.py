@@ -338,7 +338,10 @@ class WhatsAppConversationViewSet(
             channel_site_name=Coalesce(models.Subquery(profile.values("site__name")[:1]), models.F("site__name")),
             channel_label=models.Subquery(profile.values("channel_label")[:1]),
         )
-        queryset = queryset.exclude(pk__in=WhatsAppConversation.objects.filter(context__kind='veronica_manual').values('pk'))
+        queryset = queryset.filter(
+            models.Q(context__kind__isnull=True)
+            | ~models.Q(context__kind="veronica_manual")
+        )
         user = self.request.user
         if user.role not in ADMIN_ROLES:
             if user.role != "site_coordinator" or not user.primary_site_id:
@@ -766,11 +769,11 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
         records = {item.business_address: item for item in
                    WhatsAppAutomationSettings.objects.select_related("site").all()}
         addresses = set(records)
-        addresses.update(WhatsAppConversation.objects.exclude(
-            context__kind="veronica_manual",
-        ).filter(
+        addresses.update(WhatsAppConversation.objects.filter(
+            models.Q(context__kind__isnull=True)
+            | ~models.Q(context__kind="veronica_manual"),
             models.Q(to_address__startswith="whatsapp:+")
-            | models.Q(to_address__regex=r"^meta:[1-9][0-9]{5,31}$")
+            | models.Q(to_address__regex=r"^meta:[1-9][0-9]{5,31}$"),
         ).values_list("to_address", flat=True).distinct())
         current = _current_whatsapp_business_address()
         if current:

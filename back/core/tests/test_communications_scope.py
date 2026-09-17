@@ -68,6 +68,9 @@ def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client):
         site=franco,
     )
     chat = conversation(FRANCO_ACADEMY)
+    veronica = conversation("meta:1100529023150528")
+    veronica.context = {"kind": "veronica_manual"}
+    veronica.save(update_fields=["context", "updated_at"])
 
     channels = client.get(BASE + "channels/").json()
     assert channels == [{
@@ -76,6 +79,7 @@ def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client):
         "site_name": "Colegio Franco",
         "channel_label": "Franco Academia",
     }]
+    assert [row["id"] for row in client.get(BASE, {"scope": "all"}).json()] == [chat.id]
     rows = client.get(BASE, {
         "scope": "all",
         "site": franco.id,
