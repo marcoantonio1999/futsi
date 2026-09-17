@@ -302,6 +302,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
     business_address = serializers.CharField(source="to_address", read_only=True)
     channel_site = serializers.SerializerMethodField()
     channel_site_name = serializers.CharField(read_only=True, allow_null=True)
+    channel_label = serializers.CharField(read_only=True, allow_null=True)
     manual_send_available = serializers.SerializerMethodField()
 
     def get_channel_site(self, instance):
@@ -437,7 +438,7 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = WhatsAppConversation
         fields = [
-            "business_address", "channel_site", "channel_site_name", "manual_send_available",
+            "business_address", "channel_site", "channel_site_name", "channel_label", "manual_send_available",
             "id",
             "kind",
             "contact_name",
@@ -528,6 +529,7 @@ class WhatsAppAutomationSettingsSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "business_address",
+            "channel_label",
             "site",
             "site_name",
             "openai_model",

@@ -9,6 +9,7 @@ from core.tests.factories import make_site
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
 BASE = "/api/whatsapp-conversations/"
 A, B, C = [f"whatsapp:+52550000010{i}" for i in (1, 2, 3)]
+FRANCO_ACADEMY = "meta:105039749242267"
 
 
 def conversation(address, site=None):
@@ -56,6 +57,33 @@ def test_channels_include_empty_sites_and_enforce_coordinator_scope(auth_client,
     no_site, _, _ = auth_client(role="site_coordinator")
     assert no_site.get(BASE + "channels/").json() == []
     assert api_client.get(BASE + "channels/").status_code in (401, 403)
+
+
+def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client):
+    client, _, _ = auth_client()
+    franco = make_site(name="Colegio Franco")
+    WhatsAppAutomationSettings.objects.create(
+        business_address=FRANCO_ACADEMY,
+        channel_label="Franco Academia",
+        site=franco,
+    )
+    chat = conversation(FRANCO_ACADEMY)
+
+    channels = client.get(BASE + "channels/").json()
+    assert channels == [{
+        "business_address": FRANCO_ACADEMY,
+        "site": franco.id,
+        "site_name": "Colegio Franco",
+        "channel_label": "Franco Academia",
+    }]
+    rows = client.get(BASE, {
+        "scope": "all",
+        "site": franco.id,
+        "business_address": FRANCO_ACADEMY,
+    }).json()
+    assert [row["id"] for row in rows] == [chat.id]
+    assert rows[0]["channel_site"] == franco.id
+    assert rows[0]["channel_label"] == "Franco Academia"
 
 
 def test_weekly_statistics_use_the_same_site_and_channel_scope(auth_client):

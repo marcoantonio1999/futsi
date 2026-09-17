@@ -336,6 +336,7 @@ class WhatsAppConversationViewSet(
         queryset = self.queryset.all().annotate(
             channel_site_id=Coalesce(models.Subquery(profile.values("site_id")[:1]), models.F("site_id"), output_field=models.BigIntegerField()),
             channel_site_name=Coalesce(models.Subquery(profile.values("site__name")[:1]), models.F("site__name")),
+            channel_label=models.Subquery(profile.values("channel_label")[:1]),
         )
         queryset = queryset.exclude(pk__in=WhatsAppConversation.objects.filter(context__kind='veronica_manual').values('pk'))
         user = self.request.user
@@ -350,7 +351,7 @@ class WhatsAppConversationViewSet(
         selected = self.request.query_params.get("business_address", "").strip()
         if selected:
             import re
-            if not re.fullmatch(r"whatsapp:\+[1-9][0-9]{7,14}", selected):
+            if not re.fullmatch(r"(?:whatsapp:\+[1-9][0-9]{7,14}|meta:[1-9][0-9]{5,31})", selected):
                 raise ValidationError({"business_address": "Número de WhatsApp inválido."})
             queryset = queryset.filter(to_address=selected)
         elif self.request.query_params.get("scope") != "all" and not self.request.query_params.get("site"):
@@ -387,21 +388,21 @@ class WhatsAppConversationViewSet(
 
     @action(detail=False, methods=["get"])
     def channels(self, request):
-        rows = self.visible_conversations().order_by().values("to_address", "channel_site_id", "channel_site_name").distinct()
+        rows = self.visible_conversations().order_by().values("to_address", "channel_site_id", "channel_site_name", "channel_label").distinct()
         records = {}
         for row in rows:
             address = row["to_address"]
-            if address.startswith("whatsapp:+"):
-                records.setdefault(address, {"business_address": address, "site": row["channel_site_id"], "site_name": row["channel_site_name"] or ""})
+            if address.startswith("whatsapp:+") or address.startswith("meta:"):
+                records.setdefault(address, {"business_address": address, "site": row["channel_site_id"], "site_name": row["channel_site_name"] or "", "channel_label": row["channel_label"] or ""})
                 if records[address]["site"] != row["channel_site_id"]:
-                    records[address].update(site=None, site_name="")
+                    records[address].update(site=None, site_name="", channel_label="")
         profiles = WhatsAppAutomationSettings.objects.select_related("site")
         if request.user.role not in ADMIN_ROLES:
             profiles = profiles.filter(site_id=request.user.primary_site_id) if request.user.primary_site_id else profiles.none()
         for profile in profiles:
             if profile.site_id or profile.business_address not in records:
-                records[profile.business_address] = {"business_address": profile.business_address, "site": profile.site_id, "site_name": profile.site.name if profile.site_id else ""}
-        return Response(sorted(records.values(), key=lambda row: (row["site_name"], row["business_address"])))
+                records[profile.business_address] = {"business_address": profile.business_address, "site": profile.site_id, "site_name": profile.site.name if profile.site_id else "", "channel_label": profile.channel_label}
+        return Response(sorted(records.values(), key=lambda row: (row["site_name"], row["channel_label"], row["business_address"])))
 
     @action(detail=False, methods=["get"], url_path="templates")
     def templates(self, request):
@@ -765,8 +766,11 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
         records = {item.business_address: item for item in
                    WhatsAppAutomationSettings.objects.select_related("site").all()}
         addresses = set(records)
-        addresses.update(WhatsAppConversation.objects.filter(
-            to_address__startswith="whatsapp:+"
+        addresses.update(WhatsAppConversation.objects.exclude(
+            context__kind="veronica_manual",
+        ).filter(
+            models.Q(to_address__startswith="whatsapp:+")
+            | models.Q(to_address__regex=r"^meta:[1-9][0-9]{5,31}$")
         ).values_list("to_address", flat=True).distinct())
         current = _current_whatsapp_business_address()
         if current:
@@ -781,8 +785,8 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
     def current(self, request):
         import re
         selected_address = request.query_params.get("business_address", "").strip()
-        if selected_address and not re.fullmatch(r"whatsapp:\+[1-9][0-9]{7,14}", selected_address):
-            return Response({"detail": "Usa whatsapp:+ y el número con código de país."},
+        if selected_address and not re.fullmatch(r"(?:whatsapp:\+[1-9][0-9]{7,14}|meta:[1-9][0-9]{5,31})", selected_address):
+            return Response({"detail": "Selecciona un canal de WhatsApp válido."},
                             status=status.HTTP_400_BAD_REQUEST)
         business_address = selected_address or _current_whatsapp_business_address()
         if not business_address:

@@ -1662,6 +1662,7 @@ class WhatsAppAutomationSettings(TimestampedModel):
     )
     openai_model = models.CharField(max_length=120, blank=True, default="")
     business_address = models.CharField(max_length=64, unique=True)
+    channel_label = models.CharField(max_length=80, blank=True, default="")
     bot_enabled = models.BooleanField(default=True, db_default=True)
     human_first_enabled = models.BooleanField(default=True)
     business_days = models.JSONField(default=default_whatsapp_business_days)

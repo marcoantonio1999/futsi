@@ -68,7 +68,7 @@ export function WhatsAppSiteSettings({ token, sites, initial, selectedAddress, o
           <select className={inputClass} value={address} disabled={saving} onChange={e => select(e.target.value)}>
             {!address && <option value="">Selecciona un número</option>}
             {address && !options.some(item => item.business_address === address) && <option value={address}>{address} · Nuevo</option>}
-            {options.map(item => <option key={item.business_address} value={item.business_address}>{item.site_name || "Sin sede vinculada"} · {item.business_address.replace("whatsapp:", "")}</option>)}
+            {options.map(item => <option key={item.business_address} value={item.business_address}>{item.site_name || "Sin sede vinculada"} · {item.channel_label || item.business_address.replace("whatsapp:", "").replace("meta:", "ID ")}</option>)}
           </select>
         </label> : <p>{address ? `Editando ${address.replace("whatsapp:", "")}` : "Selecciona un número en el filtro superior para editar sus ajustes. No se aplican cambios masivos a todas las sedes."}</p>}
         <div className="grid gap-2"><label className="grid gap-1 text-sm font-semibold">Configurar otro número

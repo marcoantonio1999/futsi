@@ -160,6 +160,7 @@ export type WhatsAppMessage = {
 export type WhatsAppAutomationSettings = {
   id: number | null;
   business_address: string;
+  channel_label: string;
   site: number | null;
   site_name: string;
   openai_model: string;
@@ -236,6 +237,7 @@ export type WhatsAppConversation = {
   business_address?: string;
   channel_site?: number | null;
   channel_site_name?: string | null;
+  channel_label?: string | null;
   manual_send_available?: boolean;
   attention_resolution?: { message_id: number; resolved_at: string } | null;
   id: number;

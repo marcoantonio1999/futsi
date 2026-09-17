@@ -73,6 +73,9 @@ export function VoiceDashboardPanel({
   const [channelRetry, setChannelRetry] = useState(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [inboxFilter, setInboxFilter] = useState<AttentionFilter>("all");
+  const [bookingId, setBookingId] = useState<number | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     setChannelError("");
@@ -84,7 +87,17 @@ export function VoiceDashboardPanel({
   const scope = { site: selectedSite, address: selectedAddress };
   const query = scopeQuery(scope);
   const voiceData = useMemo(() => filterCommunications(permittedData, { site: selectedSite, address: selectedAddress }, channels), [permittedData, selectedSite, selectedAddress, channels]);
+  const hasUnassigned = channels.some(channel => channel.site === null)
+    || permittedData.whatsappConversations.some(conversation => conversationSite(conversation) == null);
   const channelOptions = channels.filter(c => selectedSite === "all" || (selectedSite === "unassigned" ? c.site === null : String(c.site) === selectedSite));
+  useEffect(() => {
+    if (channelsReady && selectedSite === "unassigned" && !hasUnassigned) {
+      setSelectedSite("all");
+      setSelectedAddress("all");
+      setConversationId(null);
+      setBookingId(null);
+    }
+  }, [channelsReady, hasUnassigned, selectedSite]);
   function canChangeScope() {
     if (settingsBusy) return false;
     return !settingsDirty || window.confirm("Hay ajustes sin guardar. ¿Descartarlos y cambiar de sede o número?");
@@ -96,9 +109,6 @@ export function VoiceDashboardPanel({
     if (address !== "all" && user.role !== "site_coordinator") setSelectedSite(channel?.site ? String(channel.site) : "unassigned");
     setConversationId(null); setBookingId(null);
   }
-  const [conversationId, setConversationId] = useState<number | null>(null);
-  const [inboxFilter, setInboxFilter] = useState<AttentionFilter>("all");
-  const [bookingId, setBookingId] = useState<number | null>(null);
   useEffect(() => { if (section !== "bookings") setBookingId(null); if (section !== "whatsapp") { setConversationId(null); setInboxFilter("all"); } }, [section]);
   function openInbox(filter: AttentionFilter) { setConversationId(null); setInboxFilter(filter); onSelectSection("whatsapp"); }
   function openConversation(id: number) { setInboxFilter("all"); setConversationId(id); onSelectSection("whatsapp"); }
@@ -164,13 +174,13 @@ export function VoiceDashboardPanel({
       <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{sectionDetail.title}</h2></div></header>
       <section className="comm-panel comm-scope" aria-label="Ámbito de comunicaciones">
         <label>Sede<select aria-label="Sede de comunicaciones" className={inputClass} value={selectedSite} disabled={settingsBusy || user.role === "site_coordinator"} onChange={e => { if (canChangeScope()) { setSettingsDirty(false); setSelectedSite(e.target.value); setSelectedAddress("all"); setConversationId(null); setBookingId(null); } }}>
-          {user.role !== "site_coordinator" && <><option value="all">Todas las sedes · Consolidado</option><option value="unassigned">Sin sede vinculada</option></>}
+          {user.role !== "site_coordinator" && <><option value="all">Todas las sedes · Consolidado</option>{hasUnassigned && <option value="unassigned">Canales pendientes de vincular</option>}</>}
           {permittedData.sites.map(site => <option value={site.id} key={site.id}>{site.name}</option>)}
         </select></label>
         <label>Número de atención<select aria-label="Número de comunicaciones" className={inputClass} value={selectedAddress} disabled={settingsBusy || !channelsReady} onChange={e => changeAddress(e.target.value)}>
           <option value="all">Todos los números de la selección</option>
-          {selectedAddress !== "all" && !channelOptions.some(c => c.business_address === selectedAddress) && <option value={selectedAddress}>{selectedAddress.replace("whatsapp:", "")} · Sin vínculo</option>}
-          {channelOptions.map(channel => <option key={channel.business_address} value={channel.business_address}>{channel.business_address.replace("whatsapp:", "")} · {channel.site_name || "Sin sede vinculada"}</option>)}
+          {selectedAddress !== "all" && !channelOptions.some(c => c.business_address === selectedAddress) && <option value={selectedAddress}>{selectedAddress.replace("whatsapp:", "").replace("meta:", "ID ")} · Sin vínculo</option>}
+          {channelOptions.map(channel => <option key={channel.business_address} value={channel.business_address}>{channel.channel_label || channel.business_address.replace("whatsapp:", "").replace("meta:", "ID ")} · {channel.site_name || "Sin sede vinculada"}</option>)}
         </select></label>
         <p>El filtro se conserva entre subsecciones. WhatsApp, llamadas y resultados se filtran por número; la agenda y disponibilidad son de la sede, e incluyen reservas manuales.</p>
         {channelsReady && selectedSite !== "all" && !channelOptions.length && <p role="status">Esta sede no tiene números registrados en el sistema. Puedes preparar su configuración en Ajustes; conectar el número requiere su integración de WhatsApp.</p>}
