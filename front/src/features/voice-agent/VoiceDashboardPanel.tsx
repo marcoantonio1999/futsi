@@ -182,7 +182,6 @@ export function VoiceDashboardPanel({
           {selectedAddress !== "all" && !channelOptions.some(c => c.business_address === selectedAddress) && <option value={selectedAddress}>{selectedAddress.replace("whatsapp:", "").replace("meta:", "ID ")} · Sin vínculo</option>}
           {channelOptions.map(channel => <option key={channel.business_address} value={channel.business_address}>{channel.channel_label || channel.business_address.replace("whatsapp:", "").replace("meta:", "ID ")} · {channel.site_name || "Sin sede vinculada"}</option>)}
         </select></label>
-        <p>El filtro se conserva entre subsecciones. WhatsApp, llamadas y resultados se filtran por número; la agenda y disponibilidad son de la sede, e incluyen reservas manuales.</p>
         {channelsReady && selectedSite !== "all" && !channelOptions.length && <p role="status">Esta sede no tiene números registrados en el sistema. Puedes preparar su configuración en Ajustes; conectar el número requiere su integración de WhatsApp.</p>}
       </section>
       <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
