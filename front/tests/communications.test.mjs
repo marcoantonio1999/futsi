@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { compareConversations, conversationAttention, matchesAttention, contactName, durationLabel, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
+import { templateStatusMeta } from "../src/features/voice-agent/veronicaTemplateStatus.ts";
+
+test("Veronica template states are displayed in Spanish with a safe fallback", () => {
+  assert.deepEqual(templateStatusMeta("APPROVED"), { label: "Aprobada", tone: "approved" });
+  assert.deepEqual(templateStatusMeta("pending"), { label: "Pendiente", tone: "pending" });
+  assert.deepEqual(templateStatusMeta("REJECTED"), { label: "Rechazada", tone: "rejected" });
+  assert.deepEqual(templateStatusMeta("custom_review"), { label: "CUSTOM REVIEW", tone: "inactive" });
+});
 
 test("closed and expired windows never enable a reply", () => {
   const now = Date.parse("2026-09-05T12:00:00Z");

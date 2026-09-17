@@ -4,6 +4,7 @@ import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } 
 import "./veronica.css";
 import { deliveryProblem } from "./veronicaDelivery";
 import { VeronicaAutomaticPdf } from './VeronicaAutomaticPdf';
+import { templateStatusMeta } from "./veronicaTemplateStatus";
 
 type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null; can_reply: boolean; window_end: string | null };
 type Message = { id: number; body: string; direction: string; created_at: string; status: string; error_codes: number[] };
@@ -57,6 +58,7 @@ export function VeronicaPanel({ token }: { token: string }) {
   const request = useRef<{ fingerprint: string; id: string } | null>(null);
   const lock = useRef(false);
   const selected = templates.find(t => t.name + ":" + t.language === templateKey);
+  const selectedStatus = selected ? templateStatusMeta(selected.status) : null;
   const knownContactName = chat && chat.name !== chat.phone && !/^\+?\d+$/.test(chat.name) ? chat.name : "";
   const parameterDefaults = (template?: Template) => Object.fromEntries((template?.parameters || []).map(parameter =>
     [parameter.key, parameter.contact_name ? knownContactName : ""]));
@@ -95,7 +97,8 @@ export function VeronicaPanel({ token }: { token: string }) {
     try {
       const r = await apiRequest<{ templates: Template[] }>("/veronica/templates/", token);
       setTemplates(r.templates);
-      const initial = r.templates.find(t => t.name === "reclutamiento_primer_mensaje" && t.language === "es") || r.templates.find(t => t.sendable);
+      const current = r.templates.find(t => t.name + ":" + t.language === templateKey);
+      const initial = current || r.templates.find(t => t.name === "seguimiento_postulacion_occ") || r.templates.find(t => t.name === "reclutamiento_primer_mensaje" && t.language === "es") || r.templates.find(t => t.sendable) || r.templates[0];
       setTemplateKey(initial ? initial.name + ":" + initial.language : "");
       setTemplateParameters(parameterDefaults(initial));
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -142,7 +145,7 @@ export function VeronicaPanel({ token }: { token: string }) {
   }, [templateRequired, templates.length]);
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
   return <div className="veronica-console">
-    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
+    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => { setRefresh(n => n + 1); void loadTemplates(); }}>Actualizar</button></header>
     {error && <p className="comm-error" role="alert">{error}</p>}
     {chat && lastProblem ? <DeliveryAlert message={lastProblem} phone={chat.phone} /> : notice && <p className="vero-note" role="status">{notice}</p>}
     <VeronicaAutomaticPdf token={token} onSaved={() => setRefresh(n => n+1)} />
@@ -159,7 +162,8 @@ export function VeronicaPanel({ token }: { token: string }) {
       {chat ? <dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
       {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
       {chat && <><h3>Historial</h3>{history.has_more && <button disabled={busy} onClick={older}>Ver mensajes anteriores</button>}<div className="vero-history" aria-label="Historial de Verónica">{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>Sin mensajes registrados. El historial empieza con los eventos guardados por el servicio; no importa automáticamente chats anteriores.</p>}</div></>}
-      {templateRequired ? <><label>Plantilla<select className={inputClass} disabled={busy} value={templateKey} onChange={e => { const next = templates.find(t => t.name + ":" + t.language === e.target.value); setTemplateKey(e.target.value); setTemplateParameters(parameterDefaults(next)); request.current = null; }}><option value="">Selecciona una plantilla</option>{templates.filter(t => t.sendable).map(t => <option key={t.name + t.language} value={t.name + ":" + t.language}>{t.name}</option>)}</select></label>
+      {templateRequired ? <><label><span className="vero-template-heading"><span>Plantilla</span>{selectedStatus && <span className={`vero-template-status ${selectedStatus.tone}`} aria-label={`Estado de la plantilla: ${selectedStatus.label}`}>{selectedStatus.label}</span>}</span><select className={inputClass} disabled={busy} value={templateKey} onChange={e => { const next = templates.find(t => t.name + ":" + t.language === e.target.value); setTemplateKey(e.target.value); setTemplateParameters(parameterDefaults(next)); request.current = null; }}><option value="">Selecciona una plantilla</option>{templates.map(t => { const status = templateStatusMeta(t.status); return <option key={t.name + t.language} value={t.name + ":" + t.language}>{t.name} · {status.label}</option>; })}</select></label>
+        {selected && !selected.sendable && <small className="vero-template-help" role="status">{selected.reason || "Esta plantilla todavía no puede enviarse. Espera a que Meta la apruebe y pulsa Actualizar."}</small>}
         {(selected?.parameters || []).map(parameter => <label key={parameter.key}>{parameter.label}<input className={inputClass} maxLength={500} disabled={busy} value={templateParameters[parameter.key] || ""} placeholder={parameter.contact_name ? "Nombre" : "Dato de la plantilla"} onChange={e => { setTemplateParameters(values => ({ ...values, [parameter.key]: e.target.value })); request.current = null; }} /></label>)}</>
         : <label>Mensaje<textarea autoFocus className={inputClass} rows={4} maxLength={4000} disabled={busy} value={body} onChange={e => setBody(e.target.value)} /></label>}
       {chat?.opted_out && <p role="alert">Este contacto pidió no recibir mensajes. Envío bloqueado.</p>}
