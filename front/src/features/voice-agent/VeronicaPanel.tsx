@@ -5,13 +5,28 @@ import "./veronica.css";
 import { deliveryProblem } from "./veronicaDelivery";
 import { VeronicaAutomaticPdf } from './VeronicaAutomaticPdf';
 
-type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null };
+type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null; can_reply: boolean; window_end: string | null };
 type Message = { id: number; body: string; direction: string; created_at: string; status: string; error_codes: number[] };
 type History = { messages: Message[]; can_reply: boolean; window_end: string | null; has_more: boolean };
 type Template = { name: string; language: string; text: string; status: string; sendable: boolean; reason: string };
 type SendResult = { conversation_id: number; status: string; detail: string; message_id: string };
 const labels: Record<string, string> = { accepted: "Aceptado por la API · aún no confirma entrega", sent: "Enviado", delivered: "Entregado", read: "Leído", failed: "Fallido", sending: "Procesando · no repetir", uncertain: "Resultado incierto · no repetir" };
 const emptyHistory: History = { messages: [], can_reply: false, window_end: null, has_more: false };
+
+function replyWindowOpen(windowEnd: string | null, canReply: boolean, now: number) {
+  if (!windowEnd || !canReply) return false;
+  const end = Date.parse(windowEnd);
+  return Number.isFinite(end) && end > now;
+}
+
+function replyWindowRemaining(windowEnd: string | null, now: number) {
+  if (!windowEnd) return "";
+  const minutes = Math.max(1, Math.ceil((Date.parse(windowEnd) - now) / 60000));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${minutes} min`;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}
 
 function DeliveryAlert({ message, phone }: { message: Message; phone?: string }) {
   const problem = deliveryProblem(message.status, message.error_codes);
@@ -38,9 +53,16 @@ export function VeronicaPanel({ token }: { token: string }) {
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [clock, setClock] = useState(() => Date.now());
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const request = useRef<{ fingerprint: string; id: string } | null>(null);
   const lock = useRef(false);
   const selected = templates.find(t => t.name + ":" + t.language === templateKey);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -54,10 +76,11 @@ export function VeronicaPanel({ token }: { token: string }) {
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [token, query, offset, refresh]);
   useEffect(() => {
-    if (!chat) { setHistory(emptyHistory); return; }
+    if (!chat) { setHistory(emptyHistory); setHistoryLoaded(false); return; }
     const controller = new AbortController();
+    setHistoryLoaded(false);
     const load = () => apiRequest<History>(`/veronica/history/?conversation_id=${chat.id}`, token, { signal: controller.signal })
-      .then(setHistory).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+      .then(result => { setHistory(result); setHistoryLoaded(true); }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     void load();
     const interval = window.setInterval(() => { if (!document.hidden) void load(); }, 15000);
     return () => { controller.abort(); window.clearInterval(interval); };
@@ -84,7 +107,7 @@ export function VeronicaPanel({ token }: { token: string }) {
     setContactName(c && c.name !== c.phone ? c.name : "");
     const savedPhone = c?.phone.replace(/^\+/, '') ?? '';
     const localPhone = /^52\d{10}$/.test(savedPhone) ? savedPhone.slice(2) : /^521\d{10}$/.test(savedPhone) ? savedPhone.slice(3) : savedPhone;
-    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
+    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
   }
   async function send() {
     if (lock.current) return;
@@ -109,13 +132,16 @@ export function VeronicaPanel({ token }: { token: string }) {
       setNotice(labels[r.status] || r.status);
       if (r.status === "accepted") { setBody(""); setFile(null); request.current = null; }
       if (r.status === "failed") setError(r.detail || "La API rechazó el envío. Revisa la conexión antes de intentar otro envío.");
-      if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, last_message_at: null, opted_out: false });
+      if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, last_message_at: null, opted_out: false, can_reply: false, window_end: null });
       setRefresh(n => n + 1);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); lock.current = false; }
   }
   const canSend = !busy && (chat ? /^\+?[1-9]\d{7,14}$/.test(chat.phone) : /^[1-9]\d{9}$/.test(phone)) && !chat?.opted_out && (tab === "template" ? !!selected?.sendable : history.can_reply && (tab === "text" ? !!body.trim() : !!file));
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
+  const selectedWindowEnd = historyLoaded ? history.window_end : chat?.window_end ?? null;
+  const selectedCanReply = historyLoaded ? history.can_reply : Boolean(chat?.can_reply);
+  const selectedWindowOpen = replyWindowOpen(selectedWindowEnd, selectedCanReply, clock);
   return <div className="veronica-console">
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
     {error && <p className="comm-error" role="alert">{error}</p>}
@@ -125,7 +151,10 @@ export function VeronicaPanel({ token }: { token: string }) {
       <h3>Conversaciones</h3><input aria-label="Buscar contacto de Verónica" className={inputClass} placeholder="Buscar teléfono o nombre" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} />
       <button className={primaryButtonClass} disabled={busy} onClick={() => choose(null)}>Nuevo destinatario</button>
       {loading && <p role="status">Cargando…</p>}{!loading && !chats.length && <p>No hay conversaciones en esta búsqueda.</p>}
-      <div className="vero-contacts">{chats.map(c => <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small></button>)}</div>
+      <div className="vero-contacts">{chats.map(c => {
+        const open = replyWindowOpen(c.window_end, c.can_reply, clock);
+        return <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small><span className={`vero-window-chip ${open ? "open" : "closed"}`}>{open ? `Ventana abierta · ${replyWindowRemaining(c.window_end, clock)}` : "Ventana cerrada"}</span></button>;
+      })}</div>
       <nav aria-label="Páginas de conversaciones"><button disabled={!offset || busy} onClick={() => setOffset(n => Math.max(0, n - 30))}>Anterior</button><span>{offset / 30 + 1}</span><button disabled={!more || busy} onClick={() => setOffset(n => n + 30)}>Siguiente</button></nav>
     </aside><section className="comm-panel">
       <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} readOnly={!!chat} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>
@@ -137,6 +166,7 @@ export function VeronicaPanel({ token }: { token: string }) {
           setChat({ ...chat, name: saved.name }); setContactName(saved.name); setRefresh(n => n+1);
         } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
       }}>Guardar nombre</button><small>El nombre guardado aquí tiene prioridad sobre el perfil de WhatsApp y los archivos importados.</small></div>}
+      {chat && <div className={`vero-window-status ${selectedWindowOpen ? "open" : "closed"}`} role="status"><strong>{selectedWindowOpen ? "Ventana de 24 horas abierta" : "Ventana de 24 horas cerrada"}</strong><span>{selectedWindowOpen ? `Puedes responder desde Futsi durante ${replyWindowRemaining(selectedWindowEnd, clock)} más. Cierra ${formatDateTime(selectedWindowEnd)}.` : chat.opted_out ? "Este contacto solicitó no recibir más mensajes." : "Para volver a escribirle, usa una plantilla aprobada o espera un nuevo mensaje del contacto."}</span></div>}
       {chat && <><h3>Historial</h3>{history.has_more && <button disabled={busy} onClick={older}>Ver mensajes anteriores</button>}<div className="vero-history" aria-label="Historial de Verónica">{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>Sin mensajes registrados. El historial empieza con los eventos guardados por el servicio; no importa automáticamente chats anteriores.</p>}</div></>}
       <div className="vero-tabs" role="tablist" aria-label="Tipo de envío">{([['template', 'Plantillas'], ['text', 'Mensaje'], ['document', 'PDF']] as const).map(([key, label]) => <button role="tab" aria-selected={tab === key} disabled={busy} key={key} onClick={() => { setTab(key); setBody(""); }}>{label}</button>)}</div>
       {tab === "template" ? <div><button disabled={busy} className={secondaryButtonClass} onClick={() => void loadTemplates()}>Consultar plantillas de Verónica</button>
