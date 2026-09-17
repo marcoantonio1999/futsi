@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFormRequest, apiRequest } from "../../api";
+import { apiRequest } from "../../api";
 import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } from "./model";
 import "./veronica.css";
 import { deliveryProblem } from "./veronicaDelivery";
@@ -40,19 +40,18 @@ function DeliveryAlert({ message, phone }: { message: Message; phone?: string })
 }
 
 export function VeronicaPanel({ token }: { token: string }) {
-  const [tab, setTab] = useState<"text" | "template" | "document">("template");
   const [chats, setChats] = useState<Chat[]>([]), [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0), [more, setMore] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null), [phone, setPhone] = useState("");
   const [history, setHistory] = useState<History>(emptyHistory);
   const [templates, setTemplates] = useState<Template[]>([]), [templateKey, setTemplateKey] = useState("");
-  const [cursor, setCursor] = useState("");
-  const [body, setBody] = useState(""), [file, setFile] = useState<File | null>(null);
+  const [body, setBody] = useState("");
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const request = useRef<{ fingerprint: string; id: string } | null>(null);
   const lock = useRef(false);
   const selected = templates.find(t => t.name + ":" + t.language === templateKey);
@@ -74,24 +73,23 @@ export function VeronicaPanel({ token }: { token: string }) {
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [token, query, offset, refresh]);
   useEffect(() => {
-    if (!chat) { setHistory(emptyHistory); return; }
+    if (!chat) { setHistory(emptyHistory); setHistoryLoaded(false); return; }
     const controller = new AbortController();
+    setHistoryLoaded(false);
     const load = () => apiRequest<History>(`/veronica/history/?conversation_id=${chat.id}`, token, { signal: controller.signal })
-      .then(setHistory).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+      .then(result => { setHistory(result); setHistoryLoaded(true); }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     void load();
     const interval = window.setInterval(() => { if (!document.hidden) void load(); }, 15000);
     return () => { controller.abort(); window.clearInterval(interval); };
   }, [token, chat, refresh]);
 
-  async function loadTemplates(after = "") {
+  async function loadTemplates() {
     setBusy(true); setError("");
     try {
-      const r = await apiRequest<{ templates: Template[]; next_cursor: string }>(`/veronica/templates/?after=${encodeURIComponent(after)}`, token);
-      setTemplates(old => after ? [...old, ...r.templates] : r.templates); setCursor(r.next_cursor);
-      if (!after) {
-        const initial = r.templates.find(t => t.name === "reclutamiento_primer_mensaje" && t.language === "es") || r.templates.find(t => t.sendable);
-        setTemplateKey(initial ? initial.name + ":" + initial.language : "");
-      }
+      const r = await apiRequest<{ templates: Template[] }>("/veronica/templates/", token);
+      setTemplates(r.templates);
+      const initial = r.templates.find(t => t.name === "reclutamiento_primer_mensaje" && t.language === "es") || r.templates.find(t => t.sendable);
+      setTemplateKey(initial ? initial.name + ":" + initial.language : "");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   async function older() {
@@ -103,37 +101,35 @@ export function VeronicaPanel({ token }: { token: string }) {
   function choose(c: Chat | null) {
     const savedPhone = c?.phone.replace(/^\+/, '') ?? '';
     const localPhone = /^52\d{10}$/.test(savedPhone) ? savedPhone.slice(2) : /^521\d{10}$/.test(savedPhone) ? savedPhone.slice(3) : savedPhone;
-    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setBody(""); setFile(null); setNotice(""); setError(""); request.current = null;
+    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setNotice(""); setError(""); request.current = null;
   }
   async function send() {
     if (lock.current) return;
     if (!chat && !/^[1-9]\d{9}$/.test(phone)) { setError('Escribe los 10 dígitos del número de México, sin +52.'); return; }
     const destination = chat?.phone ?? `+52${phone}`;
+    const kind = replyAvailable ? "text" : "template";
     setConfirming(false);
     lock.current = true; setBusy(true); setError(""); setNotice("");
-    const fingerprint = JSON.stringify([phone, tab, body, templateKey, file?.name, file?.size, file?.lastModified]);
+    const fingerprint = JSON.stringify([phone, kind, body, templateKey]);
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
     try {
-      let mediaToken = "";
-      if (tab === "document") {
-        if (!file || file.size > 5 * 1024 * 1024 || !file.name.toLowerCase().endsWith(".pdf")) throw new Error("Selecciona un PDF de máximo 5 MB.");
-        const form = new FormData(); form.append("file", file);
-        const uploaded = await apiFormRequest<{ media_token: string }>("/veronica/upload/", token, form);
-        mediaToken = uploaded.media_token;
-      }
       const r = await apiRequest<SendResult>("/veronica/send/", token, { method: "POST", body: JSON.stringify({
-        phone: destination, kind: tab, body, template_name: selected?.name, language: selected?.language,
-        media_token: mediaToken, request_id: request.current.id,
+        phone: destination, kind, body, template_name: selected?.name, language: selected?.language, request_id: request.current.id,
       }) });
       setNotice(labels[r.status] || r.status);
-      if (r.status === "accepted") { setBody(""); setFile(null); request.current = null; }
+      if (r.status === "accepted") { setBody(""); request.current = null; }
       if (r.status === "failed") setError(r.detail || "La API rechazó el envío. Revisa la conexión antes de intentar otro envío.");
       if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, last_message_at: null, opted_out: false, can_reply: false, window_end: null });
       setRefresh(n => n + 1);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); lock.current = false; }
   }
-  const canSend = !busy && (chat ? /^\+?[1-9]\d{7,14}$/.test(chat.phone) : /^[1-9]\d{9}$/.test(phone)) && !chat?.opted_out && (tab === "template" ? !!selected?.sendable : history.can_reply && (tab === "text" ? !!body.trim() : !!file));
+  const replyAvailable = Boolean(chat) && replyWindowOpen(historyLoaded ? history.window_end : chat?.window_end ?? null, historyLoaded ? history.can_reply : Boolean(chat?.can_reply), clock);
+  const templateRequired = !replyAvailable;
+  const canSend = !busy && (chat ? /^\+?[1-9]\d{7,14}$/.test(chat.phone) : /^[1-9]\d{9}$/.test(phone)) && !chat?.opted_out && (templateRequired ? !!selected?.sendable : !!body.trim());
+  useEffect(() => {
+    if (templateRequired && !templates.length) void loadTemplates();
+  }, [templateRequired, templates.length]);
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
   return <div className="veronica-console">
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes, plantillas y PDF</h2><p>Canal independiente · Atención manual · Sin bot de la academia</p></div><button className={secondaryButtonClass} disabled={busy} onClick={() => setRefresh(n => n + 1)}>Actualizar</button></header>
@@ -153,25 +149,16 @@ export function VeronicaPanel({ token }: { token: string }) {
       {chat ? <dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
       {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
       {chat && <><h3>Historial</h3>{history.has_more && <button disabled={busy} onClick={older}>Ver mensajes anteriores</button>}<div className="vero-history" aria-label="Historial de Verónica">{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>Sin mensajes registrados. El historial empieza con los eventos guardados por el servicio; no importa automáticamente chats anteriores.</p>}</div></>}
-      <div className="vero-tabs" role="tablist" aria-label="Tipo de envío">{([['template', 'Plantillas'], ['text', 'Mensaje'], ['document', 'PDF']] as const).map(([key, label]) => <button role="tab" aria-selected={tab === key} disabled={busy} key={key} onClick={() => { setTab(key); setBody(""); }}>{label}</button>)}</div>
-      {tab === "template" ? <div><button disabled={busy} className={secondaryButtonClass} onClick={() => void loadTemplates()}>Consultar plantillas de Verónica</button>
-        <label>Plantilla e idioma<select className={inputClass} disabled={busy} value={templateKey} onChange={e => setTemplateKey(e.target.value)}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={t.name + t.language} value={t.name + ":" + t.language}>{t.name} · {t.language} · {t.status}</option>)}</select></label>
-        {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
-        {selected && <div className="vero-preview"><strong>{selected.status}</strong><p>{selected.text}</p>{selected.reason && <p>{selected.reason}</p>}</div>}
-        <p>La plantilla inicial es reclutamiento_primer_mensaje · es · sin variables. Se verifica su aprobación al enviarla.</p>
-      </div> : <><p>{history.can_reply ? `Puedes responder hasta ${formatDateTime(history.window_end)}.` : "Para enviar texto o PDF, el contacto debe haberte escrito durante las últimas 24 horas. Primero envía una plantilla y espera su respuesta."}</p>
-        {tab === "document" && <label>PDF (máximo 5 MB)<input type="file" accept=".pdf,application/pdf" disabled={busy || !history.can_reply} onChange={e => setFile(e.target.files?.[0] ?? null)} />{file && <small>Seleccionado: {file.name}</small>}<small>Se sube a la conexión de Verónica al confirmar el envío; no se publica un enlace abierto.</small></label>}
-        <label>{tab === "document" ? "Descripción del PDF (opcional)" : "Mensaje"}<textarea className={inputClass} rows={4} maxLength={tab === "document" ? 1024 : 4000} disabled={busy || !history.can_reply} value={body} onChange={e => setBody(e.target.value)} /></label></>}
+      {templateRequired ? <label>Plantilla<select className={inputClass} disabled={busy} value={templateKey} onChange={e => setTemplateKey(e.target.value)}><option value="">Selecciona una plantilla</option>{templates.filter(t => t.sendable).map(t => <option key={t.name + t.language} value={t.name + ":" + t.language}>{t.name}</option>)}</select></label>
+        : <label>Mensaje<textarea autoFocus className={inputClass} rows={4} maxLength={4000} disabled={busy} value={body} onChange={e => setBody(e.target.value)} /></label>}
       {chat?.opted_out && <p role="alert">Este contacto pidió no recibir mensajes. Envío bloqueado.</p>}
-      <button className={primaryButtonClass} disabled={!canSend} onClick={() => setConfirming(true)}>{busy ? "Procesando…" : "Enviar desde Verónica"}</button>
-      <p className="vero-footnote">Envío individual con confirmación. La respuesta a la plantilla de reclutamiento activa el PDF configurado una sola vez; no activa el bot de la academia.</p>
+      <button className={primaryButtonClass} disabled={!canSend} onClick={() => setConfirming(true)}>{busy ? "Procesando…" : templateRequired ? "Enviar plantilla" : "Enviar mensaje"}</button>
     </section></div>
     {confirming && <div className="vero-confirm-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="vero-confirm-title" className="vero-confirm">
       <h3 id="vero-confirm-title">Confirmar envío desde Verónica</h3>
       <p>Destinatario: <strong>{phone}</strong></p>
-      <p>{tab === "template" ? `Plantilla: ${selected?.name} · ${selected?.language}` : tab === "document" ? `PDF: ${file?.name}` : "Mensaje de texto"}</p>
-      <p className="vero-preview">{tab === "template" ? selected?.text : body || "Sin descripción"}</p>
-      {tab === "template" && <p>El envío real de plantillas puede tener costo en Meta.</p>}
+      <p>{templateRequired ? `Plantilla: ${selected?.name}` : "Mensaje"}</p>
+      <p className="vero-preview">{templateRequired ? selected?.text : body}</p>
       <div className="vero-tabs"><button autoFocus className={secondaryButtonClass} onClick={() => setConfirming(false)}>Cancelar</button><button className={primaryButtonClass} disabled={!canSend} onClick={() => void send()}>Confirmar envío</button></div>
     </div></div>}
   </div>;
