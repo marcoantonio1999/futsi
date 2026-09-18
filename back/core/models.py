@@ -28,6 +28,34 @@ class TimestampedModel(models.Model):
         abstract = True
 
 
+class VeronicaFilterOption(TimestampedModel):
+    class Dimension(models.TextChoices):
+        PLATFORM = "platform", "Plataforma"
+        VACANCY_TYPE = "vacancy_type", "Tipo de vacante"
+
+    dimension = models.CharField(max_length=24, choices=Dimension.choices)
+    label = models.CharField(max_length=80)
+    normalized_label = models.CharField(max_length=80)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_veronica_filter_options",
+    )
+
+    class Meta:
+        db_table = "veronica_filter_options"
+        ordering = ["dimension", "label"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dimension", "normalized_label"],
+                name="uq_veronica_filter_dimension_label",
+            ),
+        ]
+
+
 def generate_virtual_clabe():
     return f"646180{uuid4().int % 10**12:012d}"
 

@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from core.veronica_access import CanUseVeronica, is_veronica_only
 from core.api.bulk_import import import_recipients
+from core.api.veronica_filters import ensure_imported
 
 class BulkView(APIView):
     permission_classes = [CanUseVeronica]
@@ -34,6 +35,8 @@ class BulkView(APIView):
         if operation == 'import':
             try:
                 result = import_recipients(request.FILES.get('file'), request.data.get('text', ''), request.data.get('column'))
+                if kind == 'veronica':
+                    result['added_filter_options'] = ensure_imported(result.get('filters', {}), request.user)
                 if result.get('phones') and request.data.get('channel'):
                     lookup = self.forward(kind, 'names', data={'actor_id': request.user.pk,
                         'channel': request.data['channel'], 'phones': result['phones']})
@@ -50,11 +53,16 @@ class BulkView(APIView):
             return Response(status=405)
         if kind != 'academy' and operation in {'contact-select', 'contact-update'}:
             return Response(status=403)
-        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'phones', 'names', 'contact_ids'),
+        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'phones', 'names', 'filters', 'contact_ids'),
                    'start': ('id', 'consent', 'review_confirmed'), 'cancel': ('id',),
                    'contact-select': ('channel', 'contact_ids'),
                    'contact-update': ('channel', 'contact_id', 'name', 'priority', 'notes', 'manually_blocked')}
         data = {k: request.data[k] for k in allowed[operation] if k in request.data}
+        if kind == 'veronica' and operation == 'create':
+            try:
+                ensure_imported(data.get('filters', {}), request.user)
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=400)
         data['actor_id'] = request.user.pk
         return self.forward(kind, operation, data=data)
 

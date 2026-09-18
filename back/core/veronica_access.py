@@ -17,6 +17,8 @@ def veronica_route_allowed(path, method):
         "/api/veronica/send/": {"POST"},
         "/api/veronica/upload/": {"POST"},
         "/api/veronica/contact/": {"POST"},
+        "/api/veronica/contact-filters/": {"POST"},
+        "/api/veronica/filter-options/": {"GET", "HEAD", "POST"},
         "/api/veronica/auto-pdf/": {"GET", "HEAD", "POST"},
     }
     for operation in ('channels', 'catalog', 'list', 'detail', 'connections'):

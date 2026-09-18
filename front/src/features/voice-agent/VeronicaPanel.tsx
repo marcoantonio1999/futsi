@@ -6,8 +6,9 @@ import "./veronica.css";
 import { deliveryProblem } from "./veronicaDelivery";
 import { VeronicaAutomaticPdf } from './VeronicaAutomaticPdf';
 import { templateStatusMeta } from "./veronicaTemplateStatus";
+import type { VeronicaFilterCatalog } from "./VeronicaFiltersPanel";
 
-type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null; can_reply: boolean; window_end: string | null };
+type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null; can_reply: boolean; window_end: string | null; platform: string; vacancy_type: string };
 type Message = { id: number; body: string; direction: string; created_at: string; status: string; error_codes: number[] };
 type History = { messages: Message[]; can_reply: boolean; window_end: string | null; has_more: boolean };
 type TemplateParameter = { key: string; label: string; contact_name?: boolean };
@@ -44,6 +45,8 @@ function DeliveryAlert({ message, phone }: { message: Message; phone?: string })
 
 export function VeronicaPanel({ token }: { token: string }) {
   const [chats, setChats] = useState<Chat[]>([]), [query, setQuery] = useState("");
+  const [filterCatalog, setFilterCatalog] = useState<VeronicaFilterCatalog>({ platforms: [], vacancy_types: [] });
+  const [platformFilter, setPlatformFilter] = useState(""), [vacancyFilter, setVacancyFilter] = useState("");
   const [offset, setOffset] = useState(0), [more, setMore] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null), [phone, setPhone] = useState("");
   const [history, setHistory] = useState<History>(emptyHistory);
@@ -88,6 +91,12 @@ export function VeronicaPanel({ token }: { token: string }) {
     return () => { observer.disconnect(); window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); };
   }, []);
   useEffect(() => {
+    const controller = new AbortController();
+    apiRequest<VeronicaFilterCatalog>("/veronica/filter-options/", token, { signal: controller.signal })
+      .then(setFilterCatalog).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    return () => controller.abort();
+  }, [token]);
+  useEffect(() => {
     if (pdfOpen) pdfDialog.current?.showModal();
     else pdfDialog.current?.close();
   }, [pdfOpen]);
@@ -104,13 +113,16 @@ export function VeronicaPanel({ token }: { token: string }) {
     const controller = new AbortController();
     setLoading(true);
     const timer = window.setTimeout(() => {
-      apiRequest<{ conversations: Chat[]; has_more: boolean }>(`/veronica/inbox/?q=${encodeURIComponent(query)}&offset=${offset}`, token, { signal: controller.signal })
+      const params = new URLSearchParams({ q: query, offset: String(offset) });
+      if (platformFilter) params.set("platform", platformFilter);
+      if (vacancyFilter) params.set("vacancy_type", vacancyFilter);
+      apiRequest<{ conversations: Chat[]; has_more: boolean }>(`/veronica/inbox/?${params}`, token, { signal: controller.signal })
         .then(r => { setChats(r.conversations); setMore(r.has_more); })
         .catch(e => { if (!controller.signal.aborted) setError(e.message); })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 200);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [token, query, offset, refresh]);
+  }, [token, query, offset, refresh, platformFilter, vacancyFilter]);
   useEffect(() => {
     if (!chat) { setHistory(emptyHistory); setHistoryLoaded(false); return; }
     const controller = new AbortController();
@@ -146,6 +158,19 @@ export function VeronicaPanel({ token }: { token: string }) {
     const contactName = c && c.name !== c.phone && !/^\+?\d+$/.test(c.name) ? c.name : "";
     setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setTemplateParameters(parameterDefaults(selected, contactName)); setNotice(""); setError(""); request.current = null;
   }
+  async function updateChatFilters(next: { platform?: string; vacancy_type?: string }) {
+    if (!chat) return;
+    const updated = { platform: next.platform ?? chat.platform, vacancy_type: next.vacancy_type ?? chat.vacancy_type };
+    setBusy(true); setError("");
+    try {
+      await apiRequest("/veronica/contact-filters/", token, { method: "POST", body: JSON.stringify({ conversation_id: chat.id, ...updated }) });
+      const saved = { ...chat, ...updated };
+      setChat(saved);
+      setChats(rows => rows.map(row => row.id === saved.id ? saved : row));
+      setNotice("Clasificación del chat actualizada.");
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   async function send() {
     if (lock.current) return;
     if (!chat && !/^[1-9]\d{9}$/.test(phone)) { setError('Escribe los 10 dígitos del número de México, sin +52.'); return; }
@@ -163,7 +188,7 @@ export function VeronicaPanel({ token }: { token: string }) {
       setNotice(labels[r.status] || r.status);
       if (r.status === "accepted") { setBody(""); request.current = null; }
       if (r.status === "failed") setError(r.detail || "La API rechazó el envío. Revisa la conexión antes de intentar otro envío.");
-      if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, last_message_at: null, opted_out: false, can_reply: false, window_end: null });
+      if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, last_message_at: null, opted_out: false, can_reply: false, window_end: null, platform: "", vacancy_type: "" });
       setRefresh(n => n + 1);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); lock.current = false; }
@@ -184,16 +209,17 @@ export function VeronicaPanel({ token }: { token: string }) {
     </div>
     <div className="vero-layout"><aside className="comm-panel vero-sidebar">
       <h3>Conversaciones</h3><input aria-label="Buscar contacto de Verónica" className={inputClass} placeholder="Buscar teléfono o nombre" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} />
+      <div className="vero-inbox-filters"><label>Plataforma<select className={inputClass} value={platformFilter} onChange={e => { setPlatformFilter(e.target.value); setOffset(0); }}><option value="">Todas</option>{filterCatalog.platforms.map(item => <option key={item}>{item}</option>)}</select></label><label>Vacante<select className={inputClass} value={vacancyFilter} onChange={e => { setVacancyFilter(e.target.value); setOffset(0); }}><option value="">Todas</option>{filterCatalog.vacancy_types.map(item => <option key={item}>{item}</option>)}</select></label></div>
       <button className={primaryButtonClass} disabled={busy} onClick={() => choose(null)}>Nuevo destinatario</button>
       {loading && <p role="status">Cargando…</p>}{!loading && !chats.length && <p>No hay conversaciones en esta búsqueda.</p>}
       <div className="vero-contacts">{chats.map(c => {
         const open = replyWindowOpen(c.window_end, c.can_reply, clock);
-        return <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small><span className={`vero-window-chip ${open ? "open" : "closed"}`}>{open ? `Ventana abierta · ${replyWindowRemaining(c.window_end, clock)}` : "Ventana cerrada"}</span></button>;
+        return <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small>{(c.platform || c.vacancy_type) && <span className="vero-chat-tags">{c.platform && <span>{c.platform}</span>}{c.vacancy_type && <span>{c.vacancy_type}</span>}</span>}<span className={`vero-window-chip ${open ? "open" : "closed"}`}>{open ? `Ventana abierta · ${replyWindowRemaining(c.window_end, clock)}` : "Ventana cerrada"}</span></button>;
       })}</div>
       <nav aria-label="Páginas de conversaciones"><button disabled={!offset || busy} onClick={() => setOffset(n => Math.max(0, n - 30))}>Anterior</button><span>{offset / 30 + 1}</span><button disabled={!more || busy} onClick={() => setOffset(n => n + 30)}>Siguiente</button></nav>
     </aside><section className="comm-panel vero-conversation">
       <button className="vero-mobile-back vero-toolbar-button" onClick={() => setMobileConversation(false)}><ArrowLeft size={18} />Conversaciones</button>
-      {chat ? <dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
+      {chat ? <><dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl><div className="vero-contact-classification"><label>Plataforma<select className={inputClass} disabled={busy} value={chat.platform} onChange={e => void updateChatFilters({ platform: e.target.value })}><option value="">Sin clasificar</option>{chat.platform && !filterCatalog.platforms.includes(chat.platform) && <option>{chat.platform}</option>}{filterCatalog.platforms.map(item => <option key={item}>{item}</option>)}</select></label><label>Tipo de vacante<select className={inputClass} disabled={busy} value={chat.vacancy_type} onChange={e => void updateChatFilters({ vacancy_type: e.target.value })}><option value="">Sin clasificar</option>{chat.vacancy_type && !filterCatalog.vacancy_types.includes(chat.vacancy_type) && <option>{chat.vacancy_type}</option>}{filterCatalog.vacancy_types.map(item => <option key={item}>{item}</option>)}</select></label></div></> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
       {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
       <div ref={historyRef} className="vero-history" aria-label="Historial de Verónica" tabIndex={0} onScroll={e => { const el = e.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
       {chat ? <>{history.has_more && <button disabled={busy} onClick={() => { followLatest.current = false; void older(); }}>Ver mensajes anteriores</button>}{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>{historyLoaded ? 'Sin mensajes registrados.' : 'Cargando mensajes…'}</p>}</> : <div className="vero-new-recipient-state"><strong>Nuevo destinatario</strong><span>Escribe los 10 dígitos, completa los datos de la plantilla y confirma el envío para iniciar la conversación.</span></div>}

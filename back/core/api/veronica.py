@@ -9,18 +9,41 @@ from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from core.veronica_access import CanUseVeronica
+from core.api.veronica_filters import catalog, ensure_option
 
 
 class VeronicaConsoleView(APIView):
     permission_classes = [CanUseVeronica]
 
     def get(self, request, operation):
+        if operation == 'filter-options':
+            return Response(catalog(request.user))
         if operation not in {'inbox', 'history', 'templates', 'auto-pdf'}:
             return Response({'detail': 'Operación no permitida.'}, status=405)
-        query = {k: request.query_params[k] for k in ('q', 'offset', 'conversation_id', 'before', 'after') if k in request.query_params}
+        query = {k: request.query_params[k] for k in ('q', 'offset', 'conversation_id', 'before', 'after', 'platform', 'vacancy_type') if k in request.query_params}
         return self.forward(operation, query=query)
 
     def post(self, request, operation):
+        if operation == 'filter-options':
+            try:
+                option, created = ensure_option(request.data.get('dimension'), request.data.get('label'), request.user)
+                return Response({'dimension': option.dimension, 'label': option.label, 'created': created})
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=400)
+        if operation == 'contact-filters':
+            if not isinstance(request.data, dict):
+                return Response({'detail': 'Solicitud inválida.'}, status=400)
+            payload = {'conversation_id': request.data.get('conversation_id')}
+            try:
+                for dimension in ('platform', 'vacancy_type'):
+                    value = request.data.get(dimension, '')
+                    if value:
+                        option, _created = ensure_option(dimension, value, request.user)
+                        value = option.label
+                    payload[dimension] = value
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=400)
+            return self.forward(operation, body=json.dumps(payload).encode(), content_type='application/json')
         if operation == 'auto-pdf':
             file = request.FILES.get('file')
             caption = request.data.get('caption', '')

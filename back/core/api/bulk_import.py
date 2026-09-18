@@ -21,7 +21,7 @@ def normalize_phone(value):
         raise ValueError()
     return text
 
-def review(values, names=None):
+def review(values, names=None, metadata=None):
     values = [(i, v) for i, v in values if v is not None and str(v).strip()]
     if len(values) > MAX_ROWS:
         raise ValueError('Carga hasta 1,000 números por lote.')
@@ -38,6 +38,7 @@ def review(values, names=None):
             seen.add(phone)
             valid.append(phone)
     names = names or {}
+    metadata = metadata or {}
     # Only keep names associated with accepted numbers. Never evaluate formulas.
     kept_names = {}
     for index, value in values:
@@ -50,7 +51,25 @@ def review(values, names=None):
             name = ' '.join(name.split())[:120]
             if name and phone not in kept_names:
                 kept_names[phone] = name
-    return {'phones': valid, 'names': kept_names, 'invalid': invalid, 'duplicates': duplicates, 'count': len(valid)}
+    kept_metadata = {}
+    for index, value in values:
+        try:
+            phone = normalize_phone(value)
+        except ValueError:
+            continue
+        values_for_row = metadata.get(index, {})
+        if not isinstance(values_for_row, dict):
+            continue
+        destination = kept_metadata.setdefault(phone, {})
+        for key in ('platform', 'vacancy_type'):
+            item = values_for_row.get(key)
+            if isinstance(item, str) and not item.lstrip().startswith('='):
+                item = ' '.join(item.split())[:80]
+                if item and key not in destination:
+                    destination[key] = item
+        if not destination:
+            kept_metadata.pop(phone, None)
+    return {'phones': valid, 'names': kept_names, 'filters': kept_metadata, 'invalid': invalid, 'duplicates': duplicates, 'count': len(valid)}
 
 def import_recipients(file=None, text='', column=None):
     if file and text:
@@ -121,5 +140,18 @@ def import_recipients(file=None, text='', column=None):
             has_header = True
     name_columns = [i for i, v in enumerate(rows[0]) if i != chosen and header(v) in {'nombre', 'nombre completo', 'name', 'contact name'}]
     name_column = name_columns[0] if has_header and len(name_columns) == 1 else None
+    platform_columns = [i for i, v in enumerate(rows[0]) if i != chosen and header(v) in {
+        'plataforma', 'plataforma de origen', 'origen', 'fuente', 'bolsa de trabajo', 'portal', 'platform', 'source'}]
+    vacancy_columns = [i for i, v in enumerate(rows[0]) if i != chosen and header(v) in {
+        'tipo de vacante', 'vacante', 'puesto', 'cargo', 'tipo de puesto', 'perfil', 'vacancy type', 'job type'}]
+    platform_column = platform_columns[0] if has_header and len(platform_columns) == 1 else None
+    vacancy_column = vacancy_columns[0] if has_header and len(vacancy_columns) == 1 else None
     names = {i+1: row[name_column] for i, row in enumerate(rows) if i > 0 and name_column is not None and name_column < len(row)}
-    return review([(i+1, row[chosen] if chosen < len(row) else None) for i, row in enumerate(rows) if not (i == 0 and has_header)], names)
+    metadata = {
+        i+1: {
+            'platform': row[platform_column] if platform_column is not None and platform_column < len(row) else '',
+            'vacancy_type': row[vacancy_column] if vacancy_column is not None and vacancy_column < len(row) else '',
+        }
+        for i, row in enumerate(rows) if i > 0
+    }
+    return review([(i+1, row[chosen] if chosen < len(row) else None) for i, row in enumerate(rows) if not (i == 0 and has_header)], names, metadata)

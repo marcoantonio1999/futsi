@@ -34,6 +34,14 @@ def test_excel_names_and_reversed_columns():
     b = io.BytesIO(); w.save(b)
     assert import_recipients(file('n.xlsx', b.getvalue()))['names'] == {'5512345678': 'María López'}
 
+def test_recruitment_columns_are_imported_by_phone():
+    data = 'Telefono,Nombre,Plataforma,Tipo de vacante\n5512345678,Ana,OCC,Coach\n5587654321,Luis,Indeed,Contador'
+    result = import_recipients(file('rh.csv', data.encode()))
+    assert result['filters'] == {
+        '5512345678': {'platform': 'OCC', 'vacancy_type': 'Coach'},
+        '5587654321': {'platform': 'Indeed', 'vacancy_type': 'Contador'},
+    }
+
 def test_multiple_columns_require_selection():
     content = b'Nombre,Contacto\nUno,5512345678'
     assert import_recipients(file('n.csv', content))['needs_column']
@@ -84,3 +92,13 @@ def test_import_enriches_missing_names_and_preserves_excel_names(auth_client):
         assert result.data['names'] == {'5512345678': 'Excel', '5587654321': 'Known'}
         assert lookup.call_args.args == ('academy', 'names')
         assert lookup.call_args.kwargs['data']['channel'] == 'meta:123'
+
+@pytest.mark.django_db
+def test_veronica_import_creates_unknown_filter_categories(auth_client):
+    from core.models import VeronicaFilterOption
+    client, _, _ = auth_client(role='admin')
+    data = b'Telefono,Plataforma,Puesto\n5512345678,LinkedIn,Recepcionista'
+    result = client.post('/api/veronica/bulk/import/', {'file': file('rh.csv', data)}, format='multipart')
+    assert result.status_code == 200
+    assert result.data['added_filter_options'] == {'platform': ['LinkedIn'], 'vacancy_type': ['Recepcionista']}
+    assert {'LinkedIn', 'Recepcionista'} <= set(VeronicaFilterOption.objects.values_list('label', flat=True))
