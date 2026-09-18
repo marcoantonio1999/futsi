@@ -1,7 +1,7 @@
 import { SitesSubmenu } from "../views/sitesNavigation";
 import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
-import { ChevronDown, GraduationCap, LogOut, Menu, RefreshCw, UsersRound } from "lucide-react";
+import { ChevronDown, GraduationCap, Menu, UsersRound } from "lucide-react";
 import type { RefObject } from "react";
 import type { TabKey } from "../../types";
 import type { TournamentSection } from "../../features/tournaments";
@@ -44,8 +44,6 @@ type AdminShellSidebarProps = {
   onSelectCommunicationsSection: (section: CommunicationsSubsection) => void;
   onSelectStudentsSection: (section: StudentsSubsection) => void;
   onSelectTournamentSection: (section: TournamentSection) => void;
-  onRefresh: () => void;
-  onLogout: () => void;
 };
 
 export function AdminShellSidebar({
@@ -73,8 +71,6 @@ export function AdminShellSidebar({
   onSelectCommunicationsSection,
   onSelectStudentsSection,
   onSelectTournamentSection,
-  onRefresh,
-  onLogout,
 }: AdminShellSidebarProps) {
   return (
     <aside
@@ -126,28 +122,6 @@ export function AdminShellSidebar({
         {sidebarExpanded ? <p className="mt-5 px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">General</p> : <div className="my-3 h-px bg-zinc-200" />}
         <SidebarTabButtons tabs={sidebarTabs.slice(businessScope === "academy" ? 11 : 10)} sidebarExpanded={sidebarExpanded} effectiveActiveTab={effectiveActiveTab} billingSection={billingSection} communicationsSection={communicationsSection} communicationsMenuExpanded={communicationsMenuExpanded} onToggleCommunicationsMenu={onToggleCommunicationsMenu} coachesSection={coachesSection} coachesMenuExpanded={coachesMenuExpanded} canManageCoaches={canManageCoaches} onToggleCoachesMenu={onToggleCoachesMenu} onSelectCoachesSection={onSelectCoachesSection} guardiansSection={guardiansSection} guardiansMenuExpanded={guardiansMenuExpanded} onToggleGuardiansMenu={onToggleGuardiansMenu} onSelectGuardiansSection={onSelectGuardiansSection} studentsSection={studentsSection} tournamentsMenuExpanded={tournamentsMenuExpanded} onToggleTournamentsMenu={onToggleTournamentsMenu} studentsMenuExpanded={studentsMenuExpanded} onToggleStudentsMenu={onToggleStudentsMenu} canReviewCommunicationCalls={canReviewCommunicationCalls} canProgramBilling={canProgramBilling} showBillingSubsections={showBillingSubsections} tournamentSection={tournamentSection} shellTone={shellTone} onSelectTab={onSelectTab} onSelectBillingSection={onSelectBillingSection} onSelectCommunicationsSection={onSelectCommunicationsSection} onSelectStudentsSection={onSelectStudentsSection} onSelectTournamentSection={onSelectTournamentSection} />
       </nav>
-      <div className={`mt-3 shrink-0 ${sidebarExpanded ? "grid gap-2" : "grid gap-2"}`}>
-        {sidebarExpanded ? (
-          <>
-            <button className={`w-full rounded-md px-3 py-2 text-xs font-semibold ${shellTone.refreshButton}`} onClick={onRefresh} type="button">
-              Actualizar
-            </button>
-            <button className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-50" onClick={onLogout} type="button">
-              <LogOut size={14} />
-              Salir
-            </button>
-          </>
-        ) : (
-          <>
-            <button className={`grid size-11 place-items-center rounded-md ${shellTone.refreshButton}`} onClick={onRefresh} type="button" title="Actualizar">
-              <RefreshCw size={16} />
-            </button>
-            <button className="grid size-11 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50" onClick={onLogout} title="Salir" type="button">
-              <LogOut size={16} />
-            </button>
-          </>
-        )}
-      </div>
     </aside>
   );
 }
