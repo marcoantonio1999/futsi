@@ -34,7 +34,7 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
   bookings: { title: "Pruebas gratuitas" },
   calls: { title: "Llamadas y transcripciones" },
   whatsapp: { title: "Bandeja de WhatsApp" },
-  "weekly-stats": { title: "Resultados semanales" },
+  "weekly-stats": { title: "Estadísticas" },
   availability: { title: "Disponibilidad para pruebas" },
   settings: { title: "Ajustes del asistente" },
 };

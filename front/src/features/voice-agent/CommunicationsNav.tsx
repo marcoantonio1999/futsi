@@ -25,7 +25,7 @@ export const communicationGroups: Array<{
   { label: "Gestión", icon: Settings2, items: [
     { key: "connections", label: "Conexiones", admin: true },
     { key: "collections", label: "Cobranza por WhatsApp", shortLabel: "Cobranza" },
-    { key: "weekly-stats", label: "Resultados", admin: true },
+    { key: "weekly-stats", label: "Estadísticas", admin: true },
     { key: "settings", label: "Ajustes del asistente", shortLabel: "Ajustes" , admin: true },
   ] },
 ];
