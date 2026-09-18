@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../api";
-import { filterCommunications, scopeQuery, conversationSite, type CommunicationChannel } from "./communicationScope";
+import { channelsForScope, filterCommunications, scopeQuery, conversationSite, type CommunicationChannel } from "./communicationScope";
 import { CommunicationsNav, communicationGroups } from "./CommunicationsNav";
 import { CommunicationsSummary } from "./CommunicationsSummary";
 import "./communications.css";
@@ -89,6 +89,10 @@ export function VoiceDashboardPanel({
   }, [token, data.whatsappConversations, channelRetry]);
   const scope = { site: selectedSite, address: selectedAddress };
   const query = scopeQuery(scope);
+  const templateChannels = useMemo(() => channelsForScope(channels, scope).map(channel => ({
+    business_address: channel.business_address,
+    label: channel.channel_label || channel.business_address.replace("whatsapp:", "").replace("meta:", "ID "),
+  })), [channels, selectedAddress, selectedSite]);
   const voiceData = useMemo(() => filterCommunications(permittedData, { site: selectedSite, address: selectedAddress }, channels), [permittedData, selectedSite, selectedAddress, channels]);
   const hasUnassigned = channels.some(channel => channel.site === null)
     || permittedData.whatsappConversations.some(conversation => conversationSite(conversation) == null);
@@ -201,7 +205,7 @@ export function VoiceDashboardPanel({
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
       {channelsReady && <div key={query} className={section === "summary" ? "comm-summary-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
-      {section === "templates" && <WhatsAppTemplatesPanel key={selectedAddress} token={token} address={selectedAddress} />}
+      {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
       {section === "summary" && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
 

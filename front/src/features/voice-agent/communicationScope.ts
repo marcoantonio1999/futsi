@@ -11,6 +11,11 @@ export function scopeQuery(scope: CommunicationScope) {
   if (scope.address !== "all") query.set("business_address", scope.address);
   return query.toString();
 }
+export function channelsForScope(channels: CommunicationChannel[], scope: CommunicationScope) {
+  if (scope.address !== "all") return channels.filter(channel => channel.business_address === scope.address);
+  if (scope.site === "all") return channels;
+  return channels.filter(channel => scope.site === "unassigned" ? channel.site == null : String(channel.site) === scope.site);
+}
 export function filterCommunications(data: AppData, scope: CommunicationScope, channels: CommunicationChannel[] = []): AppData {
   const matchesSite = (id: number | null | undefined) => scope.site === "all" ||
     (scope.site === "unassigned" ? id == null : String(id) === scope.site);

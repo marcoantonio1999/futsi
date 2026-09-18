@@ -8,6 +8,7 @@ export type Template = {
   components: Array<{ type: string; format: string; text: string; buttons: Array<{ type: string; text: string }> }>;
 };
 type Catalog = { business_address: string; waba_id: string; fetched_at: string; templates: Template[]; next_cursor: string };
+type TemplateChannel = { business_address: string; label: string };
 
 const statuses: Record<string, string> = {
   APPROVED: "Aprobada", PENDING: "En revisión", REJECTED: "Rechazada", PAUSED: "Pausada",
@@ -25,7 +26,8 @@ function templateCategory(template: Template) {
   return categories[template.category.toUpperCase()] || template.category || "Sin categoría";
 }
 
-export function WhatsAppTemplatesPanel({ token, address }: { token: string; address: string }) {
+function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: TemplateChannel }) {
+  const address = channel.business_address;
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,7 +39,6 @@ export function WhatsAppTemplatesPanel({ token, address }: { token: string; addr
   const detailDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (address === "all") return;
     const controller = new AbortController();
     setLoading(true); setError("");
     apiRequest<Catalog>(`/whatsapp-conversations/templates/?${new URLSearchParams({ business_address: address, after: cursor })}`, token, { signal: controller.signal })
@@ -58,8 +59,6 @@ export function WhatsAppTemplatesPanel({ token, address }: { token: string; addr
     if (!selectedTemplate && dialog.open) dialog.close();
   }, [selectedTemplate]);
 
-  if (address === "all") return <section className="comm-panel p-5"><h3>Selecciona un número</h3><p className="mt-2 text-sm">Elige un número de atención para consultar sus plantillas disponibles.</p></section>;
-
   const templates = catalog?.templates ?? [];
   const approved = templates.filter(t => t.status.toUpperCase() === "APPROVED").length;
   const needle = search.trim().toLocaleLowerCase("es-MX");
@@ -71,6 +70,9 @@ export function WhatsAppTemplatesPanel({ token, address }: { token: string; addr
   };
 
   return <div className="grid gap-4">
+    <header className="comm-section-heading">
+      <div><h3>{channel.label}</h3><p>{address.replace("whatsapp:", "").replace("meta:", "ID ")}</p></div>
+    </header>
     <div className="comm-template-topbar">
       <p>{catalog ? <><strong>{templates.length}</strong> {templates.length === 1 ? "plantilla disponible" : "plantillas disponibles"}<span> · Actualizado {formatDateTime(catalog.fetched_at)}</span>{catalog.next_cursor && <span> · Hay más por cargar</span>}</> : "Consulta las plantillas disponibles para este número."}</p>
       <button disabled={loading} className={secondaryButtonClass} onClick={() => { setCursor(""); setCatalog(null); setRetry(n => n + 1); }}>Actualizar catálogo</button>
@@ -110,5 +112,18 @@ export function WhatsAppTemplatesPanel({ token, address }: { token: string; addr
         <footer className="comm-template-modal-footer">Las variables se completan al momento de enviar el mensaje.</footer>
       </article>}
     </dialog>
+  </div>;
+}
+
+export function WhatsAppTemplatesPanel({ token, channels }: { token: string; channels: TemplateChannel[] }) {
+  if (!channels.length) return <section className="comm-panel p-5"><h3>Sin números configurados</h3><p className="mt-2 text-sm">Esta selección no tiene un número de atención vinculado para consultar plantillas.</p></section>;
+
+  if (channels.length === 1) return <WhatsAppTemplateCatalog token={token} channel={channels[0]} />;
+
+  return <div className="grid gap-4">
+    <p className="comm-reference">Mostrando las plantillas de los {channels.length} números incluidos en esta selección.</p>
+    {channels.map(channel => <section className="comm-panel p-5" key={channel.business_address}>
+      <WhatsAppTemplateCatalog token={token} channel={channel} />
+    </section>)}
   </div>;
 }

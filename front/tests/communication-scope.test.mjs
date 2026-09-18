@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterCommunications, scopeQuery } from "../src/features/voice-agent/communicationScope.ts";
+import { channelsForScope, filterCommunications, scopeQuery } from "../src/features/voice-agent/communicationScope.ts";
 
 const data = {
   sites: [{ id: 1 }, { id: 2 }, { id: 3 }], courts: [{ site: 1 }, { site: 2 }],
@@ -51,4 +51,15 @@ test("manual bookings stay in site agenda when choosing a phone", () => {
 test("a call without a booking is scoped by its registered destination number", () => {
   const north = filterCommunications(data, { site: "1", address: "whatsapp:+103" }, [{ business_address: "whatsapp:+103", site: 1, site_name: "Norte" }]);
   assert.deepEqual(north.voiceCalls.map(c => c.id), [3]);
+});
+test("all numbers in one site keep every channel available to consolidated panels", () => {
+  const channels = [
+    { business_address: "whatsapp:+101", site: 1, site_name: "Franco", channel_label: "Academia" },
+    { business_address: "whatsapp:+102", site: 1, site_name: "Franco", channel_label: "Liga" },
+    { business_address: "whatsapp:+103", site: 2, site_name: "UVM", channel_label: "Academia" },
+    { business_address: "whatsapp:+104", site: null, site_name: "", channel_label: "Pendiente" },
+  ];
+  assert.deepEqual(channelsForScope(channels, { site: "1", address: "all" }).map(channel => channel.channel_label), ["Academia", "Liga"]);
+  assert.deepEqual(channelsForScope(channels, { site: "1", address: "whatsapp:+102" }).map(channel => channel.channel_label), ["Liga"]);
+  assert.deepEqual(channelsForScope(channels, { site: "unassigned", address: "all" }).map(channel => channel.channel_label), ["Pendiente"]);
 });
