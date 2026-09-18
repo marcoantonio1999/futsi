@@ -3,6 +3,7 @@ import { apiRequest, apiFormRequest } from '../../api';
 import './bulk-templates.css';
 import { UvmContactPicker } from './UvmContactPicker';
 import { FileContactFilters, initialFileFilters, type FileContact, type FileFacets, type FileFilters, type FileProfile } from './FileContactFilters';
+import { WhatsAppTemplatePreview } from './WhatsAppTemplatePreview';
 
 type Kind = 'veronica' | 'academy';
 type Template = { name: string; language: string; category: string; text: string; sendable: boolean; reason?: string; parameters: { key: string; label: string; contact_name?: boolean }[] };
@@ -225,16 +226,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
         setJob(saved); setOffset(0); setConsent(false);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}
-    </div><aside className="bulk-preview" aria-label="Vista previa del mensaje de WhatsApp">
-      <header><div><strong>Vista previa</strong><span>WhatsApp</span></div><small>Así lo verá el destinatario</small></header>
-      <div className="bulk-phone">
-        <div className="bulk-phone-bar"><span aria-hidden="true">{previewChannel.charAt(0).toUpperCase()}</span><div><strong>{previewChannel}</strong><small>cuenta de empresa</small></div></div>
-        <div className="bulk-phone-chat">
-          {selected ? <div className="bulk-phone-bubble"><p>{previewText}</p><time>12:45 <span aria-label="Entregado">✓✓</span></time></div> : <div className="bulk-phone-empty"><strong>Selecciona una plantilla</strong><span>El mensaje aparecerá aquí con datos de ejemplo.</span></div>}
-        </div>
-      </div>
-      <footer><strong>{selected?.name || 'Sin plantilla seleccionada'}</strong>{selected && <span>{selected.category} · {selected.language}</span>}</footer>
-    </aside></div> : job && <section className="bulk-card">
+    </div><WhatsAppTemplatePreview channelLabel={previewChannel} text={previewText} templateName={selected?.name} meta={selected ? `${selected.category} · ${selected.language}` : ''} /></div> : job && <section className="bulk-card">
       <header className="bulk-heading"><div><h3>{job.title}</h3><p>{channels.find(c => c.channel === job.channel)?.label || job.channel} · {new Date(job.created_at).toLocaleString('es-MX')}</p></div><strong className={`bulk-state ${job.status}`}>{labels[job.status] || job.status}</strong></header>
       {job.detail && <div role="alert" className="bulk-alert error">{job.detail}</div>}
       <h3 ref={stepHeadingRef} tabIndex={-1}>Progreso del envío</h3>
