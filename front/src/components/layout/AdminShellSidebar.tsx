@@ -1,7 +1,7 @@
 import { SitesSubmenu } from "../views/sitesNavigation";
 import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
-import { ChevronDown, GraduationCap, Menu, UsersRound } from "lucide-react";
+import { ChevronDown, Menu } from "lucide-react";
 import type { RefObject } from "react";
 import type { TabKey } from "../../types";
 import type { TournamentSection } from "../../features/tournaments";
@@ -10,7 +10,6 @@ import type { BillingSubsection, BusinessScope, CommunicationsSubsection, ShellT
 type AdminShellSidebarProps = {
   sidebarRef: RefObject<HTMLElement | null>;
   sidebarExpanded: boolean;
-  canToggleAdultDashboard: boolean;
   businessScope: BusinessScope;
   sidebarTabs: SidebarTab[];
   effectiveActiveTab: TabKey;
@@ -38,7 +37,6 @@ type AdminShellSidebarProps = {
   tournamentSection: TournamentSection;
   shellTone: ShellTone;
   onToggleExpanded: () => void;
-  onSwitchScope: (scope: BusinessScope) => void;
   onSelectTab: (tab: TabKey) => void;
   onSelectBillingSection: (section: BillingSubsection) => void;
   onSelectCommunicationsSection: (section: CommunicationsSubsection) => void;
@@ -49,7 +47,6 @@ type AdminShellSidebarProps = {
 export function AdminShellSidebar({
   sidebarRef,
   sidebarExpanded,
-  canToggleAdultDashboard,
   businessScope,
   sidebarTabs,
   effectiveActiveTab,
@@ -65,7 +62,6 @@ export function AdminShellSidebar({
   tournamentSection,
   shellTone,
   onToggleExpanded,
-  onSwitchScope,
   onSelectTab,
   onSelectBillingSection,
   onSelectCommunicationsSection,
@@ -95,26 +91,6 @@ export function AdminShellSidebar({
           </button>
         </div>
         {sidebarExpanded && <p className="mt-2 text-xs font-medium text-zinc-500">{shellTone.subtitle}</p>}
-        {canToggleAdultDashboard && (
-          <div className={`mt-4 grid gap-1 rounded-md border border-zinc-200 bg-zinc-50 p-1 ${sidebarExpanded ? "grid-cols-2" : "grid-cols-1"}`}>
-            <button
-              className={`rounded-md px-2 py-2 text-xs font-semibold transition ${businessScope === "academy" ? "bg-white text-emerald-800 shadow-sm" : "text-zinc-500 hover:bg-white"}`}
-              onClick={() => onSwitchScope("academy")}
-              type="button"
-              title="Academia"
-            >
-              {sidebarExpanded ? "Academia" : <GraduationCap size={14} />}
-            </button>
-            <button
-              className={`rounded-md px-2 py-2 text-xs font-semibold transition ${businessScope === "adult" ? "bg-white text-blue-800 shadow-sm" : "text-zinc-500 hover:bg-white"}`}
-              onClick={() => onSwitchScope("adult")}
-              type="button"
-              title="Adultos"
-            >
-              {sidebarExpanded ? "Adultos" : <UsersRound size={14} />}
-            </button>
-          </div>
-        )}
       </div>
       <nav className={`mt-6 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto ${sidebarExpanded ? "pr-1" : "pr-0"}`}>
         {sidebarExpanded && <p className="px-3 pb-1 text-[11px] font-semibold uppercase text-zinc-400">{shellTone.menuTitle}</p>}

@@ -360,7 +360,6 @@ export function AdminShell({
         <AdminShellSidebar
           sidebarRef={desktopSidebarRef}
           sidebarExpanded={sidebarExpanded}
-          canToggleAdultDashboard={canToggleAdultDashboard}
           businessScope={businessScope}
           sidebarTabs={sidebarTabs}
           effectiveActiveTab={effectiveActiveTab}
@@ -383,7 +382,6 @@ export function AdminShell({
           tournamentSection={tournamentSection}
           shellTone={shellTone}
           onToggleExpanded={() => setSidebarExpanded((value) => !value)}
-          onSwitchScope={switchBusinessScope}
           onSelectTab={selectTab}
           onSelectBillingSection={selectBillingSection}
           onToggleTournamentsMenu={() => {
