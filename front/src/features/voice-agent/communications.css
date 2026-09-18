@@ -68,12 +68,21 @@
 .comm-nav-children{list-style:none;margin:0 0 0 6px;padding:0 0 0 11px;border-left:1px solid #d4ded7;display:grid;gap:3px}
 .dark .comm-nav-children{border-color:#3b4b41}
 .comm-nav-children button{display:block;width:100%}
+.comm-nav-subgroups{display:grid;gap:4px;margin-left:5px;padding-left:9px;border-left:1px solid #d4ded7}
+.dark .comm-nav-subgroups{border-color:#3b4b41}
+.comm-nav-subgroup{display:grid;gap:2px}
+.comm-nav-subgroup-toggle{display:flex!important;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 8px!important;font-size:11px!important;font-weight:750!important;color:#3f4943!important}
+.comm-nav-subgroup-toggle>span{display:flex;align-items:center;gap:6px}.comm-nav-subgroup-toggle svg{flex-shrink:0;color:#748579}.comm-nav-chevron{transition:transform .15s ease}.comm-nav-subgroup-toggle[aria-expanded=true] .comm-nav-chevron{transform:rotate(180deg)}
+.comm-nav-subgroup .comm-nav-children{margin-left:9px;padding-left:9px}
+.dark .comm-nav-subgroup-toggle{color:#e3eae6!important}
 .comm-section-map{display:none}
 @media(max-width:1023px){
   .comm-section-map{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px 9px;border:1px solid var(--comm-line);border-radius:10px;background:var(--comm-bg);align-items:start}
   .comm-section-map .comm-group-title{font-size:12px;margin-bottom:9px;gap:5px;color:var(--comm-ink)}
   .comm-section-map .comm-nav-group{min-width:0;display:block}
   .comm-section-map .comm-nav-children{padding-left:6px;margin-left:4px;gap:3px;border-color:var(--comm-line)}
+  .comm-section-map .comm-nav-subgroups{margin-left:2px;padding-left:5px;border-color:var(--comm-line)}
+  .comm-section-map .comm-nav-subgroup .comm-nav-children{margin-left:6px;padding-left:6px}
   .comm-section-map button{padding:7px 5px;border-radius:5px;text-align:left;font-size:11px;line-height:1.4;color:var(--comm-muted);min-height:34px}
   .comm-section-map button[aria-current=page]{background:var(--comm-tint);color:var(--comm-green);font-weight:700}
   .comm-section-map button:hover{background:var(--comm-soft)}
