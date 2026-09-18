@@ -1,6 +1,7 @@
 """Bounded, read-only recipient import. Workbooks/formulas are never executed."""
 import csv
 import io
+import json
 import re
 import unicodedata
 import zipfile
@@ -112,7 +113,7 @@ def _facets(contacts):
     }
 
 
-def review(values, names=None, metadata=None, max_rows=MAX_TEXT_ROWS, allow_country_code=False):
+def review(values, names=None, metadata=None, parameter_values=None, max_rows=MAX_TEXT_ROWS, allow_country_code=False):
     values = [(index, value) for index, value in values if value is not None and str(value).strip()]
     if len(values) > max_rows:
         if max_rows == MAX_TEXT_ROWS:
@@ -121,8 +122,10 @@ def review(values, names=None, metadata=None, max_rows=MAX_TEXT_ROWS, allow_coun
     valid, invalid, seen, duplicates = [], [], set(), 0
     names = names or {}
     metadata = metadata or {}
+    parameter_values = parameter_values or {}
     kept_names = {}
     kept_metadata = {}
+    kept_parameters = {}
     for index, value in values:
         try:
             phone = (_normalize_file_phone if allow_country_code else normalize_phone)(value)
@@ -142,6 +145,13 @@ def review(values, names=None, metadata=None, max_rows=MAX_TEXT_ROWS, allow_coun
             target = kept_metadata.setdefault(phone, {})
             for key, raw_value in row_metadata.items():
                 value_text = _clean(raw_value)
+                if value_text and not target.get(key):
+                    target[key] = value_text
+        row_parameters = parameter_values.get(index, {})
+        if row_parameters:
+            target = kept_parameters.setdefault(phone, {})
+            for key, raw_value in row_parameters.items():
+                value_text = _clean(raw_value, 500)
                 if value_text and not target.get(key):
                     target[key] = value_text
 
@@ -171,6 +181,7 @@ def review(values, names=None, metadata=None, max_rows=MAX_TEXT_ROWS, allow_coun
             for phone in valid
             if any(kept_metadata.get(phone, {}).get(key) for key in ('platform', 'vacancy_type'))
         },
+        'parameter_values': {phone: kept_parameters.get(phone, {}) for phone in valid},
         'invalid': invalid,
         'duplicates': duplicates,
         'count': len(valid),
@@ -196,6 +207,42 @@ def _find_columns(header_row):
         if match is not None:
             metadata_columns[key] = match
     return phone_columns, name_columns, metadata_columns
+
+
+def _template_parameters(raw):
+    if raw in (None, ''):
+        return []
+    try:
+        values = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        raise ValueError('Los campos de la plantilla no tienen un formato válido.') from None
+    if not isinstance(values, list) or len(values) > 20:
+        raise ValueError('La plantilla contiene demasiados campos.')
+    result = []
+    for item in values:
+        if not isinstance(item, dict):
+            raise ValueError('Los campos de la plantilla no tienen un formato válido.')
+        key = str(item.get('key') or '').strip()
+        label = str(item.get('label') or '').strip()
+        if not key or len(key) > 80 or not label or len(label) > 120:
+            raise ValueError('Los campos de la plantilla no tienen un formato válido.')
+        result.append({'key': key, 'label': label, 'contact_name': item.get('contact_name') is True})
+    if len({item['key'] for item in result}) != len(result):
+        raise ValueError('La plantilla contiene campos duplicados.')
+    return result
+
+
+def _parameter_columns(header_row, parameters):
+    normalized = [_header(value) for value in header_row]
+    result = {}
+    for parameter in parameters:
+        aliases = {_header(parameter['label'])}
+        if parameter['contact_name']:
+            aliases.update(NAME_HEADERS)
+        match = next((index for index, value in enumerate(normalized) if value in aliases), None)
+        if match is not None:
+            result[parameter['key']] = match
+    return result
 
 
 def _xlsx_rows(content):
@@ -262,7 +309,8 @@ def _tabular_rows(content, extension):
     return rows, None
 
 
-def import_recipients(file=None, text='', column=None):
+def import_recipients(file=None, text='', column=None, template_parameters=None):
+    parameters = _template_parameters(template_parameters)
     if file and text:
         raise ValueError('Elige archivo o texto, no ambos a la vez.')
     if not file:
@@ -291,6 +339,7 @@ def import_recipients(file=None, text='', column=None):
 
     header_index = min(detected_header_index, len(rows) - 1)
     phone_columns, name_columns, metadata_columns = _find_columns(rows[header_index])
+    parameter_columns = _parameter_columns(rows[header_index], parameters)
     chosen = int(column) if column not in (None, '') else phone_columns[0] if len(phone_columns) == 1 else None
     if chosen is None and max(map(len, rows)) > 1:
         return {
@@ -323,8 +372,14 @@ def import_recipients(file=None, text='', column=None):
         }
         for row_number, row in enumerate(rows[data_start:], data_start + 1)
     }
+    parameter_values = {
+        row_number: {
+            key: row[index] for key, index in parameter_columns.items() if index < len(row)
+        }
+        for row_number, row in enumerate(rows[data_start:], data_start + 1)
+    }
     values = [
         (row_number, row[chosen] if chosen < len(row) else None)
         for row_number, row in enumerate(rows[data_start:], data_start + 1)
     ]
-    return review(values, names, metadata, max_rows=MAX_FILE_ROWS, allow_country_code=True)
+    return review(values, names, metadata, parameter_values, max_rows=MAX_FILE_ROWS, allow_country_code=True)

@@ -34,7 +34,10 @@ class BulkView(APIView):
             return Response({'detail': 'Sin acceso a este canal.'}, status=403)
         if operation == 'import':
             try:
-                result = import_recipients(request.FILES.get('file'), request.data.get('text', ''), request.data.get('column'))
+                result = import_recipients(
+                    request.FILES.get('file'), request.data.get('text', ''), request.data.get('column'),
+                    request.data.get('template_parameters'),
+                )
                 if kind == 'veronica':
                     result['added_filter_options'] = ensure_imported(result.get('filters', {}), request.user)
                 # Large analyzed workbooks are filtered client-side and must not
@@ -57,7 +60,7 @@ class BulkView(APIView):
             return Response(status=405)
         if kind != 'academy' and operation in {'contact-select', 'contact-update'}:
             return Response(status=403)
-        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'phones', 'names', 'filters', 'contact_ids'),
+        allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'recipient_parameters', 'phones', 'names', 'filters', 'contact_ids'),
                    'start': ('id', 'consent', 'review_confirmed'), 'cancel': ('id',),
                    'contact-select': ('channel', 'contact_ids'),
                    'contact-update': ('channel', 'contact_id', 'name', 'priority', 'notes', 'manually_blocked')}

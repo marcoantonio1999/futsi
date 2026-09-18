@@ -6,10 +6,19 @@ import { FileContactFilters, initialFileFilters, type FileContact, type FileFace
 
 type Kind = 'veronica' | 'academy';
 type Template = { name: string; language: string; category: string; text: string; sendable: boolean; reason?: string; parameters: { key: string; label: string; contact_name?: boolean }[] };
-type Review = { phones: string[]; names?: Record<string, string>; filters?: Record<string, { platform?: string; vacancy_type?: string }>; added_filter_options?: { platform: string[]; vacancy_type: string[] }; count: number; duplicates: number; invalid: { row: number; value: string; reason: string }[]; needs_column?: boolean; columns?: { index: number; label: string }[]; contact_ids?: number[]; needs_review_count?: number; unverified_consent_count?: number; file_contacts?: FileContact[]; file_profile?: FileProfile; file_facets?: FileFacets; file_total?: number };
+type RecipientParameters = Record<string, Record<string, string>>;
+type Review = { phones: string[]; names?: Record<string, string>; parameter_values?: RecipientParameters; filters?: Record<string, { platform?: string; vacancy_type?: string }>; added_filter_options?: { platform: string[]; vacancy_type: string[] }; count: number; duplicates: number; invalid: { row: number; value: string; reason: string }[]; needs_column?: boolean; columns?: { index: number; label: string }[]; contact_ids?: number[]; needs_review_count?: number; unverified_consent_count?: number; file_contacts?: FileContact[]; file_profile?: FileProfile; file_facets?: FileFacets; file_total?: number };
 type Job = { id: string; title: string; channel: string; status: string; detail: string; created_at: string; heartbeat_at: string | null; percent: number; processed: number; total: number; counts: Record<string, number>; template: { name: string; language: string; text: string }; quote: { total: string; currency: string; unit: string; category: string; note: string; verified_on: string; source: string }; recipients?: { id: number; phone: string; name?: string; status: string; detail: string }[]; has_more?: boolean; directory?: { dataset?: string; needs_review_count?: number; unverified_consent_count?: number } };
 const labels: Record<string, string> = { draft: 'Por confirmar', queued: 'En cola', running: 'Enviando', completed: 'Intentos terminados', cancelled: 'Cancelado', paused: 'Detenido: requiere revisión', pending: 'Pendiente', sending: 'En proceso', accepted: 'Aceptado, sin entrega confirmada', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Resultado sin confirmar', skipped: 'Excluido: no desea mensajes' };
 const money = (n: string) => Number(n).toLocaleString('es-MX', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+
+function recipientFields(review: Review, template?: Template): RecipientParameters {
+  return Object.fromEntries(review.phones.map(phone => [phone, Object.fromEntries((template?.parameters || []).map(parameter => {
+    const imported = review.parameter_values?.[phone]?.[parameter.key]?.trim();
+    const contactName = parameter.contact_name ? review.names?.[phone]?.trim() : '';
+    return [parameter.key, imported || contactName || ''];
+  }))]));
+}
 
 export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind }) {
   const base = kind === 'veronica' ? '/veronica/bulk/' : '/whatsapp-bulk/';
@@ -17,7 +26,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   const [channel, setChannel] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateKey, setTemplateKey] = useState('');
-  const [parameters, setParameters] = useState<Record<string, string>>({});
+  const [recipientParameters, setRecipientParameters] = useState<RecipientParameters>({});
   const [cursor, setCursor] = useState('');
   const [mode, setMode] = useState<'text' | 'file' | 'directory'>('text');
   const [text, setText] = useState('');
@@ -55,17 +64,22 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
     : !templates.length ? 'No hay plantillas disponibles. Actualiza las plantillas o elige otro número.'
     : !selected ? 'Falta seleccionar una plantilla aprobada en el paso 1.'
     : !selected.sendable ? selected.reason || 'La plantilla seleccionada no está disponible para envíos masivos.'
-    : selected.parameters.some(p => !parameters[p.key]?.trim()) ? `Completa los campos de la plantilla: ${selected.parameters.filter(p => !parameters[p.key]?.trim()).map(p => p.label).join(', ')}.`
     : review?.needs_column ? 'Selecciona la columna de teléfonos y vuelve a cargar el archivo.'
     : !review?.count ? 'Carga y revisa al menos un número válido en el paso 2.' : '';
-  const missingNames = Object.values(parameters).includes('{{contact_name}}') ? review?.phones.filter(p => !review.names?.[p]?.trim()).length || 0 : 0;
-  const blockedReason = prepareReason || (missingNames ? `Completa el nombre de ${missingNames} destinatarios en la tabla.` : '');
-  const templateReady = !!selected?.sendable && selected.parameters.every(p => parameters[p.key]?.trim());
+  const missingFields = review && selected ? review.phones.reduce((total, phone) => total + selected.parameters.filter(parameter => !recipientParameters[phone]?.[parameter.key]?.trim()).length, 0) : 0;
+  const blockedReason = prepareReason || (missingFields ? `Completa ${missingFields} ${missingFields === 1 ? 'campo requerido' : 'campos requeridos'} de los destinatarios en la tabla.` : '');
+  const templateReady = !!selected?.sendable;
   const draft = job?.status === 'draft' ? job : null;
   const processing = !!job && !draft;
   const activeId = processing ? job?.id : undefined;
   const post = <T,>(op: string, body: unknown) => apiRequest<T>(base+op+'/', token, { method: 'POST', body: JSON.stringify(body) });
-  function invalidate() { setReview(null); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); requestId.current = crypto.randomUUID(); }
+  function invalidate() { setReview(null); setFileReview(null); setRecipientParameters({}); setFileFilters(initialFileFilters); setReviewPage(0); requestId.current = crypto.randomUUID(); }
+  function loadReview(next: Review) {
+    setReview(next);
+    setRecipientParameters(recipientFields(next, selected));
+    setReviewPage(0);
+    requestId.current = crypto.randomUUID();
+  }
   async function action(fn: () => Promise<void>) {
     setBusy(true); setError('');
     try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo completar la operación.'); }
@@ -81,7 +95,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   useEffect(() => {
     const controller = new AbortController();
     catalogGeneration.current += 1;
-    setTemplates([]); setTemplateKey(''); setParameters({}); setCursor('');
+    setTemplates([]); setTemplateKey(''); setRecipientParameters({}); setCursor('');
     setReview(null); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); setStep(1); setJob(null); setConsent(false); setError('');
     requestId.current = crypto.randomUUID();
     setCatalogLoading(!!channel);
@@ -138,8 +152,9 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
       if (mode === 'file' && file) form.set('file', file);
       else form.set('text', text);
       if (column !== '') form.set('column', column);
+      form.set('template_parameters', JSON.stringify(selected?.parameters || []));
       const result = await apiFormRequest<Review>(base+'import/', token, form);
-      setReview(result); setReviewPage(0); requestId.current = crypto.randomUUID();
+      loadReview(result);
       if (result.file_contacts?.length) { setFileReview(result); setFileFilters(initialFileFilters); }
       else if (!result.needs_column && result.count) setStep(3);
       else if (!result.needs_column) setError('No encontramos números válidos. Revisa el archivo o escribe números de 10 dígitos.');
@@ -149,8 +164,8 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
     if (!fileReview) return;
     const phones = contacts.map(contact => contact.phone);
     const names = Object.fromEntries(contacts.filter(contact => contact.name.trim()).map(contact => [contact.phone, contact.name]));
-    setReview({ ...fileReview, phones, names, count: phones.length });
-    setReviewPage(0); requestId.current = crypto.randomUUID(); setStep(3); setError('');
+    loadReview({ ...fileReview, phones, names, count: phones.length });
+    setStep(3); setError('');
   }
   function newJob() { setJob(null); setConsent(false); setOffset(0); invalidate(); setStep(1); setHistoryOpen(false); setError(''); }
   function closeConfirmation() { if (!busy) { setJob(null); setConsent(false); setError(''); } }
@@ -159,7 +174,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
     {error && !draft && <div role="alert" className="bulk-alert error">{error}</div>}
     {pollError && <div role="alert" className="bulk-alert error">No se pudo actualizar el avance. Lo mostrado puede estar desactualizado. {pollError}</div>}
     {!processing ? <div className="bulk-wizard">
-      <p className="bulk-step-label">Paso {step} de 3 · {step === 1 ? 'Elige la plantilla' : step === 2 ? 'Carga destinatarios' : 'Revisa los nombres'}</p>
+      <p className="bulk-step-label">Paso {step} de 3 · {step === 1 ? 'Elige la plantilla' : step === 2 ? 'Carga destinatarios' : 'Completa los campos'}</p>
       {step > 1 && <div className="bulk-selection"><span>{channels.find(c => c.channel === channel)?.label} · {selected?.name}</span><button disabled={busy} onClick={() => { setStep(1); setError(''); }}>Cambiar plantilla</button></div>}
       {step === 1 && <section className="bulk-card"><h3 ref={stepHeadingRef} tabIndex={-1}>¿Qué plantilla vas a enviar?</h3>
         <div className="bulk-fields"><label>Enviar desde<select value={channel} disabled={busy || !channels.length} onChange={e => { setChannel(e.target.value); setJobsPage(0); }}><option value="" disabled>Selecciona un canal</option>{channels.map(c => <option key={c.channel} value={c.channel}>{c.label}</option>)}</select></label>
@@ -167,16 +182,15 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
         {catalogLoading && <p role="status">Cargando plantillas disponibles…</p>}
         {!catalogLoading && !!channel && !templates.length && <p>No hay plantillas disponibles para este número.</p>}
         {!channels.length && <p>No hay canales conectados disponibles. No se pueden realizar envíos.</p>}
-        {!!templates.length && <><label>Plantilla aprobada<select value={templateKey} disabled={busy} onChange={e => { setTemplateKey(e.target.value); const next = templates.find(t => `${t.name}:${t.language}` === e.target.value); setParameters(Object.fromEntries((next?.parameters || []).filter(p => p.contact_name).map(p => [p.key, '{{contact_name}}']))); requestId.current = crypto.randomUUID(); }}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={`${t.name}:${t.language}`} disabled={!t.sendable} value={`${t.name}:${t.language}`}>{t.name} · {t.language}{!t.sendable ? ' · No disponible para masivos' : ''}</option>)}</select></label>
-          {selected && <div className="bulk-template"><strong>{selected.name} · {selected.category}</strong><p>{selected.text}</p></div>}
-          {selected?.parameters.map(p => <div key={p.key}><label>{p.label}<select disabled={busy} value={parameters[p.key] === '{{contact_name}}' ? 'name' : 'fixed'} onChange={e => { setParameters(v => ({ ...v, [p.key]: e.target.value === 'name' ? '{{contact_name}}' : '' })); requestId.current = crypto.randomUUID(); }}><option value="name">Nombre de cada destinatario</option><option value="fixed">Escribir un dato igual para todos</option></select></label>{parameters[p.key] !== '{{contact_name}}' && <label>Dato para sustituir en la plantilla<input disabled={busy} maxLength={500} value={parameters[p.key] || ''} onChange={e => { setParameters(v => ({ ...v, [p.key]: e.target.value })); requestId.current = crypto.randomUUID(); }} /></label>}</div>)}</>}
+        {!!templates.length && <><label>Plantilla aprobada<select value={templateKey} disabled={busy} onChange={e => { setTemplateKey(e.target.value); invalidate(); }}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={`${t.name}:${t.language}`} disabled={!t.sendable} value={`${t.name}:${t.language}`}>{t.name} · {t.language}{!t.sendable ? ' · No disponible para masivos' : ''}</option>)}</select></label>
+          {selected && <div className="bulk-template"><strong>{selected.name} · {selected.category}</strong><p>{selected.text}</p>{!!selected.parameters.length && <small>Los campos de la plantilla se completan por destinatario después de cargar los números.</small>}</div>}</>}
         {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
-        {selected && !templateReady && <p role="status">Completa los datos de la plantilla para continuar.</p>}
+        {selected && !templateReady && <p role="status">Esta plantilla no está disponible para envíos masivos.</p>}
         <div className="bulk-actions"><button className="primary" disabled={busy || catalogLoading || !templateReady} onClick={() => { setStep(2); setError(''); }}>Continuar con destinatarios</button></div>
       </section>}
       {step === 2 && <section className="bulk-card"><h3 ref={stepHeadingRef} tabIndex={-1}>¿A quiénes se enviará?</h3><p>{mode === 'directory' ? `Filtra los contactos de ${directoryLabel} y selecciona hasta 100 por lote.` : 'Solo números de México de 10 dígitos. No escribas código de país. Hasta 1,000 números por lote.'}</p>
         <div className="bulk-tabs">{hasDirectory && <button aria-pressed={mode === 'directory'} disabled={busy} onClick={() => { setMode('directory'); invalidate(); }}>Contactos de {directoryLabel}</button>}<button aria-pressed={mode === 'text'} disabled={busy} onClick={() => { setMode('text'); invalidate(); }}>Escribir o pegar números</button><button aria-pressed={mode === 'file'} disabled={busy} onClick={() => { setMode('file'); invalidate(); }}>Agregar Excel, CSV o TXT</button></div>
-        {mode === 'directory' && hasDirectory ? <UvmContactPicker key={channel} token={token} channel={channel} label={directoryLabel} onLoad={r => { setReview(r); setReviewPage(0); requestId.current = crypto.randomUUID(); setStep(3); }} /> : <>
+        {mode === 'directory' && hasDirectory ? <UvmContactPicker key={channel} token={token} channel={channel} label={directoryLabel} onLoad={r => { loadReview(r); setStep(3); }} /> : <>
         {mode === 'text' ? <label>Números separados por comas<textarea disabled={busy} rows={4} value={text} maxLength={25000} placeholder="5512345678, 5587654321" onChange={e => { setText(e.target.value); invalidate(); }} /></label> : <>
           <label className={`bulk-drop ${dragging ? 'dragging' : ''}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); if (!busy) chooseFile(e.dataTransfer.files[0] || null); }}>
             <strong>{file ? file.name : 'Arrastra tu archivo aquí'}</strong><span>o pulsa para elegir Excel (.xlsx), CSV o TXT · hasta 10 MB</span><input type="file" accept=".xlsx,.csv,.txt" disabled={busy} onChange={e => chooseFile(e.target.files?.[0] || null)} />
@@ -191,8 +205,8 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
       {step === 3 && review && !review.needs_column && <section className="bulk-card"><h3 ref={stepHeadingRef} tabIndex={-1}>Revisa los destinatarios</h3><div className="bulk-review" aria-live="polite"><h4>{review.count} números válidos · {review.duplicates} duplicados excluidos · {review.invalid.length} inválidos excluidos</h4>
           {kind === 'veronica' && !!((review.added_filter_options?.platform.length || 0) + (review.added_filter_options?.vacancy_type.length || 0)) && <p className="bulk-alert">Se agregaron categorías nuevas: {[...(review.added_filter_options?.platform || []), ...(review.added_filter_options?.vacancy_type || [])].join(', ')}.</p>}
           <p>Solo los números que aparecen aquí se agregarán al lote. Ningún mensaje se ha enviado.</p>
-          <p>Usamos los nombres del archivo y completamos los faltantes con los contactos de este canal. Puedes escribir o corregir cualquier nombre.</p>
-          <div className="bulk-table-wrap"><table><thead><tr><th>Número</th><th>Nombre del destinatario</th>{kind === 'veronica' && <><th>Plataforma</th><th>Tipo de vacante</th></>}</tr></thead><tbody>{review.phones.slice(reviewPage*50, reviewPage*50+50).map(p => <tr key={p}><td>{p}</td><td><input aria-label={`Nombre de ${p}`} placeholder="Escribe el nombre" disabled={busy} maxLength={120} value={review.names?.[p] || ''} onChange={e => { const name = e.target.value; setReview(old => old ? { ...old, names: { ...old.names, [p]: name } } : old); requestId.current = crypto.randomUUID(); }} /></td>{kind === 'veronica' && <><td><input aria-label={`Plataforma de ${p}`} placeholder="Ej. OCC" disabled={busy} maxLength={80} value={review.filters?.[p]?.platform || ''} onChange={e => { const value = e.target.value; setReview(old => old ? { ...old, filters: { ...old.filters, [p]: { ...old.filters?.[p], platform: value } } } : old); requestId.current = crypto.randomUUID(); }} /></td><td><input aria-label={`Tipo de vacante de ${p}`} placeholder="Ej. Coach" disabled={busy} maxLength={80} value={review.filters?.[p]?.vacancy_type || ''} onChange={e => { const value = e.target.value; setReview(old => old ? { ...old, filters: { ...old.filters, [p]: { ...old.filters?.[p], vacancy_type: value } } } : old); requestId.current = crypto.randomUUID(); }} /></td></>}</tr>)}</tbody></table></div>
+          {!!selected?.parameters.length && <p>Completamos lo disponible desde cada contacto y desde las columnas del archivo. Revisa o escribe todos los campos requeridos por la plantilla.</p>}
+          <div className="bulk-table-wrap"><table><thead><tr><th>Número</th>{selected?.parameters.map(parameter => <th key={parameter.key}>{parameter.label}</th>)}{kind === 'veronica' && <><th>Plataforma</th><th>Tipo de vacante</th></>}</tr></thead><tbody>{review.phones.slice(reviewPage*50, reviewPage*50+50).map(phone => <tr key={phone}><td>{phone}</td>{selected?.parameters.map(parameter => <td key={parameter.key}><input aria-label={`${parameter.label} de ${phone}`} placeholder={`Escribe ${parameter.label.toLocaleLowerCase('es-MX')}`} disabled={busy} maxLength={500} value={recipientParameters[phone]?.[parameter.key] || ''} onChange={e => { const value = e.target.value; setRecipientParameters(old => ({ ...old, [phone]: { ...old[phone], [parameter.key]: value } })); if (parameter.contact_name) setReview(old => old ? { ...old, names: { ...old.names, [phone]: value } } : old); requestId.current = crypto.randomUUID(); }} /></td>)}{kind === 'veronica' && <><td><input aria-label={`Plataforma de ${phone}`} placeholder="Ej. OCC" disabled={busy} maxLength={80} value={review.filters?.[phone]?.platform || ''} onChange={e => { const value = e.target.value; setReview(old => old ? { ...old, filters: { ...old.filters, [phone]: { ...old.filters?.[phone], platform: value } } } : old); requestId.current = crypto.randomUUID(); }} /></td><td><input aria-label={`Tipo de vacante de ${phone}`} placeholder="Ej. Coach" disabled={busy} maxLength={80} value={review.filters?.[phone]?.vacancy_type || ''} onChange={e => { const value = e.target.value; setReview(old => old ? { ...old, filters: { ...old.filters, [phone]: { ...old.filters?.[phone], vacancy_type: value } } } : old); requestId.current = crypto.randomUUID(); }} /></td></>}</tr>)}</tbody></table></div>
           {review.count > 50 && <div className="bulk-pages"><button disabled={!reviewPage} onClick={() => setReviewPage(p => p-1)}>Anterior</button><span>Página {reviewPage+1} de {Math.ceil(review.count/50)}</span><button disabled={(reviewPage+1)*50 >= review.count} onClick={() => setReviewPage(p => p+1)}>Siguiente</button></div>}
           {!!review.invalid.length && <details><summary>Ver números excluidos y corregir ({review.invalid.length})</summary><div className="bulk-exclusions">{review.invalid.map((r, i) => <p key={i}>Fila {r.row}: {r.value} — {r.reason}</p>)}</div><p>Corrige el texto o el archivo y vuelve a cargarlo.</p></details>}
         </div>
@@ -200,7 +214,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
       <div className="bulk-actions"><button disabled={busy} onClick={() => { if (fileReview) setReview(fileReview); setStep(2); setError(''); }}>Cambiar números o filtros</button>
       <button ref={confirmButtonRef} className="primary bulk-prepare" aria-describedby={blockedReason ? 'bulk-prepare-reason' : undefined} disabled={!!blockedReason} onClick={() => void action(async () => {
         if (blockedReason) return;
-        const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, parameters, phones: review?.phones, names: review?.names || {}, ...(kind === 'veronica' ? { filters: review?.filters || {} } : {}), ...(review?.contact_ids ? { contact_ids: review.contact_ids } : {}) });
+        const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, ...(selected?.parameters.length ? { recipient_parameters: recipientParameters } : { parameters: {} }), phones: review?.phones, names: review?.names || {}, ...(kind === 'veronica' ? { filters: review?.filters || {} } : {}), ...(review?.contact_ids ? { contact_ids: review.contact_ids } : {}) });
         setJob(saved); setOffset(0); setConsent(false);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}

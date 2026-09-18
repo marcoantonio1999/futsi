@@ -1,4 +1,5 @@
 import io
+import json
 from unittest.mock import patch
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -33,6 +34,18 @@ def test_excel_names_and_reversed_columns():
     w = Workbook(); w.active.append(['Teléfono', 'Nombre']); w.active.append([5512345678, '  María   López '])
     b = io.BytesIO(); w.save(b)
     assert import_recipients(file('n.xlsx', b.getvalue()))['names'] == {'5512345678': 'María López'}
+
+def test_excel_prefills_every_matching_template_field_by_phone():
+    data = 'Telefono,Nombre del destinatario,Empresa\n5512345678,Ana,Empresa Uno\n5587654321,Luis,Empresa Dos'
+    parameters = json.dumps([
+        {'key': 'body:1', 'label': 'Nombre del destinatario', 'contact_name': True},
+        {'key': 'body:2', 'label': 'Empresa', 'contact_name': False},
+    ])
+    result = import_recipients(file('plantilla.csv', data.encode()), template_parameters=parameters)
+    assert result['parameter_values'] == {
+        '5512345678': {'body:1': 'Ana', 'body:2': 'Empresa Uno'},
+        '5587654321': {'body:1': 'Luis', 'body:2': 'Empresa Dos'},
+    }
 
 def test_recruitment_columns_are_imported_by_phone():
     data = 'Telefono,Nombre,Plataforma,Tipo de vacante\n5512345678,Ana,OCC,Coach\n5587654321,Luis,Indeed,Contador'
