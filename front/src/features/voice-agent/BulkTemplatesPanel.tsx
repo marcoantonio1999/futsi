@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { apiRequest, apiFormRequest } from '../../api';
 import './bulk-templates.css';
 import { UvmContactPicker } from './UvmContactPicker';
+import { FileContactFilters, initialFileFilters, type FileContact, type FileFacets, type FileFilters, type FileProfile } from './FileContactFilters';
 
 type Kind = 'veronica' | 'academy';
 type Template = { name: string; language: string; category: string; text: string; sendable: boolean; reason?: string; parameters: { key: string; label: string; contact_name?: boolean }[] };
-type Review = { phones: string[]; names?: Record<string, string>; filters?: Record<string, { platform?: string; vacancy_type?: string }>; added_filter_options?: { platform: string[]; vacancy_type: string[] }; count: number; duplicates: number; invalid: { row: number; value: string; reason: string }[]; needs_column?: boolean; columns?: { index: number; label: string }[]; contact_ids?: number[]; needs_review_count?: number; unverified_consent_count?: number };
+type Review = { phones: string[]; names?: Record<string, string>; filters?: Record<string, { platform?: string; vacancy_type?: string }>; added_filter_options?: { platform: string[]; vacancy_type: string[] }; count: number; duplicates: number; invalid: { row: number; value: string; reason: string }[]; needs_column?: boolean; columns?: { index: number; label: string }[]; contact_ids?: number[]; needs_review_count?: number; unverified_consent_count?: number; file_contacts?: FileContact[]; file_profile?: FileProfile; file_facets?: FileFacets; file_total?: number };
 type Job = { id: string; title: string; channel: string; status: string; detail: string; created_at: string; heartbeat_at: string | null; percent: number; processed: number; total: number; counts: Record<string, number>; template: { name: string; language: string; text: string }; quote: { total: string; currency: string; unit: string; category: string; note: string; verified_on: string; source: string }; recipients?: { id: number; phone: string; name?: string; status: string; detail: string }[]; has_more?: boolean; directory?: { dataset?: string; needs_review_count?: number; unverified_consent_count?: number } };
 const labels: Record<string, string> = { draft: 'Por confirmar', queued: 'En cola', running: 'Enviando', completed: 'Intentos terminados', cancelled: 'Cancelado', paused: 'Detenido: requiere revisión', pending: 'Pendiente', sending: 'En proceso', accepted: 'Aceptado, sin entrega confirmada', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Resultado sin confirmar', skipped: 'Excluido: no desea mensajes' };
 const money = (n: string) => Number(n).toLocaleString('es-MX', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
@@ -23,6 +24,8 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   const [file, setFile] = useState<File | null>(null);
   const [column, setColumn] = useState('');
   const [review, setReview] = useState<Review | null>(null);
+  const [fileReview, setFileReview] = useState<Review | null>(null);
+  const [fileFilters, setFileFilters] = useState<FileFilters>(initialFileFilters);
   const [reviewPage, setReviewPage] = useState(0);
   const [job, setJob] = useState<Job | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -62,7 +65,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   const processing = !!job && !draft;
   const activeId = processing ? job?.id : undefined;
   const post = <T,>(op: string, body: unknown) => apiRequest<T>(base+op+'/', token, { method: 'POST', body: JSON.stringify(body) });
-  function invalidate() { setReview(null); setReviewPage(0); requestId.current = crypto.randomUUID(); }
+  function invalidate() { setReview(null); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); requestId.current = crypto.randomUUID(); }
   async function action(fn: () => Promise<void>) {
     setBusy(true); setError('');
     try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo completar la operación.'); }
@@ -79,7 +82,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
     const controller = new AbortController();
     catalogGeneration.current += 1;
     setTemplates([]); setTemplateKey(''); setParameters({}); setCursor('');
-    setReview(null); setReviewPage(0); setStep(1); setJob(null); setConsent(false); setError('');
+    setReview(null); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); setStep(1); setJob(null); setConsent(false); setError('');
     requestId.current = crypto.randomUUID();
     setCatalogLoading(!!channel);
     if (channel) {
@@ -126,7 +129,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
   }
   function chooseFile(next: File | null) {
     setFile(next); setColumn(''); invalidate(); setError('');
-    if (next && (!/\.(xlsx|csv|txt)$/i.test(next.name) || next.size > 2*1024*1024)) setError('Usa un archivo .xlsx, .csv o .txt de hasta 2 MB.');
+    if (next && (!/\.(xlsx|csv|txt)$/i.test(next.name) || next.size > 10*1024*1024)) setError('Usa un archivo .xlsx, .csv o .txt de hasta 10 MB.');
   }
   async function loadNumbers() {
     await action(async () => {
@@ -137,9 +140,17 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
       if (column !== '') form.set('column', column);
       const result = await apiFormRequest<Review>(base+'import/', token, form);
       setReview(result); setReviewPage(0); requestId.current = crypto.randomUUID();
-      if (!result.needs_column && result.count) setStep(3);
+      if (result.file_contacts?.length) { setFileReview(result); setFileFilters(initialFileFilters); }
+      else if (!result.needs_column && result.count) setStep(3);
       else if (!result.needs_column) setError('No encontramos números válidos. Revisa el archivo o escribe números de 10 dígitos.');
     });
+  }
+  function applyFileContacts(contacts: FileContact[]) {
+    if (!fileReview) return;
+    const phones = contacts.map(contact => contact.phone);
+    const names = Object.fromEntries(contacts.filter(contact => contact.name.trim()).map(contact => [contact.phone, contact.name]));
+    setReview({ ...fileReview, phones, names, count: phones.length });
+    setReviewPage(0); requestId.current = crypto.randomUUID(); setStep(3); setError('');
   }
   function newJob() { setJob(null); setConsent(false); setOffset(0); invalidate(); setStep(1); setHistoryOpen(false); setError(''); }
   function closeConfirmation() { if (!busy) { setJob(null); setConsent(false); setError(''); } }
@@ -168,11 +179,12 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
         {mode === 'directory' && hasDirectory ? <UvmContactPicker key={channel} token={token} channel={channel} label={directoryLabel} onLoad={r => { setReview(r); setReviewPage(0); requestId.current = crypto.randomUUID(); setStep(3); }} /> : <>
         {mode === 'text' ? <label>Números separados por comas<textarea disabled={busy} rows={4} value={text} maxLength={25000} placeholder="5512345678, 5587654321" onChange={e => { setText(e.target.value); invalidate(); }} /></label> : <>
           <label className={`bulk-drop ${dragging ? 'dragging' : ''}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); if (!busy) chooseFile(e.dataTransfer.files[0] || null); }}>
-            <strong>{file ? file.name : 'Arrastra tu archivo aquí'}</strong><span>o pulsa para elegir Excel (.xlsx), CSV o TXT · hasta 2 MB</span><input type="file" accept=".xlsx,.csv,.txt" disabled={busy} onChange={e => chooseFile(e.target.files?.[0] || null)} />
-          </label><p>Excel/CSV: una columna “Teléfono” y, opcionalmente, otra “Nombre”.{kind === 'veronica' ? ' También puedes incluir “Plataforma” u “Origen” y “Tipo de vacante” o “Puesto”; las categorías nuevas se agregarán automáticamente.' : ''} Los nombres se conservarán en el lote y en la conversación. TXT: números separados por comas o renglones.</p>
+            <strong>{file ? file.name : 'Arrastra tu archivo aquí'}</strong><span>o pulsa para elegir Excel (.xlsx), CSV o TXT · hasta 10 MB</span><input type="file" accept=".xlsx,.csv,.txt" disabled={busy} onChange={e => chooseFile(e.target.files?.[0] || null)} />
+          </label><p>Excel/CSV: una columna “Teléfono” y, opcionalmente, “Nombre” o “Contacto”. Si incluye las columnas del análisis, podrás filtrar por interacción, relación, antigüedad y respuesta aunque los números no estén en Supabase.{kind === 'veronica' ? ' También admite “Plataforma” u “Origen” y “Tipo de vacante” o “Puesto”.' : ''} TXT: números separados por comas o renglones.</p>
           {review?.needs_column && <label>¿Qué columna contiene los números?<select value={column} onChange={e => setColumn(e.target.value)}><option value="">Selecciona una columna</option>{review.columns?.map(c => <option key={c.index} value={c.index}>{c.label}</option>)}</select></label>}
         </>}
-        <button className="primary" disabled={busy || (mode === 'file' ? !file : !text.trim())} onClick={() => void loadNumbers()}>{busy ? 'Procesando…' : 'Cargar y revisar números'}</button>
+        {mode === 'file' && fileReview?.file_contacts?.length && fileReview.file_facets && <FileContactFilters contacts={fileReview.file_contacts} facets={fileReview.file_facets} profile={fileReview.file_profile || 'generic'} filters={fileFilters} disabled={busy} onChange={setFileFilters} onApply={applyFileContacts} />}
+        {!(mode === 'file' && fileReview?.file_contacts?.length) && <button className="primary" disabled={busy || (mode === 'file' ? !file : !text.trim())} onClick={() => void loadNumbers()}>{busy ? 'Procesando…' : mode === 'file' ? 'Leer archivo y mostrar filtros' : 'Cargar y revisar números'}</button>}
         </>}
         <div className="bulk-actions"><button disabled={busy} onClick={() => setStep(1)}>Atrás</button></div>
       </section>}
@@ -185,7 +197,7 @@ export function BulkTemplatesPanel({ token, kind }: { token: string; kind: Kind 
           {!!review.invalid.length && <details><summary>Ver números excluidos y corregir ({review.invalid.length})</summary><div className="bulk-exclusions">{review.invalid.map((r, i) => <p key={i}>Fila {r.row}: {r.value} — {r.reason}</p>)}</div><p>Corrige el texto o el archivo y vuelve a cargarlo.</p></details>}
         </div>
       {blockedReason && <div id="bulk-prepare-reason" className="bulk-alert" role="status"><strong>Para continuar: </strong>{blockedReason}</div>}
-      <div className="bulk-actions"><button disabled={busy} onClick={() => { setStep(2); setError(''); }}>Cambiar números</button>
+      <div className="bulk-actions"><button disabled={busy} onClick={() => { if (fileReview) setReview(fileReview); setStep(2); setError(''); }}>Cambiar números o filtros</button>
       <button ref={confirmButtonRef} className="primary bulk-prepare" aria-describedby={blockedReason ? 'bulk-prepare-reason' : undefined} disabled={!!blockedReason} onClick={() => void action(async () => {
         if (blockedReason) return;
         const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, parameters, phones: review?.phones, names: review?.names || {}, ...(kind === 'veronica' ? { filters: review?.filters || {} } : {}), ...(review?.contact_ids ? { contact_ids: review.contact_ids } : {}) });

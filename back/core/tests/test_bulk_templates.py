@@ -53,6 +53,47 @@ def test_excel_numeric_cells_and_formula_not_executed():
     result = import_recipients(file('n.xlsx', b.getvalue()))
     assert result['phones'] == ['5512345678'] and len(result['invalid']) == 1
 
+def test_analyzed_workbook_uses_contactos_sheet_and_preserves_filter_metadata():
+    w = Workbook()
+    w.active.title = 'Filtros'
+    w.active.append(['Panel visual; no contiene teléfonos'])
+    contacts = w.create_sheet('Contactos')
+    contacts.append(['Título'])
+    contacts.append(['Descripción'])
+    contacts.append([])
+    contacts.append([])
+    contacts.append([
+        'Teléfono', 'Contacto', 'Estatus campaña', 'Relación academia',
+        'Hubo interacción de ambos lados', 'Pendiente de nuestra respuesta',
+        'Inició la conversación', 'Periodo de última interacción',
+        'Antigüedad de la última interacción', 'Nuestro equipo respondió',
+    ])
+    contacts.append([
+        '525512345678', 'Martha', 'Contacto permitido', 'Prospecto',
+        'Sí', 'No', 'El contacto', '2026-08', '01 · Últimos 30 días', 'Sí',
+    ])
+    b = io.BytesIO(); w.save(b)
+    result = import_recipients(file('analisis.xlsx', b.getvalue()))
+    assert result['phones'] == ['5512345678']
+    assert result['names'] == {'5512345678': 'Martha'}
+    assert result['file_profile'] == 'academy'
+    assert result['file_contacts'][0] == {
+        'phone': '5512345678', 'name': 'Martha', 'campaign_status': 'Contacto permitido',
+        'mutual_interaction': 'Sí', 'pending_response': 'No', 'academy_relationship': 'Prospecto',
+        'league_relevance': '', 'age_bucket': '01 · Últimos 30 días', 'started_by': 'El contacto',
+        'team_responded': 'Sí', 'period': '2026-08', 'year': '2026', 'month': '08',
+    }
+
+def test_league_analysis_is_identified_without_supabase_contact():
+    data = (
+        'Telefono,Contacto,Estatus campana,Relevancia para liga,Periodo de ultima interaccion\n'
+        '5215587654321,Equipo Norte,Revisar consentimiento,Prospecto de liga,2025-11\n'
+    ).encode()
+    result = import_recipients(file('liga.csv', data))
+    assert result['file_profile'] == 'league'
+    assert result['phones'] == ['5587654321']
+    assert result['file_facets']['league_relevance'] == ['Prospecto de liga']
+
 def test_txt_and_limits_and_bad_file():
     assert import_recipients(file('n.txt', b'5512345678,5587654321'))['count'] == 2
     with pytest.raises(ValueError): import_recipients(text=','.join(['5512345678']*1001))

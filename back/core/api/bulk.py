@@ -37,12 +37,16 @@ class BulkView(APIView):
                 result = import_recipients(request.FILES.get('file'), request.data.get('text', ''), request.data.get('column'))
                 if kind == 'veronica':
                     result['added_filter_options'] = ensure_imported(result.get('filters', {}), request.user)
-                if result.get('phones') and request.data.get('channel'):
+                # Large analyzed workbooks are filtered client-side and must not
+                # depend on every uploaded number already existing in the service.
+                if result.get('phones') and len(result['phones']) <= 1000 and request.data.get('channel'):
                     lookup = self.forward(kind, 'names', data={'actor_id': request.user.pk,
                         'channel': request.data['channel'], 'phones': result['phones']})
                     if lookup.status_code != 200:
                         return lookup
                     result['names'] = {**lookup.data.get('names', {}), **result.get('names', {})}
+                    for contact in result.get('file_contacts', []):
+                        contact['name'] = result['names'].get(contact['phone'], contact.get('name', ''))
                 return Response(result)
             except (ValueError, TypeError) as exc:
                 # Authored validation messages are safe; never expose parser internals.

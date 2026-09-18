@@ -1,13 +1,64 @@
-"""Bounded, read-only import. Workbooks/formulas are never executed."""
+"""Bounded, read-only recipient import. Workbooks/formulas are never executed."""
 import csv
 import io
 import re
 import unicodedata
 import zipfile
+from datetime import date, datetime
+
 from openpyxl import load_workbook
 
-MAX_BYTES = 2 * 1024 * 1024
-MAX_ROWS = 1000
+MAX_BYTES = 10 * 1024 * 1024
+MAX_TEXT_ROWS = 1000
+MAX_FILE_ROWS = 10000
+MAX_COLUMNS = 50
+MAX_HEADER_ROWS = 25
+
+PHONE_HEADERS = {'telefono', 'telefonos', 'celular', 'numero', 'numeros', 'whatsapp', 'phone'}
+NAME_HEADERS = {'nombre', 'nombre completo', 'name', 'contact name', 'contacto'}
+FILTER_COLUMNS = {
+    'campaign_status': {'estatus campana', 'estado campana'},
+    'mutual_interaction': {'hubo interaccion de ambos lados', 'interaccion de ambos lados'},
+    'pending_response': {'pendiente de nuestra respuesta', 'pendiente de respuesta'},
+    'academy_relationship': {'relacion academia', 'relacion con academia'},
+    'league_relevance': {'relevancia para liga', 'relevancia liga'},
+    'age_bucket': {'antiguedad de la ultima interaccion', 'antiguedad ultima interaccion'},
+    'started_by': {'inicio la conversacion', 'quien inicio la conversacion'},
+    'last_period': {'periodo de ultima interaccion', 'mes de ultima interaccion'},
+    'last_interaction': {'ultima interaccion', 'fecha de ultima interaccion'},
+    'team_responded': {'nuestro equipo respondio', 'academia respondio', 'liga respondio'},
+    'no_contact': {'no contactar'},
+    'platform': {'plataforma', 'plataforma de origen', 'origen', 'fuente', 'bolsa de trabajo', 'portal', 'platform', 'source'},
+    'vacancy_type': {'tipo de vacante', 'vacante', 'puesto', 'cargo', 'tipo de puesto', 'perfil', 'vacancy type', 'job type'},
+}
+
+
+def _header(value):
+    text = ''.join(
+        char for char in unicodedata.normalize('NFKD', str(value or '').lower())
+        if not unicodedata.combining(char)
+    )
+    return re.sub(r'\s+', ' ', text).strip(' \t\r\n¿?¡!')
+
+
+def _clean(value, limit=160):
+    if value is None or isinstance(value, bool):
+        return ''
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    text = ' '.join(str(value).split())
+    if text.lstrip().startswith('='):
+        return ''
+    return text[:limit]
+
+
+def _period(value):
+    if isinstance(value, (datetime, date)):
+        return f'{value.year:04d}-{value.month:02d}'
+    text = _clean(value, 40)
+    match = re.search(r'(?<!\d)((?:19|20)\d{2})[-/]?(0[1-9]|1[0-2])(?!\d)', text)
+    return f'{match.group(1)}-{match.group(2)}' if match else ''
+
 
 def normalize_phone(value):
     if isinstance(value, bool):
@@ -21,14 +72,60 @@ def normalize_phone(value):
         raise ValueError()
     return text
 
-def review(values, names=None, metadata=None):
-    values = [(i, v) for i, v in values if v is not None and str(v).strip()]
-    if len(values) > MAX_ROWS:
-        raise ValueError('Carga hasta 1,000 números por lote.')
+
+def _normalize_file_phone(value):
+    """Accept the Mexican country prefixes emitted by WhatsApp exports."""
+    try:
+        return normalize_phone(value)
+    except ValueError:
+        if isinstance(value, bool):
+            raise
+        if isinstance(value, float):
+            if not value.is_integer():
+                raise
+            value = int(value)
+        text = re.sub(r'[\s()+\-]', '', str(value).strip())
+        if re.fullmatch(r'52[1-9][0-9]{9}', text):
+            return text[2:]
+        if re.fullmatch(r'521[1-9][0-9]{9}', text):
+            return text[3:]
+        raise ValueError()
+
+
+def _profile(metadata_columns):
+    if 'league_relevance' in metadata_columns:
+        return 'league'
+    if 'academy_relationship' in metadata_columns:
+        return 'academy'
+    return 'generic'
+
+
+def _facets(contacts):
+    keys = (
+        'campaign_status', 'mutual_interaction', 'pending_response',
+        'academy_relationship', 'league_relevance', 'age_bucket', 'started_by',
+        'year', 'month', 'team_responded',
+    )
+    return {
+        key: sorted({contact.get(key, '') for contact in contacts if contact.get(key, '')}, key=str.casefold)
+        for key in keys
+    }
+
+
+def review(values, names=None, metadata=None, max_rows=MAX_TEXT_ROWS, allow_country_code=False):
+    values = [(index, value) for index, value in values if value is not None and str(value).strip()]
+    if len(values) > max_rows:
+        if max_rows == MAX_TEXT_ROWS:
+            raise ValueError('Carga hasta 1,000 números por lote.')
+        raise ValueError('El archivo puede contener hasta 10,000 contactos.')
     valid, invalid, seen, duplicates = [], [], set(), 0
+    names = names or {}
+    metadata = metadata or {}
+    kept_names = {}
+    kept_metadata = {}
     for index, value in values:
         try:
-            phone = normalize_phone(value)
+            phone = (_normalize_file_phone if allow_country_code else normalize_phone)(value)
         except ValueError:
             invalid.append({'row': index, 'value': str(value)[:80], 'reason': 'Usa exactamente 10 dígitos de México, sin código de país.'})
             continue
@@ -37,39 +134,133 @@ def review(values, names=None, metadata=None):
         else:
             seen.add(phone)
             valid.append(phone)
-    names = names or {}
-    metadata = metadata or {}
-    # Only keep names associated with accepted numbers. Never evaluate formulas.
-    kept_names = {}
-    for index, value in values:
+        name = _clean(names.get(index), 120)
+        if name and phone not in kept_names:
+            kept_names[phone] = name
+        row_metadata = metadata.get(index, {})
+        if row_metadata:
+            target = kept_metadata.setdefault(phone, {})
+            for key, raw_value in row_metadata.items():
+                value_text = _clean(raw_value)
+                if value_text and not target.get(key):
+                    target[key] = value_text
+
+    contacts = []
+    metadata_columns = set()
+    for phone in valid:
+        fields = kept_metadata.get(phone, {})
+        metadata_columns.update(fields)
+        last_period = _period(fields.get('last_period')) or _period(fields.get('last_interaction'))
+        contact = {
+            'phone': phone,
+            'name': kept_names.get(phone, ''),
+            **{key: fields.get(key, '') for key in FILTER_COLUMNS if key not in {'last_period', 'last_interaction', 'no_contact', 'platform', 'vacancy_type'}},
+            'period': last_period,
+            'year': last_period[:4] if last_period else '',
+            'month': last_period[5:7] if len(last_period) >= 7 else '',
+        }
+        if fields.get('no_contact') and _header(fields['no_contact']) in {'si', 'true', '1'}:
+            contact['campaign_status'] = 'No contactar'
+        contacts.append(contact)
+
+    result = {
+        'phones': valid,
+        'names': kept_names,
+        'filters': {
+            phone: {key: value for key in ('platform', 'vacancy_type') if (value := kept_metadata.get(phone, {}).get(key))}
+            for phone in valid
+            if any(kept_metadata.get(phone, {}).get(key) for key in ('platform', 'vacancy_type'))
+        },
+        'invalid': invalid,
+        'duplicates': duplicates,
+        'count': len(valid),
+    }
+    analysis_columns = metadata_columns - {'platform', 'vacancy_type'}
+    if analysis_columns:
+        result.update({
+            'file_contacts': contacts,
+            'file_profile': _profile(metadata_columns),
+            'file_facets': _facets(contacts),
+            'file_total': len(contacts),
+        })
+    return result
+
+
+def _find_columns(header_row):
+    normalized = [_header(value) for value in header_row]
+    phone_columns = [index for index, value in enumerate(normalized) if value in PHONE_HEADERS]
+    name_columns = [index for index, value in enumerate(normalized) if value in NAME_HEADERS]
+    metadata_columns = {}
+    for key, aliases in FILTER_COLUMNS.items():
+        match = next((index for index, value in enumerate(normalized) if value in aliases), None)
+        if match is not None:
+            metadata_columns[key] = match
+    return phone_columns, name_columns, metadata_columns
+
+
+def _xlsx_rows(content):
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            if sum(entry.file_size for entry in archive.infolist()) > 50 * 1024 * 1024 or len(archive.infolist()) > 500:
+                raise ValueError('El Excel es demasiado grande al descomprimirlo.')
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=False, keep_links=False)
         try:
-            phone = normalize_phone(value)
-        except ValueError:
-            continue
-        name = names.get(index)
-        if isinstance(name, str) and not name.lstrip().startswith('='):
-            name = ' '.join(name.split())[:120]
-            if name and phone not in kept_names:
-                kept_names[phone] = name
-    kept_metadata = {}
-    for index, value in values:
-        try:
-            phone = normalize_phone(value)
-        except ValueError:
-            continue
-        values_for_row = metadata.get(index, {})
-        if not isinstance(values_for_row, dict):
-            continue
-        destination = kept_metadata.setdefault(phone, {})
-        for key in ('platform', 'vacancy_type'):
-            item = values_for_row.get(key)
-            if isinstance(item, str) and not item.lstrip().startswith('='):
-                item = ' '.join(item.split())[:80]
-                if item and key not in destination:
-                    destination[key] = item
-        if not destination:
-            kept_metadata.pop(phone, None)
-    return {'phones': valid, 'names': kept_names, 'filters': kept_metadata, 'invalid': invalid, 'duplicates': duplicates, 'count': len(valid)}
+            # Python's sort is stable, so a sheet literally named "Contactos" goes
+            # first and the workbook order is preserved for every other sheet.
+            sheets = sorted(workbook.worksheets, key=lambda sheet: _header(sheet.title) != 'contactos')
+            fallback = None
+            for sheet in sheets:
+                preview = [list(row) for row in sheet.iter_rows(max_row=MAX_HEADER_ROWS, max_col=MAX_COLUMNS, values_only=True)]
+                if fallback is None:
+                    fallback = (sheet, preview, 0)
+                for row_index, row in enumerate(preview):
+                    phone_columns, _, _ = _find_columns(row)
+                    if phone_columns:
+                        rows = [list(r) for r in sheet.iter_rows(
+                            min_row=row_index + 1,
+                            max_row=row_index + MAX_FILE_ROWS + 2,
+                            max_col=MAX_COLUMNS,
+                            values_only=True,
+                        )]
+                        return rows, 0
+            if fallback:
+                sheet, preview, row_index = fallback
+                rows = preview + [list(r) for r in sheet.iter_rows(
+                    min_row=len(preview) + 1,
+                    max_row=MAX_FILE_ROWS + MAX_HEADER_ROWS + 2,
+                    max_col=MAX_COLUMNS,
+                    values_only=True,
+                )]
+                return rows, row_index
+            return [], 0
+        finally:
+            workbook.close()
+    except (zipfile.BadZipFile, KeyError, OSError):
+        raise ValueError('El archivo no es un Excel .xlsx válido.') from None
+
+
+def _tabular_rows(content, extension):
+    try:
+        decoded = content.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        raise ValueError('Guarda el archivo como UTF-8.') from None
+    if extension == 'txt':
+        return None, decoded
+    try:
+        dialect = csv.Sniffer().sniff(decoded[:4096], delimiters=',;\t')
+    except csv.Error:
+        dialect = csv.excel
+    rows = []
+    try:
+        for row in csv.reader(io.StringIO(decoded), dialect):
+            if any(str(value).strip() for value in row):
+                rows.append(row)
+                if len(rows) > MAX_FILE_ROWS + MAX_HEADER_ROWS:
+                    raise ValueError('El archivo puede contener hasta 10,000 contactos.')
+    except csv.Error:
+        raise ValueError('El CSV no tiene un formato válido.') from None
+    return rows, None
+
 
 def import_recipients(file=None, text='', column=None):
     if file and text:
@@ -79,79 +270,61 @@ def import_recipients(file=None, text='', column=None):
             raise ValueError('Texto inválido o demasiado grande.')
         return review(list(enumerate(re.split(r'[,;\r\n]+', text), 1)))
     if file.size > MAX_BYTES:
-        raise ValueError('El archivo puede pesar hasta 2 MB.')
+        raise ValueError('El archivo puede pesar hasta 10 MB.')
     content = file.read(MAX_BYTES + 1)
     if len(content) > MAX_BYTES:
-        raise ValueError('El archivo puede pesar hasta 2 MB.')
+        raise ValueError('El archivo puede pesar hasta 10 MB.')
     extension = file.name.lower().rsplit('.', 1)[-1]
     if extension == 'xlsx':
-        try:
-            with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                if sum(z.file_size for z in archive.infolist()) > 20 * 1024 * 1024 or len(archive.infolist()) > 500:
-                    raise ValueError('El Excel es demasiado grande al descomprimirlo.')
-            workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=False, keep_links=False)
-            try:
-                sheet = workbook.active
-                if sheet.max_row and sheet.max_row > MAX_ROWS + 1:
-                    raise ValueError('Usa una hoja de hasta 1,000 teléfonos y un encabezado; elimina filas vacías sobrantes.')
-                if sheet.max_column and sheet.max_column > 50:
-                    raise ValueError('Usa un Excel con un máximo de 50 columnas.')
-                rows = [list(r) for r in sheet.iter_rows(max_row=MAX_ROWS + 2, max_col=min(sheet.max_column or 50, 50), values_only=True)]
-            finally:
-                workbook.close()
-        except (zipfile.BadZipFile, KeyError, OSError):
-            raise ValueError('El archivo no es un Excel .xlsx válido.') from None
+        rows, detected_header_index = _xlsx_rows(content)
     elif extension in {'csv', 'txt'}:
-        try:
-            decoded = content.decode('utf-8-sig')
-        except UnicodeDecodeError:
-            raise ValueError('Guarda el archivo como UTF-8.') from None
-        if extension == 'txt':
-            return review(list(enumerate(re.split(r'[,;\r\n]+', decoded), 1)))
-        try:
-            dialect = csv.Sniffer().sniff(decoded[:4096], delimiters=',;\t')
-        except csv.Error:
-            dialect = csv.excel
-        rows = []
-        for row in csv.reader(io.StringIO(decoded), dialect):
-            if any(str(v).strip() for v in row):
-                rows.append(row)
-                if len(rows) > MAX_ROWS + 1:
-                    raise ValueError('Carga hasta 1,000 números por lote.')
+        rows, txt = _tabular_rows(content, extension)
+        if txt is not None:
+            return review(list(enumerate(re.split(r'[,;\r\n]+', txt), 1)))
+        detected_header_index = 0
     else:
         raise ValueError('Selecciona .xlsx, .csv o .txt. Para .xls, guárdalo primero como .xlsx.')
-    rows = [row for row in rows if any(v is not None and str(v).strip() for v in row)]
+
+    rows = [row for row in (rows or []) if any(value is not None and str(value).strip() for value in row)]
     if not rows:
         return review([])
-    def header(v):
-        return ''.join(c for c in unicodedata.normalize('NFKD', str(v or '').lower()) if not unicodedata.combining(c)).strip()
-    candidates = [i for i, v in enumerate(rows[0]) if header(v) in {'telefono', 'telefonos', 'celular', 'numero', 'numeros', 'whatsapp', 'phone'}]
-    chosen = int(column) if column not in (None, '') else candidates[0] if len(candidates) == 1 else None
+
+    header_index = min(detected_header_index, len(rows) - 1)
+    phone_columns, name_columns, metadata_columns = _find_columns(rows[header_index])
+    chosen = int(column) if column not in (None, '') else phone_columns[0] if len(phone_columns) == 1 else None
     if chosen is None and max(map(len, rows)) > 1:
-        return {'needs_column': True, 'columns': [{'index': i, 'label': str(v or f'Columna {i+1}')[:80]} for i, v in enumerate(rows[0][:50])]}
+        return {
+            'needs_column': True,
+            'columns': [
+                {'index': index, 'label': str(value or f'Columna {index + 1}')[:80]}
+                for index, value in enumerate(rows[header_index][:MAX_COLUMNS])
+            ],
+        }
     chosen = chosen or 0
-    if chosen < 0 or chosen >= len(rows[0]):
+    if chosen < 0 or chosen >= len(rows[header_index]):
         raise ValueError('Selecciona una columna de teléfonos válida.')
-    has_header = chosen in candidates
+
+    has_header = chosen in phone_columns
     if column not in (None, '') and not has_header:
         try:
-            normalize_phone(rows[0][chosen])
+            normalize_phone(rows[header_index][chosen])
         except ValueError:
             has_header = True
-    name_columns = [i for i, v in enumerate(rows[0]) if i != chosen and header(v) in {'nombre', 'nombre completo', 'name', 'contact name'}]
-    name_column = name_columns[0] if has_header and len(name_columns) == 1 else None
-    platform_columns = [i for i, v in enumerate(rows[0]) if i != chosen and header(v) in {
-        'plataforma', 'plataforma de origen', 'origen', 'fuente', 'bolsa de trabajo', 'portal', 'platform', 'source'}]
-    vacancy_columns = [i for i, v in enumerate(rows[0]) if i != chosen and header(v) in {
-        'tipo de vacante', 'vacante', 'puesto', 'cargo', 'tipo de puesto', 'perfil', 'vacancy type', 'job type'}]
-    platform_column = platform_columns[0] if has_header and len(platform_columns) == 1 else None
-    vacancy_column = vacancy_columns[0] if has_header and len(vacancy_columns) == 1 else None
-    names = {i+1: row[name_column] for i, row in enumerate(rows) if i > 0 and name_column is not None and name_column < len(row)}
-    metadata = {
-        i+1: {
-            'platform': row[platform_column] if platform_column is not None and platform_column < len(row) else '',
-            'vacancy_type': row[vacancy_column] if vacancy_column is not None and vacancy_column < len(row) else '',
-        }
-        for i, row in enumerate(rows) if i > 0
+    data_start = header_index + 1 if has_header else header_index
+    name_column = name_columns[0] if has_header and name_columns else None
+    names = {
+        row_number: row[name_column]
+        for row_number, row in enumerate(rows[data_start:], data_start + 1)
+        if name_column is not None and name_column < len(row)
     }
-    return review([(i+1, row[chosen] if chosen < len(row) else None) for i, row in enumerate(rows) if not (i == 0 and has_header)], names, metadata)
+    metadata = {
+        row_number: {
+            key: row[index] for key, index in metadata_columns.items() if index < len(row)
+        }
+        for row_number, row in enumerate(rows[data_start:], data_start + 1)
+    }
+    values = [
+        (row_number, row[chosen] if chosen < len(row) else None)
+        for row_number, row in enumerate(rows[data_start:], data_start + 1)
+    ]
+    return review(values, names, metadata, max_rows=MAX_FILE_ROWS, allow_country_code=True)
