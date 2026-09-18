@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, MessageCircle, Search, Send, UserRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { ArrowLeft, ChevronDown, MessageCircle, Search, Send, UserRound } from "lucide-react";
 import type { WhatsAppConversation, WhatsAppFollowUpAssignee } from "../../types";
 import { compareConversations, contactName, conversationAttention, lastMessage, matchesAttention, orderedMessages, messageAuthor, messagePreview, replyWindowOpen, type AttentionFilter } from "./communicationUtils";
 import { MessageBody } from "./MessageBody";
@@ -8,9 +8,10 @@ import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } 
 
 const statusLabels: Record<string, string> = { active: "Activa", completed: "Completada", canceled: "Cancelada", failed: "Con error" };
 type FollowUpPayload = { follow_up_required: boolean; follow_up_assigned_to: number | null; follow_up_notes: string };
-export function WhatsAppConversationsPanel({ conversations, assignees, initialFilter = "all", initialConversationId, onUpdateConversation, onResolveConversation, onSendMessage }: {
+export function WhatsAppConversationsPanel({ conversations, assignees, initialFilter = "all", initialConversationId, scopeControls, onUpdateConversation, onResolveConversation, onSendMessage }: {
   conversations: WhatsAppConversation[]; assignees: WhatsAppFollowUpAssignee[]; initialFilter?: AttentionFilter;
   initialConversationId?: number | null;
+  scopeControls: ReactNode;
   onResolveConversation: (conversation: WhatsAppConversation) => Promise<void>;
   onUpdateConversation: (conversation: WhatsAppConversation, payload: FollowUpPayload) => Promise<void>;
   onSendMessage: (conversation: WhatsAppConversation, body: string) => Promise<void>;
@@ -21,9 +22,11 @@ export function WhatsAppConversationsPanel({ conversations, assignees, initialFi
   const [selectedId, setSelectedId] = useState<number | null>(initialConversationId ?? null);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const inboxRef = useRef<HTMLElement>(null);
+  const filterMenuRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => { setFilter(initialFilter); }, [initialFilter]);
   useEffect(() => { if (initialConversationId != null) { setSelectedId(initialConversationId); setQuery(""); setFilter("all"); setStatus("all"); } }, [initialConversationId]);
   const pendingCount = conversations.filter(c => conversationAttention(c).key === "needs_reply").length;
+  const attentionCount = (value: AttentionFilter) => conversations.filter(c => matchesAttention(c, value)).length;
   const filtered = useMemo(() => conversations.filter(c => {
     const needle = query.trim().toLocaleLowerCase("es-MX");
     return matchesAttention(c, filter) &&
@@ -60,10 +63,18 @@ export function WhatsAppConversationsPanel({ conversations, assignees, initialFi
     <div className="comm-inbox-list">
       <div className="comm-inbox-tools"><div className="comm-section-heading"><h3>Bandeja <span className="comm-count">{conversations.length}</span></h3><span className={`comm-badge ${pendingCount ? "red" : "green"}`}>{pendingCount ? `${pendingCount} por responder` : "Sin respuestas pendientes"}</span></div>
         <label className="comm-search"><Search size={17} /><input aria-label="Buscar conversaciones" placeholder="Nombre, teléfono o mensaje" type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>
-        <select aria-label="Prioridad de atención" className={inputClass} value={filter} onChange={e => setFilter(e.target.value as AttentionFilter)}>
-          {([["all", "Todas las conversaciones"], ["needs_reply", "Nos toca responder"], ["follow_up", "Por revisar / seguimiento"], ["waiting_client", "Esperando al cliente"], ["up_to_date", "Sin pendientes"], ["manual", "En atención manual"], ["unassigned", "Pendientes sin asignar"], ["unknown", "Sin intercambio registrado"]] as Array<[AttentionFilter, string]>).map(([id, label]) => <option key={id} value={id}>{label} · {conversations.filter(c => matchesAttention(c, id)).length}</option>)}
-        </select>
-        <details className="comm-inbox-filters"><summary>Filtrar por estado del flujo</summary><select aria-label="Estado de conversación" className={inputClass} value={status} onChange={e => setStatus(e.target.value)}><option value="all">Todos los estados</option>{Object.entries(statusLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></details>
+        <div className="comm-filter-row" aria-label="Filtros de conversaciones">
+          {([["all", "Todos"], ["needs_reply", "Por responder"], ["follow_up", "Por revisar"]] as Array<[AttentionFilter, string]>).map(([id, label]) => <button type="button" className="comm-filter-chip" aria-pressed={filter === id} key={id} onClick={() => setFilter(id)}><i aria-hidden="true" className={`comm-filter-dot ${id === "all" ? "green" : id === "needs_reply" ? "red" : "amber"}`} />{label}{id !== "all" && <span>{attentionCount(id)}</span>}</button>)}
+          <details ref={filterMenuRef} className={`comm-filter-more ${!["all", "needs_reply", "follow_up"].includes(filter) || status !== "all" ? "is-active" : ""}`}>
+            <summary aria-label="Más filtros"><ChevronDown size={16} /></summary>
+            <div className="comm-filter-menu">
+              <p>Atención</p>
+              {([["waiting_client", "Esperando al cliente"], ["up_to_date", "Sin pendientes"], ["manual", "Atención manual"], ["unassigned", "Sin asignar"], ["unknown", "Sin intercambio"]] as Array<[AttentionFilter, string]>).map(([id, label]) => <button type="button" aria-pressed={filter === id} key={id} onClick={() => { setFilter(id); filterMenuRef.current?.removeAttribute("open"); }}><span>{label}</span><b>{attentionCount(id)}</b></button>)}
+              <label>Estado del flujo<select aria-label="Estado de conversación" className={inputClass} value={status} onChange={e => setStatus(e.target.value)}><option value="all">Todos los estados</option>{Object.entries(statusLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+              {(filter !== "all" || status !== "all") && <button type="button" className="comm-filter-clear" onClick={() => { setFilter("all"); setStatus("all"); filterMenuRef.current?.removeAttribute("open"); }}>Limpiar filtros</button>}
+            </div>
+          </details>
+        </div>
         <small className="comm-muted">{filtered.length} de {conversations.length} conversaciones</small>
       </div>
       <div className="comm-contact-list" ref={listRef} aria-label="Contactos">{filtered.map(c => {
@@ -73,7 +84,10 @@ export function WhatsAppConversationsPanel({ conversations, assignees, initialFi
         </button>;
       })}{!filtered.length && <div className="comm-empty"><Search size={24} /><strong>Sin conversaciones con estos filtros</strong><button className="comm-link" onClick={() => { setQuery(""); setFilter("all"); setStatus("all"); }}>Ver todas</button></div>}</div>
     </div>
-    {selected ? <ConversationDetail key={selected.id} conversation={selected} assignees={assignees} body={drafts[selected.id] ?? ""} onBody={body => setDrafts(d => ({ ...d, [selected.id]: body }))} onBack={() => setSelectedId(null)} onResolve={() => onResolveConversation(selected)} onSave={payload => onUpdateConversation(selected, payload)} onSend={body => onSendMessage(selected, body)} /> : <div className="comm-chat-placeholder"><MessageCircle size={36} /><h3>{selectedId != null ? "Conversación no disponible" : "Selecciona una conversación"}</h3><p>Lee el historial, asigna seguimiento y responde desde aquí.</p></div>}
+    <div className="comm-inbox-main">
+      {scopeControls}
+      {selected ? <ConversationDetail key={selected.id} conversation={selected} assignees={assignees} body={drafts[selected.id] ?? ""} onBody={body => setDrafts(d => ({ ...d, [selected.id]: body }))} onBack={() => setSelectedId(null)} onResolve={() => onResolveConversation(selected)} onSave={payload => onUpdateConversation(selected, payload)} onSend={body => onSendMessage(selected, body)} /> : <div className="comm-chat-placeholder"><MessageCircle size={36} /><h3>{selectedId != null ? "Conversación no disponible" : "Selecciona una conversación"}</h3><p>Lee el historial, asigna seguimiento y responde desde aquí.</p></div>}
+    </div>
   </section>;
 }
 

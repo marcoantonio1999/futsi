@@ -1,17 +1,40 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Bot, MessageCircle, Save, ShieldCheck } from "lucide-react";
-import type { Site, WhatsAppAutomationSettings } from "../../types";
-import { MessageBody } from "./MessageBody";
+import { Bot, Clock3, MessageCircle, Save, ShieldCheck } from "lucide-react";
+import type { WhatsAppAutomationSettings } from "../../types";
+import { EditableAssistantMessage } from "./EditableAssistantMessage";
+import { OpenAIModelSelect } from "./OpenAIModelSelect";
 import { inputClass, primaryButtonClass } from "./model";
+import "./assistant-settings.css";
+
+const weekdays = [
+  { value: 0, short: "Lun", label: "Lunes" },
+  { value: 1, short: "Mar", label: "Martes" },
+  { value: 2, short: "Mié", label: "Miércoles" },
+  { value: 3, short: "Jue", label: "Jueves" },
+  { value: 4, short: "Vie", label: "Viernes" },
+  { value: 5, short: "Sáb", label: "Sábado" },
+  { value: 6, short: "Dom", label: "Domingo" },
+];
+
+const settingsSections = [
+  { id: "general", label: "Modelo" },
+  { id: "messages", label: "Saludos y avisos" },
+  { id: "attention", label: "Horarios y atención" },
+  { id: "classification", label: "Clasificación" },
+  { id: "knowledge", label: "Conocimiento" },
+] as const;
+type SettingsSection = typeof settingsSections[number]["id"];
 
 export function WhatsAppAutomationSettingsPanel({
   value,
   onSave,
-  sites,
+  siteId,
   onDirtyChange,
+  token,
 }: {
+  token?: string;
   value: WhatsAppAutomationSettings | null;
-  sites: Site[];
+  siteId: number | null;
   onDirtyChange?: (dirty: boolean) => void;
   onSave: (payload: {
     site: number | null;
@@ -28,9 +51,11 @@ export function WhatsAppAutomationSettingsPanel({
     out_of_hours_acknowledgement: string;
   }) => Promise<boolean>;
 }) {
-  const [siteId, setSiteId] = useState<number | null>(value?.site ?? null);
   const [model, setModel] = useState(value?.openai_model || value?.effective_model || "");
   const [enabled, setEnabled] = useState(value?.human_first_enabled ?? true);
+  const [days, setDays] = useState<number[]>(value?.business_days ?? [0, 1, 2, 3, 4]);
+  const [startsAt, setStartsAt] = useState(value?.business_hours_start ?? "09:00");
+  const [endsAt, setEndsAt] = useState(value?.business_hours_end ?? "18:00");
   const [delayMinutes, setDelayMinutes] = useState(
     Math.max(1, Math.round((value?.human_response_delay_seconds ?? 600) / 60)),
   );
@@ -44,25 +69,41 @@ export function WhatsAppAutomationSettingsPanel({
   const [confidenceThreshold, setConfidenceThreshold] = useState(
     value?.classification_confidence_threshold ?? 80,
   );
+  const [outOfHoursAcknowledgement, setOutOfHoursAcknowledgement] = useState(
+    value?.out_of_hours_acknowledgement ?? "",
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [section, setSection] = useState<SettingsSection>("messages");
 
   useEffect(() => {
     if (!value) return;
-    setSiteId(value.site ?? null);
     setModel(value.openai_model || value.effective_model || "");
     setEnabled(value.human_first_enabled);
+    setDays(value.business_days);
+    setStartsAt(value.business_hours_start);
+    setEndsAt(value.business_hours_end);
     setDelayMinutes(Math.max(1, Math.round(value.human_response_delay_seconds / 60)));
     setWelcomeMessage(value.welcome_message);
     setAssistantInstructions(value.assistant_instructions);
     setClassificationEnabled(value.contact_classification_enabled);
     setConfidenceThreshold(value.classification_confidence_threshold);
+    setOutOfHoursAcknowledgement(value.out_of_hours_acknowledgement);
   }, [value]);
+
+  function toggleDay(day: number) {
+    setSaved(false);
+    setDays((current) => (
+      current.includes(day)
+        ? current.filter((item) => item !== day)
+        : [...current, day].sort((left, right) => left - right)
+    ));
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!value || saving) return;
+    if (!value || invalidSchedule || saving) return;
     setSaving(true);
     setSaved(false);
     setError("");
@@ -71,15 +112,15 @@ export function WhatsAppAutomationSettingsPanel({
         site: siteId,
         openai_model: model.trim(),
         human_first_enabled: enabled,
-        business_days: [0, 1, 2, 3, 4, 5, 6],
-        business_hours_start: "00:00",
-        business_hours_end: "23:59",
+        business_days: days,
+        business_hours_start: startsAt,
+        business_hours_end: endsAt,
         human_response_delay_seconds: Math.max(1, Math.min(60, delayMinutes)) * 60,
         welcome_message: welcomeMessage.trim(),
         assistant_instructions: assistantInstructions.trim(),
         contact_classification_enabled: classificationEnabled,
         classification_confidence_threshold: Math.max(50, Math.min(100, confidenceThreshold)),
-        out_of_hours_acknowledgement: value.out_of_hours_acknowledgement,
+        out_of_hours_acknowledgement: outOfHoursAcknowledgement.trim(),
       });
       setSaved(didSave);
       if (!didSave) setError("No se guardaron los cambios. Intenta de nuevo.");
@@ -91,10 +132,12 @@ export function WhatsAppAutomationSettingsPanel({
   }
 
   const dirty = value ? siteId !== (value.site ?? null) || model !== (value.openai_model || value.effective_model || "")
-    || enabled !== value.human_first_enabled
+    || enabled !== value.human_first_enabled || days.join() !== value.business_days.join()
+    || startsAt.slice(0, 5) !== value.business_hours_start.slice(0, 5) || endsAt.slice(0, 5) !== value.business_hours_end.slice(0, 5)
     || delayMinutes !== Math.max(1, Math.round(value.human_response_delay_seconds / 60))
     || welcomeMessage !== value.welcome_message || assistantInstructions !== value.assistant_instructions
-    || classificationEnabled !== value.contact_classification_enabled || confidenceThreshold !== value.classification_confidence_threshold : false;
+    || classificationEnabled !== value.contact_classification_enabled || confidenceThreshold !== value.classification_confidence_threshold
+    || outOfHoursAcknowledgement !== value.out_of_hours_acknowledgement : false;
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
   if (!value) {
@@ -106,8 +149,9 @@ export function WhatsAppAutomationSettingsPanel({
     );
   }
 
-  const invalidSettings = (
-    !siteId || !model.trim()
+  const invalidSchedule = (
+    !siteId || !model.trim() || !days.length
+    || startsAt >= endsAt
     || !Number.isFinite(delayMinutes)
     || delayMinutes < 1
     || delayMinutes > 60
@@ -115,30 +159,44 @@ export function WhatsAppAutomationSettingsPanel({
     || !assistantInstructions.trim()
     || confidenceThreshold < 50
     || confidenceThreshold > 100
+    || !Number.isFinite(confidenceThreshold)
+    || !outOfHoursAcknowledgement.trim()
   );
 
   return (
-    <form className="grid gap-4" onSubmit={submit} onInvalidCapture={event => { const section = (event.target as HTMLElement).closest("details"); if (section) section.open = true; }}>
+    <form className="grid gap-4" onSubmit={submit} noValidate>
       <div className="comm-reference comm-toolbar"><span>Número empresarial: <strong>{value.business_address}</strong></span><span>{dirty ? "Cambios sin guardar" : "Configuración guardada"}</span></div>
-      <section className="comm-panel">
-        <header className="comm-section-heading"><div><h3>Sede y modelo del asistente</h3><p>El mismo motor, con información independiente para cada número.</p></div></header>
+      <nav className="comm-settings-nav" aria-label="Secciones de configuración del asistente">
+        {settingsSections.map(item => <button key={item.id} type="button" aria-current={section === item.id ? "page" : undefined}
+          aria-controls={`assistant-settings-${item.id}`} disabled={saving} onClick={() => setSection(item.id)}>{item.label}</button>)}
+      </nav>
+      {invalidSchedule && <p role="alert" className="comm-error text-sm">Revisa los campos antes de guardar:
+        {!siteId && <span className="ml-2">Selecciona una sede específica en el filtro superior.</span>}
+        {!model.trim() && <button type="button" className="ml-2 underline" onClick={() => setSection("general")}>Modelo</button>}
+        {(!welcomeMessage.trim() || !outOfHoursAcknowledgement.trim()) && <button type="button" className="ml-2 underline" onClick={() => setSection("messages")}>Saludos y avisos</button>}
+        {(!days.length || startsAt >= endsAt || !Number.isFinite(delayMinutes) || delayMinutes < 1 || delayMinutes > 60) && <button type="button" className="ml-2 underline" onClick={() => setSection("attention")}>Horarios y atención</button>}
+        {(!Number.isFinite(confidenceThreshold) || confidenceThreshold < 50 || confidenceThreshold > 100) && <button type="button" className="ml-2 underline" onClick={() => setSection("classification")}>Clasificación</button>}
+        {!assistantInstructions.trim() && <button type="button" className="ml-2 underline" onClick={() => setSection("knowledge")}>Conocimiento</button>}
+      </p>}
+      <section id="assistant-settings-general" hidden={section !== "general"} className="comm-panel comm-settings-section">
+        <header className="comm-section-heading"><div><h3>Modelo del asistente</h3><p>Estos ajustes corresponden a la sede y al número seleccionados arriba.</p></div></header>
         <div className="comm-stats-body grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm font-semibold">Sede de este número
-            <select className={inputClass} required value={siteId ?? ""} disabled={Boolean(value.site)} onChange={e => { setSiteId(Number(e.target.value) || null); setSaved(false); }}>
-              <option value="">Selecciona una sede</option>
-              {sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
-            </select>
-            <span className="text-xs font-normal">El bot no preguntará qué sede quiere el cliente. Un número vinculado no se reasigna aquí para proteger su historial.</span>
-          </label>
-          <label className="grid gap-1 text-sm font-semibold">Modelo de OpenAI
-            <input className={inputClass} required maxLength={120} value={model} placeholder="Identificador del modelo" onChange={e => { setModel(e.target.value); setSaved(false); }} />
-            <span className="text-xs font-normal">Guardado: {value.openai_model || "Heredado del servidor (aún no fijado por sede)"}. El modelo debe estar disponible en la cuenta de API; no ingreses la clave secreta.</span>
-          </label>
+          <OpenAIModelSelect token={token} value={model} savedModel={value.openai_model} disabled={saving}
+            onChange={next => { setModel(next); setSaved(false); }} />
           <p className="text-sm sm:col-span-2">Memoria: 24 mensajes recientes. El modelo elegido se usa para responder y clasificar contactos. Las credenciales y la conexión con Dualhook permanecen en el servidor.</p>
         </div>
       </section>
-      <section className="comm-panel"><header className="comm-section-heading"><div><h3>Así verá los mensajes el contacto</h3><p>Vista previa del texto que estás editando.</p></div></header><div className="comm-stats-body comm-settings-preview"><div><h4>Saludo inicial</h4><MessageBody body={welcomeMessage || "Escribe un saludo inicial."} /></div></div></section>
-      <details className="comm-settings-advanced"><summary>Atención humana y asistente</summary>
+      <section id="assistant-settings-messages" hidden={section !== "messages"} className="comm-panel comm-settings-section">
+        <header className="comm-section-heading"><div><h3>Saludos y avisos</h3><p>Así verá los mensajes el contacto. Usa el lápiz para editar cada texto aquí mismo.</p></div></header>
+        <div className="comm-stats-body comm-settings-preview">
+          <EditableAssistantMessage title="Saludo inicial" hint="Se envía al primer saludo." value={welcomeMessage} savedValue={value.welcome_message} disabled={saving}
+            onChange={next => { setWelcomeMessage(next); setSaved(false); }} />
+          <EditableAssistantMessage title="Aviso fuera de horario" hint="Acompaña la respuesta inmediata del asistente y ofrece continuar con una persona." value={outOfHoursAcknowledgement} savedValue={value.out_of_hours_acknowledgement} disabled={saving}
+            onChange={next => { setOutOfHoursAcknowledgement(next); setSaved(false); }} />
+        </div>
+      </section>
+      <div id="assistant-settings-attention" hidden={section !== "attention"} className="comm-settings-section grid gap-4">
+      <section className="comm-settings-advanced">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-md bg-emerald-700 text-white">
@@ -147,7 +205,7 @@ export function WhatsAppAutomationSettingsPanel({
             <div>
               <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Atención humana primero</h3>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-                La atención se considera disponible todos los días y a cualquier hora. El bot espera el tiempo configurado para que una persona pueda responder.
+                Dentro del horario laboral, el bot espera para que una persona pueda responder. Fuera de ese horario responde inmediatamente.
               </p>
             </div>
           </div>
@@ -171,25 +229,10 @@ export function WhatsAppAutomationSettingsPanel({
             {value.business_address.replace(/^whatsapp:/, "")}
           </p>
         </div>
-        <label className="mt-5 grid max-w-xs gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-          Espera antes del bot (minutos)
-          <input
-            className={inputClass}
-            data-testid="whatsapp-human-delay-minutes"
-            max={60}
-            min={1}
-            onChange={(event) => {
-              setDelayMinutes(Number(event.target.value));
-              setSaved(false);
-            }}
-            type="number"
-            value={delayMinutes}
-          />
-          <span className="text-xs font-normal text-zinc-500">Aplica a cualquier día y hora.</span>
-        </label>
-      </details>
+      </section>
+      </div>
 
-      <details className="comm-settings-advanced"><summary>Clasificación de contactos</summary>
+      <section id="assistant-settings-classification" hidden={section !== "classification"} className="comm-settings-advanced comm-settings-section">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-md bg-sky-700 text-white">
@@ -239,13 +282,97 @@ export function WhatsAppAutomationSettingsPanel({
           <p className="rounded-md border border-violet-200 bg-violet-50 p-3 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100"><strong>Cliente confiable:</strong> atención humana.</p>
           <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"><strong>Ambiguo:</strong> aplica la espera configurada.</p>
         </div>
-      </details>
+      </section>
 
-      <details className="comm-settings-advanced"><summary>Mensajes e instrucciones</summary>
+      <section hidden={section !== "attention"} className="comm-settings-advanced comm-settings-section">
+        <div className="flex items-center gap-2">
+          <Clock3 className="text-emerald-700" size={20} />
+          <div>
+            <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Horario laboral</h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">Hora de Ciudad de México.</p>
+          </div>
+        </div>
+
+        <fieldset className="mt-5">
+          <legend className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Días de atención</legend>
+          <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">
+            {weekdays.map((day) => {
+              const selected = days.includes(day.value);
+              return (
+                <button
+                  aria-pressed={selected}
+                  className={`rounded-md border px-2 py-2 text-sm font-semibold transition ${
+                    selected
+                      ? "border-emerald-700 bg-emerald-700 text-white"
+                      : "border-zinc-300 bg-white text-zinc-600 hover:border-emerald-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+                  }`}
+                  key={day.value}
+                  data-testid={`whatsapp-business-day-${day.value}`}
+                  onClick={() => toggleDay(day.value)}
+                  title={day.label}
+                  type="button"
+                >
+                  {day.short}
+                </button>
+              );
+            })}
+          </div>
+          {!days.length ? <p className="mt-2 text-sm text-red-700">Selecciona al menos un día.</p> : null}
+        </fieldset>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <label className="grid gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            Hora de apertura
+            <input
+              className={inputClass}
+              data-testid="whatsapp-business-hours-start"
+              onChange={(event) => {
+                setStartsAt(event.target.value);
+                setSaved(false);
+              }}
+              type="time"
+              value={startsAt}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            Hora de cierre
+            <input
+              className={inputClass}
+              data-testid="whatsapp-business-hours-end"
+              onChange={(event) => {
+                setEndsAt(event.target.value);
+                setSaved(false);
+              }}
+              type="time"
+              value={endsAt}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            Espera antes del bot (minutos)
+            <input
+              className={inputClass}
+              data-testid="whatsapp-human-delay-minutes"
+              max={60}
+              min={1}
+              onChange={(event) => {
+                setDelayMinutes(Number(event.target.value));
+                setSaved(false);
+              }}
+              type="number"
+              value={delayMinutes}
+            />
+          </label>
+        </div>
+        {startsAt >= endsAt ? (
+          <p className="mt-2 text-sm text-red-700">La hora de cierre debe ser posterior a la apertura.</p>
+        ) : null}
+      </section>
+
+      <section id="assistant-settings-knowledge" hidden={section !== "knowledge"} className="comm-settings-advanced comm-settings-section">
         <div className="flex items-center gap-2">
           <MessageCircle className="text-emerald-700" size={20} />
           <div>
-            <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Mensajes del asistente</h3>
+            <h3 className="font-semibold text-zinc-950 dark:text-zinc-50">Conocimiento e instrucciones</h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Estos cambios se aplican a los próximos mensajes sin volver a desplegar.
             </p>
@@ -253,22 +380,6 @@ export function WhatsAppAutomationSettingsPanel({
         </div>
 
         <div className="mt-5 grid gap-4">
-          <label className="grid gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-            Saludo inicial
-            <textarea
-              className={`${inputClass} min-h-28 py-2`}
-              maxLength={2000}
-              onChange={(event) => {
-                setWelcomeMessage(event.target.value);
-                setSaved(false);
-              }}
-              value={welcomeMessage}
-            />
-            <span className="text-xs font-normal text-zinc-500">
-              Se envía al primer saludo. Puedes usar *texto* para mostrar negritas en WhatsApp.
-            </span>
-          </label>
-
           <label className="grid gap-1 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
             Instrucciones y datos confirmados de esta sede
             <textarea
@@ -285,7 +396,7 @@ export function WhatsAppAutomationSettingsPanel({
             </span>
           </label>
         </div>
-      </details>
+      </section>
 
       <section className="comm-settings-save">
         <div className="flex items-start gap-2 text-sm text-emerald-950 dark:text-emerald-100">
@@ -296,7 +407,7 @@ export function WhatsAppAutomationSettingsPanel({
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {saved ? <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Guardado</span> : null}
-          <button className={primaryButtonClass} data-testid="whatsapp-settings-save" disabled={invalidSettings || saving || !dirty} type="submit">
+          <button className={primaryButtonClass} data-testid="whatsapp-settings-save" disabled={invalidSchedule || saving || !dirty} type="submit">
             <Save size={15} /> {saving ? "Guardando…" : "Guardar configuración"}
           </button>
         </div>

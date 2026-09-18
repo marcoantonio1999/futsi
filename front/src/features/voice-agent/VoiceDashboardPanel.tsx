@@ -18,7 +18,8 @@ import { VeronicaPanel } from "./VeronicaPanel";
 import { BulkTemplatesPanel } from "./BulkTemplatesPanel";
 import { ConnectionsPanel } from "./ConnectionsPanel";
 import { VeronicaFiltersPanel } from "./VeronicaFiltersPanel";
-import { inputClass, type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
+import { CommunicationScopePicker } from "./CommunicationScopePicker";
+import { type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
@@ -34,7 +35,7 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
   bookings: { title: "Pruebas gratuitas" },
   calls: { title: "Llamadas y transcripciones" },
   whatsapp: { title: "Bandeja de WhatsApp" },
-  "weekly-stats": { title: "Estadísticas" },
+  "weekly-stats": { title: "Resultados semanales" },
   availability: { title: "Disponibilidad para pruebas" },
   settings: { title: "Ajustes del asistente" },
 };
@@ -91,7 +92,6 @@ export function VoiceDashboardPanel({
   const voiceData = useMemo(() => filterCommunications(permittedData, { site: selectedSite, address: selectedAddress }, channels), [permittedData, selectedSite, selectedAddress, channels]);
   const hasUnassigned = channels.some(channel => channel.site === null)
     || permittedData.whatsappConversations.some(conversation => conversationSite(conversation) == null);
-  const channelOptions = channels.filter(c => selectedSite === "all" || (selectedSite === "unassigned" ? c.site === null : String(c.site) === selectedSite));
   useEffect(() => {
     if (channelsReady && selectedSite === "unassigned" && !hasUnassigned) {
       setSelectedSite("all");
@@ -108,7 +108,7 @@ export function VoiceDashboardPanel({
     if (address === selectedAddress || !canChangeScope()) return;
     const channel = channels.find(c => c.business_address === address);
     setSettingsDirty(false); setSelectedAddress(address);
-    if (address !== "all" && user.role !== "site_coordinator") setSelectedSite(channel?.site ? String(channel.site) : "unassigned");
+    if (address !== "all" && user.role !== "site_coordinator" && channel) setSelectedSite(channel.site ? String(channel.site) : "unassigned");
     setConversationId(null); setBookingId(null);
   }
   useEffect(() => { if (section !== "bookings") setBookingId(null); if (section !== "whatsapp") { setConversationId(null); setInboxFilter("all"); } }, [section]);
@@ -171,29 +171,39 @@ export function VoiceDashboardPanel({
 
   const sectionDetail = sectionDetails[section];
   const sectionGroup = communicationGroups.find(group => group.items.some(item => item.key === section))?.label;
+  const pageClass = section === "summary" ? "comm-summary-page" : section === "whatsapp" ? "comm-inbox-page" : "";
+  const scopePanel = <CommunicationScopePicker
+    sites={permittedData.sites}
+    channels={channels}
+    selectedSite={selectedSite}
+    selectedAddress={selectedAddress}
+    hasUnassigned={hasUnassigned}
+    allowAllSites={user.role !== "site_coordinator"}
+    disabled={settingsBusy || !channelsReady}
+    inbox={section === "whatsapp"}
+    onChange={(site, address) => {
+      if (!canChangeScope()) return;
+      setSettingsDirty(false);
+      setSelectedSite(site);
+      setSelectedAddress(address);
+      setConversationId(null);
+      setBookingId(null);
+    }}
+  />;
 
   return (
-    <div className="communications">
-      <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{sectionDetail.title}</h2></div></header>
-      <section className="comm-panel comm-scope" aria-label="Ámbito de comunicaciones">
-        <label>Sede<select data-testid="communications-site-select" aria-label="Sede de comunicaciones" className={inputClass} value={selectedSite} disabled={settingsBusy || user.role === "site_coordinator"} onChange={e => { if (canChangeScope()) { setSettingsDirty(false); setSelectedSite(e.target.value); setSelectedAddress("all"); setConversationId(null); setBookingId(null); } }}>
-          {user.role !== "site_coordinator" && <><option value="all">Todas las sedes · Consolidado</option>{hasUnassigned && <option value="unassigned">Canales pendientes de vincular</option>}</>}
-          {permittedData.sites.map(site => <option value={site.id} key={site.id}>{site.name}</option>)}
-        </select></label>
-        <label>Número de atención<select data-testid="communications-number-select" aria-label="Número de comunicaciones" className={inputClass} value={selectedAddress} disabled={settingsBusy || !channelsReady} onChange={e => changeAddress(e.target.value)}>
-          <option value="all">Todos los números de la selección</option>
-          {selectedAddress !== "all" && !channelOptions.some(c => c.business_address === selectedAddress) && <option value={selectedAddress}>{selectedAddress.replace("whatsapp:", "").replace("meta:", "ID ")} · Sin vínculo</option>}
-          {channelOptions.map(channel => <option key={channel.business_address} value={channel.business_address}>{channel.channel_label || channel.business_address.replace("whatsapp:", "").replace("meta:", "ID ")} · {channel.site_name || "Sin sede vinculada"}</option>)}
-        </select></label>
-        {channelsReady && selectedSite !== "all" && !channelOptions.length && <p role="status">Esta sede no tiene números registrados en el sistema. Puedes preparar su configuración en Ajustes; conectar el número requiere su integración de WhatsApp.</p>}
-      </section>
+    <div className={`communications ${pageClass}`}>
+      <header className="comm-page-heading">
+        <div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{sectionDetail.title}</h2></div>
+        {section !== "whatsapp" && scopePanel}
+      </header>
       <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
-      {channelsReady && <div key={query}>
+      {channelsReady && <div key={query} className={section === "summary" ? "comm-summary-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
       {section === "templates" && <WhatsAppTemplatesPanel key={selectedAddress} token={token} address={selectedAddress} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
-      {section === "summary" && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} onOpenConversation={openConversation} onOpenBooking={openBooking} />}
+      {section === "summary" && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
 
       {section === "bookings" ? (
         <TrialBookingsPanel
@@ -212,6 +222,7 @@ export function VoiceDashboardPanel({
         <WhatsAppConversationsPanel
           initialConversationId={conversationId}
           initialFilter={inboxFilter}
+          scopeControls={scopePanel}
           assignees={voiceData.whatsappFollowUpAssignees}
           conversations={voiceData.whatsappConversations}
           onSendMessage={sendWhatsAppMessage}
@@ -239,7 +250,7 @@ export function VoiceDashboardPanel({
       ) : null}
 
       {section === "settings" && canReviewCalls ? (
-        <WhatsAppSiteSettings token={token} sites={permittedData.sites} initial={voiceData.whatsappAutomationSettings} selectedAddress={selectedAddress} onAddressChange={changeAddress} onDirtyChange={setSettingsDirty} onBusyChange={setSettingsBusy} onChannelSaved={channel => { setChannels(rows => [...rows.filter(c => c.business_address !== channel.business_address), channel]); setSelectedSite(channel.site ? String(channel.site) : "unassigned"); }} />
+        <WhatsAppSiteSettings token={token} sites={permittedData.sites} initial={voiceData.whatsappAutomationSettings} selectedAddress={selectedAddress} selectedSite={selectedSite} onAddressChange={changeAddress} onDirtyChange={setSettingsDirty} onBusyChange={setSettingsBusy} onChannelSaved={channel => { setChannels(rows => [...rows.filter(c => c.business_address !== channel.business_address), channel]); setSelectedSite(channel.site ? String(channel.site) : "unassigned"); }} />
       ) : null}
       </div>}
     </div>

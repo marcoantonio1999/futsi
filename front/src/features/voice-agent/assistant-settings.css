@@ -1,0 +1,15 @@
+.comm-settings-section[hidden] { display: none; }
+.comm-settings-nav { display:flex; flex-wrap:wrap; gap:8px; padding:8px; background:var(--comm-soft); border:1px solid var(--comm-line); border-radius:10px; }
+.comm-settings-nav button { padding:10px 14px; border-radius:7px; font-size:13px; font-weight:600; color:var(--comm-ink); }
+.comm-settings-nav button[aria-current="page"] { background:var(--comm-green); color:white; }
+.comm-settings-nav button:focus-visible,.comm-message-editor button:focus-visible { outline:2px solid var(--comm-green); outline-offset:3px; }
+.comm-message-editor { min-width:0; padding:18px; border:1px solid var(--comm-line); border-radius:9px; background:var(--comm-bg); font-size:14px; line-height:1.65; overflow-wrap:anywhere; }
+.comm-message-editor header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.comm-message-editor header h4 { margin:0; font-size:14px; }
+.comm-message-editor button { display:inline-flex; align-items:center; gap:6px; padding:7px 10px; border:1px solid var(--comm-line); border-radius:6px; color:var(--comm-green); background:var(--comm-bg); font-size:12px; font-weight:600; }
+.comm-message-editor button:disabled { opacity:.5; cursor:not-allowed; }
+.comm-message-editor textarea { width:100%; font-weight:400; }
+@media(max-width:767px) {
+  .comm-settings-nav { display:grid; grid-template-columns:1fr 1fr; }
+  .comm-settings-nav button { text-align:left; padding:10px; }
+}

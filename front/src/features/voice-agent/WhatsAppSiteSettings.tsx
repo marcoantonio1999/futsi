@@ -6,9 +6,10 @@ import { WhatsAppBotSwitch } from "./WhatsAppBotSwitch";
 import { inputClass, secondaryButtonClass } from "./model";
 
 const endpoint = "/whatsapp-automation-settings/";
-export function WhatsAppSiteSettings({ token, sites, initial, selectedAddress, onAddressChange, onDirtyChange, onBusyChange, onChannelSaved }: {
+export function WhatsAppSiteSettings({ token, sites, initial, selectedAddress, selectedSite, onAddressChange, onDirtyChange, onBusyChange, onChannelSaved }: {
   token: string; sites: Site[]; initial: WhatsAppAutomationSettings | null;
   selectedAddress?: string;
+  selectedSite?: string;
   onAddressChange?: (address: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onBusyChange?: (busy: boolean) => void;
@@ -24,15 +25,19 @@ export function WhatsAppSiteSettings({ token, sites, initial, selectedAddress, o
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const filterSiteId = sites.find(site => String(site.id) === selectedSite)?.id ?? null;
+  const effectiveSiteId = value?.site ?? filterSiteId;
+  const siteMismatch = Boolean(value?.site && filterSiteId && value.site !== filterSiteId);
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
   useEffect(() => { onBusyChange?.(saving); return () => onBusyChange?.(false); }, [saving, onBusyChange]);
   useEffect(() => {
+    if (selectedAddress !== undefined) return;
     const controller = new AbortController();
     apiRequest<WhatsAppAutomationSettings[]>(endpoint, token, { signal: controller.signal })
       .then(rows => { if (!controller.signal.aborted) { setOptions(rows); setAddress(current => current || rows[0]?.business_address || ""); setLoading(false); } })
       .catch(err => { if (!controller.signal.aborted) { setError(String(err.message)); setLoading(false); } });
     return () => controller.abort();
-  }, [token, retry]);
+  }, [token, retry, selectedAddress]);
   useEffect(() => {
     if (!address) { setValue(null); setLoading(false); return; }
     const controller = new AbortController();
@@ -78,7 +83,9 @@ export function WhatsAppSiteSettings({ token, sites, initial, selectedAddress, o
       </div>
     </section>
     {error && <div role="alert" className="comm-reference"><p className="comm-error">{error}</p><button type="button" onClick={() => setRetry(n => n + 1)}>Reintentar</button></div>}
-    {loading ? <p role="status">Cargando configuración…</p> : value && <div><WhatsAppAutomationSettingsPanel key={address} value={value} sites={sites} onDirtyChange={setDirty} onSave={async payload => {
+    {siteMismatch && <p role="alert" className="comm-error">El número está vinculado a otra sede. Selecciona su sede en el filtro superior; no se reasignará al guardar.</p>}
+    {loading ? <p role="status">Cargando configuración…</p> : value && !siteMismatch && <div><WhatsAppAutomationSettingsPanel key={address} token={token} value={value} siteId={effectiveSiteId} onDirtyChange={setDirty} onSave={async payload => {
+      if (!effectiveSiteId || payload.site !== effectiveSiteId) throw new Error("Selecciona la sede en el filtro superior antes de guardar.");
       setSaving(true);
       try {
         const next = await apiRequest<WhatsAppAutomationSettings>(endpoint + "current/?business_address=" + encodeURIComponent(address), token, { method: "PATCH", body: JSON.stringify(payload) });
