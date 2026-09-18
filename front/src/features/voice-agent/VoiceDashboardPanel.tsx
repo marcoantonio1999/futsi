@@ -235,7 +235,7 @@ export function VoiceDashboardPanel({
       ) : null}
 
       {section === "weekly-stats" && canReviewCalls ? (
-        <WhatsAppWeeklyStatsPanel scopeQuery={query} conversations={voiceData.whatsappConversations} value={voiceData.whatsappWeeklyStats} token={token} onOpenConversation={openConversation} />
+        <WhatsAppWeeklyStatsPanel scopeQuery={query} value={voiceData.whatsappWeeklyStats} token={token} onOpenConversation={openConversation} />
       ) : null}
 
       {section === "settings" && canReviewCalls ? (
