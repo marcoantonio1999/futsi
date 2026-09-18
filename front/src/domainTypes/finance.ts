@@ -5,6 +5,7 @@ export type PaymentStatus = "processing" | "awaiting_confirmation" | "registered
 export type DiscountStatus = "requested" | "approved" | "rejected" | "canceled";
 
 export type Charge = {
+  billing_plan?: number | null;
   id: number;
   site: number;
   site_name?: string;

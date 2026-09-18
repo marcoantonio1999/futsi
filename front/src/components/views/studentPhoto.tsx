@@ -4,7 +4,7 @@ import { API_URL } from "../../api";
 import type { Student } from "../../types";
 import { Avatar } from "./shared";
 
-export function StudentAvatar({ student, token }: { student: Student; token: string }) {
+export function StudentAvatar({ student, token, onPhotoUnavailable }: { student: Student; token: string; onPhotoUnavailable?: (unavailable: boolean) => void }) {
   const [privateUrl, setPrivateUrl] = useState("");
   useEffect(() => {
     setPrivateUrl("");
@@ -14,14 +14,14 @@ export function StudentAvatar({ student, token }: { student: Student; token: str
     fetch(`${API_URL}/students/${student.id}/photo-content/`, {
       headers: { Authorization: `Token ${token}` }, signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) return;
+      if (!response.ok) { onPhotoUnavailable?.(true); return; }
       const blob = await response.blob();
       if (controller.signal.aborted) return;
       objectUrl = URL.createObjectURL(blob);
       setPrivateUrl(objectUrl);
-    }).catch(() => undefined);
+    }).catch(() => { if (!controller.signal.aborted) onPhotoUnavailable?.(true); });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [student.id, student.photo_url, token]);
+  }, [student.id, student.photo_url, token, onPhotoUnavailable]);
   return <Avatar name={student.full_name} imageUrl={privateUrl || student.photo_url || student.photo} />;
 }
 

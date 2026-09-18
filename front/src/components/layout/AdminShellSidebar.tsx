@@ -195,12 +195,6 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
           <StudentsSubButton active={guardiansSection === "create"} label="Crear tutor" onClick={() => onSelectGuardiansSection("create")} />
         </div></div>}
         {tab.key === "communications" && <div id="communications-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "communications" || !communicationsMenuExpanded}><CommunicationsNav section={communicationsSection} canReview={canReviewCommunicationCalls} onSelect={onSelectCommunicationsSection} /></div>}
-        {sidebarExpanded && showBillingSubsections && tab.key === "billing" && effectiveActiveTab === "billing" && (
-          <div className="ml-8 mt-1 grid gap-1">
-            {canProgramBilling && <BillingSubButton active={billingSection === "program"} label="Programar cobro" onClick={() => onSelectBillingSection("program")} />}
-            <BillingSubButton active={billingSection === "scheduled"} label="Cobranza programada" onClick={() => onSelectBillingSection("scheduled")} />
-          </div>
-        )}
         {tab.key === "tournaments" && <div id="tournaments-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "tournaments" || !tournamentsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           <TournamentSubButton active={tournamentSection === "overview" || tournamentSection === "detail"} label="Torneos activos" onClick={() => onSelectTournamentSection("overview")} />
           <TournamentSubButton active={tournamentSection === "create"} label="Crear torneo" onClick={() => onSelectTournamentSection("create")} />

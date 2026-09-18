@@ -72,6 +72,7 @@ import {
 } from "./shared";
 export { CashierPaymentPanel } from "../../features/billing";
 import { BillingCollectionPanel } from "../../features/billing";
+import type { BillingMutation } from "../../features/billing/billingFlow";
 
 export function CashierPortal({
   user,
@@ -88,7 +89,7 @@ export function CashierPortal({
   data: AppData;
   onRefresh: () => void;
   onLogout: () => void;
-  onCreatePayment: (payload: unknown) => void;
+  onCreatePayment: BillingMutation;
   onPaymentAction: (paymentId: number, action: string) => void;
   onCreateCashMovement: (payload: unknown) => void;
   onAcceptStaffPayment: (requestId: number) => void;

@@ -117,12 +117,6 @@ export function AdminShellMobileMenu({
           <StudentsMobileSubButton active={guardiansSection === "create"} label="Crear tutor" onClick={() => onSelectGuardiansSection("create")} />
         </div></div>}
         {tab.key === "communications" && <div id="communications-mobile-submenu" hidden={effectiveActiveTab !== "communications" || !communicationsMenuExpanded}><CommunicationsNav section={communicationsSection} canReview={canReviewCommunicationCalls} onSelect={onSelectCommunicationsSection} /></div>}
-              {showBillingSubsections && tab.key === "billing" && effectiveActiveTab === "billing" && (
-                <div className="ml-9 mt-1 grid gap-1">
-                  {canProgramBilling && <BillingMobileSubButton active={billingSection === "program"} label="Programar cobro" onClick={() => onSelectBillingSection("program")} />}
-                  <BillingMobileSubButton active={billingSection === "scheduled"} label="Cobranza programada" onClick={() => onSelectBillingSection("scheduled")} />
-                </div>
-              )}
               {tab.key === "tournaments" && <div id="tournaments-mobile-submenu" hidden={effectiveActiveTab !== "tournaments" || !tournamentsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           <TournamentMobileSubButton active={tournamentSection === "overview" || tournamentSection === "detail"} label="Torneos activos" onClick={() => onSelectTournamentSection("overview")} />
           <TournamentMobileSubButton active={tournamentSection === "create"} label="Crear torneo" onClick={() => onSelectTournamentSection("create")} />

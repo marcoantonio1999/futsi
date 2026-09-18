@@ -1,5 +1,6 @@
 import { SitesWorkspace } from "../views/SitesWorkspace";
 import { CoachesWorkspace } from "../../features/coach/CoachesWorkspace";
+import { apiRequest } from "../../api";
 import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import type { StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { RefreshSkeletonBar, SectionSkeleton } from "../loading/AppSkeleton";
@@ -42,7 +43,6 @@ import {
   InvoicesPanel,
   RefereesConsolidatedPanel,
   SalesEstimationPanel,
-  SitesPanel,
   StudentsPanel,
   UniformsPanel,
   UsersPanel,
@@ -153,6 +153,14 @@ function ActivePanel(props: AdminShellContentProps) {
     onMarkAdultPlayer,
   } = props;
 
+  async function createBillingRecord(path: string, payload: unknown) {
+    // The POST response is authoritative. A failed list refresh must not turn
+    // an accepted payment into a retryable form submission.
+    const result = await apiRequest<unknown>(path, token, { method: "POST", body: JSON.stringify(payload) });
+    void Promise.resolve().then(() => onRefreshActiveSection()).catch(() => undefined);
+    return result;
+  }
+
   return (
     <>
       {effectiveActiveTab === "dashboard" && (
@@ -252,14 +260,16 @@ function ActivePanel(props: AdminShellContentProps) {
             onPaymentAction={(paymentId, action) => onPostAction(`/payments/${paymentId}/${action}/`, "Pago actualizado.")}
           />
         ) : user.role === "cashier" ? (
-          <BillingCollectionPanel data={scopedData} compact onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago registrado con exito.")} onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento registrado.")} discountActionLabel="Solicitar descuento" />
+          <BillingCollectionPanel data={scopedData} token={token} compact onCreatePayment={(payload) => createBillingRecord("/payments/", payload)} onCreateDiscount={(payload) => createBillingRecord("/discounts/", payload)} discountActionLabel="Solicitar descuento" />
         ) : (
           <BillingPanel
+            token={token}
             data={scopedData}
             section={billingSection}
-            onCreateCharge={(payload) => onCreateRecord("/charges/", payload, "Cargo creado.")}
-            onCreatePayment={(payload) => onCreateRecord("/payments/", payload, "Pago registrado.")}
-            onCreateDiscount={(payload) => onCreateRecord("/discounts/", payload, "Descuento solicitado.")}
+            onCreateCharge={(payload) => createBillingRecord("/charges/", payload)}
+            onCreatePlan={(payload) => createBillingRecord("/charges/recurring/", payload)}
+            onCreatePayment={(payload) => createBillingRecord("/payments/", payload)}
+            onCreateDiscount={(payload) => createBillingRecord("/discounts/", payload)}
             onApproveDiscount={(discountId) => onPostAction(`/discounts/${discountId}/approve/`, "Descuento aprobado.")}
             onRejectDiscount={(discountId) => onPostAction(`/discounts/${discountId}/reject/`, "Descuento rechazado.")}
           />
