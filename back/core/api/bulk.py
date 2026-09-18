@@ -77,7 +77,12 @@ class BulkView(APIView):
         base = str(settings.WHATSAPP_SERVICE_URL or '').rstrip('/')
         url = urlsplit(base)
         token = settings.WHATSAPP_SERVICE_TOKEN
-        if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or not token:
+        local_service = (
+            url.scheme == 'http'
+            and url.hostname in {'127.0.0.1', 'localhost'}
+            and not getattr(settings, 'IS_PRODUCTION', False)
+        )
+        if (url.scheme != 'https' and not local_service) or not url.hostname or url.username or url.password or url.query or url.fragment or not token:
             return Response({'detail': 'Falta conectar Futsi con el servicio de WhatsApp.'}, status=503)
         endpoint = base + f'/api/internal/bulk/{kind}/{operation}/'
         if query:

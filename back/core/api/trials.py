@@ -769,6 +769,15 @@ class WhatsAppAutomationSettingsViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminRole]
     http_method_names = ["get", "patch", "head", "options"]
 
+    @action(detail=False, methods=["get"], url_path="models")
+    def models(self, request):
+        from core.api.model_catalog import assistant_models
+        from core.whatsapp.model_catalog import ModelCatalogError
+        try:
+            return Response(assistant_models())
+        except ModelCatalogError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
     def list(self, request):
         records = {item.business_address: item for item in
                    WhatsAppAutomationSettings.objects.select_related("site").all()}

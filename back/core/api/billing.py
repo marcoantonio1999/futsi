@@ -20,6 +20,8 @@ class ChargeViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOperationsCashierOrGuardianRole]
 
     def get_permissions(self):
+        if self.action == "recurring":
+            return [IsOperationsRole()]
         if self.action == "communications":
             return [IsOperationsRole()]
         if self.action in {"send_whatsapp_reminder", "manual_whatsapp"}:
@@ -54,6 +56,12 @@ class ChargeViewSet(viewsets.ModelViewSet):
     def communications(self, request):
         from .debt_communications import collection_report
         return Response(collection_report(self.get_queryset(), request.query_params))
+
+    @action(detail=False, methods=["post"], url_path="recurring")
+    def recurring(self, request):
+        from .billing_recurrence import create_plan
+        charges, created = create_plan(request)
+        return Response({"charges": self.get_serializer(charges, many=True).data}, status=201 if created else 200)
 
     @action(detail=True, methods=["post"], url_path="manual-whatsapp")
     def manual_whatsapp(self, request, pk=None):

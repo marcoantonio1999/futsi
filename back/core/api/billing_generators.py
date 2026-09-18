@@ -32,7 +32,7 @@ def _month_name(month):
 
 def _academy_monthly_amount(site):
     latest = (
-        Charge.objects.filter(site=site, student__isnull=False, concept__icontains="Mensualidad")
+        Charge.objects.filter(site=site, student__isnull=False, concept__icontains="Mensualidad", billing_plan__isnull=True)
         .exclude(status="canceled")
         .order_by("-created_at")
         .first()
@@ -131,7 +131,7 @@ def generate_student_tournament_charges_for_user(user, today=None):
         "student",
         "student__guardian",
         "team",
-    ).filter(status="registered", tournament__is_active=True)
+    ).filter(status="registered", tournament__is_active=True, billing_plans__isnull=True)
 
     if user.role == "guardian":
         registrations = registrations.filter(student__guardian__user=user)
@@ -222,7 +222,7 @@ def generate_scheduled_charges_for_user(user, today=None):
     month_due = date(today.year, today.month, 10)
     month_label = f"{_month_name(today.month)} {today.year}"
 
-    students = Student.objects.select_related("site", "guardian").filter(status__in=["active", "injured"])
+    students = Student.objects.select_related("site", "guardian").filter(status__in=["active", "injured"]).exclude(billing_plans__concept="Mensualidad")
     teams = Team.objects.select_related("tournament", "tournament__site").filter(tournament__is_active=True)
 
     if user.role == "guardian":
