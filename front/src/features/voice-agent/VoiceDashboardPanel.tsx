@@ -14,6 +14,7 @@ import { WhatsAppSiteSettings } from "./WhatsAppSiteSettings";
 import { WhatsAppWeeklyStatsPanel } from "./WhatsAppWeeklyStatsPanel";
 import { DebtCommunicationsPanel } from "./DebtCommunicationsPanel";
 import { WhatsAppTemplatesPanel } from "./WhatsAppTemplatesPanel";
+import { WhatsAppTemplateBuilder } from "./WhatsAppTemplateBuilder";
 import { VeronicaPanel } from "./VeronicaPanel";
 import { BulkTemplatesPanel } from "./BulkTemplatesPanel";
 import { ConnectionsPanel } from "./ConnectionsPanel";
@@ -30,6 +31,7 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
   "bulk-academy": { title: "Canchas · envíos masivos" },
   veronica: { title: "Verónica · atención manual" },
   templates: { title: "Plantillas de WhatsApp" },
+  "template-builder": { title: "Crear plantilla de WhatsApp" },
   collections: { title: "Cobranza por WhatsApp" },
   summary: { title: "Resumen de comunicaciones" },
   bookings: { title: "Pruebas gratuitas" },
@@ -206,6 +208,7 @@ export function VoiceDashboardPanel({
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
       {channelsReady && <div key={query} className={section === "summary" ? "comm-summary-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
       {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} />}
+      {section === "template-builder" && <WhatsAppTemplateBuilder token={token} channels={templateChannels} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
       {section === "summary" && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
 

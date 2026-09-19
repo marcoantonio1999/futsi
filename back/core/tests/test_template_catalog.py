@@ -5,11 +5,11 @@ from urllib.error import HTTPError
 import pytest
 from django.test import override_settings
 
-from core.models import WhatsAppAutomationSettings
+from core.models import AuditLog, WhatsAppAutomationSettings
 from core.tests.factories import make_site
 from core.whatsapp.template_catalog import list_templates
 from core.whatsapp.meta_api import MetaWhatsAppError
-from core.api.template_catalog import catalog_for_channel
+from core.api.template_catalog import catalog_for_channel, mutate_template_for_channel
 
 A = "whatsapp:+525500000101"
 URL = "/api/whatsapp-conversations/templates/"
@@ -75,3 +75,35 @@ def test_service_proxy_rejects_wrong_number_and_keeps_token_server_side():
             catalog_for_channel(A)
     assert "private" not in fetch.call_args.args[0].full_url
     assert fetch.call_args.args[0].method == "GET"
+
+
+@override_settings(WHATSAPP_SERVICE_URL="https://service.example.test", WHATSAPP_SERVICE_TOKEN="private")
+def test_service_mutation_proxy_uses_server_token_and_exact_channel():
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = json.dumps({"business_address": A, "id": "77", "status": "PENDING"}).encode()
+    with patch("core.api.template_catalog.urlopen", return_value=response) as send:
+        result = mutate_template_for_channel(A, method="POST", payload={"template": {"name": "prueba"}})
+    request = send.call_args.args[0]
+    assert request.method == "POST"
+    assert request.full_url == "https://service.example.test/api/internal/templates/"
+    assert request.get_header("Authorization") == "Bearer private"
+    assert json.loads(request.data)["business_address"] == A
+    assert result["id"] == "77"
+
+
+@pytest.mark.django_db
+def test_authorized_coordinator_can_create_and_delete_template(auth_client):
+    site = make_site()
+    WhatsAppAutomationSettings.objects.create(business_address=A, site=site)
+    client, _, user = auth_client(role="site_coordinator", primary_site=site)
+    created = {"business_address": A, "id": "77", "name": "prueba_futsi", "status": "PENDING", "language": "es_MX", "category": "MARKETING"}
+    with patch("core.api.template_catalog.mutate_template_for_channel", return_value=created) as mutate:
+        response = client.post(URL, {"business_address": A, "template": {"name": "prueba_futsi"}}, format="json")
+        assert response.status_code == 201
+        mutate.assert_called_once_with(A, method="POST", payload={"template": {"name": "prueba_futsi"}})
+    assert AuditLog.objects.filter(actor=user, action="whatsapp_template_created").exists()
+    with patch("core.api.template_catalog.mutate_template_for_channel", return_value={"business_address": A, "name": "prueba_futsi", "deleted": True}) as mutate:
+        response = client.delete(URL, {"business_address": A, "name": "prueba_futsi"}, format="json")
+        assert response.status_code == 200
+        mutate.assert_called_once_with(A, method="DELETE", payload={"name": "prueba_futsi"})
+    assert AuditLog.objects.filter(actor=user, action="whatsapp_template_deleted").exists()

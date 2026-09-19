@@ -331,7 +331,7 @@ class WhatsAppConversationViewSet(
     )
     serializer_class = WhatsAppConversationSerializer
     permission_classes = [CanManageTrialDashboard]
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def visible_conversations(self):
         # Use the explicitly linked channel before a legacy conversation default.
@@ -414,10 +414,11 @@ class WhatsAppConversationViewSet(
                 records.setdefault(current, {"business_address": current, "site": None, "site_name": "", "channel_label": ""})
         return Response(sorted(records.values(), key=lambda row: (row["site_name"], row["channel_label"], row["business_address"])))
 
-    @action(detail=False, methods=["get"], url_path="templates")
+    @action(detail=False, methods=["get", "post", "delete"], url_path="templates")
     def templates(self, request):
-        from .template_catalog import catalog_for_channel
-        address = request.query_params.get("business_address", "").strip()
+        from .template_catalog import catalog_for_channel, mutate_template_for_channel
+        address = (request.query_params.get("business_address", "") if request.method == "GET" else request.data.get("business_address", ""))
+        address = str(address or "").strip()
         after = request.query_params.get("after", "")
         if not address or len(after) > 2048:
             return Response({"detail": "Selecciona un número válido."}, status=400)
@@ -425,9 +426,37 @@ class WhatsAppConversationViewSet(
         if address not in allowed:
             return Response({"detail": "Canal no disponible para este usuario."}, status=404)
         try:
-            return Response(catalog_for_channel(address, after))
+            if request.method == "GET":
+                return Response(catalog_for_channel(address, after))
+            if request.method == "POST":
+                template = request.data.get("template")
+                if not isinstance(template, dict):
+                    return Response({"detail": "Completa los datos de la plantilla."}, status=400)
+                result = mutate_template_for_channel(address, method="POST", payload={"template": template})
+                AuditLog.objects.create(
+                    actor=request.user,
+                    action="whatsapp_template_created",
+                    table_name="whatsapp_message_template",
+                    record_id=str(result.get("id") or result.get("name") or "")[:255],
+                    new_values={key: result.get(key) for key in ("name", "language", "category", "status")},
+                    metadata={"business_address": address},
+                )
+                return Response(result, status=201)
+            name = str(request.data.get("name") or "").strip()
+            if not name:
+                return Response({"detail": "Indica la plantilla que deseas eliminar."}, status=400)
+            result = mutate_template_for_channel(address, method="DELETE", payload={"name": name})
+            AuditLog.objects.create(
+                actor=request.user,
+                action="whatsapp_template_deleted",
+                table_name="whatsapp_message_template",
+                record_id=name[:255],
+                previous_values={"name": name},
+                metadata={"business_address": address},
+            )
+            return Response(result)
         except MetaWhatsAppError as exc:
-            return Response({"detail": str(exc)}, status=503)
+            return Response({"detail": str(exc)}, status=503 if request.method == "GET" or exc.delivery_uncertain else 400)
 
     def perform_update(self, serializer):
         conversation = serializer.instance

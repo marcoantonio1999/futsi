@@ -9,6 +9,7 @@ const courtAttentionItems: CommunicationItem[] = [
   { key: "summary", label: "Resumen" },
   { key: "whatsapp", label: "Bandeja de WhatsApp", shortLabel: "WhatsApp" },
   { key: "templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas" },
+  { key: "template-builder", label: "Crear plantilla", shortLabel: "Crear plantilla" },
   { key: "bulk-academy", label: "Envíos masivos", shortLabel: "Masivos", admin: true },
   { key: "calls", label: "Llamadas", admin: true },
 ];
