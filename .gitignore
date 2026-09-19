@@ -21,6 +21,7 @@ back/staticfiles/
 front/node_modules/
 front/dist/
 front/.env.local
+front/.env.*.local
 
 # OS / editor
 .DS_Store

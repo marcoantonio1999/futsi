@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ApiError, apiFormRequest, apiRequest, downloadApiFile } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { API_URL, ApiError, apiFormRequest, apiRequest, downloadApiFile } from "../api";
 import { emptyData } from "../appState";
 import type {
   AppData,
@@ -26,6 +26,12 @@ import { loadAppDataForUser, loadSectionData, mergeAppData } from "./futsiDataLo
 
 type EntityWithId = { id: number };
 
+const localAutoLogin = import.meta.env.DEV
+  && ["127.0.0.1", "localhost"].includes(window.location.hostname)
+  && import.meta.env.VITE_LOCAL_AUTO_LOGIN === "true";
+const localAutoLoginUsername = import.meta.env.VITE_LOCAL_AUTO_LOGIN_USERNAME?.trim() || "admin";
+const localAutoLoginPassword = import.meta.env.VITE_LOCAL_AUTO_LOGIN_PASSWORD || "";
+
 function upsertById<T extends EntityWithId>(rows: T[], row: T) {
   return [row, ...rows.filter((item) => item.id !== row.id)];
 }
@@ -34,7 +40,7 @@ export function useFutsiData() {
   const [token, setToken] = useState(() => localStorage.getItem("futsi_token") ?? "");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [data, setData] = useState<AppData>(emptyData);
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem("futsi_token")));
+  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem("futsi_token")) || localAutoLogin);
   const [sectionLoading, setSectionLoading] = useState<TabKey | null>(null);
   const [activeSection, setActiveSection] = useState<TabKey>("dashboard");
   const [loadedSections, setLoadedSections] = useState<TabKey[]>([]);
@@ -42,6 +48,7 @@ export function useFutsiData() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [actionLoadingMessage, setActionLoadingMessage] = useState("");
+  const localLoginInFlight = useRef(false);
 
   async function loadData(authToken = token, section = activeSection) {
     if (!authToken) return;
@@ -75,6 +82,36 @@ export function useFutsiData() {
 
   useEffect(() => {
     if (token) loadData(token);
+  }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      localLoginInFlight.current = false;
+      return;
+    }
+    if (!localAutoLogin || !localAutoLoginPassword || localLoginInFlight.current) return;
+    localLoginInFlight.current = true;
+    setLoading(true);
+    setError("");
+    fetch(`${API_URL}/auth/login/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: localAutoLoginUsername, password: localAutoLoginPassword }),
+    })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail ?? "No se pudo iniciar la sesión local automáticamente.");
+        localStorage.setItem("futsi_token", body.token);
+        setHasLoadedData(false);
+        setCurrentUser(null);
+        setLoadedSections([]);
+        setToken(body.token);
+      })
+      .catch((err) => {
+        localLoginInFlight.current = false;
+        setLoading(false);
+        setError(err instanceof Error ? err.message : "No se pudo iniciar la sesión local automáticamente.");
+      });
   }, [token]);
 
   useEffect(() => {
