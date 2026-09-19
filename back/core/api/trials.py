@@ -41,7 +41,10 @@ from core.permissions import ADMIN_ROLES, IsAdminRole
 from core.whatsapp.meta_api import (
     MetaWhatsAppError,
     configured_business_address,
-    send_text,
+)
+from core.api.manual_message_transport import (
+    channel_can_send_text,
+    send_text_for_channel,
 )
 
 
@@ -483,7 +486,14 @@ class WhatsAppConversationViewSet(
     @action(detail=True, methods=["post"], url_path="send-message")
     def send_message(self, request, pk=None):
         conversation = self.get_object()
-        if not configured_business_address() or conversation.to_address != configured_business_address():
+        is_direct_channel = conversation.to_address == configured_business_address()
+        is_registered_channel = WhatsAppAutomationSettings.objects.filter(
+            business_address=conversation.to_address
+        ).exists()
+        if (
+            (not is_direct_channel and not is_registered_channel)
+            or not channel_can_send_text(conversation.to_address)
+        ):
             return Response({"detail": "El envío de este número no está conectado a este servicio. Responde desde su WhatsApp Business; no se enviará desde otra sede."}, status=409)
         input_serializer = WhatsAppSendMessageSerializer(data=request.data)
         input_serializer.is_valid(raise_exception=True)
@@ -520,7 +530,8 @@ class WhatsAppConversationViewSet(
                 context["human_last_reply_at"] = now.isoformat()
                 context["human_last_reply_by_user_id"] = request.user.pk
 
-                provider_sid = send_text(
+                provider_sid = send_text_for_channel(
+                    address=locked.to_address,
                     to_phone=locked.contact_phone,
                     body=body,
                 )

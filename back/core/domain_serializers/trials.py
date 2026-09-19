@@ -309,9 +309,16 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         return getattr(instance, "channel_site_id", instance.site_id)
 
     def get_manual_send_available(self, instance):
+        from core.api.manual_message_transport import channel_can_send_text
         from core.whatsapp.meta_api import configured_business_address
-        address = configured_business_address()
-        return bool(address and address == instance.to_address)
+
+        is_direct_channel = instance.to_address == configured_business_address()
+        is_registered_channel = WhatsAppAutomationSettings.objects.filter(
+            business_address=instance.to_address
+        ).exists()
+        if not is_direct_channel and not is_registered_channel:
+            return False
+        return channel_can_send_text(instance.to_address)
 
     attention_resolution = serializers.SerializerMethodField()
     kind = serializers.SerializerMethodField()

@@ -696,7 +696,7 @@ def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):
     client, _payload_data, _user = auth_client(user=coordinator)
 
     with patch(
-        "core.api.trials.send_text",
+        "core.api.trials.send_text_for_channel",
         return_value="wamid.manual-dashboard-reply",
     ) as send_mock:
         response = client.post(
@@ -707,6 +707,7 @@ def test_dashboard_reply_sends_message_and_pauses_automation(auth_client):
 
     assert response.status_code == 201
     send_mock.assert_called_once_with(
+        address=conversation.to_address,
         to_phone=conversation.contact_phone,
         body="¡Hola, Marco! Te comparto los horarios disponibles 😊",
     )
@@ -757,7 +758,7 @@ def test_dashboard_reply_requires_an_open_customer_service_window(auth_client):
     )
     client, _payload_data, _user = auth_client(role="admin")
 
-    with patch("core.api.trials.send_text") as send_mock:
+    with patch("core.api.trials.send_text_for_channel") as send_mock:
         response = client.post(
             f"/api/whatsapp-conversations/{conversation.id}/send-message/",
             {"body": "Respuesta fuera de ventana"},

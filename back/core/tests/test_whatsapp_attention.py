@@ -22,7 +22,7 @@ def review_chat(settings):
 def test_resolve_attention_is_audited_without_sending_or_changing_followup(auth_client, review_chat):
     conversation, message = review_chat
     client, _, user = auth_client(user=make_user(role="site_coordinator", primary_site=conversation.site))
-    with patch("core.api.trials.send_text") as sender:
+    with patch("core.api.trials.send_text_for_channel") as sender:
         response = client.post(f"/api/whatsapp-conversations/{conversation.pk}/resolve-attention/", {"last_message_id": message.pk}, format="json")
     assert response.status_code == 200
     assert response.json()["attention_resolution"]["message_id"] == message.pk

@@ -13,6 +13,11 @@ const initialFilters = { q: '', relationship: '', interest: '', confidence: '', 
 type ContactFilters = typeof initialFilters;
 type ContactFilterKey = keyof ContactFilters;
 
+function isCompletePhoneLookup(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 10 || (digits.startsWith('52') && (digits.length === 12 || digits.length === 13));
+}
+
 export function UvmContactPicker({ token, channel, label = 'este canal', onLoad }: { token: string; channel: string; label?: string; onLoad: (review: ContactReview) => void }) {
   const [filters, setFilters] = useState(initialFilters);
   const [filterDraft, setFilterDraft] = useState(initialFilters);
@@ -48,7 +53,15 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
     if (detail && !dialog.current?.open) dialog.current?.showModal();
     if (!detail && dialog.current?.open) { dialog.current.close(); opener.current?.focus(); }
   }, [detail]);
-  function filter(key: ContactFilterKey, value: string) { setFilters(f => ({ ...f, [key]: value })); setOffset(0); setSelection([]); }
+  function filter(key: ContactFilterKey, value: string) {
+    setFilters(current => ({
+      ...current,
+      [key]: value,
+      ...(key === 'q' && isCompletePhoneLookup(value) && current.outreach === 'new' ? { outreach: 'all' } : {}),
+    }));
+    setOffset(0);
+    setSelection([]);
+  }
   function draftFilter(key: ContactFilterKey, value: string) { setFilterDraft(f => ({ ...f, [key]: value })); }
   function openFilters() {
     setFilterDraft(filters);

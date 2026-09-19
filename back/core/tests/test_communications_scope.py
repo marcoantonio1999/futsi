@@ -125,8 +125,57 @@ def test_manual_send_never_uses_another_sites_number(auth_client, settings):
     client, _, _ = auth_client()
     settings.META_WHATSAPP_DISPLAY_NUMBER = A.replace("whatsapp:", "")
     foreign = conversation(B)
-    with patch("core.api.trials.send_text") as send:
+    with patch("core.api.trials.send_text_for_channel") as send:
         response = client.post(BASE + f"{foreign.pk}/send-message/?scope=all", {"body": "Hola"}, format="json")
     assert response.status_code == 409
     send.assert_not_called()
     assert foreign.messages.count() == 0
+
+
+def test_registered_service_channel_can_reply_from_its_own_number(auth_client, settings):
+    client, _, _ = auth_client()
+    settings.META_WHATSAPP_DISPLAY_NUMBER = A.replace("whatsapp:", "")
+    settings.WHATSAPP_SERVICE_URL = "https://whatsapp-service.example"
+    settings.WHATSAPP_SERVICE_TOKEN = "server-secret"
+    franco = make_site(name="Colegio Franco")
+    WhatsAppAutomationSettings.objects.create(
+        business_address=FRANCO_ACADEMY,
+        site=franco,
+        channel_label="Franco Academia",
+        bot_enabled=False,
+    )
+    chat = conversation(FRANCO_ACADEMY, franco)
+    WhatsAppMessage.objects.create(
+        conversation=chat,
+        provider_sid="wamid.inbound-franco",
+        direction="inbound",
+        body="Hola, necesito información",
+    )
+
+    listed = client.get(BASE, {"scope": "all", "business_address": FRANCO_ACADEMY})
+    assert listed.status_code == 200
+    assert listed.json()[0]["manual_send_available"] is True
+
+    with patch(
+        "core.api.trials.send_text_for_channel",
+        return_value="wamid.manual-franco",
+    ) as send:
+        response = client.post(
+            BASE + f"{chat.pk}/send-message/?scope=all",
+            {"body": "Hola, ¿en qué podemos ayudarte?"},
+            format="json",
+        )
+
+    assert response.status_code == 201
+    send.assert_called_once_with(
+        address=FRANCO_ACADEMY,
+        to_phone=chat.contact_phone,
+        body="Hola, ¿en qué podemos ayudarte?",
+    )
+    assert response.json()["business_address"] == FRANCO_ACADEMY
+    assert response.json()["human_takeover_active"] is True
+    assert WhatsAppMessage.objects.filter(
+        conversation=chat,
+        provider_sid="wamid.manual-franco",
+        direction="outbound",
+    ).exists()
