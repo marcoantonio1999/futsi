@@ -1,8 +1,10 @@
 from datetime import date, datetime, timedelta
 from statistics import median
 
+from django.conf import settings
 from django.db import models, transaction
 from django.db.models.functions import Coalesce
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -413,6 +415,41 @@ class WhatsAppConversationViewSet(
             if current:
                 records.setdefault(current, {"business_address": current, "site": None, "site_name": "", "channel_label": ""})
         return Response(sorted(records.values(), key=lambda row: (row["site_name"], row["channel_label"], row["business_address"])))
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="export",
+        permission_classes=[IsAdminRole],
+    )
+    def export_chats(self, request):
+        from .whatsapp_chat_export import build_whatsapp_chat_export
+
+        payload, counts = build_whatsapp_chat_export(self.get_queryset())
+        if len(payload) > settings.FILE_EXPORT_MAX_EXCEL_BYTES:
+            return Response(
+                {"detail": "La exportación excede el tamaño permitido. Selecciona una sede o un número e inténtalo de nuevo."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        AuditLog.objects.create(
+            actor=request.user,
+            action="whatsapp_chats_exported",
+            table_name=WhatsAppConversation._meta.db_table,
+            record_id="all",
+            metadata={
+                **counts,
+                "site": request.query_params.get("site") or "all",
+                "business_address": request.query_params.get("business_address") or "all",
+            },
+        )
+        filename = f"chats-whatsapp-futsi-{timezone.localdate().isoformat()}.xlsx"
+        response = HttpResponse(
+            payload,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
     @action(detail=False, methods=["get", "post", "delete"], url_path="templates")
     def templates(self, request):

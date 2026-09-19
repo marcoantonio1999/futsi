@@ -1,9 +1,12 @@
 from datetime import timedelta
+from io import BytesIO
 from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
-from core.models import WhatsAppAutomationSettings, WhatsAppConversation, WhatsAppMessage, WhatsAppHumanResponseEvent
+from openpyxl import load_workbook
+
+from core.models import AuditLog, WhatsAppAutomationSettings, WhatsAppConversation, WhatsAppMessage, WhatsAppHumanResponseEvent
 from core.tests.factories import make_site
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
@@ -119,6 +122,55 @@ def test_weekly_statistics_use_the_same_site_and_channel_scope(auth_client):
         assert row["summary"]["average_response_seconds"] == duration
         assert row["classifications"]["prospect"] == 1
     assert client.get(BASE + "weekly-stats/", {"scope": "all", "business_address": C}).json()["summary"]["total"] == 0
+
+
+def test_chat_export_contains_contact_summary_and_complete_message_detail(auth_client):
+    client, _, user = auth_client()
+    north, south = make_site(name="Norte"), make_site(name="Sur")
+    WhatsAppAutomationSettings.objects.create(business_address=A, site=north, channel_label="Academia")
+    WhatsAppAutomationSettings.objects.create(business_address=B, site=south, channel_label="Liga")
+    academy = conversation(A, north)
+    academy.context = {"contact_name": "=Nombre inseguro"}
+    academy.save(update_fields=["context", "updated_at"])
+    league = conversation(B, south)
+    league.contact_phone = "+525522220000"
+    league.context = {"contact_name": "Santiago Rivera"}
+    league.save(update_fields=["contact_phone", "context", "updated_at"])
+    WhatsAppMessage.objects.create(conversation=academy, direction="inbound", body="Quiero informes")
+    WhatsAppMessage.objects.create(conversation=academy, direction="outbound", body="Con gusto")
+    WhatsAppMessage.objects.create(conversation=league, direction="inbound", body="Quiero registrar mi equipo")
+
+    response = client.get(BASE + "export/", {"scope": "all"})
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "chats-whatsapp-futsi" in response["Content-Disposition"]
+    workbook = load_workbook(BytesIO(response.content), data_only=False)
+    assert workbook.sheetnames == ["Conversaciones", "Mensajes"]
+    summary = workbook["Conversaciones"]
+    headers = {cell.value: cell.column for cell in summary[1]}
+    assert summary.max_row == 3
+    academy_row = next(row for row in range(2, 4) if summary.cell(row, headers["Identificador de atención"]).value == A)
+    assert summary.cell(academy_row, headers["Número de atención"]).value == "Academia"
+    assert summary.cell(academy_row, headers["Nombre del contacto"]).value == "'=Nombre inseguro"
+    assert summary.cell(academy_row, headers["Mensajes recibidos"]).value == 1
+    assert summary.cell(academy_row, headers["Mensajes enviados"]).value == 1
+    detail = workbook["Mensajes"]
+    assert detail.max_row == 4
+    assert {detail.cell(row, 6).value for row in range(2, 5)} == {"Recibido", "Enviado"}
+    assert {detail.cell(row, 7).value for row in range(2, 5)} == {"Quiero informes", "Con gusto", "Quiero registrar mi equipo"}
+    assert AuditLog.objects.filter(actor=user, action="whatsapp_chats_exported").exists()
+
+    filtered = client.get(BASE + "export/", {"scope": "all", "business_address": B})
+    filtered_workbook = load_workbook(BytesIO(filtered.content))
+    assert filtered_workbook["Conversaciones"].max_row == 2
+    assert filtered_workbook["Conversaciones"]["B2"].value == B
+
+
+def test_chat_export_requires_an_admin_role(auth_client):
+    site = make_site()
+    coordinator, _, _ = auth_client(role="site_coordinator", primary_site=site)
+    assert coordinator.get(BASE + "export/", {"scope": "all"}).status_code == 403
 
 
 def test_manual_send_never_uses_another_sites_number(auth_client, settings):

@@ -39,6 +39,7 @@ export const communicationGroups: Array<{
     { key: "connections", label: "Conexiones", admin: true },
     { key: "collections", label: "Cobranza por WhatsApp", shortLabel: "Cobranza" },
     { key: "weekly-stats", label: "Estadísticas", admin: true },
+    { key: "chat-export", label: "Exportar chats", admin: true },
     { key: "settings", label: "Ajustes del asistente", shortLabel: "Ajustes" , admin: true },
   ] },
 ];

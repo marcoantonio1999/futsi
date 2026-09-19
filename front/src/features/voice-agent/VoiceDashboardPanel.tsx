@@ -20,6 +20,7 @@ import { BulkTemplatesPanel } from "./BulkTemplatesPanel";
 import { ConnectionsPanel } from "./ConnectionsPanel";
 import { VeronicaFiltersPanel } from "./VeronicaFiltersPanel";
 import { CommunicationScopePicker } from "./CommunicationScopePicker";
+import { ChatExportPanel } from "./ChatExportPanel";
 import { type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
@@ -38,6 +39,7 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
   calls: { title: "Llamadas y transcripciones" },
   whatsapp: { title: "Bandeja de WhatsApp" },
   "weekly-stats": { title: "Resultados semanales" },
+  "chat-export": { title: "Exportar chats" },
   availability: { title: "Disponibilidad para pruebas" },
   settings: { title: "Ajustes del asistente" },
 };
@@ -254,6 +256,10 @@ export function VoiceDashboardPanel({
 
       {section === "weekly-stats" && canReviewCalls ? (
         <WhatsAppWeeklyStatsPanel scopeQuery={query} value={voiceData.whatsappWeeklyStats} token={token} onOpenConversation={openConversation} />
+      ) : null}
+
+      {section === "chat-export" && canReviewCalls ? (
+        <ChatExportPanel token={token} scopeQuery={query} conversations={voiceData.whatsappConversations} />
       ) : null}
 
       {section === "settings" && canReviewCalls ? (
