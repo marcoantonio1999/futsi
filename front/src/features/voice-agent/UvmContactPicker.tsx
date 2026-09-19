@@ -88,16 +88,16 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
   const activeFilterCount = (Object.keys(initialFilters) as ContactFilterKey[]).filter(key => key !== 'q' && filters[key] !== initialFilters[key]).length;
   return <div className="uvm-directory">
     <div className="uvm-directory-toolbar">
-      <label className="uvm-search"><span className="uvm-visually-hidden">Buscar contacto o futbolista</span><Search aria-hidden="true" size={18} /><input value={filters.q} placeholder="Buscar nombre o teléfono" onChange={e => filter('q', e.target.value)} disabled={busy} /></label>
+      <div className="uvm-selection-bar"><div aria-live="polite"><strong>{selection.length} / 100 seleccionados</strong><span>{loading ? 'Buscando…' : `${result?.total || 0} resultados de ${result?.dataset_total || 0} contactos de ${result?.dataset_label || label}`}</span></div><div className="bulk-actions">
+        <button disabled={loading || busy || !result?.total} onClick={() => void action(async () => {
+          const r = await apiRequest<Directory>(base + 'contacts/?' + params({ offset: '0', limit: '100', selectable_only: 'true' }), token);
+          setSelection(r.contacts.filter(c => c.selectable).map(c => c.id));
+        })}>Seleccionar hasta 100 de este filtro</button>
+        <button disabled={busy || !selection.length} onClick={() => setSelection([])}>Quitar selección</button>
+      </div></div>
+      <label className="uvm-search"><span className="uvm-visually-hidden">Buscar contacto o futbolista</span><Search aria-hidden="true" size={18} /><input value={filters.q} placeholder="Buscar" onChange={e => filter('q', e.target.value)} disabled={busy} /></label>
       <button className="uvm-filter-button" disabled={busy} onClick={openFilters}><SlidersHorizontal aria-hidden="true" size={18} />Filtros{activeFilterCount > 0 && <span>{activeFilterCount}</span>}</button>
     </div>
-    <div className="uvm-selection-bar"><div aria-live="polite"><strong>{selection.length} / 100 seleccionados</strong><span>{loading ? 'Buscando…' : `${result?.total || 0} resultados de ${result?.dataset_total || 0} contactos de ${result?.dataset_label || label}`}</span></div><div className="bulk-actions">
-      <button disabled={loading || busy || !result?.total} onClick={() => void action(async () => {
-        const r = await apiRequest<Directory>(base + 'contacts/?' + params({ offset: '0', limit: '100', selectable_only: 'true' }), token);
-        setSelection(r.contacts.filter(c => c.selectable).map(c => c.id));
-      })}>Seleccionar hasta 100 de este filtro</button>
-      <button disabled={busy || !selection.length} onClick={() => setSelection([])}>Quitar selección</button>
-    </div></div>
     {error && <div className="bulk-alert error" role="alert">{error}</div>}
     <div className="bulk-table-wrap uvm-contact-table" aria-busy={loading}><table><thead><tr><th>Elegir</th><th>Contacto</th><th>Relación e interés</th><th>Última interacción</th><th>Seguimiento</th><th>Detalle</th></tr></thead><tbody>
       {!loading && !result?.contacts.length && <tr><td colSpan={6}>No hay contactos con estos filtros. Prueba cambiar Seguimiento o los demás filtros.</td></tr>}
@@ -108,9 +108,8 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
           {(c.needs_review || c.sensitive) && <span className="uvm-review">Revisar contexto</span>}<small>Consentimiento: {c.consent_source}</small></td>
         <td><button disabled={busy} onClick={e => { opener.current = e.currentTarget; void action(async () => { const d = await apiRequest<Detail>(base + 'contact-detail/?' + new URLSearchParams({ channel, contact_id: String(c.id) }), token); setDetail(d); setDetailError(''); setEdit({ name: d.name, priority: d.priority, notes: d.notes, manually_blocked: d.manually_blocked }); }); }}>Ver detalle</button></td></tr>)}
     </tbody></table></div>
-    <div className="bulk-pages"><button disabled={busy || loading || !offset} onClick={() => setOffset(n => n-50)}>Anterior</button><span>Página {Math.floor(offset/50)+1} de {Math.max(1, Math.ceil((result?.total || 0)/50))}</span><button disabled={busy || loading || !result?.has_more} onClick={() => setOffset(n => n+50)}>Siguiente</button></div>
-    <div className="bulk-actions"><button className="primary" disabled={busy || loading || !selection.length} onClick={() => void action(async () => { onLoad(await post<ContactReview>('contact-select', { channel, contact_ids: selection })); })}>{busy ? 'Cargando…' : `Cargar y revisar ${selection.length} contactos`}</button></div>
-    <small className="uvm-source">Fuente: {result?.source_file || `directorio de ${label}`}. Los filtros y la selección solo afectan a {result?.dataset_label || label}. No se envía nada hasta confirmar el costo.</small>
+    <div className="uvm-directory-footer"><div className="bulk-pages"><button disabled={busy || loading || !offset} onClick={() => setOffset(n => n-50)}>Anterior</button><span>Página {Math.floor(offset/50)+1} de {Math.max(1, Math.ceil((result?.total || 0)/50))}</span><button disabled={busy || loading || !result?.has_more} onClick={() => setOffset(n => n+50)}>Siguiente</button></div>
+      <div className="bulk-actions"><button className="primary" disabled={busy || loading || !selection.length} onClick={() => void action(async () => { onLoad(await post<ContactReview>('contact-select', { channel, contact_ids: selection })); })}>{busy ? 'Cargando…' : `Cargar y revisar ${selection.length} contactos`}</button></div></div>
     <dialog ref={filtersDialog} className="uvm-filter-modal" aria-labelledby="uvm-filter-title" onCancel={e => { e.preventDefault(); closeFilters(); }}>
       <header className="uvm-modal-heading"><div><span>Directorio de contactos</span><h3 id="uvm-filter-title">Filtros</h3></div><button aria-label="Cerrar filtros" onClick={closeFilters}><X aria-hidden="true" size={20} /></button></header>
       <div className="uvm-filter-modal-body">

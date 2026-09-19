@@ -30,6 +30,7 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
   "bulk-veronica": { title: "Verónica · envíos masivos" },
   "veronica-filters": { title: "Verónica · filtros de RH" },
   "bulk-academy": { title: "Canchas · envíos masivos" },
+  "bulk-academy-history": { title: "Canchas · historial de envíos" },
   veronica: { title: "Verónica · atención manual" },
   templates: { title: "Plantillas de WhatsApp" },
   "template-builder": { title: "Crear plantilla de WhatsApp" },
@@ -168,9 +169,9 @@ export function VoiceDashboardPanel({
   if (!canManageTrials) return null;
   if (section === 'connections') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><ConnectionsPanel token={token} /></div> : null;
   if (section === 'veronica-filters') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><VeronicaFiltersPanel token={token} /></div> : null;
-  if (section === 'bulk-veronica' || section === 'bulk-academy') return canReviewCalls ? <div className="communications">
+  if (section === 'bulk-veronica' || section === 'bulk-academy' || section === 'bulk-academy-history') return canReviewCalls ? <div className="communications">
     <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
-    <BulkTemplatesPanel key={section} token={token} kind={section === 'bulk-veronica' ? 'veronica' : 'academy'} />
+    <BulkTemplatesPanel key={section} token={token} kind={section === 'bulk-veronica' ? 'veronica' : 'academy'} view={section === 'bulk-academy-history' ? 'history' : 'create'} />
   </div> : null;
   if (section === "veronica") return canReviewCalls ? <div className="communications">
     <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />

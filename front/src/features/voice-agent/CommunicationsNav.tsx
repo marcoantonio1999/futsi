@@ -5,12 +5,17 @@ import { VeronicaOnlyContext, isVeronicaSection } from './CommunicationsAccess';
 
 type CommunicationItem = { key: VoiceDashboardSection; label: string; shortLabel?: string; admin?: boolean };
 
+const academyBulkItems: CommunicationItem[] = [
+  { key: "bulk-academy", label: "Nuevo envío", admin: true },
+  { key: "bulk-academy-history", label: "Historial de envíos", shortLabel: "Historial", admin: true },
+];
+
 const courtAttentionItems: CommunicationItem[] = [
   { key: "summary", label: "Resumen" },
   { key: "whatsapp", label: "Bandeja de WhatsApp", shortLabel: "WhatsApp" },
   { key: "templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas" },
   { key: "template-builder", label: "Crear plantilla", shortLabel: "Crear plantilla" },
-  { key: "bulk-academy", label: "Envíos masivos", shortLabel: "Masivos", admin: true },
+  ...academyBulkItems,
   { key: "calls", label: "Llamadas", admin: true },
 ];
 
@@ -49,13 +54,16 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
 }) {
   const veronicaOnly = useContext(VeronicaOnlyContext);
   const activeAttentionArea = hrAttentionItems.some(item => item.key === section) ? "hr" : "courts";
+  const academyBulkActive = academyBulkItems.some(item => item.key === section);
   const [expandedAreas, setExpandedAreas] = useState<Record<string, boolean>>(() => ({
     courts: !veronicaOnly && activeAttentionArea === "courts",
     hr: veronicaOnly || activeAttentionArea === "hr",
   }));
+  const [academyBulkExpanded, setAcademyBulkExpanded] = useState(academyBulkActive);
   useEffect(() => {
     setExpandedAreas(current => current[activeAttentionArea] ? current : { ...current, [activeAttentionArea]: true });
   }, [activeAttentionArea]);
+  useEffect(() => { if (academyBulkActive) setAcademyBulkExpanded(true); }, [academyBulkActive]);
   const allowed = (item: CommunicationItem) => veronicaOnly ? isVeronicaSection(item.key) : !item.admin || canReview;
 
   return <nav aria-label={compact ? "Subsecciones de comunicaciones" : "Comunicaciones"} className={compact ? "comm-mobile-nav comm-section-map" : "comm-nav"}>
@@ -75,7 +83,15 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
               <span><AreaIcon size={13} aria-hidden="true" />{area.label}</span><ChevronDown className="comm-nav-chevron" size={14} aria-hidden="true" />
             </button>
             <ul id={`communications-${compact ? "map" : "menu"}-${area.key}`} className="comm-nav-children" aria-label={area.label} hidden={!expanded}>
-              {areaItems.map(item => <NavItem key={item.key} item={item} section={section} compact={compact} onSelect={onSelect} />)}
+              {areaItems.filter(item => !academyBulkItems.some(bulkItem => bulkItem.key === item.key)).map(item => <NavItem key={item.key} item={item} section={section} compact={compact} onSelect={onSelect} />)}
+              {area.key === "courts" && academyBulkItems.some(item => areaItems.some(areaItem => areaItem.key === item.key)) && <li className="comm-nav-subgroup comm-nav-nested-subgroup">
+                <button type="button" className="comm-nav-subgroup-toggle" aria-expanded={academyBulkExpanded} aria-controls={`communications-${compact ? "map" : "menu"}-academy-bulk`} onClick={() => setAcademyBulkExpanded(value => !value)}>
+                  <span>Envíos masivos</span><ChevronDown className="comm-nav-chevron" size={14} aria-hidden="true" />
+                </button>
+                <ul id={`communications-${compact ? "map" : "menu"}-academy-bulk`} className="comm-nav-children" aria-label="Envíos masivos" hidden={!academyBulkExpanded}>
+                  {academyBulkItems.filter(item => areaItems.some(areaItem => areaItem.key === item.key)).map(item => <NavItem key={item.key} item={item} section={section} compact={compact} onSelect={onSelect} />)}
+                </ul>
+              </li>}
             </ul>
           </section>;
         })}</div> : <ul className="comm-nav-children" aria-label={group.label}>
