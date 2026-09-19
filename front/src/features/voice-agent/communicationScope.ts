@@ -2,6 +2,9 @@ import type { AppData, WhatsAppConversation } from "../../types";
 
 export type CommunicationChannel = { business_address: string; site: number | null; site_name: string; channel_label?: string };
 export type CommunicationScope = { site: string; address: string };
+export function channelOwnerLabel(channel: CommunicationChannel) {
+  return channel.channel_label || channel.site_name || channel.business_address.replace("whatsapp:", "").replace("meta:", "ID ");
+}
 export function conversationSite(c: WhatsAppConversation) {
   return c.channel_site !== undefined ? c.channel_site : c.site;
 }

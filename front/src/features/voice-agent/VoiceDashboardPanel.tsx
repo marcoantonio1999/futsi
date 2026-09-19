@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../api";
-import { channelsForScope, filterCommunications, scopeQuery, conversationSite, type CommunicationChannel } from "./communicationScope";
+import { channelOwnerLabel, channelsForScope, filterCommunications, scopeQuery, conversationSite, type CommunicationChannel } from "./communicationScope";
 import { CommunicationsNav, communicationGroups } from "./CommunicationsNav";
 import { CommunicationsSummary } from "./CommunicationsSummary";
 import "./communications.css";
@@ -96,7 +96,7 @@ export function VoiceDashboardPanel({
   const query = scopeQuery(scope);
   const templateChannels = useMemo(() => channelsForScope(channels, scope).map(channel => ({
     business_address: channel.business_address,
-    label: channel.channel_label || channel.business_address.replace("whatsapp:", "").replace("meta:", "ID "),
+    label: channelOwnerLabel(channel),
   })), [channels, selectedAddress, selectedSite]);
   const voiceData = useMemo(() => filterCommunications(permittedData, { site: selectedSite, address: selectedAddress }, channels), [permittedData, selectedSite, selectedAddress, channels]);
   const hasUnassigned = channels.some(channel => channel.site === null)

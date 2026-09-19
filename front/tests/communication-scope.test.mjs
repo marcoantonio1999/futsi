@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { channelsForScope, filterCommunications, scopeQuery } from "../src/features/voice-agent/communicationScope.ts";
+import { channelOwnerLabel, channelsForScope, filterCommunications, scopeQuery } from "../src/features/voice-agent/communicationScope.ts";
 
 const data = {
   sites: [{ id: 1 }, { id: 2 }, { id: 3 }], courts: [{ site: 1 }, { site: 2 }],
@@ -62,4 +62,19 @@ test("all numbers in one site keep every channel available to consolidated panel
   assert.deepEqual(channelsForScope(channels, { site: "1", address: "all" }).map(channel => channel.channel_label), ["Academia", "Liga"]);
   assert.deepEqual(channelsForScope(channels, { site: "1", address: "whatsapp:+102" }).map(channel => channel.channel_label), ["Liga"]);
   assert.deepEqual(channelsForScope(channels, { site: "unassigned", address: "all" }).map(channel => channel.channel_label), ["Pendiente"]);
+});
+
+test("template owner uses the linked site when a channel has no custom label", () => {
+  assert.equal(channelOwnerLabel({
+    business_address: "whatsapp:+525574858165",
+    site: 41,
+    site_name: "UVM",
+    channel_label: "",
+  }), "UVM");
+  assert.equal(channelOwnerLabel({
+    business_address: "meta:105039749242267",
+    site: 27,
+    site_name: "Colegio Franco",
+    channel_label: "Franco Academia",
+  }), "Franco Academia");
 });
