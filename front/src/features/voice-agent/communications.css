@@ -51,7 +51,7 @@
 .comm-attention-metrics .comm-metric small{color:var(--attention-ink);opacity:.88;line-height:1.5}
 .comm-attention-metrics .comm-metric{min-height:94px;padding:13px 16px;gap:7px}
 .comm-attention-metrics .comm-metric>strong{font-size:28px}
-.comm-monthly-chart>.comm-section-heading{padding:18px 20px 10px;border-bottom:0}
+.comm-weekly-chart>.comm-section-heading{padding:18px 20px 10px;border-bottom:0}
 .comm-chart-area{height:340px;padding:4px 16px 16px}
 .comm-chart-tooltip{display:grid;min-width:190px;gap:8px;padding:12px;border:1px solid var(--comm-line);border-radius:8px;background:var(--comm-bg);box-shadow:0 8px 24px #0002;color:var(--comm-ink);font-size:11px}
 .comm-chart-tooltip>strong{font-size:12px;text-transform:capitalize}
@@ -75,7 +75,7 @@
 .comm-review-call{display:flex;gap:10px;align-items:center;padding:13px 16px;border:1px solid #e9c367;background:#fff5dc;color:#925400;border-radius:9px;font-size:12px;text-align:left}.comm-review-call span{margin-left:auto}.dark .comm-review-call{background:#362b14;color:#ffdc92;border-color:#755c28}
 .comm-all-clear{color:var(--comm-green);background:var(--comm-tint)}
 @media(max-width:1100px){.comm-attention-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:767px){.comm-attention-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.comm-attention-metrics .comm-metric{display:flex;min-height:82px;padding:11px 12px;gap:7px}.comm-attention-metrics .comm-metric>span{font-size:11px;gap:6px;line-height:1.4;min-height:30px}.comm-attention-metrics .comm-metric>span svg{width:15px;flex-shrink:0}.comm-attention-metrics .comm-metric>strong{font-size:27px}.comm-chart-area{height:310px;padding:0 6px 12px}.comm-monthly-chart>.comm-section-heading{padding:16px 16px 8px}.comm-attention-strip{padding:8px 10px}.comm-review-call{flex-wrap:wrap}.comm-review-call span{margin-left:0}.comm-inbox{height:calc(100dvh - 302px)}}
+@media(max-width:767px){.comm-attention-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.comm-attention-metrics .comm-metric{display:flex;min-height:82px;padding:11px 12px;gap:7px}.comm-attention-metrics .comm-metric>span{font-size:11px;gap:6px;line-height:1.4;min-height:30px}.comm-attention-metrics .comm-metric>span svg{width:15px;flex-shrink:0}.comm-attention-metrics .comm-metric>strong{font-size:27px}.comm-chart-area{height:310px;padding:0 6px 12px}.comm-weekly-chart>.comm-section-heading{padding:16px 16px 8px}.comm-attention-strip{padding:8px 10px}.comm-review-call{flex-wrap:wrap}.comm-review-call span{margin-left:0}.comm-inbox{height:calc(100dvh - 302px)}}
 .comm-resolve-button{display:block;margin-top:8px;font-size:11px;font-weight:650;padding:6px 9px;border:1px solid var(--attention-line);border-radius:5px;background:var(--comm-bg);color:var(--comm-ink)}
 .comm-resolve-button:hover{border-color:var(--attention-accent)}.comm-resolve-button:disabled{opacity:.6}
 /* Groups are visible labels; only their child pages navigate. */
@@ -132,10 +132,10 @@
   .comm-summary-page .comm-attention-metrics .comm-metric>span{font-size:clamp(10px,1vw,12px);line-height:1.25;gap:6px}
   .comm-summary-page .comm-attention-metrics .comm-metric>span svg{width:clamp(15px,1.35vw,18px);height:clamp(15px,1.35vw,18px);flex:0 0 auto}
   .comm-summary-page .comm-attention-metrics .comm-metric>strong{font-size:clamp(22px,3.5dvh,28px)}
-  .comm-summary-page .comm-monthly-chart{display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0}
-  .comm-summary-page .comm-monthly-chart>.comm-section-heading{padding:clamp(10px,1.7dvh,16px) 16px clamp(4px,.8dvh,8px)}
-  .comm-summary-page .comm-monthly-chart h3{font-size:clamp(13px,1.9dvh,15px)}
-  .comm-summary-page .comm-monthly-chart .comm-section-heading p{font-size:clamp(10px,1.45dvh,12px);line-height:1.3;margin-top:2px}
+  .comm-summary-page .comm-weekly-chart{display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0}
+  .comm-summary-page .comm-weekly-chart>.comm-section-heading{padding:clamp(10px,1.7dvh,16px) 16px clamp(4px,.8dvh,8px)}
+  .comm-summary-page .comm-weekly-chart h3{font-size:clamp(13px,1.9dvh,15px)}
+  .comm-summary-page .comm-weekly-chart .comm-section-heading p{font-size:clamp(10px,1.45dvh,12px);line-height:1.3;margin-top:2px}
   .comm-summary-page .comm-chart-area{height:auto;min-height:0;padding:0 clamp(8px,1.1vw,16px) clamp(8px,1.4dvh,14px)}
   .comm-inbox-page{height:calc(100dvh - 110px);max-height:calc(100dvh - 110px);min-height:490px;grid-template-rows:auto minmax(0,1fr);gap:clamp(8px,1.45dvh,12px);overflow:hidden}
   .comm-inbox-page .comm-page-heading{padding-top:0}

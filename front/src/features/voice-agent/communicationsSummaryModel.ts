@@ -1,7 +1,7 @@
 import type { WhatsAppConversation } from "../../types";
 
-export type MonthlyMessageTrendRow = {
-  month: string;
+export type WeeklyMessageTrendRow = {
+  week: string;
   label: string;
   received: number;
   replied: number;
@@ -9,34 +9,41 @@ export type MonthlyMessageTrendRow = {
   attended: number;
 };
 
-function monthKey(value: string) {
-  const match = /^\d{4}-\d{2}/.exec(value);
-  return match?.[0] ?? "";
+function weekKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return date.toISOString().slice(0, 10);
 }
 
-function monthLabel(key: string) {
-  const [year, month] = key.split("-").map(Number);
-  return new Intl.DateTimeFormat("es-MX", { month: "short", year: "2-digit", timeZone: "UTC" })
-    .format(new Date(Date.UTC(year, month - 1, 1)))
-    .replace(" de ", " ");
+function weekLabel(key: string) {
+  const start = new Date(`${key}T00:00:00Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const formatter = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", timeZone: "UTC" });
+  return `${formatter.format(start).replace(" de ", " ")}–${formatter.format(end).replace(" de ", " ")}`;
 }
 
-function recentMonthKeys(end: Date, count: number) {
+function recentWeekKeys(end: Date, count: number) {
+  const currentMonday = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  currentMonday.setUTCDate(currentMonday.getUTCDate() - ((currentMonday.getUTCDay() + 6) % 7));
   return Array.from({ length: count }, (_, index) => {
-    const date = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (count - index - 1), 1));
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+    const date = new Date(currentMonday);
+    date.setUTCDate(date.getUTCDate() - (count - index - 1) * 7);
+    return date.toISOString().slice(0, 10);
   });
 }
 
-export function buildMonthlyMessageTrend(
+export function buildWeeklyMessageTrend(
   conversations: WhatsAppConversation[],
   end = new Date(),
-  monthCount = 6,
-): MonthlyMessageTrendRow[] {
-  const keys = recentMonthKeys(end, monthCount);
-  const rows = new Map(keys.map(month => [month, {
-    month,
-    label: monthLabel(month),
+  weekCount = 6,
+): WeeklyMessageTrendRow[] {
+  const keys = recentWeekKeys(end, weekCount);
+  const rows = new Map(keys.map(week => [week, {
+    week,
+    label: weekLabel(week),
     received: 0,
     replied: 0,
     waiting: 0,
@@ -50,7 +57,7 @@ export function buildMonthlyMessageTrend(
     let laterOutbound = false;
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
-      const row = rows.get(monthKey(message.created_at));
+      const row = rows.get(weekKey(message.created_at));
       if (message.direction === "outbound") {
         laterOutbound = true;
         if (row) row.replied += 1;
