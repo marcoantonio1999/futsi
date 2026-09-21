@@ -79,7 +79,7 @@ export function lastMessage(conversation: WhatsAppConversation) {
 
 const acknowledgementOnly = new Set([
   "ok", "okay", "perfecto", "listo", "entendido", "excelente", "super", "sale", "va",
-  "de acuerdo", "esta bien", "muy bien", "claro",
+  "de acuerdo", "esta bien", "muy bien", "claro", "saludos", "saludos cordiales",
 ]);
 const acknowledgementRequest = /\b(?:pero|aunque|duda|pregunta|quisiera|quiero|necesito|puede|puedes|podria|podrias|mandar|enviar|decir|confirmar|informar|agendar|inscribir|registrar|cambiar|cancelar|cuando|donde|como|cual|cuanto|horario|precio|costo)\b/;
 

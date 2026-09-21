@@ -132,7 +132,7 @@ test("a reaction does not create an unanswered customer message", () => {
 });
 
 test("thanks, emoji and sticker replies close an exchange after our message", () => {
-  for (const body of ["Gracias", "Muchas gracias 🙏", "Perfecto, gracias", "🙏⚽", "[sticker]"]) {
+  for (const body of ["Gracias", "Muchas gracias 🙏", "Perfecto, gracias", "Saludos", "Saludos cordiales", "🙏⚽", "[sticker]"]) {
     const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
     const attention = conversationAttention(c);
     assert.equal(attention.key, "up_to_date", body);
@@ -142,6 +142,13 @@ test("thanks, emoji and sticker replies close an exchange after our message", ()
 
 test("a thank-you containing a real request still requires a response", () => {
   const body = "Gracias, ¿me puedes confirmar el horario?";
+  assert.equal(isClosingAcknowledgement(body), false);
+  const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
+  assert.equal(conversationAttention(c).key, "needs_reply");
+});
+
+test("a greeting with a real request still requires a response", () => {
+  const body = "Saludos, necesito confirmar el horario";
   assert.equal(isClosingAcknowledgement(body), false);
   const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
   assert.equal(conversationAttention(c).key, "needs_reply");
