@@ -57,7 +57,12 @@ def test_recruitment_columns_are_imported_by_phone():
 
 def test_multiple_columns_require_selection():
     content = b'Nombre,Contacto\nUno,5512345678'
-    assert import_recipients(file('n.csv', content))['needs_column']
+    pending = import_recipients(file('n.csv', content))
+    assert pending['needs_column']
+    assert pending['phones'] == []
+    assert pending['invalid'] == []
+    assert pending['count'] == 0
+    assert pending['duplicates'] == 0
     assert import_recipients(file('n.csv', content), column='1')['phones'] == ['5512345678']
 
 def test_excel_numeric_cells_and_formula_not_executed():

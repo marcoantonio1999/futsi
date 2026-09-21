@@ -2,6 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { compareConversations, conversationAttention, matchesAttention, contactName, durationLabel, isClosingAcknowledgement, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
 import { templateStatusMeta } from "../src/features/voice-agent/veronicaTemplateStatus.ts";
+import { normalizeBulkReview } from "../src/features/voice-agent/bulkReview.ts";
+
+test("bulk imports that require a column selection keep safe empty review collections", () => {
+  assert.deepEqual(normalizeBulkReview({ needs_column: true, columns: [{ index: 1, label: "Contacto" }] }), {
+    needs_column: true,
+    columns: [{ index: 1, label: "Contacto" }],
+    phones: [],
+    count: 0,
+    duplicates: 0,
+    invalid: [],
+  });
+});
 
 test("Veronica template states are displayed in Spanish with a safe fallback", () => {
   assert.deepEqual(templateStatusMeta("APPROVED"), { label: "Aprobada", tone: "approved" });

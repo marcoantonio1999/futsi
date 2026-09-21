@@ -343,6 +343,7 @@ def import_recipients(file=None, text='', column=None, template_parameters=None)
     chosen = int(column) if column not in (None, '') else phone_columns[0] if len(phone_columns) == 1 else None
     if chosen is None and max(map(len, rows)) > 1:
         return {
+            **review([]),
             'needs_column': True,
             'columns': [
                 {'index': index, 'label': str(value or f'Columna {index + 1}')[:80]}
