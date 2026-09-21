@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../../api";
-import { formatDateTime, inputClass, secondaryButtonClass } from "./model";
+import { formatDateTime, formatWhatsAppTemplateCategory, inputClass, secondaryButtonClass } from "./model";
+import { recentWhatsAppTemplatesFor } from "./recentWhatsAppTemplates";
 import { reportedTemplateReason } from "./templateReason";
 import { WhatsAppTemplatePreview } from "./WhatsAppTemplatePreview";
 
@@ -15,7 +16,6 @@ const statuses: Record<string, string> = {
   APPROVED: "Aprobada", PENDING: "En revisión", REJECTED: "Rechazada", PAUSED: "Pausada",
   DISABLED: "Deshabilitada", IN_APPEAL: "En apelación", DELETED: "Eliminada", PENDING_DELETION: "Pendiente de eliminación",
 };
-const categories: Record<string, string> = { MARKETING: "Difusión", UTILITY: "Servicio", AUTHENTICATION: "Verificación" };
 const componentTypes: Record<string, string> = { HEADER: "Encabezado", BODY: "Mensaje", FOOTER: "Pie de mensaje", BUTTONS: "Botones" };
 
 function templateStatus(template: Template) {
@@ -24,7 +24,7 @@ function templateStatus(template: Template) {
 }
 
 function templateCategory(template: Template) {
-  return categories[template.category.toUpperCase()] || template.category || "Sin categoría";
+  return formatWhatsAppTemplateCategory(template.category);
 }
 
 function templatePreview(template: Template | null) {
@@ -47,6 +47,7 @@ function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: T
   const [search, setSearch] = useState("");
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [detailTemplate, setDetailTemplate] = useState<Template | null>(null);
+  const [recentTemplates, setRecentTemplates] = useState<Template[]>(() => recentWhatsAppTemplatesFor(address));
   const detailDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -55,6 +56,7 @@ function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: T
     apiRequest<Catalog>(`/whatsapp-conversations/templates/?${new URLSearchParams({ business_address: address, after: cursor })}`, token, { signal: controller.signal })
       .then(next => {
         if (controller.signal.aborted) return;
+        setRecentTemplates(recentWhatsAppTemplatesFor(address, next.templates));
         setCatalog(previous => ({ ...next, next_cursor: next.next_cursor === cursor ? "" : next.next_cursor,
           templates: cursor && previous ? [...new Map([...previous.templates, ...next.templates].map(t => [`${t.id}:${t.name}:${t.language}`, t])).values()] : next.templates }));
         if (!cursor) setPreviewTemplate(next.templates[0] || null);
@@ -65,13 +67,19 @@ function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: T
   }, [token, address, cursor, retry]);
 
   useEffect(() => {
+    setRecentTemplates(recentWhatsAppTemplatesFor(address));
+  }, [address]);
+
+  useEffect(() => {
     const dialog = detailDialog.current;
     if (!dialog) return;
     if (detailTemplate && !dialog.open) dialog.showModal();
     if (!detailTemplate && dialog.open) dialog.close();
   }, [detailTemplate]);
 
-  const templates = catalog?.templates ?? [];
+  const remoteTemplates = catalog?.templates ?? [];
+  const remoteKeys = new Set(remoteTemplates.map(template => `${template.name}:${template.language}`));
+  const templates = [...recentTemplates.filter(template => !remoteKeys.has(`${template.name}:${template.language}`)), ...remoteTemplates];
   const approved = templates.filter(t => t.status.toUpperCase() === "APPROVED").length;
   const needle = search.trim().toLocaleLowerCase("es-MX");
   const visible = templates.filter(t => (filter === "all" || (filter === "approved") === (t.status.toUpperCase() === "APPROVED")) &&

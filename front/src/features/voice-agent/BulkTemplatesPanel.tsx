@@ -4,6 +4,7 @@ import { apiRequest, apiFormRequest } from '../../api';
 import './bulk-templates.css';
 import { UvmContactPicker } from './UvmContactPicker';
 import { FileContactFilters, initialFileFilters, type FileContact, type FileFacets, type FileFilters, type FileProfile } from './FileContactFilters';
+import { formatWhatsAppTemplateCategory } from './model';
 import { WhatsAppTemplatePreview } from './WhatsAppTemplatePreview';
 
 type Kind = 'veronica' | 'academy';
@@ -197,7 +198,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         {!catalogLoading && !!channel && !templates.length && <p>No hay plantillas disponibles para este número.</p>}
         {!channels.length && <p>No hay canales conectados disponibles. No se pueden realizar envíos.</p>}
         {!!templates.length && <><label>Plantilla aprobada<select value={templateKey} disabled={busy} onChange={e => { setTemplateKey(e.target.value); invalidate(); }}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={`${t.name}:${t.language}`} disabled={!t.sendable} value={`${t.name}:${t.language}`}>{t.name} · {t.language}{!t.sendable ? ' · No disponible para masivos' : ''}</option>)}</select></label>
-          {selected && <div className="bulk-template"><strong>{selected.name} · {selected.category}</strong><p>{selected.text}</p>{!!selected.parameters.length && <small>Los campos de la plantilla se completan por destinatario después de cargar los números.</small>}</div>}</>}
+          {selected && <div className="bulk-template"><strong>{selected.name} · {formatWhatsAppTemplateCategory(selected.category)}</strong><p>{selected.text}</p>{!!selected.parameters.length && <small>Los campos de la plantilla se completan por destinatario después de cargar los números.</small>}</div>}</>}
         {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
         {selected && !templateReady && <p role="status">Esta plantilla no está disponible para envíos masivos.</p>}
         <div className="bulk-recipient-choice"><strong>¿Cómo agregarás los destinatarios?</strong><div className="bulk-tabs bulk-recipient-options">{recipientModeControls}</div></div>
@@ -230,7 +231,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         setJob(saved); setOffset(0); setConsent(false);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}
-    </div>{step !== 2 && <WhatsAppTemplatePreview channelLabel={previewChannel} text={previewText} templateName={selected?.name} meta={selected ? `${selected.category} · ${selected.language}` : ''} />}</div> : job && <section className="bulk-card">
+    </div>{step !== 2 && <WhatsAppTemplatePreview channelLabel={previewChannel} text={previewText} templateName={selected?.name} meta={selected ? `${formatWhatsAppTemplateCategory(selected.category)} · ${selected.language}` : ''} />}</div> : job && <section className="bulk-card">
       <header className="bulk-heading"><div><h3>{job.title}</h3><p>{channels.find(c => c.channel === job.channel)?.label || job.channel} · {new Date(job.created_at).toLocaleString('es-MX')}</p></div><strong className={`bulk-state ${job.status}`}>{labels[job.status] || job.status}</strong></header>
       {job.detail && <div role="alert" className="bulk-alert error">{job.detail}</div>}
       <h3 ref={stepHeadingRef} tabIndex={-1}>Progreso del envío</h3>
@@ -246,7 +247,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       {draft && <div className="bulk-card"><header className="bulk-heading"><h3 id="bulk-confirm-title">Confirmar envío</h3><button aria-label="Cerrar confirmación" disabled={busy} onClick={closeConfirmation}>Cerrar</button></header>
         <p><strong>{draft.total} destinatarios</strong> · {channels.find(c => c.channel === draft.channel)?.label || draft.channel}</p>
         <p>Plantilla: {draft.template.name}</p>
-        <div className="bulk-cost"><div><span>Costo total estimado</span><strong>${money(draft.quote.total)} {draft.quote.currency}</strong></div><p>${money(draft.quote.unit)} {draft.quote.currency} por mensaje · {draft.quote.category} · México</p><p>{draft.quote.note}</p><a href={draft.quote.source} target="_blank" rel="noreferrer">Tarifas · verificadas {draft.quote.verified_on}</a></div>
+        <div className="bulk-cost"><div><span>Costo total estimado</span><strong>${money(draft.quote.total)} {draft.quote.currency}</strong></div><p>${money(draft.quote.unit)} {draft.quote.currency} por mensaje · {formatWhatsAppTemplateCategory(draft.quote.category)} · México</p><p>{draft.quote.note}</p><a href={draft.quote.source} target="_blank" rel="noreferrer">Tarifas · verificadas {draft.quote.verified_on}</a></div>
         <div className="bulk-confirm"><label><input type="checkbox" checked={consent} disabled={busy} onChange={e => setConsent(e.target.checked)} />Confirmo que estos destinatarios autorizaron recibir mensajes de este canal y acepto el costo estimado.</label></div>
         {!!draft.directory?.unverified_consent_count && <p>El Excel no acredita el consentimiento de {draft.directory.unverified_consent_count} contactos. Confirma la casilla anterior únicamente si cuentas con su autorización. Esta confirmación queda registrada con el lote y no modifica el análisis original.</p>}
         {!!draft.directory?.needs_review_count && <div className="bulk-confirm"><label><input type="checkbox" checked={reviewConfirmed} disabled={busy} onChange={e => setReviewConfirmed(e.target.checked)} />Revisé el contexto de los {draft.directory.needs_review_count} contactos marcados para revisión y confirmo que el mensaje es pertinente.</label></div>}

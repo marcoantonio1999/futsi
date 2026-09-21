@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../../api";
-import { inputClass, primaryButtonClass, secondaryButtonClass } from "./model";
+import { formatWhatsAppTemplateCategory, inputClass, primaryButtonClass, secondaryButtonClass, whatsappTemplateCategories } from "./model";
+import { rememberRecentWhatsAppTemplate } from "./recentWhatsAppTemplates";
 import { WhatsAppTemplatePreview } from "./WhatsAppTemplatePreview";
 
-type TemplateChannel = { business_address: string; label: string };
+type TemplateChannel = { business_address: string; label: string; template_management_available?: boolean };
 type CreatedTemplate = { business_address: string; id: string; name: string; language: string; category: string; status: string };
 type FormState = { name: string; language: string; category: string; header: string; body: string; footer: string; buttons: string[] };
 
 const initialForm: FormState = { name: "", language: "es_MX", category: "MARKETING", header: "", body: "", footer: "", buttons: [""] };
 
 function normalizeName(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 512);
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+/g, "").slice(0, 512);
 }
 
 function positions(text: string) {
@@ -22,6 +23,8 @@ function replaceExamples(text: string, prefix: string, examples: Record<string, 
 }
 
 export function WhatsAppTemplateBuilder({ token, channels }: { token: string; channels: TemplateChannel[] }) {
+  const manageableChannels = useMemo(() => channels.filter(item => item.template_management_available !== false), [channels]);
+  const unavailableCount = channels.length - manageableChannels.length;
   const [channel, setChannel] = useState(channels.length === 1 ? channels[0].business_address : "");
   const [form, setForm] = useState<FormState>(initialForm);
   const [examples, setExamples] = useState<Record<string, string>>({});
@@ -66,6 +69,10 @@ export function WhatsAppTemplateBuilder({ token, channels }: { token: string; ch
 
   function prepareCreate(event: React.FormEvent) {
     event.preventDefault();
+    if (!selectedChannel?.template_management_available) {
+      setError("Este entorno permite preparar la plantilla y revisar su vista previa, pero el envío real debe hacerse desde producción.");
+      return;
+    }
     const message = validate();
     if (message) { setError(message); return; }
     confirmDialog.current?.showModal();
@@ -77,6 +84,17 @@ export function WhatsAppTemplateBuilder({ token, channels }: { token: string; ch
       const result = await apiRequest<CreatedTemplate>("/whatsapp-conversations/templates/", token, {
         method: "POST",
         body: JSON.stringify({ business_address: channel, template: { ...form, examples, buttons: previewButtons } }),
+      });
+      rememberRecentWhatsAppTemplate({
+        ...result,
+        rejected_reason: "",
+        created_at: new Date().toISOString(),
+        components: [
+          ...(form.header.trim() ? [{ type: "HEADER", format: "TEXT", text: form.header.trim(), buttons: [] }] : []),
+          { type: "BODY", format: "TEXT", text: form.body.trim(), buttons: [] },
+          ...(form.footer.trim() ? [{ type: "FOOTER", format: "TEXT", text: form.footer.trim(), buttons: [] }] : []),
+          ...(previewButtons.length ? [{ type: "BUTTONS", format: "", text: "", buttons: previewButtons.map(text => ({ type: "QUICK_REPLY", text })) }] : []),
+        ],
       });
       setCreated(result);
     } catch (reason) {
@@ -104,9 +122,9 @@ export function WhatsAppTemplateBuilder({ token, channels }: { token: string; ch
     <form className="comm-panel template-builder-form" onSubmit={prepareCreate}>
       <header className="comm-section-heading"><div><h3>Nueva plantilla</h3><p>Completa el mensaje que Meta revisará. Su aprobación no es inmediata.</p></div></header>
       <div className="template-builder-fields">
-        <label>Número propietario<select className={inputClass} value={channel} disabled={busy} onChange={event => setChannel(event.target.value)}><option value="">Selecciona un número</option>{channels.map(item => <option key={item.business_address} value={item.business_address}>{item.label} · {item.business_address.replace("whatsapp:", "").replace("meta:", "ID ")}</option>)}</select></label>
-        <label>Nombre interno<input className={inputClass} value={form.name} disabled={busy} placeholder="invitacion_nueva_temporada" onChange={event => update("name", normalizeName(event.target.value))} /><small>Minúsculas, números y guiones bajos. No se puede cambiar después.</small></label>
-        <div className="template-builder-row"><label>Categoría<select className={inputClass} value={form.category} disabled={busy} onChange={event => update("category", event.target.value)}><option value="MARKETING">Difusión</option><option value="UTILITY">Servicio</option></select></label><label>Idioma<select className={inputClass} value={form.language} disabled={busy} onChange={event => update("language", event.target.value)}><option value="es_MX">Español (México)</option><option value="es">Español</option><option value="en_US">Inglés (EE. UU.)</option><option value="en">Inglés</option></select></label></div>
+        <label>Número propietario<select className={inputClass} value={channel} disabled={busy} onChange={event => { setChannel(event.target.value); setError(""); }}><option value="">Selecciona un número</option>{channels.map(item => <option key={item.business_address} value={item.business_address}>{item.label} · {item.business_address.replace("whatsapp:", "").replace("meta:", "ID ")}{item.template_management_available === false ? " · Vista previa" : ""}</option>)}</select>{unavailableCount > 0 && <small>{manageableChannels.length ? "Los números marcados como Vista previa requieren producción para enviar." : "Entorno local: puedes preparar y revisar la plantilla; el envío real está habilitado únicamente en producción."}</small>}</label>
+        <label>Nombre interno<input className={inputClass} value={form.name} disabled={busy} placeholder="invitacion_nueva_temporada" onChange={event => update("name", normalizeName(event.target.value))} /><small>Minúsculas, números y guiones bajos. Los espacios se convierten en _. No se puede cambiar después.</small></label>
+        <div className="template-builder-row"><label>Categoría<select className={inputClass} value={form.category} disabled={busy} onChange={event => update("category", event.target.value)}>{whatsappTemplateCategories.filter(option => option.value !== "AUTHENTICATION").map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select><small>Authentication usa un flujo OTP especial y todavía se crea desde Dualhook.</small></label><label>Idioma<select className={inputClass} value={form.language} disabled={busy} onChange={event => update("language", event.target.value)}><option value="es_MX">Español (México)</option><option value="es">Español</option><option value="en_US">Inglés (EE. UU.)</option><option value="en">Inglés</option></select></label></div>
         <label>Encabezado <span>Opcional</span><input className={inputClass} maxLength={60} value={form.header} disabled={busy} placeholder="Una frase breve" onChange={event => update("header", event.target.value)} /><small>{form.header.length}/60 · admite una variable</small></label>
         <label>Mensaje<textarea className={inputClass} rows={7} maxLength={1024} value={form.body} disabled={busy} placeholder="Hola {{1}}, queremos invitarte…" onChange={event => update("body", event.target.value)} /><small>{form.body.length}/1024 · usa variables consecutivas: {"{{1}}"}, {"{{2}}"}</small></label>
         {(headerPositions.length > 0 || bodyPositions.length > 0) && <fieldset className="template-builder-examples"><legend>Ejemplos para revisión</legend><p>Meta los usa para entender las variables; no se envían como valores fijos.</p>{headerPositions.map(position => <label key={`header:${position}`}>Encabezado {`{{${position}}}`}<input className={inputClass} value={examples[`header:${position}`] || ""} disabled={busy} placeholder={position === 1 ? "Martha" : `Ejemplo ${position}`} onChange={event => setExamples(current => ({ ...current, [`header:${position}`]: event.target.value }))} /></label>)}{bodyPositions.map(position => <label key={`body:${position}`}>Mensaje {`{{${position}}}`}<input className={inputClass} value={examples[`body:${position}`] || ""} disabled={busy} placeholder={position === 1 ? "Martha" : `Ejemplo ${position}`} onChange={event => setExamples(current => ({ ...current, [`body:${position}`]: event.target.value }))} /></label>)}</fieldset>}
@@ -114,13 +132,13 @@ export function WhatsAppTemplateBuilder({ token, channels }: { token: string; ch
         <fieldset className="template-builder-buttons"><legend>Respuestas rápidas <span>Opcional</span></legend>{form.buttons.map((button, index) => <div key={index}><input className={inputClass} maxLength={25} value={button} disabled={busy} placeholder={`Botón ${index + 1}`} onChange={event => update("buttons", form.buttons.map((value, position) => position === index ? event.target.value : value))} />{form.buttons.length > 1 && <button type="button" aria-label={`Quitar botón ${index + 1}`} onClick={() => update("buttons", form.buttons.filter((_value, position) => position !== index))}>×</button>}</div>)}{form.buttons.length < 3 && <button type="button" className={secondaryButtonClass} onClick={() => update("buttons", [...form.buttons, ""])}>Agregar respuesta rápida</button>}</fieldset>
         {error && <p role="alert" className="comm-error">{error}</p>}
         {created && <section className="template-builder-success" role="status"><div><strong>Plantilla enviada a revisión</strong><span>{created.name} · {created.status === "APPROVED" ? "Aprobada" : "En revisión"}</span></div><button type="button" className={secondaryButtonClass} disabled={busy} onClick={() => deleteDialog.current?.showModal()}>Eliminar plantilla</button></section>}
-        <footer className="template-builder-actions"><button type="submit" className={primaryButtonClass} disabled={busy}>{busy ? "Procesando…" : "Revisar y enviar a Meta"}</button></footer>
+        <footer className="template-builder-actions"><button type="submit" className={primaryButtonClass} disabled={busy || !selectedChannel?.template_management_available}>{busy ? "Procesando…" : selectedChannel?.template_management_available ? "Revisar y enviar a Meta" : "Envío disponible en producción"}</button></footer>
       </div>
     </form>
-    <WhatsAppTemplatePreview className="template-builder-preview" channelLabel={selectedChannel?.label || "WhatsApp"} text={previewText} buttons={previewButtons} templateName={form.name || "borrador"} meta={`${form.category === "MARKETING" ? "Difusión" : "Servicio"} · ${form.language.replace("_", "-")}`} />
+    <WhatsAppTemplatePreview className="template-builder-preview" channelLabel={selectedChannel?.label || "WhatsApp"} text={previewText} buttons={previewButtons} templateName={form.name || "borrador"} meta={`${formatWhatsAppTemplateCategory(form.category)} · ${form.language.replace("_", "-")}`} />
   </div>
 
-  <dialog ref={confirmDialog} className="comm-template-modal" aria-labelledby="template-create-confirm-title"><article><header className="comm-template-modal-heading"><div><p className="comm-eyebrow">Confirmar envío</p><h3 id="template-create-confirm-title">Enviar “{form.name}” a revisión</h3></div><button type="button" className="comm-template-modal-close" aria-label="Cerrar" onClick={() => confirmDialog.current?.close()}>×</button></header><div className="comm-template-modal-body"><p>Se creará en <strong>{selectedChannel?.label}</strong>. Meta decidirá si la aprueba y puede ajustar su categoría.</p><dl className="template-builder-confirm"><div><dt>Categoría</dt><dd>{form.category === "MARKETING" ? "Difusión" : "Servicio"}</dd></div><div><dt>Idioma</dt><dd>{form.language}</dd></div><div><dt>Variables</dt><dd>{headerPositions.length + bodyPositions.length}</dd></div></dl></div><footer className="comm-template-modal-footer template-builder-dialog-actions"><button type="button" className={secondaryButtonClass} onClick={() => confirmDialog.current?.close()}>Volver</button><button type="button" className={primaryButtonClass} onClick={createTemplate}>Enviar a revisión</button></footer></article></dialog>
+  <dialog ref={confirmDialog} className="comm-template-modal" aria-labelledby="template-create-confirm-title"><article><header className="comm-template-modal-heading"><div><p className="comm-eyebrow">Confirmar envío</p><h3 id="template-create-confirm-title">Enviar “{form.name}” a revisión</h3></div><button type="button" className="comm-template-modal-close" aria-label="Cerrar" onClick={() => confirmDialog.current?.close()}>×</button></header><div className="comm-template-modal-body"><p>Se creará en <strong>{selectedChannel?.label}</strong>. Meta decidirá si la aprueba y puede ajustar su categoría.</p><dl className="template-builder-confirm"><div><dt>Categoría</dt><dd>{formatWhatsAppTemplateCategory(form.category)}</dd></div><div><dt>Idioma</dt><dd>{form.language}</dd></div><div><dt>Variables</dt><dd>{headerPositions.length + bodyPositions.length}</dd></div></dl></div><footer className="comm-template-modal-footer template-builder-dialog-actions"><button type="button" className={secondaryButtonClass} onClick={() => confirmDialog.current?.close()}>Volver</button><button type="button" className={primaryButtonClass} onClick={createTemplate}>Enviar a revisión</button></footer></article></dialog>
 
   <dialog ref={deleteDialog} className="comm-template-modal" aria-labelledby="template-delete-confirm-title"><article><header className="comm-template-modal-heading"><div><p className="comm-eyebrow">Acción permanente</p><h3 id="template-delete-confirm-title">Eliminar “{created?.name}”</h3></div><button type="button" className="comm-template-modal-close" aria-label="Cerrar" onClick={() => deleteDialog.current?.close()}>×</button></header><div className="comm-template-modal-body"><p>Dualhook y Meta eliminarán todas las traducciones que usen este nombre. Escribe el nombre exacto para continuar.</p><label>Nombre de la plantilla<input className={inputClass} value={deleteName} onChange={event => setDeleteName(event.target.value)} /></label></div><footer className="comm-template-modal-footer template-builder-dialog-actions"><button type="button" className={secondaryButtonClass} onClick={() => deleteDialog.current?.close()}>Cancelar</button><button type="button" className="template-builder-delete" disabled={!created || deleteName !== created.name || busy} onClick={deleteTemplate}>Eliminar definitivamente</button></footer></article></dialog>
   </>;

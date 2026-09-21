@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../../api';
+import { formatWhatsAppTemplateCategory } from './model';
 import { reportedTemplateReason } from './templateReason';
 import './connections.css';
 
@@ -11,7 +12,6 @@ const keyOf = (c: Connection) => `${c.kind}/${c.channel}`;
 const templateStates: Record<string, string> = { APPROVED: 'Aprobada', PENDING: 'En revisión', REJECTED: 'Rechazada', PAUSED: 'Pausada', DISABLED: 'Deshabilitada', IN_APPEAL: 'En apelación', DELETED: 'Eliminada', PENDING_DELETION: 'Pendiente de eliminación', LIMIT_EXCEEDED: 'Límite excedido' };
 const phoneStates: Record<string, string> = { CONNECTED: 'Conectado', DISCONNECTED: 'Desconectado', PENDING: 'Pendiente de conexión', FLAGGED: 'Requiere revisión', RESTRICTED: 'Restringido', BANNED: 'Bloqueado' };
 const qualityLabels: Record<string, string> = { GREEN: 'Alta', YELLOW: 'Media', RED: 'Baja', UNKNOWN: 'Sin datos' };
-const categories: Record<string, string> = { MARKETING: 'Marketing', UTILITY: 'Servicio', AUTHENTICATION: 'Autenticación' };
 const date = (value: string) => new Date(value).toLocaleString('es-MX');
 
 export function ConnectionsPanel({ token, veronicaOnly = false }: { token: string; veronicaOnly?: boolean }) {
@@ -95,7 +95,7 @@ export function ConnectionsPanel({ token, veronicaOnly = false }: { token: strin
       {fetchedAt && <p className="comm-muted">{templates.length} plantillas cargadas · Consultado: {date(fetchedAt)}{nextCursor ? ' · Hay más por cargar' : ''}</p>}
       <div className="connection-template-list">{visible.map(t => {
         const rejectionReason = reportedTemplateReason(t.rejected_reason);
-        return <article key={`${t.name}:${t.language}`} className="connection-template"><header><div><h4>{t.name}</h4><small>{t.language} · {categories[t.category] || t.category}</small></div><strong className={`connection-badge ${t.status === 'APPROVED' ? 'good' : t.status === 'REJECTED' || t.status === 'DISABLED' ? 'bad' : 'neutral'}`}>{templateStates[t.status.toUpperCase()] || t.status || 'Estado desconocido'}</strong></header><details><summary>Ver mensaje</summary><p className="connection-template-text">{t.text}</p></details>{rejectionReason && <p className="comm-error">Motivo de rechazo: {rejectionReason}</p>}</article>;
+        return <article key={`${t.name}:${t.language}`} className="connection-template"><header><div><h4>{t.name}</h4><small>{t.language} · {formatWhatsAppTemplateCategory(t.category)}</small></div><strong className={`connection-badge ${t.status === 'APPROVED' ? 'good' : t.status === 'REJECTED' || t.status === 'DISABLED' ? 'bad' : 'neutral'}`}>{templateStates[t.status.toUpperCase()] || t.status || 'Estado desconocido'}</strong></header><details><summary>Ver mensaje</summary><p className="connection-template-text">{t.text}</p></details>{rejectionReason && <p className="comm-error">Motivo de rechazo: {rejectionReason}</p>}</article>;
       })}</div>
       {!catalogLoading && !catalogError && !visible.length && <p>{templates.length ? 'Ninguna plantilla coincide con el filtro.' : 'Esta cuenta todavía no tiene plantillas.'}</p>}
       {nextCursor && <button disabled={catalogLoading} onClick={() => setCursor(nextCursor)}>Cargar más plantillas</button>}

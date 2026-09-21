@@ -90,3 +90,14 @@ export const secondaryButtonClass =
 
 export const primaryButtonClass =
   "inline-flex items-center justify-center gap-2 rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-55 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white";
+
+export const whatsappTemplateCategories = [
+  { value: "MARKETING", label: "Marketing" },
+  { value: "UTILITY", label: "Utility" },
+  { value: "AUTHENTICATION", label: "Authentication" },
+] as const;
+
+export function formatWhatsAppTemplateCategory(value?: string | null) {
+  const category = String(value || "").trim().toUpperCase();
+  return whatsappTemplateCategories.find(option => option.value === category)?.label || value || "Sin categoría";
+}

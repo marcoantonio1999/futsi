@@ -97,6 +97,7 @@ export function VoiceDashboardPanel({
   const templateChannels = useMemo(() => channelsForScope(channels, scope).map(channel => ({
     business_address: channel.business_address,
     label: channelOwnerLabel(channel),
+    template_management_available: channel.template_management_available,
   })), [channels, selectedAddress, selectedSite]);
   const voiceData = useMemo(() => filterCommunications(permittedData, { site: selectedSite, address: selectedAddress }, channels), [permittedData, selectedSite, selectedAddress, channels]);
   const hasUnassigned = channels.some(channel => channel.site === null)
