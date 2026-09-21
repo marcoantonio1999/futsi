@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../api";
 import { channelOwnerLabel, channelsForScope, filterCommunications, scopeQuery, conversationSite, type CommunicationChannel } from "./communicationScope";
 import { CommunicationsNav, communicationGroups } from "./CommunicationsNav";
@@ -22,6 +22,7 @@ import { VeronicaFiltersPanel } from "./VeronicaFiltersPanel";
 import { CommunicationScopePicker } from "./CommunicationScopePicker";
 import { ChatExportPanel } from "./ChatExportPanel";
 import { type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
+import { CourtCommunicationsOnlyContext, isCourtCommunicationsSection } from "./CommunicationsAccess";
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
@@ -55,6 +56,7 @@ export function VoiceDashboardPanel({
   onUpdateRecord,
   onCreateAndReturn,
 }: VoiceDashboardProps) {
+  const courtCommunicationsOnly = useContext(CourtCommunicationsOnlyContext);
   const canManageTrials = operationsRoles.has(user.role);
   const canReviewCalls = adminRoles.has(user.role);
   const permittedData = useMemo(() => {
@@ -167,10 +169,10 @@ export function VoiceDashboardPanel({
     );
   }
 
-  if (!canManageTrials) return null;
+  if (!canManageTrials || (courtCommunicationsOnly && !isCourtCommunicationsSection(section))) return null;
   if (section === 'connections') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><ConnectionsPanel token={token} /></div> : null;
   if (section === 'veronica-filters') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><VeronicaFiltersPanel token={token} /></div> : null;
-  if (section === 'bulk-veronica' || section === 'bulk-academy' || section === 'bulk-academy-history') return canReviewCalls ? <div className="communications">
+  if (section === 'bulk-veronica' || section === 'bulk-academy' || section === 'bulk-academy-history') return (canReviewCalls || (courtCommunicationsOnly && section !== 'bulk-veronica')) ? <div className="communications">
     <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
     <BulkTemplatesPanel key={section} token={token} kind={section === 'bulk-veronica' ? 'veronica' : 'academy'} view={section === 'bulk-academy-history' ? 'history' : 'create'} />
   </div> : null;

@@ -6,7 +6,12 @@ from django.utils import timezone
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.exceptions import PermissionDenied
-from core.veronica_access import is_veronica_only, veronica_route_allowed
+from core.veronica_access import (
+    court_communications_route_allowed,
+    is_court_communications_only,
+    is_veronica_only,
+    veronica_route_allowed,
+)
 
 
 class ExpiringTokenAuthentication(TokenAuthentication):
@@ -16,6 +21,8 @@ class ExpiringTokenAuthentication(TokenAuthentication):
         result = super().authenticate(request)
         if result and is_veronica_only(result[0]) and not veronica_route_allowed(request.path_info, request.method):
             raise PermissionDenied("Esta cuenta solo tiene acceso a Comunicaciones de Verónica.")
+        if result and is_court_communications_only(result[0]) and not court_communications_route_allowed(request.path_info, request.method):
+            raise PermissionDenied("Esta cuenta solo tiene acceso a WhatsApp de Canchas para su sede.")
         return result
 
     def authenticate_credentials(self, key):

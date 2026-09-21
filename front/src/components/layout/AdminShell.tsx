@@ -1,6 +1,6 @@
 import { SitesProvider } from "../views/sitesNavigation";
 import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
-import { VeronicaOnlyContext, isVeronicaSection } from '../../features/voice-agent/CommunicationsAccess';
+import { CourtCommunicationsOnlyContext, VeronicaOnlyContext, isCourtCommunicationsSection, isVeronicaSection } from '../../features/voice-agent/CommunicationsAccess';
 import { VeronicaPanel } from '../../features/voice-agent/VeronicaPanel';
 import { BulkTemplatesPanel } from '../../features/voice-agent/BulkTemplatesPanel';
 import { ConnectionsPanel } from '../../features/voice-agent/ConnectionsPanel';
@@ -60,11 +60,13 @@ export function AdminShell({
   onMarkAdultPlayer,
 }: AdminShellProps) {
   const veronicaOnly = user.section_permissions?.includes('veronica_only') ?? false;
-  const [activeTab, setActiveTab] = useState<TabKey>(() => veronicaOnly ? 'communications' : (user.role === "cashier" ? "billing" : "dashboard"));
+  const courtCommunicationsOnly = user.section_permissions?.includes('court_communications_only') ?? false;
+  const communicationsOnly = veronicaOnly || courtCommunicationsOnly;
+  const [activeTab, setActiveTab] = useState<TabKey>(() => communicationsOnly ? 'communications' : (user.role === "cashier" ? "billing" : "dashboard"));
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
   const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
-  const [communicationsMenuExpanded, setCommunicationsMenuExpanded] = useState(veronicaOnly);
-  const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>(veronicaOnly ? 'veronica' : "summary");
+  const [communicationsMenuExpanded, setCommunicationsMenuExpanded] = useState(communicationsOnly);
+  const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>(veronicaOnly ? 'veronica' : courtCommunicationsOnly ? 'whatsapp' : "summary");
   const [studentsMenuExpanded, setStudentsMenuExpanded] = useState(false);
   const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("overview");
   const [coachesSection, setCoachesSection] = useState<CoachesSection>("overview");
@@ -97,7 +99,7 @@ export function AdminShell({
   ]);
   const visibleTabs = tabs.filter(
     (tab) =>
-      veronicaOnly ? tab.key === 'communications' : (isAdmin || allowedSections.has(tab.key))
+      communicationsOnly ? tab.key === 'communications' : (isAdmin || allowedSections.has(tab.key))
       && (tab.key !== "communications" || canManageCommunications),
   );
   const menuOrder = businessScope === "adult" ? adultMenuTabs : academyMenuTabs;
@@ -134,6 +136,11 @@ export function AdminShell({
       setCommunicationsSection('veronica'); setCommunicationsMenuExpanded(true);
       return;
     }
+    if (courtCommunicationsOnly) {
+      setActiveTab('communications'); setBusinessScope('academy');
+      setCommunicationsSection('whatsapp'); setCommunicationsMenuExpanded(true);
+      return;
+    }
     if (user.role === "adult_representative" || user.role === "adult_player") {
       setActiveTab(adultDefaultTab);
       setBusinessScope("adult");
@@ -141,7 +148,7 @@ export function AdminShell({
     }
     setActiveTab(user.role === "cashier" ? "billing" : academyDefaultTab);
     setBusinessScope("academy");
-  }, [user.id, user.role, veronicaOnly]);
+  }, [user.id, user.role, veronicaOnly, courtCommunicationsOnly]);
 
   useEffect(() => {
     if ((!showBillingSubsections || !canProgramBilling) && billingSection === "program") {
@@ -200,6 +207,7 @@ export function AdminShell({
 
   function selectCommunicationsSection(section: CommunicationsSubsection) {
     if (veronicaOnly && !isVeronicaSection(section)) return;
+    if (courtCommunicationsOnly && !isCourtCommunicationsSection(section)) return;
     if (effectiveActiveTab !== "communications") setCommunicationsMenuExpanded(true);
     setCommunicationsSection(section);
     setActiveTab("communications");
@@ -311,7 +319,7 @@ export function AdminShell({
   }
 
   return (
-    <SitesProvider canManage={isAdmin}><VeronicaOnlyContext.Provider value={veronicaOnly}>
+    <SitesProvider canManage={isAdmin}><VeronicaOnlyContext.Provider value={veronicaOnly}><CourtCommunicationsOnlyContext.Provider value={courtCommunicationsOnly}>
     <main
       className={`app-motion min-h-screen text-zinc-950 ${businessScope === "adult" ? "bg-blue-50/45" : "bg-stone-50"}`}
       onTouchStart={handleMobileTouchStart}
@@ -496,6 +504,6 @@ export function AdminShell({
         </div>
       </div>
     </main>
-    </VeronicaOnlyContext.Provider></SitesProvider>
+    </CourtCommunicationsOnlyContext.Provider></VeronicaOnlyContext.Provider></SitesProvider>
   );
 }

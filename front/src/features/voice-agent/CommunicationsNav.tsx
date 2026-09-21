@@ -1,7 +1,7 @@
 import { BriefcaseBusiness, Building2, CalendarDays, ChevronDown, MessageCircle, Settings2 } from "lucide-react";
 import type { VoiceDashboardSection } from "./model";
 import { useContext, useEffect, useState } from 'react';
-import { VeronicaOnlyContext, isVeronicaSection } from './CommunicationsAccess';
+import { CourtCommunicationsOnlyContext, VeronicaOnlyContext, isCourtCommunicationsSection, isVeronicaSection } from './CommunicationsAccess';
 
 type CommunicationItem = { key: VoiceDashboardSection; label: string; shortLabel?: string; admin?: boolean };
 
@@ -53,6 +53,7 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
   section: VoiceDashboardSection; canReview: boolean; onSelect: (section: VoiceDashboardSection) => void; compact?: boolean;
 }) {
   const veronicaOnly = useContext(VeronicaOnlyContext);
+  const courtCommunicationsOnly = useContext(CourtCommunicationsOnlyContext);
   const activeAttentionArea = hrAttentionItems.some(item => item.key === section) ? "hr" : "courts";
   const academyBulkActive = academyBulkItems.some(item => item.key === section);
   const [expandedAreas, setExpandedAreas] = useState<Record<string, boolean>>(() => ({
@@ -64,7 +65,11 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
     setExpandedAreas(current => current[activeAttentionArea] ? current : { ...current, [activeAttentionArea]: true });
   }, [activeAttentionArea]);
   useEffect(() => { if (academyBulkActive) setAcademyBulkExpanded(true); }, [academyBulkActive]);
-  const allowed = (item: CommunicationItem) => veronicaOnly ? isVeronicaSection(item.key) : !item.admin || canReview;
+  const allowed = (item: CommunicationItem) => veronicaOnly
+    ? isVeronicaSection(item.key)
+    : courtCommunicationsOnly
+      ? isCourtCommunicationsSection(item.key)
+      : !item.admin || canReview;
 
   return <nav aria-label={compact ? "Subsecciones de comunicaciones" : "Comunicaciones"} className={compact ? "comm-mobile-nav comm-section-map" : "comm-nav"}>
     {communicationGroups.map(group => {

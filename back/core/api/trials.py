@@ -48,6 +48,7 @@ from core.api.manual_message_transport import (
     channel_can_send_text,
     send_text_for_channel,
 )
+from core.veronica_access import court_communications_allowed_channels, is_court_communications_only
 
 
 TRIAL_DASHBOARD_ROLES = ADMIN_ROLES | {"site_coordinator"}
@@ -352,6 +353,9 @@ class WhatsAppConversationViewSet(
             if user.role != "site_coordinator" or not user.primary_site_id:
                 return queryset.none()
             queryset = queryset.filter(channel_site_id=user.primary_site_id)
+            allowed_channels = court_communications_allowed_channels(user)
+            if allowed_channels is not None:
+                queryset = queryset.filter(to_address__in=allowed_channels)
         return queryset
 
     def get_queryset(self):
@@ -408,6 +412,9 @@ class WhatsAppConversationViewSet(
         profiles = WhatsAppAutomationSettings.objects.select_related("site")
         if request.user.role not in ADMIN_ROLES:
             profiles = profiles.filter(site_id=request.user.primary_site_id) if request.user.primary_site_id else profiles.none()
+            allowed_channels = court_communications_allowed_channels(request.user)
+            if allowed_channels is not None:
+                profiles = profiles.filter(business_address__in=allowed_channels)
         for profile in profiles:
             if profile.site_id or profile.business_address not in records:
                 records[profile.business_address] = {"business_address": profile.business_address, "site": profile.site_id, "site_name": profile.site.name if profile.site_id else "", "channel_label": profile.channel_label}
@@ -466,6 +473,8 @@ class WhatsAppConversationViewSet(
         allowed = {row["business_address"] for row in self.channels(request).data}
         if address not in allowed:
             return Response({"detail": "Canal no disponible para este usuario."}, status=404)
+        if request.method != "GET" and is_court_communications_only(request.user):
+            return Response({"detail": "Esta cuenta puede consultar plantillas, pero no crearlas ni eliminarlas."}, status=403)
         try:
             if request.method == "GET":
                 return Response(catalog_for_channel(address, after))

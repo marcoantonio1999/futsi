@@ -35,6 +35,9 @@ class SiteViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        from core.veronica_access import is_court_communications_only
+        if is_court_communications_only(self.request.user):
+            return queryset.filter(pk=self.request.user.primary_site_id) if self.request.user.primary_site_id else queryset.none()
         if self.request.user.role in {"cashier", "coach"} and self.request.user.primary_site_id:
             return queryset.filter(id=self.request.user.primary_site_id)
         if self.request.user.role == "guardian":

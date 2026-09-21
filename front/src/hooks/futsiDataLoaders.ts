@@ -60,7 +60,7 @@ export function mergeAppData(current: AppData, patch: AppDataPatch): AppData {
 }
 
 export function initialTabForUser(user: User): TabKey {
-  if (user.section_permissions?.includes("veronica_only")) return "communications";
+  if (user.section_permissions?.some(permission => permission === "veronica_only" || permission === "court_communications_only")) return "communications";
   if (user.role === "cashier") return "billing";
   if (user.role === "adult_representative" || user.role === "adult_player") return "adult-dashboard";
   if (user.role === "guardian") return "sports";
@@ -76,6 +76,14 @@ async function loadDashboardData(authToken: string): Promise<AppDataPatch> {
 }
 
 async function loadCommunicationsData(authToken: string, user: User): Promise<AppDataPatch> {
+  if (user.section_permissions?.includes("court_communications_only")) {
+    const [sites, whatsappConversations, whatsappFollowUpAssignees] = await Promise.all([
+      apiRequest<Site[]>("/sites/", authToken),
+      apiRequest<WhatsAppConversation[]>("/whatsapp-conversations/?scope=all", authToken),
+      optionalRestrictedApi<WhatsAppFollowUpAssignee[]>("/whatsapp-conversations/assignees/", authToken, []),
+    ]);
+    return { sites, whatsappConversations, whatsappFollowUpAssignees };
+  }
   const canManageTrials = ["admin", "owner", "dev", "site_coordinator"].includes(user.role);
   const canReviewCalls = ["admin", "owner", "dev"].includes(user.role);
   const [sites, courts, trialBookings, voiceCalls, whatsappConversations, whatsappAutomationSettings, whatsappFollowUpAssignees, whatsappWeeklyStats, trialAvailabilityRules] = await Promise.all([
@@ -94,6 +102,7 @@ async function loadCommunicationsData(authToken: string, user: User): Promise<Ap
 
 export async function loadSectionData(authToken: string, user: User, tab: TabKey): Promise<AppDataPatch> {
   if (user.section_permissions?.includes("veronica_only")) return {};
+  if (user.section_permissions?.includes("court_communications_only") && tab !== "communications") return {};
   if (tab === "dashboard") return loadDashboardData(authToken);
   if (tab === "communications") return loadCommunicationsData(authToken, user);
 

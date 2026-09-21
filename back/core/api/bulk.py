@@ -6,7 +6,13 @@ from urllib.error import HTTPError, URLError
 from django.conf import settings
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.veronica_access import CanUseVeronica, is_veronica_only
+from core.veronica_access import (
+    CanUseVeronica,
+    court_communications_allowed_channels,
+    is_court_communications_only,
+    is_veronica_only,
+)
+from core.models import WhatsAppAutomationSettings
 from core.api.bulk_import import import_recipients
 from core.api.veronica_filters import ensure_imported
 
@@ -14,7 +20,30 @@ class BulkView(APIView):
     permission_classes = [CanUseVeronica]
 
     def allowed(self, request, kind):
+        if is_court_communications_only(request.user):
+            return kind == 'academy'
         return kind == 'veronica' or (not is_veronica_only(request.user) and request.user.role in {'admin', 'owner', 'dev'})
+
+    def allowed_academy_channels(self, request):
+        if not is_court_communications_only(request.user) or not request.user.primary_site_id:
+            return None
+        site_channels = set(WhatsAppAutomationSettings.objects.filter(
+            site_id=request.user.primary_site_id,
+        ).values_list('business_address', flat=True))
+        assigned_channels = court_communications_allowed_channels(request.user) or set()
+        return site_channels & assigned_channels
+
+    def channel_allowed(self, request, channel):
+        allowed = self.allowed_academy_channels(request)
+        return allowed is None or str(channel or '').strip() in allowed
+
+    def ensure_job_channel(self, request, job_id):
+        detail = self.forward('academy', 'detail', query={'id': job_id})
+        if detail.status_code != 200:
+            return detail
+        if not self.channel_allowed(request, detail.data.get('channel')):
+            return Response({'detail': 'Sin acceso a este canal.'}, status=403)
+        return None
 
     def get(self, request, kind, operation):
         if not self.allowed(request, kind):
@@ -27,13 +56,26 @@ class BulkView(APIView):
                 'consent_source', 'campaign_source', 'review_state', 'no_contact', 'needs_review', 'sensitive',
                 'age', 'since', 'until', 'min_messages', 'ordinal_from', 'ordinal_to', 'outreach', 'sort', 'limit', 'selectable_only',
                 'league_role', 'league_relevance', 'team')
-        return self.forward(kind, operation, query={k: request.query_params[k] for k in keys if k in request.query_params})
+        query = {k: request.query_params[k] for k in keys if k in request.query_params}
+        if is_court_communications_only(request.user) and operation not in {'channels', 'detail'} and not self.channel_allowed(request, query.get('channel')):
+            return Response({'detail': 'Sin acceso a este canal.'}, status=403)
+        result = self.forward(kind, operation, query=query)
+        if not is_court_communications_only(request.user) or result.status_code != 200:
+            return result
+        allowed_channels = self.allowed_academy_channels(request) or set()
+        if operation == 'channels' and isinstance(result.data, dict):
+            result.data['channels'] = [row for row in result.data.get('channels', []) if row.get('channel') in allowed_channels]
+        elif operation == 'detail' and not self.channel_allowed(request, result.data.get('channel')):
+            return Response({'detail': 'Sin acceso a este canal.'}, status=403)
+        return result
 
     def post(self, request, kind, operation):
         if not self.allowed(request, kind):
             return Response({'detail': 'Sin acceso a este canal.'}, status=403)
         if operation == 'import':
             try:
+                if request.data.get('channel') and not self.channel_allowed(request, request.data.get('channel')):
+                    return Response({'detail': 'Sin acceso a este canal.'}, status=403)
                 result = import_recipients(
                     request.FILES.get('file'), request.data.get('text', ''), request.data.get('column'),
                     request.data.get('template_parameters'),
@@ -65,6 +107,13 @@ class BulkView(APIView):
                    'contact-select': ('channel', 'contact_ids'),
                    'contact-update': ('channel', 'contact_id', 'name', 'priority', 'notes', 'manually_blocked')}
         data = {k: request.data[k] for k in allowed[operation] if k in request.data}
+        if is_court_communications_only(request.user):
+            if operation in {'create', 'contact-select', 'contact-update'} and not self.channel_allowed(request, data.get('channel')):
+                return Response({'detail': 'Sin acceso a este canal.'}, status=403)
+            if operation in {'start', 'cancel'}:
+                denied = self.ensure_job_channel(request, data.get('id'))
+                if denied is not None:
+                    return denied
         if kind == 'veronica' and operation == 'create':
             try:
                 ensure_imported(data.get('filters', {}), request.user)
