@@ -15,8 +15,8 @@ MAX_FILE_ROWS = 10000
 MAX_COLUMNS = 50
 MAX_HEADER_ROWS = 25
 
-PHONE_HEADERS = {'telefono', 'telefonos', 'celular', 'numero', 'numeros', 'whatsapp', 'phone'}
-NAME_HEADERS = {'nombre', 'nombre completo', 'name', 'contact name', 'contacto'}
+PHONE_HEADERS = {'telefono', 'telefonos', 'celular', 'numero', 'numeros', 'numero de contacto', 'whatsapp', 'phone'}
+NAME_HEADERS = {'nombre', 'nombre completo', 'nombre del contacto', 'name', 'contact name', 'contacto'}
 FILTER_COLUMNS = {
     'campaign_status': {'estatus campana', 'estado campana'},
     'mutual_interaction': {'hubo interaccion de ambos lados', 'interaccion de ambos lados'},
@@ -85,7 +85,10 @@ def _normalize_file_phone(value):
             if not value.is_integer():
                 raise
             value = int(value)
-        text = re.sub(r'[\s()+\-]', '', str(value).strip())
+        text = str(value).strip()
+        if text.startswith("'"):
+            text = text[1:].strip()
+        text = re.sub(r'[\s()+\-]', '', text)
         if re.fullmatch(r'52[1-9][0-9]{9}', text):
             return text[2:]
         if re.fullmatch(r'521[1-9][0-9]{9}', text):

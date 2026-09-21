@@ -35,6 +35,17 @@ def test_excel_names_and_reversed_columns():
     b = io.BytesIO(); w.save(b)
     assert import_recipients(file('n.xlsx', b.getvalue()))['names'] == {'5512345678': 'María López'}
 
+def test_chat_export_contact_headers_and_country_code_are_imported():
+    w = Workbook()
+    w.active.title = 'Conversaciones'
+    w.active.append(['Número de atención', 'Identificador de atención', 'Sede', 'Número de contacto', 'Nombre del contacto'])
+    w.active.append(['Liga Franco', 'meta:123', 'Colegio Franco', "'+525537054930", 'María'])
+    b = io.BytesIO(); w.save(b)
+    result = import_recipients(file('chats-whatsapp-futsi.xlsx', b.getvalue()))
+    assert result['phones'] == ['5537054930']
+    assert result['names'] == {'5537054930': 'María'}
+    assert not result.get('needs_column')
+
 def test_excel_prefills_every_matching_template_field_by_phone():
     data = 'Telefono,Nombre del destinatario,Empresa\n5512345678,Ana,Empresa Uno\n5587654321,Luis,Empresa Dos'
     parameters = json.dumps([
