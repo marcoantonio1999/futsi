@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from io import BytesIO
 from unittest.mock import patch
 
@@ -177,6 +177,116 @@ def test_chat_export_contains_contact_summary_and_complete_message_detail(auth_c
     filtered_workbook = load_workbook(BytesIO(filtered.content))
     assert filtered_workbook["Conversaciones"].max_row == 2
     assert filtered_workbook["Conversaciones"]["B2"].value == B
+
+
+def test_chat_export_includes_directory_contacts_without_live_conversations(auth_client):
+    client, _, user = auth_client()
+    franco = make_site(name="Colegio Franco")
+    WhatsAppAutomationSettings.objects.create(
+        business_address=FRANCO_ACADEMY,
+        site=franco,
+        channel_label="Franco Academia",
+    )
+    directory_rows = [{
+        "business_address": FRANCO_ACADEMY,
+        "channel_label": "Franco Academia",
+        "site_name": "Colegio Franco",
+        "contact_phone": "+525533330000",
+        "name": "Contacto histórico",
+        "received": 14,
+        "sent": 9,
+        "message_count": 23,
+        "first_date": date(2024, 1, 2),
+        "last_date": date(2026, 8, 30),
+    }]
+
+    with patch(
+        "core.api.whatsapp_chat_export.directory_contacts_for_addresses",
+        return_value=directory_rows,
+    ) as directory:
+        response = client.get(BASE + "export/", {
+            "scope": "all",
+            "site": franco.id,
+            "business_address": FRANCO_ACADEMY,
+        })
+
+    assert response.status_code == 200
+    directory.assert_called_once()
+    assert directory.call_args.args[0] == {FRANCO_ACADEMY}
+    workbook = load_workbook(BytesIO(response.content))
+    summary = workbook["Conversaciones"]
+    headers = {cell.value: cell.column for cell in summary[1]}
+    assert summary.max_row == 2
+    assert summary.cell(2, headers["Nombre del contacto"]).value == "Contacto histórico"
+    assert summary.cell(2, headers["Mensajes recibidos"]).value == 14
+    assert summary.cell(2, headers["Mensajes enviados"]).value == 9
+    assert workbook["Mensajes"].max_row == 1
+    audit = AuditLog.objects.get(actor=user, action="whatsapp_chats_exported")
+    assert audit.metadata["contacts"] == 1
+    assert audit.metadata["messages"] == 23
+    assert audit.metadata["message_rows"] == 0
+
+
+def test_chat_export_merges_directory_and_live_counts_without_duplicate_contact(auth_client):
+    client, _, _ = auth_client()
+    site = make_site(name="Colegio Franco")
+    WhatsAppAutomationSettings.objects.create(
+        business_address=FRANCO_ACADEMY, site=site, channel_label="Franco Academia")
+    chat = conversation(FRANCO_ACADEMY, site)
+    chat.contact_phone = "+525511110000"
+    chat.context = {"contact_name": "Nombre actual"}
+    chat.save(update_fields=["contact_phone", "context", "updated_at"])
+    WhatsAppMessage.objects.create(conversation=chat, direction="inbound", body="Mensaje nuevo")
+    directory_rows = [{
+        "business_address": FRANCO_ACADEMY,
+        "channel_label": "Franco Academia",
+        "site_name": "Colegio Franco",
+        "contact_phone": "5511110000",
+        "name": "Nombre anterior",
+        "received": 20,
+        "sent": 10,
+        "first_date": date(2022, 3, 1),
+        "last_date": date(2026, 1, 1),
+    }]
+
+    with patch("core.api.whatsapp_chat_export.directory_contacts_for_addresses", return_value=directory_rows):
+        response = client.get(BASE + "export/", {"scope": "all", "business_address": FRANCO_ACADEMY})
+
+    summary = load_workbook(BytesIO(response.content))["Conversaciones"]
+    headers = {cell.value: cell.column for cell in summary[1]}
+    assert summary.max_row == 2
+    assert summary.cell(2, headers["Nombre del contacto"]).value == "Nombre actual"
+    assert summary.cell(2, headers["Mensajes recibidos"]).value == 21
+    assert summary.cell(2, headers["Mensajes enviados"]).value == 10
+
+
+def test_chat_export_retains_each_directory_record_without_a_phone(auth_client):
+    client, _, _ = auth_client()
+    site = make_site(name="Colegio Franco")
+    WhatsAppAutomationSettings.objects.create(
+        business_address=FRANCO_ACADEMY, site=site, channel_label="Franco Academia")
+    directory_rows = [
+        {
+            "business_address": FRANCO_ACADEMY,
+            "directory_record_id": record_id,
+            "contact_phone": "",
+            "name": name,
+            "received": 0,
+            "sent": 0,
+        }
+        for record_id, name in [(101, "Sin teléfono A"), (102, "Sin teléfono B")]
+    ]
+
+    with patch("core.api.whatsapp_chat_export.directory_contacts_for_addresses", return_value=directory_rows):
+        response = client.get(BASE + "export/", {"scope": "all", "business_address": FRANCO_ACADEMY})
+
+    summary = load_workbook(BytesIO(response.content))["Conversaciones"]
+    headers = {cell.value: cell.column for cell in summary[1]}
+    assert summary.max_row == 3
+    assert {summary.cell(row, headers["Nombre del contacto"]).value for row in (2, 3)} == {
+        "Sin teléfono A", "Sin teléfono B",
+    }
+    assert all(summary.cell(row, headers["Número de contacto"]).value is None for row in (2, 3))
 
 
 def test_chat_export_requires_an_admin_role(auth_client):

@@ -434,9 +434,33 @@ class WhatsAppConversationViewSet(
         permission_classes=[IsAdminRole],
     )
     def export_chats(self, request):
-        from .whatsapp_chat_export import build_whatsapp_chat_export
+        from .whatsapp_chat_export import build_whatsapp_chat_export, directory_contacts_for_addresses
 
-        payload, counts = build_whatsapp_chat_export(self.get_queryset())
+        conversations = self.get_queryset()
+        addresses = set(conversations.order_by().values_list("to_address", flat=True).distinct())
+        profiles = WhatsAppAutomationSettings.objects.select_related("site")
+        selected_address = request.query_params.get("business_address", "").strip()
+        selected_site = request.query_params.get("site", "").strip()
+        if selected_address:
+            addresses.add(selected_address)
+            profiles = profiles.filter(business_address=selected_address)
+        elif selected_site == "unassigned":
+            profiles = profiles.filter(site_id__isnull=True)
+            addresses.update(profiles.values_list("business_address", flat=True))
+        elif selected_site.isdigit():
+            profiles = profiles.filter(site_id=int(selected_site))
+            addresses.update(profiles.values_list("business_address", flat=True))
+        else:
+            addresses.update(profiles.values_list("business_address", flat=True))
+        channel_details = {
+            profile.business_address: {
+                "label": profile.channel_label,
+                "site": profile.site.name if profile.site_id else "",
+            }
+            for profile in profiles
+        }
+        directory_contacts = directory_contacts_for_addresses(addresses, channel_details)
+        payload, counts = build_whatsapp_chat_export(conversations, directory_contacts)
         if len(payload) > settings.FILE_EXPORT_MAX_EXCEL_BYTES:
             return Response(
                 {"detail": "La exportación excede el tamaño permitido. Selecciona una sede o un número e inténtalo de nuevo."},
