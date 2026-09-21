@@ -121,6 +121,12 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   useEffect(() => { setMode(hasDirectory ? 'directory' : 'text'); }, [channel, hasDirectory]);
   useEffect(() => { stepHeadingRef.current?.focus(); }, [step, processing]);
   useEffect(() => {
+    setPollError('');
+    if (!channel) {
+      setJobs([]);
+      setJobsMore(false);
+      return;
+    }
     let disposed = false;
     async function refresh() {
       try {
