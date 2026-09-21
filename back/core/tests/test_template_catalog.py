@@ -9,7 +9,7 @@ from core.models import AuditLog, WhatsAppAutomationSettings
 from core.tests.factories import make_site
 from core.whatsapp.template_catalog import list_templates
 from core.whatsapp.meta_api import MetaWhatsAppError
-from core.api.template_catalog import catalog_for_channel, mutate_template_for_channel
+from core.api.template_catalog import catalog_for_channel, mutate_template_for_channel, template_mutation_available
 
 A = "whatsapp:+525500000101"
 URL = "/api/whatsapp-conversations/templates/"
@@ -77,7 +77,8 @@ def test_service_proxy_rejects_wrong_number_and_keeps_token_server_side():
     assert fetch.call_args.args[0].method == "GET"
 
 
-@override_settings(WHATSAPP_SERVICE_URL="https://service.example.test", WHATSAPP_SERVICE_TOKEN="private")
+@override_settings(WHATSAPP_SERVICE_URL="https://service.example.test", WHATSAPP_SERVICE_TOKEN="private",
+                   DUALHOOK_API_KEY="", META_WHATSAPP_ACCESS_TOKEN="", DUALHOOK_WABA_ID="")
 def test_service_mutation_proxy_uses_server_token_and_exact_channel():
     response = MagicMock()
     response.__enter__.return_value.read.return_value = json.dumps({"business_address": A, "id": "77", "status": "PENDING"}).encode()
@@ -89,6 +90,18 @@ def test_service_mutation_proxy_uses_server_token_and_exact_channel():
     assert request.get_header("Authorization") == "Bearer private"
     assert json.loads(request.data)["business_address"] == A
     assert result["id"] == "77"
+
+
+@override_settings(**CONFIG, WHATSAPP_SERVICE_URL="", WHATSAPP_SERVICE_TOKEN="")
+def test_template_mutation_requires_the_secure_service_even_with_direct_catalog_credentials():
+    assert template_mutation_available(A) is False
+    assert template_mutation_available("meta:other") is False
+
+
+@override_settings(WHATSAPP_SERVICE_URL="https://service.example.test", WHATSAPP_SERVICE_TOKEN="private",
+                   DUALHOOK_API_KEY="", META_WHATSAPP_ACCESS_TOKEN="", DUALHOOK_WABA_ID="")
+def test_template_mutation_capability_accepts_secure_service_channels():
+    assert template_mutation_available("meta:other") is True
 
 
 @pytest.mark.django_db

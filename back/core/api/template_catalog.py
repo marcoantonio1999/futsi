@@ -8,6 +8,11 @@ from core.whatsapp.meta_api import MetaWhatsAppError, configured_business_addres
 from core.whatsapp.template_catalog import list_templates
 
 
+def template_mutation_available(address):
+    service = str(settings.WHATSAPP_SERVICE_URL or "").startswith("https://") and bool(settings.WHATSAPP_SERVICE_TOKEN)
+    return bool(address) and service
+
+
 def catalog_for_channel(address, after=""):
     # Use an explicitly configured local connection when available. Otherwise the
     # standalone service owns the credentials and validates the selected number.

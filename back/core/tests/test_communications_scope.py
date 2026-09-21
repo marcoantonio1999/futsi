@@ -41,7 +41,9 @@ def test_all_sites_and_explicit_number_are_not_limited_to_env(auth_client, setti
     assert client.get(BASE, {"scope": "all", "site": "bad"}).status_code == 400
 
 
-def test_channels_include_empty_sites_and_enforce_coordinator_scope(auth_client, api_client):
+def test_channels_include_empty_sites_and_enforce_coordinator_scope(auth_client, api_client, settings):
+    settings.META_WHATSAPP_DISPLAY_NUMBER = ""
+    settings.META_WHATSAPP_PHONE_NUMBER_ID = ""
     north, south = make_site(), make_site()
     WhatsAppAutomationSettings.objects.create(business_address=A, site=north)
     WhatsAppAutomationSettings.objects.create(business_address=B, site=south)
@@ -64,6 +66,10 @@ def test_channels_include_empty_sites_and_enforce_coordinator_scope(auth_client,
 
 def test_channels_include_configured_number_without_history_for_admin(auth_client, settings):
     settings.META_WHATSAPP_DISPLAY_NUMBER = A.replace("whatsapp:", "")
+    settings.DUALHOOK_API_KEY = "local-key"
+    settings.DUALHOOK_WABA_ID = "1234"
+    settings.WHATSAPP_SERVICE_URL = ""
+    settings.WHATSAPP_SERVICE_TOKEN = ""
     admin, _, _ = auth_client()
 
     assert admin.get(BASE + "channels/").json() == [{
@@ -71,10 +77,15 @@ def test_channels_include_configured_number_without_history_for_admin(auth_clien
         "site": None,
         "site_name": "",
         "channel_label": "",
+        "template_management_available": False,
     }]
 
 
-def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client):
+def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client, settings):
+    settings.META_WHATSAPP_DISPLAY_NUMBER = ""
+    settings.META_WHATSAPP_PHONE_NUMBER_ID = ""
+    settings.WHATSAPP_SERVICE_URL = ""
+    settings.WHATSAPP_SERVICE_TOKEN = ""
     client, _, _ = auth_client()
     franco = make_site(name="Colegio Franco")
     WhatsAppAutomationSettings.objects.create(
@@ -93,6 +104,7 @@ def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client):
         "site": franco.id,
         "site_name": "Colegio Franco",
         "channel_label": "Franco Academia",
+        "template_management_available": False,
     }]
     assert [row["id"] for row in client.get(BASE, {"scope": "all"}).json()] == [chat.id]
     rows = client.get(BASE, {

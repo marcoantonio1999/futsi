@@ -396,6 +396,7 @@ class WhatsAppConversationViewSet(
 
     @action(detail=False, methods=["get"])
     def channels(self, request):
+        from .template_catalog import template_mutation_available
         rows = self.visible_conversations().order_by().values("to_address", "channel_site_id", "channel_site_name", "channel_label").distinct()
         records = {}
         for row in rows:
@@ -414,7 +415,10 @@ class WhatsAppConversationViewSet(
             current = configured_business_address()
             if current:
                 records.setdefault(current, {"business_address": current, "site": None, "site_name": "", "channel_label": ""})
-        return Response(sorted(records.values(), key=lambda row: (row["site_name"], row["channel_label"], row["business_address"])))
+        result = sorted(records.values(), key=lambda row: (row["site_name"], row["channel_label"], row["business_address"]))
+        for row in result:
+            row["template_management_available"] = template_mutation_available(row["business_address"])
+        return Response(result)
 
     @action(
         detail=False,
