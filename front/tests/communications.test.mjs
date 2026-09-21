@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareConversations, conversationAttention, matchesAttention, contactName, durationLabel, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
+import { compareConversations, conversationAttention, matchesAttention, contactName, durationLabel, isClosingAcknowledgement, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
 import { templateStatusMeta } from "../src/features/voice-agent/veronicaTemplateStatus.ts";
 
 test("Veronica template states are displayed in Spanish with a safe fallback", () => {
@@ -128,7 +128,33 @@ test("priority ordering keeps unanswered customers ahead of reminders and client
 
 test("a reaction does not create an unanswered customer message", () => {
   const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body: "[reaction]" })], { human_takeover_active: true });
-  assert.equal(conversationAttention(c).key, "waiting_client");
+  assert.equal(conversationAttention(c).key, "up_to_date");
+});
+
+test("thanks, emoji and sticker replies close an exchange after our message", () => {
+  for (const body of ["Gracias", "Muchas gracias 🙏", "Perfecto, gracias", "🙏⚽", "[sticker]"]) {
+    const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
+    const attention = conversationAttention(c);
+    assert.equal(attention.key, "up_to_date", body);
+    assert.equal(attention.label, "Conversación cerrada", body);
+  }
+});
+
+test("a thank-you containing a real request still requires a response", () => {
+  const body = "Gracias, ¿me puedes confirmar el horario?";
+  assert.equal(isClosingAcknowledgement(body), false);
+  const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
+  assert.equal(conversationAttention(c).key, "needs_reply");
+});
+
+test("an isolated emoji without an earlier academy message is not auto-closed", () => {
+  const c = chat([msg(1, "inbound", "unknown", "11", { body: "👋" })], { human_takeover_active: true });
+  assert.equal(conversationAttention(c).key, "needs_reply");
+});
+
+test("an explicit follow-up remains marked after a closing acknowledgement", () => {
+  const c = chat([msg(1, "outbound", "human_dashboard", "10"), msg(2, "inbound", "unknown", "11", { body: "Muchas gracias" })], { follow_up_required: true });
+  assert.equal(conversationAttention(c).key, "follow_up");
 });
 
 test("explicit review closes only the reviewed exchange; a new customer message reopens it", () => {

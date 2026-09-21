@@ -77,10 +77,39 @@ export function lastMessage(conversation: WhatsAppConversation) {
   return orderedMessages(conversation).filter(m => m.event_type !== "revoked" && m.body.trim().toLowerCase() !== "[reaction]").at(-1);
 }
 
+const acknowledgementOnly = new Set([
+  "ok", "okay", "perfecto", "listo", "entendido", "excelente", "super", "sale", "va",
+  "de acuerdo", "esta bien", "muy bien", "claro",
+]);
+const acknowledgementRequest = /\b(?:pero|aunque|duda|pregunta|quisiera|quiero|necesito|puede|puedes|podria|podrias|mandar|enviar|decir|confirmar|informar|agendar|inscribir|registrar|cambiar|cancelar|cuando|donde|como|cual|cuanto|horario|precio|costo)\b/;
+
+function normalizedAcknowledgement(body: string) {
+  return body.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u200d\ufe0f]/gu, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function isClosingAcknowledgement(body: string) {
+  const trimmed = body.trim();
+  if (!trimmed) return false;
+  if (/^\[(?:sticker|reaction)\]$/i.test(trimmed)) return true;
+  const normalized = normalizedAcknowledgement(trimmed);
+  if (!normalized) return true;
+  if (acknowledgementOnly.has(normalized)) return true;
+  if (!normalized.includes("gracias") || trimmed.includes("?") || acknowledgementRequest.test(normalized)) return false;
+  return normalized.split(" ").length <= 12;
+}
+
 // Operational state comes from the current exchange, never from historical
 // first-human-response events or the automation-paused flag alone.
 export function conversationAttention(c: WhatsAppConversation): ConversationAttention {
-  const messages = orderedMessages(c).filter(m => m.event_type !== "revoked" && m.body.trim().toLowerCase() !== "[reaction]");
+  const nonRevokedMessages = orderedMessages(c).filter(m => m.event_type !== "revoked");
+  const latestEvent = nonRevokedMessages.at(-1);
+  const messages = nonRevokedMessages.filter(m => m.body.trim().toLowerCase() !== "[reaction]");
   const last = messages.at(-1);
   const inbound = messages.filter(m => m.direction === "inbound").at(-1);
   const human = messages.filter(m => m.direction === "outbound" && ["human_dashboard", "human_whatsapp"].includes(m.response_source)).at(-1);
@@ -92,12 +121,18 @@ export function conversationAttention(c: WhatsAppConversation): ConversationAtte
   const humanRequested = !!inbound && ["human_only", "automation_paused"].includes(inbound.routing_decision);
   const needsHuman = !!inbound && !humanRepliedLast && humanAt <= inboundAt && (c.human_takeover_active || humanRequested);
   const turn = humanRepliedLast ? "client" : last?.direction === "inbound" ? "team" : last ? "client" : "none";
+  const closingAcknowledgement = latestEvent?.direction === "inbound"
+    && isClosingAcknowledgement(latestEvent.body)
+    && nonRevokedMessages.some(message => message.direction === "outbound" && message.id !== latestEvent.id);
 
   const reviewed = c.attention_resolution?.message_id === last?.id && !!last
     && Date.parse(c.attention_resolution?.resolved_at ?? "") >= Math.max(lastAt, humanAt);
   if (reviewed) return c.follow_up_required
     ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "none", detail: "El equipo indicó que no hace falta responder. El seguimiento sigue marcado." }
     : { key: "up_to_date", tone: "green", label: "Atendido", since: null, turn: "none", detail: "El equipo revisó este intercambio e indicó que no requiere respuesta." };
+  if (closingAcknowledgement) return c.follow_up_required
+    ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "none", detail: "El contacto cerró el intercambio con un agradecimiento o una reacción. El seguimiento marcado por el equipo se conserva." }
+    : { key: "up_to_date", tone: "green", label: "Conversación cerrada", since: null, turn: "none", detail: "El contacto respondió sólo con un agradecimiento, emoji, sticker o reacción después de nuestro mensaje; no requiere otra respuesta." };
   if (needsHuman || (turn === "team" && !c.bot_response_pending)) return {
     key: "needs_reply", tone: "red", label: "Nos toca responder", since: inbound?.created_at ?? null, turn: "team",
     detail: c.human_takeover_active ? "El cliente escribió después de la última respuesta humana. El asistente está pausado." : humanRequested ? "El cliente está en atención humana; una respuesta automática no cierra esa solicitud." : "El último mensaje es del cliente y no tiene una respuesta posterior registrada.",
