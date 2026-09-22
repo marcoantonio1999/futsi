@@ -90,6 +90,11 @@ function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: T
   };
   const preview = templatePreview(previewTemplate);
 
+  if (!catalog && !error) return <div className="template-catalog-workspace" aria-busy="true">
+    <div className="template-catalog-main template-catalog-skeleton"><span className="bulk-visually-hidden" role="status">Cargando catálogo de plantillas…</span><header aria-hidden="true"><div><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></div><i className="bulk-skeleton button" /></header><div className="template-catalog-skeleton-toolbar" aria-hidden="true"><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /></div><div className="template-catalog-skeleton-list" aria-hidden="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span><i className="bulk-skeleton" /><i className="bulk-skeleton short" /></span><i className="bulk-skeleton badge" /><i className="bulk-skeleton button" /></div>)}</div></div>
+    <WhatsAppTemplatePreview loading className="template-catalog-preview" channelLabel={channel.label} />
+  </div>;
+
   return <><div className="template-catalog-workspace"><div className="template-catalog-main">
     <header className="comm-section-heading">
       <div><h3>{channel.label}</h3><p>{address.replace("whatsapp:", "").replace("meta:", "ID ")}</p></div>
@@ -99,7 +104,6 @@ function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: T
       <button disabled={loading} className={secondaryButtonClass} onClick={() => { setCursor(""); setCatalog(null); setRetry(n => n + 1); }}>Actualizar catálogo</button>
     </div>
     {error && <div role="alert" className="comm-error">{error} <button className={secondaryButtonClass} disabled={loading} onClick={() => setRetry(n => n + 1)}>Reintentar</button></div>}
-    {loading && <p role="status">Consultando plantillas…</p>}
     {catalog && <>
       <div className="comm-toolbar"><select className={inputClass} aria-label="Estado de plantilla" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">Todas las cargadas ({templates.length})</option><option value="approved">Aprobadas ({approved})</option><option value="other">No disponibles ({templates.length - approved})</option></select><input type="search" className={inputClass} aria-label="Buscar plantilla" placeholder="Buscar plantilla" value={search} onChange={e => setSearch(e.target.value)} /></div>
       {visible.length > 0 && <section className="comm-panel comm-template-list" aria-label="Plantillas disponibles">

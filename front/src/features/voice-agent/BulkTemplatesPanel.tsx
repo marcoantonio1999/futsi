@@ -53,7 +53,8 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const [pollError, setPollError] = useState('');
   const [dragging, setDragging] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
@@ -92,9 +93,11 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   }
   useEffect(() => {
     const controller = new AbortController();
+    setChannelsLoading(true);
     apiRequest<{ channels: typeof channels }>(base+'channels/', token, { signal: controller.signal })
-      .then(r => { setChannels(r.channels); setChannel(r.channels[0]?.channel || ''); })
-      .catch(e => { if (!controller.signal.aborted) setError(e.message); });
+      .then(r => { const first = r.channels[0]?.channel || ''; setChannels(r.channels); setCatalogLoading(!!first); setChannel(first); })
+      .catch(e => { if (!controller.signal.aborted) setError(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setChannelsLoading(false); });
     return () => controller.abort();
   }, [base, token]);
   useEffect(() => {
@@ -145,12 +148,17 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   }, [base, token, channel, activeId, offset, jobsPage]);
   async function loadTemplates(after = '') {
     const generation = catalogGeneration.current;
-    await action(async () => {
-      const result = await apiRequest<{ templates: Template[]; next_cursor: string }>(base+'catalog/?'+new URLSearchParams({ channel, after }), token);
-      if (generation !== catalogGeneration.current) return;
-      setTemplates(old => after ? [...old, ...result.templates] : result.templates);
-      setCursor(result.next_cursor === after ? '' : result.next_cursor);
-    });
+    if (!after) setCatalogLoading(true);
+    try {
+      await action(async () => {
+        const result = await apiRequest<{ templates: Template[]; next_cursor: string }>(base+'catalog/?'+new URLSearchParams({ channel, after }), token);
+        if (generation !== catalogGeneration.current) return;
+        setTemplates(old => after ? [...old, ...result.templates] : result.templates);
+        setCursor(result.next_cursor === after ? '' : result.next_cursor);
+      });
+    } finally {
+      if (!after && generation === catalogGeneration.current) setCatalogLoading(false);
+    }
   }
   function chooseFile(next: File | null) {
     setFile(next); setColumn(''); invalidate(); setError('');
@@ -187,6 +195,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     return message.replaceAll(`{{${index + 1}}}`, value);
   }, selected.text) : '';
   const previewChannel = channels.find(c => c.channel === channel)?.label || 'Tu academia';
+  const setupLoading = channelsLoading || catalogLoading;
   const recipientModeControls = <>
     {hasDirectory && <button aria-pressed={mode === 'directory'} disabled={busy} onClick={() => { setMode('directory'); invalidate(); }}>Contactos de {directoryLabel}</button>}
     <button aria-pressed={mode === 'text'} disabled={busy} onClick={() => { setMode('text'); invalidate(); }}>Escribir o pegar números</button>
@@ -198,11 +207,11 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     {error && !draft && <div role="alert" className="bulk-alert error">{error}</div>}
     {pollError && <div role="alert" className="bulk-alert error">No se pudo actualizar el avance. Lo mostrado puede estar desactualizado. {pollError}</div>}
     {!historyView && !processing ? <div className={`bulk-workspace ${step === 2 ? 'bulk-workspace-single' : ''}`}><div className="bulk-wizard">
-      {step === 1 && <section className="bulk-card"><header className="bulk-step-heading"><h3 ref={stepHeadingRef} tabIndex={-1}>Configura el envío</h3><span>Paso 1 de 3 · Plantilla y destinatarios</span></header>
-        <div className="bulk-fields"><label>Enviar desde<select value={channel} disabled={busy || !channels.length} onChange={e => { setChannel(e.target.value); setJobsPage(0); }}><option value="" disabled>Selecciona un canal</option>{channels.map(c => <option key={c.channel} value={c.channel}>{c.label}</option>)}</select></label>
+      {step === 1 && setupLoading && <section className="bulk-card bulk-setup-skeleton" aria-busy="true"><span className="bulk-visually-hidden" role="status">Cargando canales y plantillas disponibles…</span><header className="bulk-step-heading" aria-hidden="true"><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></header><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label wide" /><div className="bulk-skeleton-options"><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /></div></div><i className="bulk-skeleton action" aria-hidden="true" /></section>}
+      {step === 1 && !setupLoading && <section className="bulk-card"><header className="bulk-step-heading"><h3 ref={stepHeadingRef} tabIndex={-1}>Configura el envío</h3><span>Paso 1 de 3 · Plantilla y destinatarios</span></header>
+        <div className="bulk-fields"><label>Enviar desde<select value={channel} disabled={busy || !channels.length} onChange={e => { setCatalogLoading(true); setChannel(e.target.value); setJobsPage(0); }}><option value="" disabled>Selecciona un canal</option>{channels.map(c => <option key={c.channel} value={c.channel}>{c.label}</option>)}</select></label>
           <button disabled={busy || catalogLoading || !channel} onClick={() => void loadTemplates()}>Actualizar plantillas</button></div>
-        {catalogLoading && <p role="status">Cargando plantillas disponibles…</p>}
-        {!catalogLoading && !!channel && !templates.length && <p>No hay plantillas disponibles para este número.</p>}
+        {!!channel && !templates.length && <p>No hay plantillas disponibles para este número.</p>}
         {!channels.length && <p>No hay canales conectados disponibles. No se pueden realizar envíos.</p>}
         {!!templates.length && <label>Plantilla aprobada<select value={templateKey} disabled={busy} onChange={e => { setTemplateKey(e.target.value); invalidate(); }}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={`${t.name}:${t.language}`} disabled={!t.sendable} value={`${t.name}:${t.language}`}>{t.name} · {t.language}{!t.sendable ? ' · No disponible para masivos' : ''}</option>)}</select></label>}
         {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
@@ -237,7 +246,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         setJob(saved); setOffset(0); setConsent(false);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}
-    </div>{step !== 2 && <WhatsAppTemplatePreview channelLabel={previewChannel} text={previewText} templateName={selected?.name} meta={selected ? `${formatWhatsAppTemplateCategory(selected.category)} · ${selected.language}` : ''} />}</div> : job && <section className="bulk-card">
+    </div>{step !== 2 && <WhatsAppTemplatePreview loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name} meta={selected ? `${formatWhatsAppTemplateCategory(selected.category)} · ${selected.language}` : ''} />}</div> : job && <section className="bulk-card">
       <header className="bulk-heading"><div><h3>{job.title}</h3><p>{channels.find(c => c.channel === job.channel)?.label || job.channel} · {new Date(job.created_at).toLocaleString('es-MX')}</p></div><strong className={`bulk-state ${job.status}`}>{labels[job.status] || job.status}</strong></header>
       {job.detail && <div role="alert" className="bulk-alert error">{job.detail}</div>}
       <h3 ref={stepHeadingRef} tabIndex={-1}>Progreso del envío</h3>
