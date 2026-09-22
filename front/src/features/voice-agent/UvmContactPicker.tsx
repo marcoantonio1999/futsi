@@ -9,7 +9,7 @@ type Detail = Contact & { source_data: Record<string, unknown>; evidence: Record
 type Directory = { contacts: Contact[]; total: number; dataset_total: number; facets: Record<string, string[]>; has_more: boolean; source_file: string; dataset_label?: string; domain?: string; filter_labels?: Record<string, string> };
 const stateLabels: Record<string, string> = { sending: 'En proceso', accepted: 'Aceptado', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Sin confirmar' };
 const facets: Record<string, string> = { relationship: 'Relación con la academia', interest: 'Interés principal', confidence: 'Confianza de clasificación', priority: 'Prioridad de seguimiento', campaign_source: 'Estado de campaña', review_state: 'Estado de revisión' };
-const initialFilters = { q: '', relationship: '', interest: '', confidence: '', priority: '', campaign_source: '', review_state: '', no_contact: '', needs_review: '', sensitive: '', age: '', since: '', until: '', ordinal_from: '', ordinal_to: '', outreach: 'all', league_role: '', league_relevance: '', team: '' };
+const initialFilters = { q: '', relationship: '', interest: '', confidence: '', priority: '', campaign_source: '', review_state: '', no_contact: '', needs_review: '', sensitive: '', age: '', since: '', until: '', outreach: 'all', league_role: '', league_relevance: '', team: '' };
 type ContactFilters = typeof initialFilters;
 type ContactFilterKey = keyof ContactFilters;
 
@@ -130,11 +130,9 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
           {Object.entries({ no_contact: 'Pidió no contactar', needs_review: 'Requiere revisión', sensitive: 'Caso sensible' }).map(([key, label]) => <label key={key}>{label}<select disabled={busy} value={filterDraft[key as ContactFilterKey]} onChange={e => draftFilter(key as ContactFilterKey, e.target.value)}><option value="">Todos</option><option value="true">Sí</option><option value="false">No</option></select></label>)}
         </div></section>
         <section><div className="uvm-filter-section-heading"><h4>Actividad</h4><p>Los contactos aparecen del más reciente al más antiguo.</p></div><div className="uvm-filter-grid">
-          <label>Edad mencionada<input value={filterDraft.age} onChange={e => draftFilter('age', e.target.value)} disabled={busy} placeholder="Texto registrado" /></label>
+          {result?.domain === 'academy' && <label>Edad mencionada<input value={filterDraft.age} onChange={e => draftFilter('age', e.target.value)} disabled={busy} placeholder="Texto registrado" /></label>}
           <label>Última interacción desde<input type="date" value={filterDraft.since} onChange={e => draftFilter('since', e.target.value)} disabled={busy} /></label>
           <label>Última interacción hasta<input type="date" value={filterDraft.until} onChange={e => draftFilter('until', e.target.value)} disabled={busy} /></label>
-          <label>Registro desde<input type="number" min="1" value={filterDraft.ordinal_from} onChange={e => draftFilter('ordinal_from', e.target.value)} disabled={busy} /></label>
-          <label>Registro hasta<input type="number" min="1" value={filterDraft.ordinal_to} onChange={e => draftFilter('ordinal_to', e.target.value)} disabled={busy} /></label>
         </div></section>
       </div>
       <footer className="uvm-filter-modal-footer"><button onClick={() => setFilterDraft({ ...initialFilters, q: filters.q })}>Restablecer</button><div><button onClick={closeFilters}>Cancelar</button><button className="primary" onClick={applyFilters}>Aplicar filtros</button></div></footer>
