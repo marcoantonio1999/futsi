@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, FileText, Phone, Save, Search, SlidersHorizontal, UserRound, X } from 'lucide-react';
 import { apiRequest } from '../../api';
 import './uvm-contacts.css';
 
@@ -16,6 +16,18 @@ type ContactFilterKey = keyof ContactFilters;
 function isCompletePhoneLookup(value: string) {
   const digits = value.replace(/\D/g, '');
   return digits.length === 10 || (digits.startsWith('52') && (digits.length === 12 || digits.length === 13));
+}
+
+function detailValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+  if (Array.isArray(value)) return value.length ? value.map(detailValue).join('\n') : '—';
+  if (typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function isLongEvidence(key: string, value: unknown) {
+  return ['Resumen', 'Evidencia principal', 'Razón de clasificación', 'Advertencias'].includes(key) || detailValue(value).length > 100;
 }
 
 export function UvmContactPicker({ token, channel, label = 'este canal', onLoad }: { token: string; channel: string; label?: string; onLoad: (review: ContactReview) => void }) {
@@ -86,6 +98,7 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
     return <label key={key}>{result?.filter_labels?.[key] || facets[key] || key}<select value={values[key]} onChange={e => onChange(key, e.target.value)} disabled={busy}><option value="">Todos</option>{key === 'priority' && <option value="__empty__">Sin asignar</option>}{(key === 'priority' ? ['Alta', 'Media', 'Baja'] : result?.facets[key] || []).map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
   }
   const activeFilterCount = (Object.keys(initialFilters) as ContactFilterKey[]).filter(key => key !== 'q' && filters[key] !== initialFilters[key]).length;
+  const detailEvidence = detail ? Object.entries(detail.evidence).filter(([key]) => !['Ordinal', 'Chat ID', 'Teléfono', 'Contacto', 'Futbolista'].includes(key)) : [];
   return <div className="uvm-directory">
     <div className="uvm-directory-toolbar">
       <div className="uvm-selection-bar"><div aria-live="polite"><strong>{selection.length} / 100 seleccionados</strong><span>{loading ? 'Buscando…' : `${result?.total || 0} resultados de ${result?.dataset_total || 0} contactos de ${result?.dataset_label || label}`}</span></div><div className="bulk-actions">
@@ -137,20 +150,49 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
       </div>
       <footer className="uvm-filter-modal-footer"><button onClick={() => setFilterDraft({ ...initialFilters, q: filters.q })}>Restablecer</button><div><button onClick={closeFilters}>Cancelar</button><button className="primary" onClick={applyFilters}>Aplicar filtros</button></div></footer>
     </dialog>
-    <dialog ref={dialog} className="uvm-detail-modal" aria-labelledby="uvm-detail-title" onCancel={e => { e.preventDefault(); if (!busy) setDetail(null); }}>
-      {detail && <div className="bulk-card"><header className="bulk-heading"><h3 id="uvm-detail-title">{detail.name || detail.phone || 'Contacto sin nombre'}</h3><button disabled={busy} onClick={() => setDetail(null)}>Cerrar</button></header>
-        <p>{detail.phone || 'Teléfono no válido'} · Contacto #{detail.ordinal} · {result?.dataset_label || label}</p>
-        {(detail.sensitive || detail.needs_review) && <p className="bulk-alert">El análisis pide revisión humana de este contacto. Lee el contexto antes de incluirlo en una campaña.</p>}
-        <h4>Contexto y evidencia</h4><dl className="uvm-evidence">{Object.entries(detail.evidence).filter(([key]) => !['Ordinal', 'Chat ID', 'Teléfono', 'Contacto', 'Futbolista'].includes(key)).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '—')}</dd></div>)}</dl>
-        <details><summary>Ver todos los datos originales del Excel</summary><dl className="uvm-evidence">{Object.entries(detail.source_data).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '—')}</dd></div>)}</dl></details>
-        {!!detail.audios.length && <details><summary>Audios y transcripciones ({detail.audios.length})</summary>{detail.audios.map((audio, i) => <dl className="uvm-evidence" key={i}>{Object.entries(audio).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value ?? '—')}</dd></div>)}</dl>)}</details>}
-        <h4>Datos de seguimiento</h4><div className="uvm-filter-grid"><label>Nombre para el saludo<input maxLength={120} value={edit.name} disabled={busy} onChange={e => setEdit(v => ({ ...v, name: e.target.value }))} /></label><label>Prioridad<select value={edit.priority} disabled={busy} onChange={e => setEdit(v => ({ ...v, priority: e.target.value }))}><option value="">Sin asignar</option>{['Alta', 'Media', 'Baja'].map(v => <option key={v}>{v}</option>)}</select></label></div>
-        <label>Notas del equipo<textarea maxLength={4000} rows={3} value={edit.notes} disabled={busy} onChange={e => setEdit(v => ({ ...v, notes: e.target.value }))} /></label>
-        <label className="uvm-block-checkbox"><input type="checkbox" disabled={busy || detail.source_no_contact} checked={edit.manually_blocked || detail.source_no_contact} onChange={e => setEdit(v => ({ ...v, manually_blocked: e.target.checked }))} />No contactar</label>
-        {detail.source_no_contact && <p>La exclusión viene del Excel y no puede quitarse aquí.</p>}
-        {detailError && <div role="alert" className="bulk-alert error">{detailError}</div>}
-        <button className="primary" disabled={busy} onClick={() => { setBusy(true); setDetailError(''); void post<Detail>('contact-update', { channel, contact_id: detail.id, ...edit }).then(() => { setSelection([]); setDetail(null); setRevision(n => n+1); }).catch(e => setDetailError(e.message)).finally(() => setBusy(false)); }}>{busy ? 'Guardando…' : 'Guardar seguimiento'}</button>
-      </div>}
+    <dialog ref={dialog} className="uvm-detail-modal" aria-labelledby="uvm-detail-title" onClick={e => { if (e.target === e.currentTarget && !busy) setDetail(null); }} onCancel={e => { e.preventDefault(); if (!busy) setDetail(null); }}>
+      {detail && <article className="uvm-detail-shell">
+        <header className="uvm-detail-header">
+          <div className="uvm-detail-identity">
+            <span className="uvm-detail-eyebrow">Detalle del contacto</span>
+            <h3 id="uvm-detail-title">{detail.name || detail.phone || 'Contacto sin nombre'}</h3>
+            <div className="uvm-detail-meta">
+              <span><Phone aria-hidden="true" size={15} />{detail.phone || 'Teléfono no válido'}</span>
+              <span><UserRound aria-hidden="true" size={15} />Contacto #{detail.ordinal}</span>
+              <span>{result?.dataset_label || label}</span>
+            </div>
+          </div>
+          <button className="uvm-detail-close" type="button" aria-label="Cerrar detalle" disabled={busy} onClick={() => setDetail(null)}><X aria-hidden="true" size={21} /></button>
+        </header>
+
+        <div className="uvm-detail-body">
+          <main className="uvm-detail-content">
+            {(detail.sensitive || detail.needs_review) && <div className="uvm-detail-alert" role="note"><AlertTriangle aria-hidden="true" size={20} /><div><strong>Este contacto requiere revisión</strong><span>Lee el contexto antes de incluirlo en una campaña.</span></div></div>}
+
+            <section className="uvm-detail-section" aria-labelledby="uvm-evidence-title">
+              <div className="uvm-detail-section-heading"><div><span>Información analizada</span><h4 id="uvm-evidence-title">Contexto y evidencia</h4></div><small>{detailEvidence.length} campos</small></div>
+              {detailEvidence.length ? <dl className="uvm-evidence">{detailEvidence.map(([key, value]) => <div className={isLongEvidence(key, value) ? 'uvm-evidence-item wide' : 'uvm-evidence-item'} key={key}><dt>{key}</dt><dd>{detailValue(value)}</dd></div>)}</dl> : <p className="uvm-detail-empty">No hay evidencia textual disponible para este contacto.</p>}
+            </section>
+
+            <details className="uvm-detail-disclosure"><summary><span><FileText aria-hidden="true" size={18} />Datos originales del archivo</span><small>{Object.keys(detail.source_data).length} campos</small></summary><dl className="uvm-evidence uvm-source-data">{Object.entries(detail.source_data).map(([key, value]) => <div className={isLongEvidence(key, value) ? 'uvm-evidence-item wide' : 'uvm-evidence-item'} key={key}><dt>{key}</dt><dd>{detailValue(value)}</dd></div>)}</dl></details>
+            {!!detail.audios.length && <details className="uvm-detail-disclosure"><summary><span>Audios y transcripciones</span><small>{detail.audios.length}</small></summary>{detail.audios.map((audio, i) => <dl className="uvm-evidence uvm-audio-data" key={i}>{Object.entries(audio).map(([key, value]) => <div className={isLongEvidence(key, value) ? 'uvm-evidence-item wide' : 'uvm-evidence-item'} key={key}><dt>{key}</dt><dd>{detailValue(value)}</dd></div>)}</dl>)}</details>}
+          </main>
+
+          <aside className="uvm-detail-followup" aria-labelledby="uvm-followup-title">
+            <div className="uvm-detail-section-heading"><div><span>Uso interno</span><h4 id="uvm-followup-title">Datos de seguimiento</h4></div></div>
+            <label>Nombre para el saludo<input maxLength={120} value={edit.name} disabled={busy} onChange={e => setEdit(v => ({ ...v, name: e.target.value }))} /></label>
+            <label>Prioridad<select value={edit.priority} disabled={busy} onChange={e => setEdit(v => ({ ...v, priority: e.target.value }))}><option value="">Sin asignar</option>{['Alta', 'Media', 'Baja'].map(v => <option key={v}>{v}</option>)}</select></label>
+            <label>Notas del equipo<textarea maxLength={4000} rows={5} value={edit.notes} disabled={busy} onChange={e => setEdit(v => ({ ...v, notes: e.target.value }))} /></label>
+            <label className="uvm-block-checkbox"><input type="checkbox" disabled={busy || detail.source_no_contact} checked={edit.manually_blocked || detail.source_no_contact} onChange={e => setEdit(v => ({ ...v, manually_blocked: e.target.checked }))} /><span><strong>No contactar</strong><small>Impide incluir este número en un envío.</small></span></label>
+            {detail.source_no_contact && <p className="uvm-detail-source-note">La exclusión viene del archivo original y no puede quitarse aquí.</p>}
+          </aside>
+        </div>
+
+        <footer className="uvm-detail-footer">
+          {detailError ? <div role="alert" className="uvm-detail-error">{detailError}</div> : <span>Los cambios sólo afectan el seguimiento de este contacto.</span>}
+          <div><button type="button" disabled={busy} onClick={() => setDetail(null)}>Cancelar</button><button type="button" className="primary" disabled={busy} onClick={() => { setBusy(true); setDetailError(''); void post<Detail>('contact-update', { channel, contact_id: detail.id, ...edit }).then(() => { setSelection([]); setDetail(null); setRevision(n => n+1); }).catch(e => setDetailError(e.message)).finally(() => setBusy(false)); }}><Save aria-hidden="true" size={17} />{busy ? 'Guardando…' : 'Guardar seguimiento'}</button></div>
+        </footer>
+      </article>}
     </dialog>
   </div>;
 }
