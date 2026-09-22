@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { compareConversations, compareConversationsByRecency, conversationAttention, matchesAttention, contactName, durationLabel, isClosingAcknowledgement, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
 import { templateStatusMeta } from "../src/features/voice-agent/veronicaTemplateStatus.ts";
-import { missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue } from "../src/features/voice-agent/bulkReview.ts";
+import { firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue } from "../src/features/voice-agent/bulkReview.ts";
 
 test("bulk imports that require a column selection keep safe empty review collections", () => {
   assert.deepEqual(normalizeBulkReview({ needs_column: true, columns: [{ index: 1, label: "Contacto" }] }), {
@@ -23,6 +23,8 @@ test("bulk recipient names are optional while other template fields stay require
   const values = { "5512345678": { "body:1": "", "body:2": "Mexxprod" } };
   assert.equal(missingRequiredRecipientFields(["5512345678"], parameters, values), 0);
   assert.equal(recipientPreviewValue(parameters[0], "", 0), "👋");
+  assert.equal(firstContactName("  Santiago Rivera P  "), "Santiago");
+  assert.equal(recipientPreviewValue(parameters[0], "María Fernanda López", 0), "María");
   values["5512345678"]["body:2"] = "";
   assert.equal(missingRequiredRecipientFields(["5512345678"], parameters, values), 1);
 });

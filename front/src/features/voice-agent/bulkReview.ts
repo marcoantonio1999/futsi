@@ -5,6 +5,10 @@ export type TemplateParameter = { key: string; label: string; contact_name?: boo
 
 export const EMPTY_CONTACT_NAME_VALUE = '👋';
 
+export function firstContactName(value: string | undefined): string {
+  return value?.trim().split(/\s+/)[0] || '';
+}
+
 export function missingRequiredRecipientFields(
   phones: string[],
   parameters: TemplateParameter[],
@@ -16,7 +20,8 @@ export function missingRequiredRecipientFields(
 }
 
 export function recipientPreviewValue(parameter: TemplateParameter, value: string | undefined, index: number): string {
-  return value?.trim() || (parameter.contact_name ? EMPTY_CONTACT_NAME_VALUE : parameter.label || `{{${index + 1}}}`);
+  if (parameter.contact_name) return firstContactName(value) || EMPTY_CONTACT_NAME_VALUE;
+  return value?.trim() || parameter.label || `{{${index + 1}}}`;
 }
 
 export type BulkReview = {

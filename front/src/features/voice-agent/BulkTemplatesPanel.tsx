@@ -4,7 +4,7 @@ import { apiRequest, apiFormRequest } from '../../api';
 import './bulk-templates.css';
 import { UvmContactPicker } from './UvmContactPicker';
 import { FileContactFilters, initialFileFilters, type FileContact, type FileFilters } from './FileContactFilters';
-import { missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue, type BulkReview as Review, type RecipientParameters, type TemplateParameter } from './bulkReview';
+import { firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue, type BulkReview as Review, type RecipientParameters, type TemplateParameter } from './bulkReview';
 import { formatWhatsAppTemplateCategory } from './model';
 import { WhatsAppTemplatePreview } from './WhatsAppTemplatePreview';
 
@@ -18,7 +18,8 @@ function recipientFields(review: Review, template?: Template): RecipientParamete
   return Object.fromEntries(review.phones.map(phone => [phone, Object.fromEntries((template?.parameters || []).map(parameter => {
     const imported = review.parameter_values?.[phone]?.[parameter.key]?.trim();
     const contactName = parameter.contact_name ? review.names?.[phone]?.trim() : '';
-    return [parameter.key, imported || contactName || ''];
+    const value = imported || contactName || '';
+    return [parameter.key, parameter.contact_name ? firstContactName(value) : value];
   }))]));
 }
 
