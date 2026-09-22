@@ -8,8 +8,8 @@ type Contact = { id: number; ordinal: number; phone: string; name: string; footb
 type Detail = Contact & { source_data: Record<string, unknown>; evidence: Record<string, unknown>; audios: Record<string, unknown>[]; notes: string; manually_blocked: boolean; source_no_contact: boolean };
 type Directory = { contacts: Contact[]; total: number; dataset_total: number; facets: Record<string, string[]>; has_more: boolean; source_file: string; dataset_label?: string; domain?: string; filter_labels?: Record<string, string> };
 const stateLabels: Record<string, string> = { sending: 'En proceso', accepted: 'Aceptado', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Sin confirmar' };
-const facets: Record<string, string> = { relationship: 'Relación con la academia', interest: 'Interés principal', confidence: 'Confianza de clasificación', priority: 'Prioridad de seguimiento', campaign_source: 'Estado de campaña', review_state: 'Estado de revisión' };
-const initialFilters = { q: '', relationship: '', interest: '', confidence: '', priority: '', campaign_source: '', review_state: '', no_contact: '', needs_review: '', sensitive: '', age: '', since: '', until: '', outreach: 'all', league_role: '', league_relevance: '', team: '' };
+const facets: Record<string, string> = { relationship: 'Relación con la academia', interest: 'Interés principal', confidence: 'Confianza de clasificación', priority: 'Prioridad de seguimiento', review_state: 'Estado de revisión' };
+const initialFilters = { q: '', relationship: '', interest: '', confidence: '', priority: '', review_state: '', no_contact: '', needs_review: '', sensitive: '', age: '', since: '', until: '', outreach: 'all', league_role: '', league_relevance: '', team: '' };
 type ContactFilters = typeof initialFilters;
 type ContactFilterKey = keyof ContactFilters;
 
@@ -126,7 +126,7 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
           </select></label>
         </div></section>
         <section><div className="uvm-filter-section-heading"><h4>Clasificación</h4><p>Usa la información registrada para priorizar la selección.</p></div><div className="uvm-filter-grid">
-          {(['confidence', 'priority', 'campaign_source', 'review_state'] as ContactFilterKey[]).map(key => selectFilter(key, filterDraft, draftFilter))}
+          {(['confidence', 'priority', 'review_state'] as ContactFilterKey[]).map(key => selectFilter(key, filterDraft, draftFilter))}
           {Object.entries({ no_contact: 'Pidió no contactar', needs_review: 'Requiere revisión', sensitive: 'Caso sensible' }).map(([key, label]) => <label key={key}>{label}<select disabled={busy} value={filterDraft[key as ContactFilterKey]} onChange={e => draftFilter(key as ContactFilterKey, e.target.value)}><option value="">Todos</option><option value="true">Sí</option><option value="false">No</option></select></label>)}
         </div></section>
         <section><div className="uvm-filter-section-heading"><h4>Actividad</h4><p>Los contactos aparecen del más reciente al más antiguo.</p></div><div className="uvm-filter-grid">
