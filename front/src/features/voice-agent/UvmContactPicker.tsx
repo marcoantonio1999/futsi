@@ -9,7 +9,7 @@ type Detail = Contact & { source_data: Record<string, unknown>; evidence: Record
 type Directory = { contacts: Contact[]; total: number; dataset_total: number; facets: Record<string, string[]>; has_more: boolean; source_file: string; dataset_label?: string; domain?: string; filter_labels?: Record<string, string> };
 const stateLabels: Record<string, string> = { sending: 'En proceso', accepted: 'Aceptado', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Sin confirmar' };
 const facets: Record<string, string> = { relationship: 'Relación con la academia', interest: 'Interés principal', confidence: 'Confianza de clasificación', priority: 'Prioridad de seguimiento', review_state: 'Estado de revisión' };
-const initialFilters = { q: '', relationship: '', interest: '', confidence: '', priority: '', review_state: '', no_contact: '', needs_review: '', sensitive: '', age: '', since: '', until: '', outreach: 'all', league_role: '', league_relevance: '', team: '' };
+const initialFilters = { q: '', relationship: '', interest: '', confidence: '', priority: '', review_state: '', no_contact: '', needs_review: '', sensitive: '', age_operator: 'gt', age_value: '', since: '', until: '', outreach: 'all', league_role: '', league_relevance: '', team: '' };
 type ContactFilters = typeof initialFilters;
 type ContactFilterKey = keyof ContactFilters;
 
@@ -88,7 +88,7 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
   function selectFilter(key: ContactFilterKey, values: ContactFilters, onChange: (key: ContactFilterKey, value: string) => void) {
     return <label key={key}>{result?.filter_labels?.[key] || facets[key] || key}<select value={values[key]} onChange={e => onChange(key, e.target.value)} disabled={busy}><option value="">Todos</option>{key === 'priority' && <option value="__empty__">Sin asignar</option>}{(key === 'priority' ? ['Alta', 'Media', 'Baja'] : result?.facets[key] || []).map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
   }
-  const activeFilterCount = (Object.keys(initialFilters) as ContactFilterKey[]).filter(key => key !== 'q' && filters[key] !== initialFilters[key]).length;
+  const activeFilterCount = (Object.keys(initialFilters) as ContactFilterKey[]).filter(key => key !== 'q' && key !== 'age_operator' && filters[key] !== initialFilters[key]).length;
   const detailEvidence = detail ? Object.entries(detail.evidence).filter(([key]) => !['Ordinal', 'Chat ID', 'Teléfono', 'Contacto', 'Futbolista'].includes(key)) : [];
   return <div className="uvm-directory">
     <div className="uvm-directory-toolbar">
@@ -129,8 +129,8 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
           {(['confidence', 'priority', 'review_state'] as ContactFilterKey[]).map(key => selectFilter(key, filterDraft, draftFilter))}
           {Object.entries({ no_contact: 'Pidió no contactar', needs_review: 'Requiere revisión', sensitive: 'Caso sensible' }).map(([key, label]) => <label key={key}>{label}<select disabled={busy} value={filterDraft[key as ContactFilterKey]} onChange={e => draftFilter(key as ContactFilterKey, e.target.value)}><option value="">Todos</option><option value="true">Sí</option><option value="false">No</option></select></label>)}
         </div></section>
-        <section><div className="uvm-filter-section-heading"><h4>Actividad</h4><p>Los contactos aparecen del más reciente al más antiguo.</p></div><div className="uvm-filter-grid">
-          {result?.domain === 'academy' && <label>Edad mencionada<input value={filterDraft.age} onChange={e => draftFilter('age', e.target.value)} disabled={busy} placeholder="Texto registrado" /></label>}
+        <section><div className="uvm-filter-section-heading"><h4>Actividad</h4><p>Los contactos aparecen del más reciente al más antiguo.{result?.domain === 'academy' && ' La edad requiere un valor claro; no se infiere de categorías ni años de nacimiento.'}</p></div><div className="uvm-filter-grid">
+          {result?.domain === 'academy' && <><label>Edad mencionada<select value={filterDraft.age_operator} onChange={e => draftFilter('age_operator', e.target.value)} disabled={busy}><option value="gt">Mayor a</option><option value="lt">Menor a</option><option value="eq">Igual a</option></select></label><label>Años<input type="number" min="1" max="120" step="1" inputMode="numeric" value={filterDraft.age_value} onChange={e => draftFilter('age_value', e.target.value)} disabled={busy} placeholder="Ej. 12" /></label></>}
           <label>Última interacción desde<input type="date" value={filterDraft.since} onChange={e => draftFilter('since', e.target.value)} disabled={busy} /></label>
           <label>Última interacción hasta<input type="date" value={filterDraft.until} onChange={e => draftFilter('until', e.target.value)} disabled={busy} /></label>
         </div></section>
