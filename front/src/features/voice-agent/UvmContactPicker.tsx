@@ -173,7 +173,7 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
             <label>Prioridad<select value={edit.priority} disabled={busy} onChange={e => setEdit(v => ({ ...v, priority: e.target.value }))}><option value="">Sin asignar</option>{['Alta', 'Media', 'Baja'].map(v => <option key={v}>{v}</option>)}</select></label>
             <label>Notas del equipo<textarea maxLength={4000} rows={5} value={edit.notes} disabled={busy} onChange={e => setEdit(v => ({ ...v, notes: e.target.value }))} /></label>
             <label className="uvm-block-checkbox"><input type="checkbox" disabled={busy || detail.source_no_contact} checked={edit.manually_blocked || detail.source_no_contact} onChange={e => setEdit(v => ({ ...v, manually_blocked: e.target.checked }))} /><span><strong>No contactar</strong><small>Impide incluir este número en un envío.</small></span></label>
-            {detail.source_no_contact && <p className="uvm-detail-source-note">La exclusión viene del archivo original y no puede quitarse aquí.</p>}
+            {detail.source_no_contact && <p className="uvm-detail-source-note">El contacto pidió no recibir mensajes; esta exclusión no puede quitarse aquí.</p>}
           </aside>
         </div>
 
