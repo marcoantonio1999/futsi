@@ -35,6 +35,17 @@ def test_excel_names_and_reversed_columns():
     b = io.BytesIO(); w.save(b)
     assert import_recipients(file('n.xlsx', b.getvalue()))['names'] == {'5512345678': 'María López'}
 
+def test_excel_prefers_contacto_and_uses_other_name_columns_as_fallback():
+    w = Workbook()
+    w.active.append(['Teléfono', 'Nombre', 'Contacto'])
+    w.active.append([5512345678, 'Nombre genérico', 'María Contacto'])
+    w.active.append([5587654321, 'Luis Respaldo', None])
+    b = io.BytesIO(); w.save(b)
+    assert import_recipients(file('contactos.xlsx', b.getvalue()))['names'] == {
+        '5512345678': 'María Contacto',
+        '5587654321': 'Luis Respaldo',
+    }
+
 def test_chat_export_contact_headers_and_country_code_are_imported():
     w = Workbook()
     w.active.title = 'Conversaciones'

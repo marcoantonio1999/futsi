@@ -17,6 +17,7 @@ MAX_HEADER_ROWS = 25
 
 PHONE_HEADERS = {'telefono', 'telefonos', 'celular', 'numero', 'numeros', 'numero de contacto', 'whatsapp', 'phone'}
 NAME_HEADERS = {'nombre', 'nombre completo', 'nombre del contacto', 'name', 'contact name', 'contacto'}
+CONTACT_NAME_HEADERS = {'contacto', 'nombre del contacto', 'contact name'}
 FILTER_COLUMNS = {
     'campaign_status': {'estatus campana', 'estado campana'},
     'mutual_interaction': {'hubo interaccion de ambos lados', 'interaccion de ambos lados'},
@@ -204,6 +205,7 @@ def _find_columns(header_row):
     normalized = [_header(value) for value in header_row]
     phone_columns = [index for index, value in enumerate(normalized) if value in PHONE_HEADERS]
     name_columns = [index for index, value in enumerate(normalized) if value in NAME_HEADERS]
+    name_columns.sort(key=lambda index: normalized[index] not in CONTACT_NAME_HEADERS)
     metadata_columns = {}
     for key, aliases in FILTER_COLUMNS.items():
         match = next((index for index, value in enumerate(normalized) if value in aliases), None)
@@ -364,11 +366,14 @@ def import_recipients(file=None, text='', column=None, template_parameters=None)
         except ValueError:
             has_header = True
     data_start = header_index + 1 if has_header else header_index
-    name_column = name_columns[0] if has_header and name_columns else None
+    available_name_columns = name_columns if has_header else []
     names = {
-        row_number: row[name_column]
+        row_number: next(
+            (row[index] for index in available_name_columns if index < len(row) and _clean(row[index], 120)),
+            '',
+        )
         for row_number, row in enumerate(rows[data_start:], data_start + 1)
-        if name_column is not None and name_column < len(row)
+        if available_name_columns
     }
     metadata = {
         row_number: {
