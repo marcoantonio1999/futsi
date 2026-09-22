@@ -1,6 +1,23 @@
 import type { FileContact, FileFacets, FileProfile } from './FileContactFilters';
 
 export type RecipientParameters = Record<string, Record<string, string>>;
+export type TemplateParameter = { key: string; label: string; contact_name?: boolean };
+
+export const EMPTY_CONTACT_NAME_VALUE = '👋';
+
+export function missingRequiredRecipientFields(
+  phones: string[],
+  parameters: TemplateParameter[],
+  values: RecipientParameters,
+): number {
+  return phones.reduce((total, phone) => total + parameters.filter(parameter => (
+    !parameter.contact_name && !values[phone]?.[parameter.key]?.trim()
+  )).length, 0);
+}
+
+export function recipientPreviewValue(parameter: TemplateParameter, value: string | undefined, index: number): string {
+  return value?.trim() || (parameter.contact_name ? EMPTY_CONTACT_NAME_VALUE : parameter.label || `{{${index + 1}}}`);
+}
 
 export type BulkReview = {
   phones: string[];
