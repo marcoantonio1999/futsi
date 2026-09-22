@@ -164,5 +164,10 @@ export function compareConversations(a: WhatsAppConversation, b: WhatsAppConvers
   const difference = rank[left.key] - rank[right.key];
   if (difference) return difference;
   if (left.key === "needs_reply") return Date.parse(left.since ?? a.created_at) - Date.parse(right.since ?? b.created_at);
-  return Date.parse(b.last_message_at ?? b.created_at) - Date.parse(a.last_message_at ?? a.created_at);
+  return compareConversationsByRecency(a, b);
+}
+
+export function compareConversationsByRecency(a: WhatsAppConversation, b: WhatsAppConversation) {
+  const difference = Date.parse(b.last_message_at ?? b.created_at) - Date.parse(a.last_message_at ?? a.created_at);
+  return difference || b.id - a.id;
 }

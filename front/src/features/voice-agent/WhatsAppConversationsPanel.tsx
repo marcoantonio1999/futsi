@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowLeft, ChevronDown, MessageCircle, Search, Send, UserRound } from "lucide-react";
 import type { WhatsAppConversation, WhatsAppFollowUpAssignee } from "../../types";
-import { compareConversations, contactName, conversationAttention, lastMessage, matchesAttention, orderedMessages, messageAuthor, messagePreview, replyWindowOpen, type AttentionFilter } from "./communicationUtils";
+import { compareConversations, compareConversationsByRecency, contactName, conversationAttention, lastMessage, matchesAttention, orderedMessages, messageAuthor, messagePreview, replyWindowOpen, type AttentionFilter } from "./communicationUtils";
 import { MessageBody } from "./MessageBody";
 import { FollowUpEditor } from "./FollowUpEditor";
 import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } from "./model";
@@ -31,7 +31,7 @@ export function WhatsAppConversationsPanel({ conversations, assignees, initialFi
     const needle = query.trim().toLocaleLowerCase("es-MX");
     return matchesAttention(c, filter) &&
       (status === "all" || c.status === status) && (!needle || [contactName(c), c.contact_phone, c.site_name, c.follow_up_assigned_to_name, ...c.messages.map(m => m.body)].some(v => v?.toLocaleLowerCase("es-MX").includes(needle)));
-  }).sort(compareConversations), [conversations, filter, query, status]);
+  }).sort(filter === "all" ? compareConversationsByRecency : compareConversations), [conversations, filter, query, status]);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const list = listRef.current;

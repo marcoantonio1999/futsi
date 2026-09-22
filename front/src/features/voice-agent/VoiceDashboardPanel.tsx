@@ -59,22 +59,48 @@ export function VoiceDashboardPanel({
   const courtCommunicationsOnly = useContext(CourtCommunicationsOnlyContext);
   const canManageTrials = operationsRoles.has(user.role);
   const canReviewCalls = adminRoles.has(user.role);
+  const [inboxConversations, setInboxConversations] = useState(data.whatsappConversations);
+  useEffect(() => { setInboxConversations(data.whatsappConversations); }, [data.whatsappConversations]);
+  useEffect(() => {
+    if (section !== "whatsapp") return;
+    let active = true;
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void apiRequest<WhatsAppConversation[]>("/whatsapp-conversations/?scope=all", token)
+        .then(rows => { if (active) setInboxConversations(rows); })
+        .catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 10_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [section, token]);
+  const communicationsData = useMemo(
+    () => ({ ...data, whatsappConversations: inboxConversations }),
+    [data, inboxConversations],
+  );
   const permittedData = useMemo(() => {
-    if (user.role !== "site_coordinator") return data;
+    if (user.role !== "site_coordinator") return communicationsData;
     const primarySite = user.primary_site;
     return {
-      ...data,
-      sites: primarySite ? data.sites.filter((site) => site.id === primarySite) : [],
-      courts: primarySite ? data.courts.filter((court) => court.site === primarySite) : [],
-      trialBookings: primarySite ? data.trialBookings.filter((booking) => booking.site === primarySite) : [],
+      ...communicationsData,
+      sites: primarySite ? communicationsData.sites.filter((site) => site.id === primarySite) : [],
+      courts: primarySite ? communicationsData.courts.filter((court) => court.site === primarySite) : [],
+      trialBookings: primarySite ? communicationsData.trialBookings.filter((booking) => booking.site === primarySite) : [],
       whatsappConversations: primarySite
-        ? data.whatsappConversations.filter((conversation) => conversationSite(conversation) === primarySite)
+        ? communicationsData.whatsappConversations.filter((conversation) => conversationSite(conversation) === primarySite)
         : [],
       trialAvailabilityRules: primarySite
-        ? data.trialAvailabilityRules.filter((rule) => rule.site === primarySite)
+        ? communicationsData.trialAvailabilityRules.filter((rule) => rule.site === primarySite)
         : [],
     };
-  }, [data, user.primary_site, user.role]);
+  }, [communicationsData, user.primary_site, user.role]);
   const [selectedSite, setSelectedSite] = useState(user.role === "site_coordinator" ? String(user.primary_site ?? "unassigned") : "all");
   const [selectedAddress, setSelectedAddress] = useState("all");
   const [channels, setChannels] = useState<CommunicationChannel[]>([]);
@@ -163,10 +189,13 @@ export function VoiceDashboardPanel({
     conversation: WhatsAppConversation,
     body: string,
   ) {
-    await onCreateAndReturn<WhatsAppConversation>(
+    const saved = await onCreateAndReturn<WhatsAppConversation>(
       `/whatsapp-conversations/${conversation.id}/send-message/?scope=all`,
       { body },
     );
+    setInboxConversations(rows => rows.some(row => row.id === saved.id)
+      ? rows.map(row => row.id === saved.id ? saved : row)
+      : [saved, ...rows]);
   }
 
   if (!canManageTrials || (courtCommunicationsOnly && !isCourtCommunicationsSection(section))) return null;
@@ -240,7 +269,8 @@ export function VoiceDashboardPanel({
           conversations={voiceData.whatsappConversations}
           onSendMessage={sendWhatsAppMessage}
           onResolveConversation={async conversation => {
-            await onCreateAndReturn(`/whatsapp-conversations/${conversation.id}/resolve-attention/?scope=all`, { last_message_id: lastMessage(conversation)?.id });
+            const saved = await onCreateAndReturn<WhatsAppConversation>(`/whatsapp-conversations/${conversation.id}/resolve-attention/?scope=all`, { last_message_id: lastMessage(conversation)?.id });
+            setInboxConversations(rows => rows.map(row => row.id === saved.id ? saved : row));
           }}
           onUpdateConversation={updateWhatsAppConversation}
         />

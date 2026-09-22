@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareConversations, conversationAttention, matchesAttention, contactName, durationLabel, isClosingAcknowledgement, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
+import { compareConversations, compareConversationsByRecency, conversationAttention, matchesAttention, contactName, durationLabel, isClosingAcknowledgement, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
 import { templateStatusMeta } from "../src/features/voice-agent/veronicaTemplateStatus.ts";
 import { normalizeBulkReview } from "../src/features/voice-agent/bulkReview.ts";
 
@@ -136,6 +136,12 @@ test("priority ordering keeps unanswered customers ahead of reminders and client
   const c3 = chat([msg(3, "outbound", "human_whatsapp", "12")], { id: 3, follow_up_required: true });
   const c4 = chat([msg(4, "outbound", "human_dashboard", "13")], { id: 4 });
   assert.deepEqual([c4, c3, c1, c2].sort(compareConversations).map(c => c.id), [2, 1, 3, 4]);
+});
+
+test("the all filter can order every conversation strictly by latest activity", () => {
+  const olderUnanswered = chat([msg(1, "inbound", "unknown", "10")], { id: 1, last_message_at: "2026-09-21T10:00:00Z" });
+  const newerAnswered = chat([msg(2, "outbound", "human_dashboard", "12")], { id: 2, last_message_at: "2026-09-21T12:00:00Z" });
+  assert.deepEqual([olderUnanswered, newerAnswered].sort(compareConversationsByRecency).map(c => c.id), [2, 1]);
 });
 
 test("a reaction does not create an unanswered customer message", () => {
