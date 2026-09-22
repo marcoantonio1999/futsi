@@ -125,9 +125,11 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   useEffect(() => { stepHeadingRef.current?.focus(); }, [step, processing]);
   useEffect(() => {
     setPollError('');
-    if (!channel) {
-      setJobs([]);
-      setJobsMore(false);
+    if (!channel || (!historyView && !activeId)) {
+      if (!historyView) {
+        setJobs([]);
+        setJobsMore(false);
+      }
       return;
     }
     let disposed = false;
@@ -145,7 +147,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 5000);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [base, token, channel, activeId, offset, jobsPage]);
+  }, [base, token, channel, activeId, offset, jobsPage, historyView]);
   async function loadTemplates(after = '') {
     const generation = catalogGeneration.current;
     if (!after) setCatalogLoading(true);
@@ -186,7 +188,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     loadReview({ ...fileReview, phones, names, count: phones.length });
     setStep(3); setError('');
   }
-  function newJob() { setJob(null); setConsent(false); setOffset(0); invalidate(); setStep(1); setHistoryOpen(false); setError(''); }
+  function newJob() { setJob(null); setConsent(false); setOffset(0); invalidate(); setStep(1); setHistoryOpen(false); setError(''); setPollError(''); }
   function closeConfirmation() { if (!busy) { setJob(null); setConsent(false); setError(''); } }
   const previewPhone = review?.phones[0];
   const previewText = selected ? selectedParameters.reduce((message, parameter, index) => {
@@ -205,7 +207,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   return <section className="bulk-templates">
     <header className="bulk-heading"><div><p>Comunicaciones / {kind === 'veronica' ? 'Verónica' : 'Canchas'} / Envíos masivos</p><h2>{view === 'history' ? 'Historial de envíos' : 'Envío masivo de plantillas'}</h2></div><div className="bulk-actions">{view === 'history' && job && <button onClick={() => { setJob(null); setOffset(0); setError(''); }} disabled={busy}>Volver al historial</button>}{view === 'create' && processing && <button onClick={newJob} disabled={busy}>Nuevo envío</button>}{kind === 'veronica' && view === 'create' && <button aria-expanded={historyOpen} onClick={() => setHistoryOpen(v => !v)}>Lotes anteriores</button>}</div></header>
     {error && !draft && <div role="alert" className="bulk-alert error">{error}</div>}
-    {pollError && <div role="alert" className="bulk-alert error">No se pudo actualizar el avance. Lo mostrado puede estar desactualizado. {pollError}</div>}
+    {pollError && (historyView || processing) && <div role="alert" className="bulk-alert error">No se pudo actualizar el avance. Lo mostrado puede estar desactualizado. {pollError}</div>}
     {!historyView && !processing ? <div className={`bulk-workspace ${step === 2 ? 'bulk-workspace-single' : ''}`}><div className="bulk-wizard">
       {step === 1 && setupLoading && <section className="bulk-card bulk-setup-skeleton" aria-busy="true"><span className="bulk-visually-hidden" role="status">Cargando canales y plantillas disponibles…</span><header className="bulk-step-heading" aria-hidden="true"><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></header><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label wide" /><div className="bulk-skeleton-options"><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /></div></div><i className="bulk-skeleton action" aria-hidden="true" /></section>}
       {step === 1 && !setupLoading && <section className="bulk-card"><header className="bulk-step-heading"><h3 ref={stepHeadingRef} tabIndex={-1}>Configura el envío</h3><span>Paso 1 de 3 · Plantilla y destinatarios</span></header>
