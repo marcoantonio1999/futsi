@@ -47,8 +47,9 @@
 .bulk-source-tabs button { white-space:nowrap; }
 .bulk-recipient-choice { display:grid; gap:7px; padding-top:2px; }
 .bulk-recipient-choice>strong { font-size:12px; }
-.bulk-recipient-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
-.bulk-recipient-options button { min-width:0; white-space:normal; }
+.bulk-recipient-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+.bulk-templates .bulk-recipient-options button { min-width:0; min-height:56px; white-space:normal; background:var(--comm-panel, white); color:inherit; font-size:15px; }
+.bulk-templates .bulk-recipient-options button:not(:disabled):hover, .bulk-templates .bulk-recipient-options button:focus-visible { background:#087b55; border-color:#087b55; color:white; }
 .bulk-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
 .bulk-preview { display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:0; padding:12px; border:1px solid #cbd8d2; border-radius:12px; background:var(--comm-panel,white); }
 .bulk-preview>header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 2px 10px; }
@@ -107,6 +108,8 @@
 .dark .bulk-file-filters { background:#1d3328; }
 .dark .bulk-templates .bulk-template-choice[aria-pressed=true] { background:#213a2d; }
 .dark .bulk-template-choice small { color:#b8d4c3; }
+.dark .bulk-templates .bulk-recipient-options button { background:#172820; }
+.dark .bulk-templates .bulk-recipient-options button:not(:disabled):hover, .dark .bulk-templates .bulk-recipient-options button:focus-visible { background:#087b55; }
 .dark .bulk-preview { background:#172820; border-color:#3c574a; }
 .dark .bulk-phone { border-color:#3c574a; }
 .dark .bulk-phone-chat { background-color:#202923; background-image:radial-gradient(circle at 18px 18px,#d6eadf10 1.2px,transparent 1.5px); }
