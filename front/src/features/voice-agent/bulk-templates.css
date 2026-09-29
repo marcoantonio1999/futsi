@@ -8,8 +8,6 @@
 .bulk-templates button { padding:8px 12px; border:1px solid #a4b9ad; border-radius:7px; font-size:12px; font-weight:650; min-height:38px; background:var(--comm-panel, white); }
 .bulk-templates button:disabled { opacity:.5; cursor:not-allowed; } .bulk-templates button:not(:disabled):hover { border-color:#007951; }
 .bulk-templates .primary, .bulk-tabs button[aria-pressed=true] { background:#087b55; color:white; border-color:#087b55; }
-.bulk-selected-channel { margin:0; color:#527064; font-size:13px; }
-.bulk-selected-channel strong { color:var(--comm-text, #193c30); }
 .bulk-template-choices { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
 .bulk-templates .bulk-template-choice { display:grid; align-content:start; gap:6px; min-height:100px; padding:14px 16px; text-align:left; border:1px solid #a4b9ad; border-radius:10px; }
 .bulk-template-choice strong { font-size:16px; line-height:1.25; text-transform:capitalize; overflow-wrap:anywhere; }
@@ -107,7 +105,6 @@
 .bulk-filter-result div:first-child { display:grid; gap:4px; }
 .bulk-filter-result span { color:#7a3a25; font-size:.9rem; }
 .dark .bulk-file-filters { background:#1d3328; }
-.dark .bulk-selected-channel strong { color:#e2eee7; }
 .dark .bulk-templates .bulk-template-choice[aria-pressed=true] { background:#213a2d; }
 .dark .bulk-template-choice small { color:#b8d4c3; }
 .dark .bulk-preview { background:#172820; border-color:#3c574a; }
