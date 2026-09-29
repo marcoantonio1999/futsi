@@ -200,6 +200,7 @@ export type WhatsAppWeeklyStats = {
   business_hours: WhatsAppResponseStatsSummary;
   outside_business_hours: WhatsAppResponseStatsSummary;
   classifications: {
+    unclassified: number;
     prospect: number;
     current_client: number;
     ambiguous: number;
@@ -217,7 +218,7 @@ export type WhatsAppWeeklyStats = {
     contact_name: string;
     contact_phone: string;
     contact_type: "unclassified" | "prospect" | "current_client" | "ambiguous";
-    within_business_hours: boolean;
+    within_business_hours: boolean | null;
     first_inbound_at: string;
     responded_at: string | null;
     response_seconds: number;

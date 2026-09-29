@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from statistics import median
+from types import SimpleNamespace
 
 from django.conf import settings
 from django.db import models, transaction
@@ -37,6 +38,7 @@ from core.models import (
     WhatsAppMessage,
     WhatsAppMessageDirection,
     WhatsAppResponseSource,
+    WhatsAppRoutingDecision,
     User,
 )
 from core.permissions import ADMIN_ROLES, IsAdminRole
@@ -80,6 +82,79 @@ def _response_event_summary(events):
         "within_30_minutes_percent": percentage_within(30 * 60),
         "within_60_minutes_percent": percentage_within(60 * 60),
     }
+
+
+def _manual_response_events(conversations, recorded_events, start_at, end_at):
+    """Recover manual-only conversations that predate response-event tracking.
+
+    Consecutive incoming messages are one request; the first human reply closes it.
+    Conversations with recorded events are left to the event source of truth.
+    """
+    recorded_conversations = {event.conversation_id for event in recorded_events}
+    messages = (
+        WhatsAppMessage.objects.filter(
+            conversation__in=conversations,
+            created_at__gte=start_at,
+            created_at__lt=end_at,
+        )
+        .exclude(conversation_id__in=recorded_conversations)
+        .select_related("conversation", "conversation__booking", "sent_by")
+        .defer("body", "classification_evidence")
+        .order_by("conversation_id", "created_at", "id")
+    )
+    recovered = []
+    pending = None
+    conversation_id = None
+
+    def append_request(inbound, reply=None):
+        recovered.append(
+            SimpleNamespace(
+                id=-inbound.id,
+                conversation_id=inbound.conversation_id,
+                conversation=inbound.conversation,
+                contact_type=inbound.contact_type,
+                within_business_hours=inbound.within_business_hours,
+                first_inbound_at=inbound.created_at,
+                responded_at=reply.created_at if reply else None,
+                response_seconds=(
+                    max(0, int((reply.created_at - inbound.created_at).total_seconds()))
+                    if reply else None
+                ),
+                responder_user_id=reply.sent_by_id if reply else None,
+                responder_user=reply.sent_by if reply else None,
+                response_channel=(
+                    WhatsAppHumanResponseChannel.DASHBOARD
+                    if reply and reply.response_source == WhatsAppResponseSource.HUMAN_DASHBOARD
+                    else WhatsAppHumanResponseChannel.WHATSAPP_BUSINESS
+                    if reply else WhatsAppHumanResponseChannel.NONE
+                ),
+            )
+        )
+
+    for message in messages.iterator():
+        if message.conversation_id != conversation_id:
+            if pending is not None:
+                append_request(pending)
+            conversation_id = message.conversation_id
+            pending = None
+        if message.direction == WhatsAppMessageDirection.INBOUND:
+            if (
+                pending is None
+                and message.routing_decision == WhatsAppRoutingDecision.UNCLASSIFIED
+            ):
+                pending = message
+        elif message.response_source in (
+            WhatsAppResponseSource.HUMAN_DASHBOARD,
+            WhatsAppResponseSource.HUMAN_WHATSAPP,
+        ):
+            if pending is not None:
+                append_request(pending, message)
+                pending = None
+        elif message.response_source == WhatsAppResponseSource.BOT:
+            pending = None
+    if pending is not None:
+        append_request(pending)
+    return recovered
 
 
 def _contact_display_name(conversation):
@@ -785,6 +860,7 @@ class WhatsAppConversationViewSet(
             )
             .order_by("first_inbound_at", "id")
         )
+        events.extend(_manual_response_events(conversations, events, start_at, end_at))
 
         responder_groups = {}
         for event in events:
@@ -851,6 +927,7 @@ class WhatsAppConversationViewSet(
         longest_waits.sort(key=lambda item: item["response_seconds"], reverse=True)
 
         classifications = {
+            WhatsAppContactType.UNCLASSIFIED: 0,
             WhatsAppContactType.PROSPECT: 0,
             WhatsAppContactType.CURRENT_CLIENT: 0,
             WhatsAppContactType.AMBIGUOUS: 0,
@@ -862,7 +939,6 @@ class WhatsAppConversationViewSet(
                 created_at__gte=start_at,
                 created_at__lt=end_at,
             )
-            .exclude(contact_type=WhatsAppContactType.UNCLASSIFIED)
             .values("contact_type")
             .annotate(total=models.Count("id"))
         )
@@ -879,7 +955,7 @@ class WhatsAppConversationViewSet(
                     [event for event in events if event.within_business_hours]
                 ),
                 "outside_business_hours": _response_event_summary(
-                    [event for event in events if not event.within_business_hours]
+                    [event for event in events if event.within_business_hours is False]
                 ),
                 "classifications": classifications,
                 "by_responder": by_responder,

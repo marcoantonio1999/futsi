@@ -830,6 +830,7 @@ def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client):
     assert data["business_hours"]["total"] == 2
     assert data["outside_business_hours"]["total"] == 2
     assert data["classifications"] == {
+        "unclassified": 0,
         "prospect": 0,
         "current_client": 2,
         "ambiguous": 2,
@@ -838,6 +839,77 @@ def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client):
     assert data["by_responder"][0]["answered"] == 3
     assert len(data["longest_waits"]) == 4
     assert data["longest_waits"][0]["responded_at"] is None
+
+
+def test_weekly_whatsapp_stats_recovers_manual_channel_without_events(auth_client):
+    now = timezone.now()
+    conversation = WhatsAppConversation.objects.create(
+        contact_phone="+525500000111",
+        from_address="whatsapp:+525500000111",
+        to_address=f"whatsapp:{WHATSAPP_NUMBER}",
+        status="active",
+        current_step="faq",
+        last_message_at=now,
+    )
+
+    def add_message(direction, minutes_ago, source="unknown"):
+        message = WhatsAppMessage.objects.create(
+            conversation=conversation,
+            direction=direction,
+            body="Mensaje de prueba",
+            response_source=source,
+        )
+        WhatsAppMessage.objects.filter(pk=message.pk).update(
+            created_at=now - timedelta(minutes=minutes_ago),
+        )
+        return message
+
+    add_message("inbound", 15)
+    add_message("inbound", 14)
+    add_message("outbound", 10, "human_whatsapp")
+    add_message("inbound", 5)
+    client, _payload_data, _user = auth_client(role="admin")
+
+    response = client.get("/api/whatsapp-conversations/weekly-stats/")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["summary"]["total"] == 2
+    assert data["summary"]["answered"] == 1
+    assert data["summary"]["unanswered"] == 1
+    assert data["summary"]["average_response_seconds"] == 300
+    assert data["classifications"]["unclassified"] == 3
+    assert data["by_responder"][0]["name"] == "Equipo vía WhatsApp Business"
+    assert data["business_hours"]["total"] == 0
+    assert data["outside_business_hours"]["total"] == 0
+
+
+def test_weekly_whatsapp_stats_does_not_recover_bot_handled_message(auth_client):
+    conversation = WhatsAppConversation.objects.create(
+        contact_phone="+525500000112",
+        from_address="whatsapp:+525500000112",
+        to_address=f"whatsapp:{WHATSAPP_NUMBER}",
+        status="active",
+        current_step="faq",
+        last_message_at=timezone.now(),
+    )
+    WhatsAppMessage.objects.create(
+        conversation=conversation,
+        direction="inbound",
+        body="Hola",
+    )
+    WhatsAppMessage.objects.create(
+        conversation=conversation,
+        direction="outbound",
+        body="Hola, soy el asistente",
+        response_source="bot",
+    )
+    client, _payload_data, _user = auth_client(role="admin")
+
+    response = client.get("/api/whatsapp-conversations/weekly-stats/")
+
+    assert response.status_code == 200
+    assert response.json()["summary"]["total"] == 0
 
 
 @override_settings(
