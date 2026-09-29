@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, FileSpreadsheet, MessageSquareText, UsersRound } from "lucide-react";
 import { downloadApiFile } from "../../api";
+import { isSoccerWa } from "../../appBrand";
 import type { WhatsAppConversation } from "../../types";
 import { primaryButtonClass } from "./model";
 
@@ -23,7 +24,7 @@ export function ChatExportPanel({ token, scopeQuery, conversations }: {
       await downloadApiFile(
         `/whatsapp-conversations/export/?${scopeQuery}`,
         token,
-        `chats-whatsapp-futsi-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        `chats-whatsapp-${isSoccerWa ? "soccerwa" : "futsi"}-${new Date().toISOString().slice(0, 10)}.xlsx`,
       );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo generar el Excel.");
@@ -38,8 +39,8 @@ export function ChatExportPanel({ token, scopeQuery, conversations }: {
       <div className="chat-export-copy">
         <h4>El Excel incluye dos pestañas</h4>
         <ul>
-          <li><strong>Conversaciones:</strong> todos los contactos guardados en FUTSI, con número de atención, sede, teléfono, nombre y cantidades de mensajes recibidos y enviados.</li>
-          <li><strong>Mensajes:</strong> los mensajes almacenados individualmente en FUTSI, una fila por mensaje, con fecha, dirección, texto y estado.</li>
+          <li><strong>Conversaciones:</strong> todos los contactos guardados en {isSoccerWa ? "Soccer WA" : "FUTSI"}, con número de atención, sede, teléfono, nombre y cantidades de mensajes recibidos y enviados.</li>
+          <li><strong>Mensajes:</strong> los mensajes almacenados individualmente en {isSoccerWa ? "Soccer WA" : "FUTSI"}, una fila por mensaje, con fecha, dirección, texto y estado.</li>
         </ul>
         <p>Si eliges “Todas las sedes” y “Todos los números”, se exportará todo el historial disponible.</p>
       </div>

@@ -15,6 +15,13 @@ def is_court_communications_only(user):
     return bool(user and user.is_authenticated and COURT_COMMUNICATIONS_ONLY in (user.section_permissions or []))
 
 
+def can_use_soccer_wa(user):
+    return bool(user and user.is_authenticated and (
+        user.role in {"admin", "owner", "dev", "site_coordinator"}
+        or (user.role == "collaborator" and is_veronica_only(user))
+    ))
+
+
 def court_communications_allowed_channels(user):
     if not is_court_communications_only(user):
         return None

@@ -1,3 +1,4 @@
+import { isSoccerWa } from "../../appBrand";
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../../api';
 import { formatWhatsAppTemplateCategory } from './model';
@@ -76,7 +77,7 @@ export function ConnectionsPanel({ token, veronicaOnly = false }: { token: strin
   const needle = search.trim().toLocaleLowerCase('es-MX');
   const visible = templates.filter(t => (filter === 'all' || t.status.toUpperCase() === filter) && `${t.name} ${t.text}`.toLocaleLowerCase('es-MX').includes(needle));
   return <section className="connections-panel">
-    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones</p><h2>Conexiones</h2><p>Números vinculados a Futsi y sus plantillas en Dualhook.</p></div><button disabled={loading} onClick={() => setRetry(n => n+1)}>Actualizar conexiones</button></header>
+    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones</p><h2>Conexiones</h2><p>Números vinculados a {isSoccerWa ? "Soccer WA" : "Futsi"} y sus plantillas en Dualhook.</p></div><button disabled={loading} onClick={() => setRetry(n => n+1)}>Actualizar conexiones</button></header>
     {loading && <p role="status">Consultando números en Dualhook…</p>}
     {errors.map(error => <p key={error} className="comm-error" role="alert">{error}</p>)}
     {!loading && !connections.length && !errors.length && <p>No hay números configurados para tu acceso.</p>}

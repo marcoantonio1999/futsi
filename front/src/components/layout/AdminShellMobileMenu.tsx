@@ -1,4 +1,5 @@
 import { SitesSubmenu } from "../views/sitesNavigation";
+import { isSoccerWa } from "../../appBrand";
 import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
 import { ChevronDown, LogOut, X } from "lucide-react";
@@ -76,7 +77,7 @@ export function AdminShellMobileMenu({
       >
         <div className="flex shrink-0 items-center justify-between">
           <div className="flex items-center gap-2">
-            <img className="h-10 w-10 rounded-full object-cover" src="./favicon.png" alt="Futsi" />
+            <img className={isSoccerWa ? "h-10 w-10 object-contain" : "h-10 w-10 rounded-full object-cover"} src={isSoccerWa ? "./soccer-wa-logo.png" : "./favicon.png"} alt={isSoccerWa ? "Soccer WA" : "Futsi"} />
             <div>
               <p className="font-semibold">{shellTone.appName}</p>
               <p className="text-xs text-zinc-500">{shellTone.subtitle}</p>

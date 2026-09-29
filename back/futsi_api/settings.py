@@ -255,6 +255,7 @@ for required_origin in (
     "https://marcoantonio1999.github.io",
     "https://futsi-web.onrender.com",
     "https://futsi.bpoweracademy.mx",
+    "https://soccerwa.bpoweracademy.mx",
 ):
     if required_origin not in CORS_ALLOWED_ORIGINS:
         CORS_ALLOWED_ORIGINS.append(required_origin)

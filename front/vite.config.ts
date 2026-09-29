@@ -4,7 +4,19 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || "/",
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), {
+    name: "soccer-wa-document-brand",
+    transformIndexHtml(html) {
+      if (process.env.VITE_APP_BRAND !== "soccerwa") return html;
+      return html
+        .replace('<link rel="manifest" href="./manifest.webmanifest" />', "")
+        .replace('./favicon.png', './soccer-wa-logo.png')
+        .replace('<link rel="apple-touch-icon" href="./icon-192.png" />', "")
+        .replace('<title>Futsi Mini ERP</title>', '<title>Soccer WA</title>')
+        .replace('./logo-futsi.png', './soccer-wa-logo.png')
+        .replace('alt="Futsi"', 'alt="Soccer WA"');
+    },
+  }],
   build: {
     rollupOptions: {
       output: {

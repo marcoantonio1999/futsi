@@ -1,3 +1,4 @@
+import { isSoccerWa } from "../../appBrand";
 import type { WhatsAppMessage, WhatsAppConversation, WhatsAppWeeklyStats } from "../../types";
 
 export function contactName(conversation: WhatsAppConversation) {
@@ -6,7 +7,7 @@ export function contactName(conversation: WhatsAppConversation) {
 export function messageAuthor(message: WhatsAppMessage) {
   if (message.direction === "inbound") return "Contacto";
   if (message.response_source === "bot") return "Asistente";
-  if (message.response_source === "human_dashboard") return message.sent_by_name || "Equipo · Futsi";
+  if (message.response_source === "human_dashboard") return message.sent_by_name || `Equipo · ${isSoccerWa ? "Soccer WA" : "Futsi"}`;
   if (message.response_source === "human_whatsapp") return message.sent_by_name || "Equipo · WhatsApp";
   return "Salida · autor no identificado";
 }

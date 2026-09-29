@@ -31,6 +31,30 @@ def test_login_rotates_existing_token_and_rejects_previous_token(api_client):
     assert api_client.get("/api/auth/me/").status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("role", "section_permissions", "allowed"),
+    [
+        ("admin", [], True),
+        ("site_coordinator", ["court_communications_only"], True),
+        ("collaborator", ["veronica_only"], True),
+        ("collaborator", [], False),
+        ("coach", [], False),
+        ("guardian", [], False),
+    ],
+)
+def test_soccer_wa_login_requires_communications_access(api_client, role, section_permissions, allowed):
+    user = make_user(role=role, section_permissions=section_permissions)
+
+    response = api_client.post(
+        "/api/auth/login/",
+        {"username": user.username, "password": "test12345", "application": "soccerwa"},
+        format="json",
+    )
+
+    assert response.status_code == (200 if allowed else 403)
+    assert Token.objects.filter(user=user).exists() is allowed
+
+
 def test_expired_token_is_rejected_and_deleted(api_client):
     user = make_user(role="admin")
     token = Token.objects.create(user=user)

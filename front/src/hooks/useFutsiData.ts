@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { API_URL, ApiError, apiFormRequest, apiRequest, downloadApiFile } from "../api";
+import { isSoccerWa } from "../appBrand";
 import { emptyData } from "../appState";
 import type {
   AppData,
@@ -96,7 +97,7 @@ export function useFutsiData() {
     fetch(`${API_URL}/auth/login/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: localAutoLoginUsername, password: localAutoLoginPassword }),
+      body: JSON.stringify({ username: localAutoLoginUsername, password: localAutoLoginPassword, ...(isSoccerWa ? { application: "soccerwa" } : {}) }),
     })
       .then(async (response) => {
         const body = await response.json();

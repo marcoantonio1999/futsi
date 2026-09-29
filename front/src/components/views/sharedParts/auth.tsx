@@ -32,6 +32,7 @@ import { PaymentMethodDonut } from "../../charts/PaymentMethodDonut";
 import { PendingBySiteChart } from "../../charts/PendingBySiteChart";
 import { StudentStatusDonut } from "../../charts/StudentStatusDonut";
 import { API_URL } from "../../../api";
+import { isSoccerWa } from "../../../appBrand";
 import { roleLabels, statusLabels } from "../../../appState";
 import { money } from "../../../utils/format";
 import type { AccountingSiteRow, AppData, AttendanceRecord, AttendanceSession, CashMovementType, Charge, ChargeStatus, Discount, Expense, ExpenseStatus, FaceRecognitionResponse, Guardian, HistoricalDiscrepancyReport, HistoricalImport, Invoice, Match, Payment, PaymentMethod, PaymentStatus, Player, PlayerAttendanceRecord, Role, Site, StaffPaymentKind, StaffPaymentRequest, StaffPaymentStatus, StandingRow, Student, StudentAssessment, Team, ThemeMode, User } from "../../../types";
@@ -54,13 +55,13 @@ export function LoginForm({ onLogin, className = "", variant = "default" }: { on
       const response = await fetch(`${API_URL}/auth/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({ username: username.trim(), password, ...(isSoccerWa ? { application: "soccerwa" } : {}) }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail ?? "No se pudo iniciar sesión. Revisa tu usuario y contraseña.");
       onLogin(body.token, body.user);
     } catch (err) {
-      setError(err instanceof TypeError ? "No pudimos conectar con Futsi. Inténtalo de nuevo en unos momentos." : err instanceof Error ? err.message : "No se pudo iniciar sesión. Inténtalo de nuevo.");
+      setError(err instanceof TypeError ? `No pudimos conectar con ${isSoccerWa ? "Soccer WA" : "Futsi"}. Inténtalo de nuevo en unos momentos.` : err instanceof Error ? err.message : "No se pudo iniciar sesión. Inténtalo de nuevo.");
     } finally {
       setLoading(false);
     }
@@ -76,8 +77,9 @@ export function LoginForm({ onLogin, className = "", variant = "default" }: { on
         </>
       ) : (
         <div className="flex items-center gap-3">
-          <img className="h-12 w-12 rounded-md object-cover" src="./favicon.png" alt="Futsi" />
-          <div><p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Futsi</p><h1 id="login-title" className="text-xl font-semibold">Iniciar sesión</h1></div>
+          <img className={isSoccerWa ? "h-auto w-48 object-contain" : "h-12 w-12 rounded-md object-cover"} src={isSoccerWa ? "./soccer-wa-logo.png" : "./favicon.png"} alt={isSoccerWa ? "Soccer WA" : "Futsi"} />
+          {!isSoccerWa && <div><p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Futsi</p><h1 id="login-title" className="text-xl font-semibold">Iniciar sesión</h1></div>}
+          {isSoccerWa && <h1 id="login-title" className="sr-only">Iniciar sesión en Soccer WA</h1>}
         </div>
       )}
       <label className={`${isLanding ? "" : "mt-6"} block text-sm font-medium`} htmlFor="username">Usuario</label>
@@ -92,7 +94,7 @@ export function LoginForm({ onLogin, className = "", variant = "default" }: { on
       {error && <p id="login-error" role="alert" className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
       <button type="submit" data-testid="login-submit" className={`mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500 ${isLanding ? "welcome-login-submit" : ""}`} disabled={loading}>
         {loading ? <LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : null}
-        {loading ? "Entrando…" : "Entrar a Futsi"}
+        {loading ? "Entrando…" : `Entrar a ${isSoccerWa ? "Soccer WA" : "Futsi"}`}
         {!loading ? <ArrowRight size={16} aria-hidden="true" /> : null}
       </button>
       {isLanding ? <p className="welcome-login-note"><Shield size={12} aria-hidden="true" /> Acceso para miembros de tu academia</p> : null}

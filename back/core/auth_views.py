@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import User
+from core.veronica_access import can_use_soccer_wa
 
 from .serializers import UserSerializer
 
@@ -33,6 +34,11 @@ class LoginView(APIView):
             return Response({"detail": "Usuario o password incorrecto."}, status=status.HTTP_400_BAD_REQUEST)
         if not user.is_active:
             return Response({"detail": "Usuario inactivo."}, status=status.HTTP_403_FORBIDDEN)
+        application = str(request.data.get("application") or "").strip().lower()
+        if application not in {"", "soccerwa"}:
+            return Response({"detail": "Aplicación no reconocida."}, status=status.HTTP_400_BAD_REQUEST)
+        if application == "soccerwa" and not can_use_soccer_wa(user):
+            return Response({"detail": "Esta cuenta no tiene acceso a Soccer WA."}, status=status.HTTP_403_FORBIDDEN)
 
         Token.objects.filter(user=user).delete()
         token = Token.objects.create(user=user)

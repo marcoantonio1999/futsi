@@ -1,4 +1,5 @@
 import { SitesProvider } from "../views/sitesNavigation";
+import { isSoccerWa } from "../../appBrand";
 import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CourtCommunicationsOnlyContext, VeronicaOnlyContext, isCourtCommunicationsSection, isVeronicaSection } from '../../features/voice-agent/CommunicationsAccess';
 import { VeronicaPanel } from '../../features/voice-agent/VeronicaPanel';
@@ -61,7 +62,7 @@ export function AdminShell({
 }: AdminShellProps) {
   const veronicaOnly = user.section_permissions?.includes('veronica_only') ?? false;
   const courtCommunicationsOnly = user.section_permissions?.includes('court_communications_only') ?? false;
-  const communicationsOnly = veronicaOnly || courtCommunicationsOnly;
+  const communicationsOnly = veronicaOnly || courtCommunicationsOnly || isSoccerWa;
   const [activeTab, setActiveTab] = useState<TabKey>(() => communicationsOnly ? 'communications' : (user.role === "cashier" ? "billing" : "dashboard"));
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
   const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
@@ -113,9 +114,11 @@ export function AdminShell({
   const effectiveActiveTabMeta = sidebarTabs.find((tab) => tab.key === effectiveActiveTab) ?? visibleTabs.find((tab) => tab.key === effectiveActiveTab);
   const scopedData = useMemo(() => (businessScope === "adult" ? adultLeagueData(data) : academyData(data)), [businessScope, data]);
   const canSeeAdultDashboard = visibleTabs.some((tab) => tab.key === "adult-dashboard");
-  const canToggleAdultDashboard = canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
+  const canToggleAdultDashboard = !isSoccerWa && canSeeAdultDashboard && user.role !== "adult_representative" && user.role !== "adult_player";
   const isFirstSectionLoad = sectionLoading === effectiveActiveTab && !loadedSections.includes(effectiveActiveTab);
-  const shellTone = shellToneForScope(businessScope);
+  const shellTone = isSoccerWa
+    ? { ...shellToneForScope("academy"), appName: "Soccer WA", subtitle: "Comunicaciones y llamadas", menuTitle: "Soccer WA" }
+    : shellToneForScope(businessScope);
   const showBillingSubsections = businessScope === "academy";
   const canProgramBilling = showBillingSubsections && user.role !== "cashier";
 
@@ -139,6 +142,11 @@ export function AdminShell({
     if (courtCommunicationsOnly) {
       setActiveTab('communications'); setBusinessScope('academy');
       setCommunicationsSection('whatsapp'); setCommunicationsMenuExpanded(true);
+      return;
+    }
+    if (isSoccerWa) {
+      setActiveTab('communications'); setBusinessScope('academy');
+      setCommunicationsSection('summary'); setCommunicationsMenuExpanded(true);
       return;
     }
     if (user.role === "adult_representative" || user.role === "adult_player") {

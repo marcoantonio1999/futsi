@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { canUseSoccerWa, isSoccerWa } from "./appBrand";
 import { LogOut, RefreshCw } from "lucide-react";
 import { roleLabels } from "./appState";
 import { AppSkeleton } from "./components/loading/AppSkeleton";
@@ -8,6 +9,7 @@ import { useThemeMode } from "./hooks/useThemeMode";
 import type { AttendanceRecord, AttendanceSession, FaceRecognitionResponse } from "./types";
 
 const FutsiLanding = lazy(() => import("./components/landing/FutsiLanding").then((module) => ({ default: module.FutsiLanding })));
+const SoccerWaLogin = lazy(() => import("./components/views/sharedParts/auth").then((module) => ({ default: module.LoginScreen })));
 const GuardianPortal = lazy(() => import("./components/views/guardian").then((module) => ({ default: module.GuardianPortal })));
 const AccountingPortal = lazy(() => import("./components/views/accounting").then((module) => ({ default: module.AccountingPortal })));
 const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults").then((module) => ({ default: module.AdultLeagueDashboardPanel })));
@@ -60,13 +62,19 @@ export default function App() {
     return (
       <>
         <Suspense fallback={<LandingFallback />}>
-          <FutsiLanding onLogin={handleLogin} theme={theme} onToggleTheme={toggleTheme} />
+          {isSoccerWa
+            ? <SoccerWaLogin onLogin={handleLogin} />
+            : <FutsiLanding onLogin={handleLogin} theme={theme} onToggleTheme={toggleTheme} />}
         </Suspense>
       </>
     );
   }
 
   const hasCustomSectionPermissions = Boolean(currentUser.section_permissions?.length);
+
+  if (isSoccerWa && !canUseSoccerWa(currentUser)) {
+    return <main className="grid min-h-screen place-items-center bg-stone-50 px-5 text-zinc-950"><section className="max-w-sm text-center"><img src="./soccer-wa-logo.png" alt="Soccer WA" className="mx-auto mb-6 w-64" /><h1 className="text-xl font-semibold">Sin acceso a Comunicaciones</h1><p className="mt-2 text-sm text-zinc-600">Esta cuenta no tiene permiso para entrar a Soccer WA.</p><button type="button" onClick={logout} className="mt-5 rounded-md bg-emerald-800 px-5 py-2 text-white">Salir</button></section></main>;
+  }
 
 
   if (currentUser.role === "guardian") {

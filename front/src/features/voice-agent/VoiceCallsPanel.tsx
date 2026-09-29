@@ -1,3 +1,4 @@
+import { isSoccerWa } from "../../appBrand";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -286,7 +287,7 @@ function Transcript({ call }: { call: VoiceCall }) {
                 }`}
               >
                 <p className={`mb-1 text-[10px] font-bold uppercase tracking-wide ${segment.speaker === "assistant" ? "text-emerald-100" : "text-zinc-500"}`}>
-                  {segment.speaker === "caller" ? "Persona que llama" : segment.speaker === "assistant" ? "Agente FUTSI" : "Sistema"}
+                  {segment.speaker === "caller" ? "Persona que llama" : segment.speaker === "assistant" ? `Agente ${isSoccerWa ? "Soccer WA" : "FUTSI"}` : "Sistema"}
                 </p>
                 <p className="whitespace-pre-wrap break-words">{segment.text}</p>
               </div>

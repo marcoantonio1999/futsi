@@ -1,4 +1,5 @@
 import { SitesSubmenu } from "../views/sitesNavigation";
+import { isSoccerWa } from "../../appBrand";
 import { coachSections, type CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CommunicationsNav } from "../../features/voice-agent/CommunicationsNav";
 import { ChevronDown, Menu } from "lucide-react";
@@ -77,7 +78,7 @@ export function AdminShellSidebar({
     >
       <div className={`shrink-0 py-2 ${sidebarExpanded ? "px-2" : "px-0"}`}>
         <div className={`flex items-center ${sidebarExpanded ? "justify-between gap-3" : "justify-center"}`}>
-          {sidebarExpanded && <img className="h-auto w-36 object-contain" src="./logo-futsi.png" alt="Futsi Mini ERP" />}
+          {sidebarExpanded && <img className="h-auto w-36 object-contain" src={isSoccerWa ? "./soccer-wa-logo.png" : "./logo-futsi.png"} alt={isSoccerWa ? "Soccer WA" : "Futsi Mini ERP"} />}
           <button
             data-testid="sidebar-toggle"
             className="grid size-10 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50"

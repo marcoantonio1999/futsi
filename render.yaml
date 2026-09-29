@@ -1,6 +1,26 @@
 # Futsi API deployment - repaired source verified
 services:
   - type: web
+    name: soccerwa-web
+    runtime: static
+    rootDir: front
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    domains:
+      - soccerwa.bpoweracademy.mx
+    envVars:
+      - key: VITE_APP_BRAND
+        value: soccerwa
+      - key: VITE_BASE_PATH
+        value: /
+      - key: VITE_API_URL
+        value: https://futsi.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  - type: web
     name: futsi-api
     runtime: python
     rootDir: back

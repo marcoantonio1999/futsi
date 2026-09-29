@@ -1,4 +1,5 @@
 import { ApiError, apiRequest } from "../api";
+import { isSoccerWa } from "../appBrand";
 import { emptyData } from "../appState";
 import type {
   AppData,
@@ -60,6 +61,7 @@ export function mergeAppData(current: AppData, patch: AppDataPatch): AppData {
 }
 
 export function initialTabForUser(user: User): TabKey {
+  if (isSoccerWa) return "communications";
   if (user.section_permissions?.some(permission => permission === "veronica_only" || permission === "court_communications_only")) return "communications";
   if (user.role === "cashier") return "billing";
   if (user.role === "adult_representative" || user.role === "adult_player") return "adult-dashboard";
