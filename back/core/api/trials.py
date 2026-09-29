@@ -128,6 +128,15 @@ class CanManageTrialDashboard(BasePermission):
         )
 
 
+class CanViewWhatsAppWeeklyStats(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and (
+            user.role in ADMIN_ROLES
+            or (user.role == "site_coordinator" and user.primary_site_id and is_court_communications_only(user))
+        ))
+
+
 class SiteScopedTrialViewSetMixin:
     site_filter = "site_id"
 
@@ -740,7 +749,7 @@ class WhatsAppConversationViewSet(
         detail=False,
         methods=["get"],
         url_path="weekly-stats",
-        permission_classes=[IsAdminRole],
+        permission_classes=[CanViewWhatsAppWeeklyStats],
     )
     def weekly_stats(self, request):
         requested_start = str(request.query_params.get("week_start") or "").strip()

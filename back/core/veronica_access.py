@@ -36,6 +36,7 @@ def court_communications_route_allowed(path, method):
         "/api/whatsapp-conversations/channels/": {"GET", "HEAD"},
         "/api/whatsapp-conversations/assignees/": {"GET", "HEAD"},
         "/api/whatsapp-conversations/templates/": {"GET", "HEAD"},
+        "/api/whatsapp-conversations/weekly-stats/": {"GET", "HEAD"},
     }
     if method in exact.get(path, set()):
         return True

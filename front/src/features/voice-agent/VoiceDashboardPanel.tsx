@@ -211,7 +211,7 @@ export function VoiceDashboardPanel({
   </div> : null;
 
   const sectionDetail = sectionDetails[section];
-  const sectionGroup = communicationGroups.find(group => group.items.some(item => item.key === section))?.label;
+  const sectionGroup = courtCommunicationsOnly ? "Mi cancha" : communicationGroups.find(group => group.items.some(item => item.key === section))?.label;
   const pageClass = section === "summary" ? "comm-summary-page" : section === "whatsapp" ? "comm-inbox-page" : "";
   const scopePanel = <CommunicationScopePicker
     sites={permittedData.sites}
@@ -235,8 +235,8 @@ export function VoiceDashboardPanel({
   return (
     <div className={`communications ${pageClass}`}>
       <header className="comm-page-heading">
-        <div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{sectionDetail.title}</h2></div>
-        {section !== "whatsapp" && scopePanel}
+        <div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{courtCommunicationsOnly && section === "weekly-stats" ? "Estadísticas de mi cancha" : sectionDetail.title}</h2></div>
+        {section !== "whatsapp" && !(courtCommunicationsOnly && section === "weekly-stats") && scopePanel}
       </header>
       <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
@@ -288,8 +288,8 @@ export function VoiceDashboardPanel({
         />
       ) : null}
 
-      {section === "weekly-stats" && canReviewCalls ? (
-        <WhatsAppWeeklyStatsPanel scopeQuery={query} value={voiceData.whatsappWeeklyStats} token={token} onOpenConversation={openConversation} />
+      {section === "weekly-stats" && (canReviewCalls || courtCommunicationsOnly) ? (
+        <WhatsAppWeeklyStatsPanel scopeQuery={query} value={courtCommunicationsOnly ? null : voiceData.whatsappWeeklyStats} token={token} onOpenConversation={openConversation} />
       ) : null}
 
       {section === "chat-export" && canReviewCalls ? (

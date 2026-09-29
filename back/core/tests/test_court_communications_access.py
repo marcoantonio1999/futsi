@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.response import Response
 
-from core.models import WhatsAppAutomationSettings, WhatsAppConversation
+from core.models import WhatsAppAutomationSettings, WhatsAppConversation, WhatsAppHumanResponseEvent, WhatsAppMessage
 from core.tests.factories import make_site
 
 
@@ -100,7 +100,6 @@ def test_restricted_coordinator_can_read_but_not_mutate_templates(auth_client):
         ("get", "/api/dashboard/summary/"),
         ("get", "/api/veronica/inbox/"),
         ("get", "/api/trial-bookings/"),
-        ("get", BASE + "weekly-stats/"),
         ("get", BASE + "export/"),
     ),
 )
@@ -108,6 +107,34 @@ def test_restricted_coordinator_cannot_reach_other_sections(auth_client, method,
     site = make_site()
     client = restricted_client(auth_client, site, UVM)
     assert getattr(client, method)(path).status_code == 403
+
+
+def test_restricted_coordinator_sees_only_own_channel_response_statistics(auth_client):
+    franco, uvm = make_site(name="Colegio Franco"), make_site(name="UVM")
+    for address, site, seconds in (
+        (FRANCO_ACADEMY, franco, 60),
+        (FRANCO_LEAGUE, franco, 600),
+        (UVM, uvm, 1200),
+    ):
+        WhatsAppAutomationSettings.objects.create(business_address=address, site=site)
+        chat = conversation(address, site)
+        inbound = WhatsAppMessage.objects.create(conversation=chat, direction="inbound", body="Información")
+        WhatsAppHumanResponseEvent.objects.create(
+            conversation=chat,
+            first_inbound_message=inbound,
+            first_inbound_at=timezone.now(),
+            responded_at=timezone.now(),
+            response_seconds=seconds,
+            human_attention_expected=True,
+        )
+    client = restricted_client(auth_client, franco, FRANCO_ACADEMY)
+
+    response = client.get(BASE + "weekly-stats/", {"scope": "all"})
+    assert response.status_code == 200
+    assert response.json()["summary"]["total"] == 1
+    assert response.json()["summary"]["average_response_seconds"] == 60
+    assert client.get(BASE + "weekly-stats/", {"scope": "all", "site": uvm.id}).json()["summary"]["total"] == 0
+    assert client.get(BASE + "weekly-stats/", {"scope": "all", "business_address": FRANCO_LEAGUE}).json()["summary"]["total"] == 0
 
 
 def test_restricted_bulk_access_is_limited_to_own_channel(auth_client):

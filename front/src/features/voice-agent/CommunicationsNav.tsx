@@ -10,6 +10,13 @@ const academyBulkItems: CommunicationItem[] = [
   { key: "bulk-academy-history", label: "Historial de envíos", shortLabel: "Historial", admin: true },
 ];
 
+const courtCoordinatorItems: CommunicationItem[] = [
+  { key: "whatsapp", label: "Bandeja de WhatsApp" },
+  { key: "templates", label: "Plantillas de WhatsApp" },
+  ...academyBulkItems,
+  { key: "weekly-stats", label: "Estadísticas de mi cancha" },
+];
+
 const courtAttentionItems: CommunicationItem[] = [
   { key: "summary", label: "Resumen" },
   { key: "whatsapp", label: "Bandeja de WhatsApp", shortLabel: "WhatsApp" },
@@ -70,6 +77,12 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
     : courtCommunicationsOnly
       ? isCourtCommunicationsSection(item.key)
       : !item.admin || canReview;
+
+  if (courtCommunicationsOnly) return <nav aria-label="Comunicaciones de mi cancha" className={compact ? "comm-mobile-nav comm-section-map comm-court-flat" : "comm-nav comm-court-flat"}>
+    <ul className="comm-nav-children comm-court-flat-list">
+      {courtCoordinatorItems.map(item => <NavItem key={item.key} item={item} section={section} compact={compact} onSelect={onSelect} />)}
+    </ul>
+  </nav>;
 
   return <nav aria-label={compact ? "Subsecciones de comunicaciones" : "Comunicaciones"} className={compact ? "comm-mobile-nav comm-section-map" : "comm-nav"}>
     {communicationGroups.map(group => {
