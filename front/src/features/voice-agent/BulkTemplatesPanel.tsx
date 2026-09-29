@@ -199,10 +199,17 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   }, selected.text) : '';
   const previewChannel = channels.find(c => c.channel === channel)?.label || 'Tu academia';
   const setupLoading = channelsLoading || catalogLoading;
+  function chooseRecipientMode(next: 'text' | 'file' | 'directory') {
+    if (!templateReady || busy || catalogLoading) return;
+    setMode(next);
+    invalidate();
+    setError('');
+    setStep(2);
+  }
   const recipientModeControls = <>
-    {hasDirectory && <button aria-pressed={mode === 'directory'} disabled={busy} onClick={() => { setMode('directory'); invalidate(); }}>Contactos de {directoryLabel}</button>}
-    <button aria-pressed={mode === 'text'} disabled={busy} onClick={() => { setMode('text'); invalidate(); }}>Escribir o pegar números</button>
-    <button aria-pressed={mode === 'file'} disabled={busy} onClick={() => { setMode('file'); invalidate(); }}>Agregar Excel, CSV o TXT</button>
+    {hasDirectory && <button aria-pressed={mode === 'directory'} disabled={busy || catalogLoading || !templateReady} onClick={() => chooseRecipientMode('directory')}>Contactos de {directoryLabel}</button>}
+    <button aria-pressed={mode === 'text'} disabled={busy || catalogLoading || !templateReady} onClick={() => chooseRecipientMode('text')}>Escribir o pegar números</button>
+    <button aria-pressed={mode === 'file'} disabled={busy || catalogLoading || !templateReady} onClick={() => chooseRecipientMode('file')}>Agregar Excel, CSV o TXT</button>
   </>;
   const recipientStepTitle = mode === 'directory' ? 'Selecciona los contactos' : mode === 'file' ? 'Carga el archivo' : 'Escribe los números';
   return <section className="bulk-templates">
@@ -220,7 +227,6 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
         {selected && !templateReady && <p role="status">Esta plantilla no está disponible para envíos masivos.</p>}
         <div className="bulk-recipient-choice"><strong>¿Cómo agregarás los destinatarios?</strong><div className="bulk-tabs bulk-recipient-options">{recipientModeControls}</div></div>
-        <div className="bulk-actions"><button className="primary" disabled={busy || catalogLoading || !templateReady} onClick={() => { setStep(2); setError(''); }}>Continuar con destinatarios</button></div>
       </section>}
       {step === 2 && <section className="bulk-card bulk-recipient-card"><header className="bulk-step-heading"><div><button className="bulk-back-button" type="button" aria-label="Regresar a configurar el envío" title="Regresar" disabled={busy} onClick={() => { setStep(1); setError(''); }}><ArrowLeft aria-hidden="true" size={18} /></button><h3 ref={stepHeadingRef} tabIndex={-1}>{recipientStepTitle}</h3></div><span>Paso 2 de 3 · Carga destinatarios</span></header>
         {mode === 'directory' && hasDirectory ? <UvmContactPicker key={channel} token={token} channel={channel} label={directoryLabel} onLoad={r => { loadReview(r); setStep(3); }} /> : <>
