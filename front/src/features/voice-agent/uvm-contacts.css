@@ -24,14 +24,10 @@
 .bulk-templates .uvm-contact-table td button { min-height:28px; padding:4px 5px; font-size:9.5px; }
 .uvm-contact-table thead { position: sticky; top: 0; background: var(--surface, white); z-index: 1; }
 .uvm-contact-table th:nth-child(1) { width:7%; }
-.uvm-contact-table th:nth-child(2) { width:20%; }
-.uvm-contact-table th:nth-child(3) { width:26%; }
-.uvm-contact-table th:nth-child(4) { width:16%; }
-.uvm-contact-table th:nth-child(5) { width:21%; }
-.uvm-contact-table th:nth-child(6) { width:10%; }
+.uvm-contact-table th:nth-child(2) { width:38%; }
+.uvm-contact-table th:nth-child(3) { width:42%; }
+.uvm-contact-table th:nth-child(4) { width:13%; }
 .uvm-contact-table input[type=checkbox], .uvm-block-checkbox input { width:16px; height:16px; accent-color:#17764d; }
-.uvm-review { color: #885310; font-size: .8rem; }
-.uvm-blocked { color: #a02c23; }
 .uvm-directory-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .uvm-directory-footer .bulk-pages { flex-wrap:nowrap; }
 .uvm-directory-footer button { min-height:34px; padding:7px 10px; }

@@ -21,14 +21,6 @@ function contactHold(contact: Contact) {
   return contact.campaign_source === 'Canal histórico; envíos no habilitados';
 }
 
-function contactStatus(contact: Contact) {
-  if (contactHold(contact)) return 'Directorio pendiente de revisión';
-  if (contact.no_contact) return 'No contactar';
-  if (!contact.has_inbound) return 'No nos escribió';
-  if (contact.in_active_job) return 'En lote activo';
-  return contact.last_status ? stateLabels[contact.last_status] || contact.last_status : 'Sin intento previo';
-}
-
 function readableEvidence(detail: Detail): [string, string][] {
   const evidence = detail.evidence || {};
   const fields: [string, unknown][] = [
@@ -120,13 +112,11 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
       <button className="uvm-filter-button" disabled={busy} onClick={openFilters}><SlidersHorizontal aria-hidden="true" size={18} />Filtros{activeFilterCount > 0 && <span>{activeFilterCount}</span>}</button>
     </div>
     {error && <div className="bulk-alert error" role="alert">{error}</div>}
-    <div className="bulk-table-wrap uvm-contact-table" aria-busy={loading}><table><thead><tr><th>Elegir</th><th>Contacto</th><th>Relación e interés</th><th>Última interacción</th><th>Seguimiento</th><th>Detalle</th></tr></thead><tbody>
-      {!loading && !result?.contacts.length && <tr><td colSpan={6}>No hay contactos con estos filtros. Prueba cambiar Seguimiento o los demás filtros.</td></tr>}
+    <div className="bulk-table-wrap uvm-contact-table" aria-busy={loading}><table><thead><tr><th>Elegir</th><th>Contacto</th><th>Relación</th><th>Detalle</th></tr></thead><tbody>
+      {!loading && !result?.contacts.length && <tr><td colSpan={4}>No hay contactos con estos filtros. Prueba cambiar los filtros.</td></tr>}
       {result?.contacts.map(c => <tr key={c.id}><td><input type="checkbox" aria-label={`Seleccionar ${c.name || c.phone || c.ordinal}`} checked={selection.includes(c.id)} disabled={busy || loading || !c.selectable || (!selection.includes(c.id) && selection.length >= 100)} onChange={() => toggle(c.id)} /></td>
         <td><strong>{c.name || 'Sin nombre'}</strong><span>{c.phone || 'Teléfono no válido'} · #{c.ordinal}</span>{c.footballer && <small>Futbolista: {c.footballer}</small>}</td>
-        <td>{c.relationship}<span>{c.interest}</span>{c.league_relevance && <span>{c.league_relevance}</span>}{c.league_role && <small>Rol: {c.league_role}</small>}{c.teams && <small>Equipos: {c.teams}</small>}<small>Confianza: {c.confidence} · Prioridad: {c.priority || 'Sin asignar'}</small></td>
-        <td>{c.last_date || 'Sin fecha'}</td><td>{c.no_contact || contactHold(c) ? <strong className="uvm-blocked">{contactStatus(c)}</strong> : contactStatus(c)}
-          {(c.needs_review || c.sensitive) && <span className="uvm-review">Revisar contexto</span>}</td>
+        <td>{c.relationship || 'Sin clasificar'}</td>
         <td><button disabled={busy} onClick={e => { opener.current = e.currentTarget; void action(async () => { const d = await apiRequest<Detail>(base + 'contact-detail/?' + new URLSearchParams({ channel, contact_id: String(c.id) }), token); setDetail(d); setDetailError(''); setEdit({ name: d.name, priority: d.priority, notes: d.notes, manually_blocked: d.manually_blocked }); }); }}>Ver detalle</button></td></tr>)}
     </tbody></table></div>
     <div className="uvm-directory-footer"><div className="bulk-pages"><button disabled={busy || loading || !offset} onClick={() => setOffset(n => n-50)}>Anterior</button><span>Página {Math.floor(offset/50)+1} de {Math.max(1, Math.ceil((result?.total || 0)/50))}</span><button disabled={busy || loading || !result?.has_more} onClick={() => setOffset(n => n+50)}>Siguiente</button></div>
