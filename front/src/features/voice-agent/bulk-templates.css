@@ -72,6 +72,7 @@
 .bulk-phone-bar strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
 .bulk-phone-bar small { color:#d9eee9; font-size:8px; }
 .bulk-phone-chat { display:flex; align-items:flex-end; justify-content:flex-end; min-height:245px; padding:18px 12px; background-color:#efe8de; background-image:radial-gradient(circle at 18px 18px,#6e8a7c12 1.2px,transparent 1.5px); background-size:30px 30px; }
+.bulk-preview-selection .bulk-phone-chat { align-items:flex-start; min-height:0; }
 .bulk-phone-message { display:grid; justify-items:end; gap:5px; width:min(92%,290px); }
 .bulk-phone-bubble { position:relative; width:min(92%,290px); padding:10px 10px 6px; border-radius:9px 3px 9px 9px; background:#d9fdd3; color:#17251f; box-shadow:0 1px 2px #0002; }
 .bulk-phone-message .bulk-phone-bubble { width:100%; }
@@ -119,12 +120,13 @@
 .dark .bulk-skeleton{background:linear-gradient(90deg,#26382f 25%,#34493e 45%,#26382f 65%);background-size:220% 100%}.dark .bulk-phone-loading{background:#205c45}.dark .bulk-phone-loading .bulk-skeleton{background:linear-gradient(90deg,#2b7056 25%,#41836a 45%,#2b7056 65%);background-size:220% 100%}
 @media(min-width:1024px) {
   html:has(.bulk-templates), body:has(.bulk-templates) { overflow:hidden; }
-  .bulk-templates { display:flex; flex-direction:column; height:calc(100dvh - 110px); max-height:calc(100dvh - 110px); min-height:520px; overflow:hidden; }
+  .bulk-templates { display:flex; flex-direction:column; height:calc(100dvh - 145px); max-height:calc(100dvh - 145px); min-height:0; overflow:hidden; }
   .bulk-workspace { flex:1; overflow:hidden; }
   .bulk-wizard { height:100%; overflow:hidden; }
   .bulk-wizard>.bulk-card { max-height:100%; overflow:auto; }
   .bulk-wizard>.bulk-recipient-card { display:flex; flex-direction:column; height:100%; overflow:hidden; }
   .bulk-preview { height:100%; overflow:hidden; }
+  .bulk-preview.bulk-preview-selection { height:min(430px, calc(100dvh - 195px)); align-self:start; }
 }
 @media(max-width:900px) { .bulk-workspace { grid-template-columns:1fr; } .bulk-preview { min-height:390px; } .bulk-filter-grid { grid-template-columns:repeat(2,minmax(160px,1fr)); } }
 @media(max-width:640px) { .bulk-actions { align-items:stretch; } .bulk-actions button { flex:1; } .bulk-modal .bulk-actions { flex-direction:column-reverse; } .bulk-filter-grid { grid-template-columns:1fr; } }

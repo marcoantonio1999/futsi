@@ -255,7 +255,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         setJob(saved); setOffset(0); setConsent(false);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}
-    </div>{(step === 1 || step === 4) && <WhatsAppTemplatePreview loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name.replaceAll('_', ' ')} />}</div> : job && <section className="bulk-card">
+    </div>{(step === 1 || step === 4) && <WhatsAppTemplatePreview className={step === 1 ? 'bulk-preview-selection' : ''} loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name.replaceAll('_', ' ')} />}</div> : job && <section className="bulk-card">
       <header className="bulk-heading"><div><h3>{job.title}</h3><p>{channels.find(c => c.channel === job.channel)?.label || job.channel} · {new Date(job.created_at).toLocaleString('es-MX')}</p></div><strong className={`bulk-state ${job.status}`}>{labels[job.status] || job.status}</strong></header>
       {job.detail && <div role="alert" className="bulk-alert error">{job.detail}</div>}
       <h3 ref={stepHeadingRef} tabIndex={-1}>Progreso del envío</h3>
