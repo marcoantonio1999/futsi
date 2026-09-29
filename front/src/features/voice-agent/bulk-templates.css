@@ -9,10 +9,9 @@
 .bulk-templates button:disabled { opacity:.5; cursor:not-allowed; } .bulk-templates button:not(:disabled):hover { border-color:#007951; }
 .bulk-templates .primary, .bulk-tabs button[aria-pressed=true] { background:#087b55; color:white; border-color:#087b55; }
 .bulk-template-choices { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
-.bulk-templates .bulk-template-choice { display:grid; align-content:start; gap:6px; min-height:100px; padding:14px 16px; text-align:left; border:1px solid #a4b9ad; border-radius:10px; }
+.bulk-templates .bulk-template-choice { display:grid; align-content:center; min-height:72px; padding:14px 16px; text-align:left; border:1px solid #a4b9ad; border-radius:10px; }
 .bulk-template-choice strong { font-size:16px; line-height:1.25; text-transform:capitalize; overflow-wrap:anywhere; }
 .bulk-template-choice small { font-size:12px; color:#527064; }
-.bulk-template-choice span { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; font-size:12px; line-height:1.4; font-weight:400; white-space:pre-wrap; }
 .bulk-templates .bulk-template-choice[aria-pressed=true] { border:2px solid #087b55; background:#edf8f1; padding:13px 15px; }
 .bulk-template { white-space:pre-wrap; overflow-wrap:anywhere; padding:16px; background:#edf5f0; border-left:4px solid #087b55; border-radius:8px; }
 .bulk-tabs, .bulk-pages, .bulk-counts { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
