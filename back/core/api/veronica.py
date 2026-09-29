@@ -18,9 +18,9 @@ class VeronicaConsoleView(APIView):
     def get(self, request, operation):
         if operation == 'filter-options':
             return Response(catalog(request.user))
-        if operation not in {'inbox', 'history', 'templates', 'auto-pdf'}:
+        if operation not in {'inbox', 'history', 'templates', 'auto-pdf', 'channels'}:
             return Response({'detail': 'Operación no permitida.'}, status=405)
-        query = {k: request.query_params[k] for k in ('q', 'offset', 'conversation_id', 'before', 'after', 'platform', 'vacancy_type') if k in request.query_params}
+        query = {k: request.query_params[k] for k in ('q', 'offset', 'conversation_id', 'before', 'after', 'platform', 'vacancy_type', 'channel') if k in request.query_params}
         return self.forward(operation, query=query)
 
     def post(self, request, operation):
@@ -76,7 +76,7 @@ class VeronicaConsoleView(APIView):
                     any(not isinstance(key, str) or not isinstance(value, str) or
                         len(key) > 100 or len(value) > 500 for key, value in parameters.items())):
                 return Response({'detail': 'Revisa las variables de la plantilla.'}, status=400)
-            allowed = ('phone', 'kind', 'body', 'template_name', 'language', 'request_id', 'media_token', 'parameters')
+            allowed = ('phone', 'kind', 'body', 'template_name', 'language', 'request_id', 'media_token', 'parameters', 'channel', 'conversation_id')
             payload = {k: request.data[k] for k in allowed if k in request.data}
             payload['actor_id'] = request.user.pk
             return self.forward(operation, body=json.dumps(payload).encode(), content_type='application/json')

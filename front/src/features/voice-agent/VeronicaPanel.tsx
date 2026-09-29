@@ -8,7 +8,8 @@ import { VeronicaAutomaticPdf } from './VeronicaAutomaticPdf';
 import { templateStatusMeta } from "./veronicaTemplateStatus";
 import type { VeronicaFilterCatalog } from "./VeronicaFiltersPanel";
 
-type Chat = { id: number; phone: string; name: string; opted_out: boolean; last_message_at: string | null; can_reply: boolean; window_end: string | null; platform: string; vacancy_type: string };
+type Chat = { id: number; phone: string; name: string; channel: string; opted_out: boolean; last_message_at: string | null; can_reply: boolean; window_end: string | null; platform: string; vacancy_type: string };
+type Channel = { id: string; label: string };
 type Message = { id: number; body: string; direction: string; created_at: string; status: string; error_codes: number[] };
 type History = { messages: Message[]; can_reply: boolean; window_end: string | null; has_more: boolean };
 type TemplateParameter = { key: string; label: string; contact_name?: boolean };
@@ -45,6 +46,7 @@ function DeliveryAlert({ message, phone }: { message: Message; phone?: string })
 
 export function VeronicaPanel({ token }: { token: string }) {
   const [chats, setChats] = useState<Chat[]>([]), [query, setQuery] = useState("");
+  const [channels, setChannels] = useState<Channel[]>([]), [source, setSource] = useState("");
   const [filterCatalog, setFilterCatalog] = useState<VeronicaFilterCatalog>({ platforms: [], vacancy_types: [] });
   const [platformFilter, setPlatformFilter] = useState(""), [vacancyFilter, setVacancyFilter] = useState("");
   const [offset, setOffset] = useState(0), [more, setMore] = useState(false);
@@ -74,6 +76,16 @@ export function VeronicaPanel({ token }: { token: string }) {
     [parameter.key, parameter.contact_name ? contactName : ""]));
   const renderedTemplate = selected?.text.replace(/{{\s*(\d+)\s*}}/g, (match, number: string) =>
     templateParameters[`body:${number}`]?.trim() || match) || "";
+  const activeSource = chat?.channel || source;
+  const activeSourceRef = useRef(activeSource);
+  activeSourceRef.current = activeSource;
+  const sourceLabel = (id: string) => channels.find(c => c.id === id)?.label || `Número ${id}`;
+
+  useEffect(() => {
+    apiRequest<{ channels: Channel[] }>("/veronica/channels/", token)
+      .then(result => { setChannels(result.channels); setSource(current => current || result.channels[0]?.id || ""); })
+      .catch(e => setError(e.message));
+  }, [token]);
 
   useEffect(() => {
     const element = consoleRef.current;
@@ -135,9 +147,12 @@ export function VeronicaPanel({ token }: { token: string }) {
   }, [token, chat, refresh]);
 
   async function loadTemplates() {
+    if (!activeSource) return;
+    const requestedSource = activeSource;
     setBusy(true); setError("");
     try {
-      const r = await apiRequest<{ templates: Template[] }>("/veronica/templates/", token);
+      const r = await apiRequest<{ templates: Template[] }>(`/veronica/templates/?channel=${encodeURIComponent(activeSource)}`, token);
+      if (activeSourceRef.current !== requestedSource) return;
       setTemplates(r.templates);
       const current = r.templates.find(t => t.name + ":" + t.language === templateKey);
       const initial = current || r.templates.find(t => t.name === "seguimiento_postulacion_occ") || r.templates.find(t => t.name === "reclutamiento_primer_mensaje" && t.language === "es") || r.templates.find(t => t.sendable) || r.templates[0];
@@ -156,7 +171,7 @@ export function VeronicaPanel({ token }: { token: string }) {
     const savedPhone = c?.phone.replace(/^\+/, '') ?? '';
     const localPhone = /^52\d{10}$/.test(savedPhone) ? savedPhone.slice(2) : /^521\d{10}$/.test(savedPhone) ? savedPhone.slice(3) : savedPhone;
     const contactName = c && c.name !== c.phone && !/^\+?\d+$/.test(c.name) ? c.name : "";
-    setChat(c); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setTemplateParameters(parameterDefaults(selected, contactName)); setNotice(""); setError(""); request.current = null;
+    setChat(c); if (c) setSource(c.channel); setPhone(localPhone); setHistory(emptyHistory); setHistoryLoaded(false); setBody(""); setTemplateParameters(parameterDefaults(selected, contactName)); setNotice(""); setError(""); request.current = null;
   }
   async function updateChatFilters(next: { platform?: string; vacancy_type?: string }) {
     if (!chat) return;
@@ -178,17 +193,18 @@ export function VeronicaPanel({ token }: { token: string }) {
     const kind = replyAvailable ? "text" : "template";
     setConfirming(false);
     lock.current = true; setBusy(true); setError(""); setNotice("");
-    const fingerprint = JSON.stringify([phone, kind, body, templateKey, templateParameters]);
+    const fingerprint = JSON.stringify([activeSource, phone, kind, body, templateKey, templateParameters]);
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
     try {
       const r = await apiRequest<SendResult>("/veronica/send/", token, { method: "POST", body: JSON.stringify({
-        phone: destination, kind, body, template_name: selected?.name, language: selected?.language,
+        phone: destination, kind, body, channel: activeSource, conversation_id: chat?.id,
+        template_name: selected?.name, language: selected?.language,
         parameters: templateParameters, request_id: request.current.id,
       }) });
       setNotice(labels[r.status] || r.status);
       if (r.status === "accepted") { setBody(""); request.current = null; }
       if (r.status === "failed") setError(r.detail || "La API rechazó el envío. Revisa la conexión antes de intentar otro envío.");
-      if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, last_message_at: null, opted_out: false, can_reply: false, window_end: null, platform: "", vacancy_type: "" });
+      if (!chat) setChat({ id: r.conversation_id, phone: destination, name: phone, channel: activeSource, last_message_at: null, opted_out: false, can_reply: false, window_end: null, platform: "", vacancy_type: "" });
       setRefresh(n => n + 1);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); lock.current = false; }
@@ -196,10 +212,11 @@ export function VeronicaPanel({ token }: { token: string }) {
   const replyAvailable = Boolean(chat) && replyWindowOpen(historyLoaded ? history.window_end : chat?.window_end ?? null, historyLoaded ? history.can_reply : Boolean(chat?.can_reply), clock);
   const templateRequired = !replyAvailable;
   const templateReady = !!selected?.sendable && (selected.parameters || []).every(parameter => templateParameters[parameter.key]?.trim());
-  const canSend = !busy && (chat ? /^\+?[1-9]\d{7,14}$/.test(chat.phone) : /^[1-9]\d{9}$/.test(phone)) && !chat?.opted_out && (templateRequired ? templateReady : !!body.trim());
+  const canSend = !busy && !!activeSource && (chat ? /^\+?[1-9]\d{7,14}$/.test(chat.phone) : /^[1-9]\d{9}$/.test(phone)) && !chat?.opted_out && (templateRequired ? templateReady : !!body.trim());
   useEffect(() => {
     if (templateRequired && !templates.length) void loadTemplates();
-  }, [templateRequired, templates.length]);
+  }, [templateRequired, templates.length, activeSource]);
+  useEffect(() => { setTemplates([]); setTemplateKey(""); setTemplateParameters({}); request.current = null; }, [activeSource]);
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
   return <div ref={consoleRef} className={`veronica-console${mobileConversation ? ' has-conversation' : ''}`}>
     <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes</h2></div><div className="vero-heading-actions"><button className="vero-toolbar-button" onClick={() => setPdfOpen(true)}><FileText size={18} aria-hidden="true" />PDF automático</button><button className="vero-toolbar-button" disabled={busy} onClick={() => { setRefresh(n => n + 1); void loadTemplates(); }}><RefreshCw size={18} aria-hidden="true" />Actualizar</button></div></header>
@@ -214,12 +231,12 @@ export function VeronicaPanel({ token }: { token: string }) {
       {loading && <p role="status">Cargando…</p>}{!loading && !chats.length && <p>No hay conversaciones en esta búsqueda.</p>}
       <div className="vero-contacts">{chats.map(c => {
         const open = replyWindowOpen(c.window_end, c.can_reply, clock);
-        return <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small>{(c.platform || c.vacancy_type) && <span className="vero-chat-tags">{c.platform && <span>{c.platform}</span>}{c.vacancy_type && <span>{c.vacancy_type}</span>}</span>}<span className={`vero-window-chip ${open ? "open" : "closed"}`}>{open ? `Ventana abierta · ${replyWindowRemaining(c.window_end, clock)}` : "Ventana cerrada"}</span></button>;
+        return <button disabled={busy} aria-pressed={chat?.id === c.id} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><small>{c.phone} · {formatDateTime(c.last_message_at)}</small><small>Recibido en: {sourceLabel(c.channel)}</small>{(c.platform || c.vacancy_type) && <span className="vero-chat-tags">{c.platform && <span>{c.platform}</span>}{c.vacancy_type && <span>{c.vacancy_type}</span>}</span>}<span className={`vero-window-chip ${open ? "open" : "closed"}`}>{open ? `Ventana abierta · ${replyWindowRemaining(c.window_end, clock)}` : "Ventana cerrada"}</span></button>;
       })}</div>
       <nav aria-label="Páginas de conversaciones"><button disabled={!offset || busy} onClick={() => setOffset(n => Math.max(0, n - 30))}>Anterior</button><span>{offset / 30 + 1}</span><button disabled={!more || busy} onClick={() => setOffset(n => n + 30)}>Siguiente</button></nav>
     </aside><section className="comm-panel vero-conversation">
       <button className="vero-mobile-back vero-toolbar-button" onClick={() => setMobileConversation(false)}><ArrowLeft size={18} />Conversaciones</button>
-      {chat ? <><dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div></dl><div className="vero-contact-classification"><label>Plataforma<select className={inputClass} disabled={busy} value={chat.platform} onChange={e => void updateChatFilters({ platform: e.target.value })}><option value="">Sin clasificar</option>{chat.platform && !filterCatalog.platforms.includes(chat.platform) && <option>{chat.platform}</option>}{filterCatalog.platforms.map(item => <option key={item}>{item}</option>)}</select></label><label>Tipo de vacante<select className={inputClass} disabled={busy} value={chat.vacancy_type} onChange={e => void updateChatFilters({ vacancy_type: e.target.value })}><option value="">Sin clasificar</option>{chat.vacancy_type && !filterCatalog.vacancy_types.includes(chat.vacancy_type) && <option>{chat.vacancy_type}</option>}{filterCatalog.vacancy_types.map(item => <option key={item}>{item}</option>)}</select></label></div></> : <label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label>}
+      {chat ? <><dl className="vero-contact-info"><div><dt>Nombre</dt><dd>{chat.name}</dd></div><div><dt>Destinatario</dt><dd>{chat.phone}</dd></div><div><dt>Número de origen</dt><dd>{sourceLabel(chat.channel)}</dd></div></dl><div className="vero-contact-classification"><label>Plataforma<select className={inputClass} disabled={busy} value={chat.platform} onChange={e => void updateChatFilters({ platform: e.target.value })}><option value="">Sin clasificar</option>{chat.platform && !filterCatalog.platforms.includes(chat.platform) && <option>{chat.platform}</option>}{filterCatalog.platforms.map(item => <option key={item}>{item}</option>)}</select></label><label>Tipo de vacante<select className={inputClass} disabled={busy} value={chat.vacancy_type} onChange={e => void updateChatFilters({ vacancy_type: e.target.value })}><option value="">Sin clasificar</option>{chat.vacancy_type && !filterCatalog.vacancy_types.includes(chat.vacancy_type) && <option>{chat.vacancy_type}</option>}{filterCatalog.vacancy_types.map(item => <option key={item}>{item}</option>)}</select></label></div></> : <><label>Número desde el que enviarás<select className={inputClass} value={source} onChange={e => setSource(e.target.value)}>{channels.map(c => <option key={c.id} value={c.id}>{c.label} · {c.id}</option>)}</select></label><label>Destinatario (10 dígitos)<input className={inputClass} type="tel" inputMode="numeric" value={phone} disabled={busy} placeholder="5574879293" onChange={e => setPhone(e.target.value.replace(/[\s()-]/g, ""))} /></label></>}
       {!chat && phone && !/^[1-9]\d{9}$/.test(phone) && <small role="status">Escribe 10 dígitos, sin +52.</small>}
       {chat && <div ref={historyRef} className="vero-history" aria-label="Historial de Verónica" tabIndex={0} onScroll={e => { const el = e.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
       {history.has_more && <button disabled={busy} onClick={() => { followLatest.current = false; void older(); }}>Ver mensajes anteriores</button>}{history.messages.map(m => <article key={m.id} className={m.direction === "outbound" ? "outbound" : "inbound"}><small>{m.direction === "outbound" ? "Verónica / equipo" : "Contacto"} · {formatDateTime(m.created_at)}</small><p>{m.body}</p>{m.status && <small>{labels[m.status] || m.status}{m.error_codes.length > 0 && ` · Error ${m.error_codes.join(", ")}`}</small>}</article>)}{!history.messages.length && <p>{historyLoaded ? 'Sin mensajes registrados.' : 'Cargando mensajes…'}</p>}
@@ -238,6 +255,7 @@ export function VeronicaPanel({ token }: { token: string }) {
     </dialog>
     {confirming && <div className="vero-confirm-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="vero-confirm-title" className="vero-confirm">
       <h3 id="vero-confirm-title">Confirmar envío desde Verónica</h3>
+      <p>Número de origen: <strong>{sourceLabel(activeSource)}</strong></p>
       <p>Destinatario: <strong>{phone}</strong></p>
       <p>{templateRequired ? `Plantilla: ${selected?.name}` : "Mensaje"}</p>
       <p className="vero-preview">{templateRequired ? renderedTemplate : body}</p>
