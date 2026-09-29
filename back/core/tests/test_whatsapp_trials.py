@@ -841,6 +841,42 @@ def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client):
     assert data["longest_waits"][0]["responded_at"] is None
 
 
+def test_weekly_whatsapp_stats_includes_all_waits(auth_client):
+    now = timezone.now()
+    conversation = WhatsAppConversation.objects.create(
+        contact_phone="+525500000111",
+        from_address="whatsapp:+525500000111",
+        to_address=f"whatsapp:{WHATSAPP_NUMBER}",
+        status="active",
+        current_step="faq",
+        last_message_at=now,
+    )
+    for index in range(12):
+        inbound = WhatsAppMessage.objects.create(
+            conversation=conversation,
+            provider_sid=f"wamid.stats-all-{index}",
+            direction="inbound",
+            body="Solicito atención",
+        )
+        first_inbound_at = now
+        WhatsAppHumanResponseEvent.objects.create(
+            conversation=conversation,
+            first_inbound_message=inbound,
+            first_inbound_at=first_inbound_at,
+            responded_at=first_inbound_at + timedelta(minutes=index + 1),
+            response_seconds=(index + 1) * 60,
+        )
+
+    client, _payload_data, _user = auth_client(role="admin")
+    response = client.get("/api/whatsapp-conversations/weekly-stats/")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["summary"]["total"] == 12
+    assert len(data["longest_waits"]) == 12
+    assert [item["response_seconds"] for item in data["longest_waits"]] == list(range(12 * 60, 0, -60))
+
+
 def test_weekly_whatsapp_stats_recovers_manual_channel_without_events(auth_client):
     now = timezone.now()
     conversation = WhatsAppConversation.objects.create(

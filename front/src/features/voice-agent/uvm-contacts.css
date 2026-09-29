@@ -24,9 +24,10 @@
 .bulk-templates .uvm-contact-table td button { min-height:28px; padding:4px 5px; font-size:9.5px; }
 .uvm-contact-table thead { position: sticky; top: 0; background: var(--surface, white); z-index: 1; }
 .uvm-contact-table th:nth-child(1) { width:7%; }
-.uvm-contact-table th:nth-child(2) { width:38%; }
-.uvm-contact-table th:nth-child(3) { width:42%; }
-.uvm-contact-table th:nth-child(4) { width:13%; }
+.uvm-contact-table th:nth-child(2) { width:34%; }
+.uvm-contact-table th:nth-child(3) { width:27%; }
+.uvm-contact-table th:nth-child(4) { width:19%; }
+.uvm-contact-table th:nth-child(5) { width:13%; }
 .uvm-contact-table input[type=checkbox], .uvm-block-checkbox input { width:16px; height:16px; accent-color:#17764d; }
 .uvm-directory-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .uvm-directory-footer .bulk-pages { flex-wrap:nowrap; }

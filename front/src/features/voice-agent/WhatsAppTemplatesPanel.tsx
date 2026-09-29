@@ -36,7 +36,7 @@ function templatePreview(template: Template | null) {
   return { text, buttons };
 }
 
-function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: TemplateChannel }) {
+function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token: string; channel: TemplateChannel; showChannelDetails: boolean }) {
   const address = channel.business_address;
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
@@ -91,16 +91,16 @@ function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: T
   const preview = templatePreview(previewTemplate);
 
   if (!catalog && !error) return <div className="template-catalog-workspace" aria-busy="true">
-    <div className="template-catalog-main template-catalog-skeleton"><span className="bulk-visually-hidden" role="status">Cargando catálogo de plantillas…</span><header aria-hidden="true"><div><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></div><i className="bulk-skeleton button" /></header><div className="template-catalog-skeleton-toolbar" aria-hidden="true"><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /></div><div className="template-catalog-skeleton-list" aria-hidden="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span><i className="bulk-skeleton" /><i className="bulk-skeleton short" /></span><i className="bulk-skeleton badge" /><i className="bulk-skeleton button" /></div>)}</div></div>
+    <div className="template-catalog-main template-catalog-skeleton"><span className="bulk-visually-hidden" role="status">Cargando catálogo de plantillas…</span>{showChannelDetails && <header aria-hidden="true"><div><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></div><i className="bulk-skeleton button" /></header>}<div className="template-catalog-skeleton-toolbar" aria-hidden="true"><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /></div><div className="template-catalog-skeleton-list" aria-hidden="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span><i className="bulk-skeleton" /><i className="bulk-skeleton short" /></span><i className="bulk-skeleton badge" /><i className="bulk-skeleton button" /></div>)}</div></div>
     <WhatsAppTemplatePreview loading className="template-catalog-preview" channelLabel={channel.label} />
   </div>;
 
   return <><div className="template-catalog-workspace"><div className="template-catalog-main">
-    <header className="comm-section-heading">
+    {showChannelDetails && <header className="comm-section-heading">
       <div><h3>{channel.label}</h3><p>{address.replace("whatsapp:", "").replace("meta:", "ID ")}</p></div>
-    </header>
+    </header>}
     <div className="comm-template-topbar">
-      <p>{catalog ? <><strong>{templates.length}</strong> {templates.length === 1 ? "plantilla disponible" : "plantillas disponibles"}<span> · Actualizado {formatDateTime(catalog.fetched_at)}</span>{catalog.next_cursor && <span> · Hay más por cargar</span>}</> : "Consulta las plantillas disponibles para este número."}</p>
+      {showChannelDetails && <p>{catalog ? <><strong>{templates.length}</strong> {templates.length === 1 ? "plantilla disponible" : "plantillas disponibles"}<span> · Actualizado {formatDateTime(catalog.fetched_at)}</span>{catalog.next_cursor && <span> · Hay más por cargar</span>}</> : "Consulta las plantillas disponibles para este número."}</p>}
       <button disabled={loading} className={secondaryButtonClass} onClick={() => { setCursor(""); setCatalog(null); setRetry(n => n + 1); }}>Actualizar catálogo</button>
     </div>
     {error && <div role="alert" className="comm-error">{error} <button className={secondaryButtonClass} disabled={loading} onClick={() => setRetry(n => n + 1)}>Reintentar</button></div>}
@@ -142,15 +142,15 @@ function WhatsAppTemplateCatalog({ token, channel }: { token: string; channel: T
   </>;
 }
 
-export function WhatsAppTemplatesPanel({ token, channels }: { token: string; channels: TemplateChannel[] }) {
+export function WhatsAppTemplatesPanel({ token, channels, showChannelDetails = true }: { token: string; channels: TemplateChannel[]; showChannelDetails?: boolean }) {
   if (!channels.length) return <section className="comm-panel p-5"><h3>Sin números configurados</h3><p className="mt-2 text-sm">Esta selección no tiene un número de atención vinculado para consultar plantillas.</p></section>;
 
-  if (channels.length === 1) return <WhatsAppTemplateCatalog token={token} channel={channels[0]} />;
+  if (channels.length === 1) return <WhatsAppTemplateCatalog token={token} channel={channels[0]} showChannelDetails={showChannelDetails} />;
 
   return <div className="grid gap-4">
     <p className="comm-reference">Mostrando las plantillas de los {channels.length} números incluidos en esta selección.</p>
     {channels.map(channel => <section className="comm-panel p-5" key={channel.business_address}>
-      <WhatsAppTemplateCatalog token={token} channel={channel} />
+      <WhatsAppTemplateCatalog token={token} channel={channel} showChannelDetails={showChannelDetails} />
     </section>)}
   </div>;
 }

@@ -959,7 +959,7 @@ class WhatsAppConversationViewSet(
                 ),
                 "classifications": classifications,
                 "by_responder": by_responder,
-                "longest_waits": longest_waits[:10],
+                "longest_waits": longest_waits,
             }
         )
 

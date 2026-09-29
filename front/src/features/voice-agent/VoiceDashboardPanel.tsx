@@ -242,7 +242,7 @@ export function VoiceDashboardPanel({
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
       {channelsReady && <div key={query} className={section === "summary" ? "comm-summary-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
-      {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} />}
+      {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} showChannelDetails={canReviewCalls} />}
       {section === "template-builder" && <WhatsAppTemplateBuilder token={token} channels={templateChannels} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
       {section === "summary" && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
@@ -264,7 +264,7 @@ export function VoiceDashboardPanel({
         <WhatsAppConversationsPanel
           initialConversationId={conversationId}
           initialFilter={inboxFilter}
-          scopeControls={scopePanel}
+          scopeControls={canReviewCalls ? scopePanel : null}
           assignees={voiceData.whatsappFollowUpAssignees}
           conversations={voiceData.whatsappConversations}
           onSendMessage={sendWhatsAppMessage}

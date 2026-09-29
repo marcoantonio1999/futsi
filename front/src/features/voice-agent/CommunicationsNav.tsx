@@ -6,7 +6,7 @@ import { CourtCommunicationsOnlyContext, VeronicaOnlyContext, isCourtCommunicati
 type CommunicationItem = { key: VoiceDashboardSection; label: string; shortLabel?: string; admin?: boolean };
 
 const academyBulkItems: CommunicationItem[] = [
-  { key: "bulk-academy", label: "Nuevo envío", admin: true },
+  { key: "bulk-academy", label: "Nuevo envío masivo", admin: true },
   { key: "bulk-academy-history", label: "Historial de envíos", shortLabel: "Historial", admin: true },
 ];
 

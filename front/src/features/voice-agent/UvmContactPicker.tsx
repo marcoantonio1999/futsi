@@ -4,12 +4,12 @@ import { apiRequest } from '../../api';
 import './uvm-contacts.css';
 
 export type ContactReview = { phones: string[]; names: Record<string, string>; contact_ids: number[]; count: number; duplicates: number; invalid: []; needs_review_count: number; unverified_consent_count: number };
-type Contact = { id: number; ordinal: number; phone: string; name: string; footballer: string; age: string; relationship: string; interest: string; confidence: string; priority: string; last_date: string | null; consent_source: string; campaign_source?: string; needs_review: boolean; sensitive: boolean; no_contact: boolean; has_inbound: boolean; selectable: boolean; last_status: string | null; in_active_job: boolean; league_role?: string; league_relevance?: string; teams?: string };
+type Contact = { id: number; ordinal: number; phone: string; name: string; footballer: string; age: string; relationship: string; interest: string; confidence: string; priority: string; last_date: string | null; last_template_sent_at: string | null; consent_source: string; campaign_source?: string; needs_review: boolean; sensitive: boolean; no_contact: boolean; has_inbound: boolean; selectable: boolean; last_status: string | null; in_active_job: boolean; league_role?: string; league_relevance?: string; teams?: string };
 type Detail = Contact & { source_data: Record<string, unknown>; evidence: Record<string, unknown>; audios: Record<string, unknown>[]; notes: string; manually_blocked: boolean; source_no_contact: boolean };
 type Directory = { contacts: Contact[]; total: number; dataset_total: number; facets: Record<string, string[]>; has_more: boolean; source_file: string; dataset_label?: string; domain?: string; filter_labels?: Record<string, string> };
-const stateLabels: Record<string, string> = { sending: 'En proceso', accepted: 'Aceptado', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Sin confirmar' };
-const facets: Record<string, string> = { relationship: 'Relación con la academia', interest: 'Interés principal', confidence: 'Confianza de clasificación', priority: 'Prioridad de seguimiento', review_state: 'Estado de revisión' };
-const initialFilters = { q: '', relationship: '', interest: '', confidence: '', priority: '', review_state: '', no_contact: '', needs_review: '', sensitive: '', age_operator: 'gt', age_value: '', since: '', until: '', outreach: 'all', league_role: '', league_relevance: '', team: '' };
+const facets: Record<string, string> = { relationship: 'Relación con la academia', interest: 'Interés principal' };
+const initialFilters = { q: '', relationship: '', interest: '', needs_review: '', age_operator: 'gt', age_value: '', since: '', league_role: '', league_relevance: '', team: '' };
+const sentDate = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' });
 type ContactFilters = typeof initialFilters;
 type ContactFilterKey = keyof ContactFilters;
 
@@ -51,7 +51,7 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
   const filtersDialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
   const base = '/whatsapp-bulk/';
-  const params = (extra: Record<string, string> = {}) => new URLSearchParams({ ...filters, channel, offset: String(offset), ...extra });
+  const params = (extra: Record<string, string> = {}) => new URLSearchParams({ ...filters, channel, offset: String(offset), outreach: 'all', ...extra });
   const post = <T,>(op: string, body: unknown) => apiRequest<T>(base + op + '/', token, { method: 'POST', body: JSON.stringify(body) });
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
     setSelection(ids => ids.includes(id) ? ids.filter(i => i !== id) : ids.length < 100 ? [...ids, id] : ids);
   }
   function selectFilter(key: ContactFilterKey, values: ContactFilters, onChange: (key: ContactFilterKey, value: string) => void) {
-    return <label key={key}>{result?.filter_labels?.[key] || facets[key] || key}<select value={values[key]} onChange={e => onChange(key, e.target.value)} disabled={busy}><option value="">Todos</option>{key === 'priority' && <option value="__empty__">Sin asignar</option>}{(key === 'priority' ? ['Alta', 'Media', 'Baja'] : result?.facets[key] || []).map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
+    return <label key={key}>{result?.filter_labels?.[key] || facets[key] || key}<select value={values[key]} onChange={e => onChange(key, e.target.value)} disabled={busy}><option value="">Todos</option>{(result?.facets[key] || []).map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
   }
   const activeFilterCount = (Object.keys(initialFilters) as ContactFilterKey[]).filter(key => key !== 'q' && key !== 'age_operator' && filters[key] !== initialFilters[key]).length;
   const detailEvidence = detail ? readableEvidence(detail) : [];
@@ -112,11 +112,12 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
       <button className="uvm-filter-button" disabled={busy} onClick={openFilters}><SlidersHorizontal aria-hidden="true" size={18} />Filtros{activeFilterCount > 0 && <span>{activeFilterCount}</span>}</button>
     </div>
     {error && <div className="bulk-alert error" role="alert">{error}</div>}
-    <div className="bulk-table-wrap uvm-contact-table" aria-busy={loading}><table><thead><tr><th>Elegir</th><th>Contacto</th><th>Relación</th><th>Detalle</th></tr></thead><tbody>
-      {!loading && !result?.contacts.length && <tr><td colSpan={4}>No hay contactos con estos filtros. Prueba cambiar los filtros.</td></tr>}
+    <div className="bulk-table-wrap uvm-contact-table" aria-busy={loading}><table><thead><tr><th>Elegir</th><th>Contacto</th><th>Relación</th><th>Plantilla enviada</th><th>Detalle</th></tr></thead><tbody>
+      {!loading && !result?.contacts.length && <tr><td colSpan={5}>No hay contactos con estos filtros. Prueba cambiar los filtros.</td></tr>}
       {result?.contacts.map(c => <tr key={c.id}><td><input type="checkbox" aria-label={`Seleccionar ${c.name || c.phone || c.ordinal}`} checked={selection.includes(c.id)} disabled={busy || loading || !c.selectable || (!selection.includes(c.id) && selection.length >= 100)} onChange={() => toggle(c.id)} /></td>
         <td><strong>{c.name || 'Sin nombre'}</strong><span>{c.phone || 'Teléfono no válido'} · #{c.ordinal}</span>{c.footballer && <small>Futbolista: {c.footballer}</small>}</td>
         <td>{c.relationship || 'Sin clasificar'}</td>
+        <td>{c.last_template_sent_at ? <><strong>Enviado</strong><span>{sentDate.format(new Date(c.last_template_sent_at))}</span></> : 'Sin envío registrado'}</td>
         <td><button disabled={busy} onClick={e => { opener.current = e.currentTarget; void action(async () => { const d = await apiRequest<Detail>(base + 'contact-detail/?' + new URLSearchParams({ channel, contact_id: String(c.id) }), token); setDetail(d); setDetailError(''); setEdit({ name: d.name, priority: d.priority, notes: d.notes, manually_blocked: d.manually_blocked }); }); }}>Ver detalle</button></td></tr>)}
     </tbody></table></div>
     <div className="uvm-directory-footer"><div className="bulk-pages"><button disabled={busy || loading || !offset} onClick={() => setOffset(n => n-50)}>Anterior</button><span>Página {Math.floor(offset/50)+1} de {Math.max(1, Math.ceil((result?.total || 0)/50))}</span><button disabled={busy || loading || !result?.has_more} onClick={() => setOffset(n => n+50)}>Siguiente</button></div>
@@ -124,22 +125,16 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
     <dialog ref={filtersDialog} className="uvm-filter-modal" aria-labelledby="uvm-filter-title" onCancel={e => { e.preventDefault(); closeFilters(); }}>
       <header className="uvm-modal-heading"><div><span>Directorio de contactos</span><h3 id="uvm-filter-title">Filtros</h3></div><button aria-label="Cerrar filtros" onClick={closeFilters}><X aria-hidden="true" size={20} /></button></header>
       <div className="uvm-filter-modal-body">
-        <section><div className="uvm-filter-section-heading"><h4>Relación y seguimiento</h4><p>Define qué tipo de contacto quieres incluir y su situación actual.</p></div><div className="uvm-filter-grid">
+        <section><div className="uvm-filter-section-heading"><h4>Relación e interés</h4><p>Define qué tipo de contacto quieres incluir.</p></div><div className="uvm-filter-grid">
           {selectFilter('relationship', filterDraft, draftFilter)}{selectFilter('interest', filterDraft, draftFilter)}
           {result?.domain === 'league' && <>{selectFilter('league_relevance', filterDraft, draftFilter)}{selectFilter('league_role', filterDraft, draftFilter)}<label>Equipo<input value={filterDraft.team} onChange={e => draftFilter('team', e.target.value)} disabled={busy} placeholder="Nombre del equipo" /></label></>}
-          <label>Seguimiento<select value={filterDraft.outreach} onChange={e => draftFilter('outreach', e.target.value)} disabled={busy}>
-            <option value="all">Todos</option><option value="new">Sin intento previo ni lote activo</option><option value="active">En lote activo</option><option value="attempted">Con intento previo</option>
-            {Object.entries(stateLabels).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-          </select></label>
         </div></section>
-        <section><div className="uvm-filter-section-heading"><h4>Clasificación</h4><p>Usa la información registrada para priorizar la selección.</p></div><div className="uvm-filter-grid">
-          {(['confidence', 'priority', 'review_state'] as ContactFilterKey[]).map(key => selectFilter(key, filterDraft, draftFilter))}
-          {Object.entries({ no_contact: 'Excluido de envíos', needs_review: 'Requiere revisión', sensitive: 'Caso sensible' }).map(([key, label]) => <label key={key}>{label}<select disabled={busy} value={filterDraft[key as ContactFilterKey]} onChange={e => draftFilter(key as ContactFilterKey, e.target.value)}><option value="">Todos</option><option value="true">Sí</option><option value="false">No</option></select></label>)}
+        <section><div className="uvm-filter-section-heading"><h4>Revisión</h4><p>Identifica contactos que necesitan una revisión antes del envío.</p></div><div className="uvm-filter-grid">
+          <label>Requiere revisión<select disabled={busy} value={filterDraft.needs_review} onChange={e => draftFilter('needs_review', e.target.value)}><option value="">Todos</option><option value="true">Sí</option><option value="false">No</option></select></label>
         </div></section>
         <section><div className="uvm-filter-section-heading"><h4>Actividad</h4><p>Los contactos aparecen del más reciente al más antiguo.{result?.domain === 'academy' && ' La edad requiere un valor claro; no se infiere de categorías ni años de nacimiento.'}</p></div><div className="uvm-filter-grid">
           {result?.domain === 'academy' && <><label>Edad mencionada<select value={filterDraft.age_operator} onChange={e => draftFilter('age_operator', e.target.value)} disabled={busy}><option value="gt">Mayor a</option><option value="lt">Menor a</option><option value="eq">Igual a</option></select></label><label>Años<input type="number" min="1" max="120" step="1" inputMode="numeric" value={filterDraft.age_value} onChange={e => draftFilter('age_value', e.target.value)} disabled={busy} placeholder="Ej. 12" /></label></>}
           <label>Última interacción desde<input type="date" value={filterDraft.since} onChange={e => draftFilter('since', e.target.value)} disabled={busy} /></label>
-          <label>Última interacción hasta<input type="date" value={filterDraft.until} onChange={e => draftFilter('until', e.target.value)} disabled={busy} /></label>
         </div></section>
       </div>
       <footer className="uvm-filter-modal-footer"><button onClick={() => setFilterDraft({ ...initialFilters, q: filters.q })}>Restablecer</button><div><button onClick={closeFilters}>Cancelar</button><button className="primary" onClick={applyFilters}>Aplicar filtros</button></div></footer>
