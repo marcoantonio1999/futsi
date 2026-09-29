@@ -63,10 +63,11 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const catalogGeneration = useRef(0);
   const requestId = useRef(crypto.randomUUID());
   const selected = templates.find(t => `${t.name}:${t.language}` === templateKey);
+  const availableTemplates = templates.filter(t => t.sendable);
   const selectedParameters = selected?.parameters || [];
   const prepareReason = busy ? 'Espera a que termine la operación actual.'
     : !channel ? 'Selecciona el número desde el que enviarás en el paso 1.'
-    : !templates.length ? 'No hay plantillas disponibles. Actualiza las plantillas o elige otro número.'
+    : !availableTemplates.length ? 'No hay plantillas aprobadas disponibles para este número.'
     : !selected ? 'Falta seleccionar una plantilla aprobada en el paso 1.'
     : !selected.sendable ? selected.reason || 'La plantilla seleccionada no está disponible para envíos masivos.'
     : review?.needs_column ? 'Selecciona la columna de teléfonos y vuelve a cargar el archivo.'
@@ -218,12 +219,12 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     {pollError && (historyView || processing) && <div role="alert" className="bulk-alert error">No se pudo actualizar el avance. Lo mostrado puede estar desactualizado. {pollError}</div>}
     {!historyView && !processing ? <div className={`bulk-workspace ${step === 2 ? 'bulk-workspace-single' : ''}`}><div className="bulk-wizard">
       {step === 1 && setupLoading && <section className="bulk-card bulk-setup-skeleton" aria-busy="true"><span className="bulk-visually-hidden" role="status">Cargando canales y plantillas disponibles…</span><header className="bulk-step-heading" aria-hidden="true"><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></header><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label wide" /><div className="bulk-skeleton-options"><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /></div></div><i className="bulk-skeleton action" aria-hidden="true" /></section>}
-      {step === 1 && !setupLoading && <section className="bulk-card"><header className="bulk-step-heading"><h3 ref={stepHeadingRef} tabIndex={-1}>Configura el envío</h3><span>Paso 1 de 3 · Plantilla y destinatarios</span></header>
-        <div className="bulk-fields"><label>Enviar desde<select value={channel} disabled={busy || !channels.length} onChange={e => { setCatalogLoading(true); setChannel(e.target.value); setJobsPage(0); }}><option value="" disabled>Selecciona un canal</option>{channels.map(c => <option key={c.channel} value={c.channel}>{c.label}</option>)}</select></label>
-          <button disabled={busy || catalogLoading || !channel} onClick={() => void loadTemplates()}>Actualizar plantillas</button></div>
-        {!!channel && !templates.length && <p>No hay plantillas disponibles para este número.</p>}
+      {step === 1 && !setupLoading && <section className="bulk-card"><header className="bulk-step-heading"><h3 className="bulk-template-heading" ref={stepHeadingRef} tabIndex={-1}>Seleccionar plantilla</h3><span>Paso 1 de 3 · Plantilla y destinatarios</span></header>
+        {channels.length > 1 ? <label>Enviar desde<select value={channel} disabled={busy} onChange={e => { setCatalogLoading(true); setChannel(e.target.value); setJobsPage(0); }}><option value="" disabled>Selecciona un canal</option>{channels.map(c => <option key={c.channel} value={c.channel}>{c.label}</option>)}</select></label>
+          : channels.length === 1 && <p className="bulk-selected-channel">Sede: <strong>{channels[0].label}</strong></p>}
+        {!!channel && !availableTemplates.length && <p>No hay plantillas aprobadas para envíos masivos en este número.</p>}
         {!channels.length && <p>No hay canales conectados disponibles. No se pueden realizar envíos.</p>}
-        {!!templates.length && <label>Plantilla aprobada<select value={templateKey} disabled={busy} onChange={e => { setTemplateKey(e.target.value); invalidate(); }}><option value="">Selecciona una plantilla</option>{templates.map(t => <option key={`${t.name}:${t.language}`} disabled={!t.sendable} value={`${t.name}:${t.language}`}>{t.name} · {t.language}{!t.sendable ? ' · No disponible para masivos' : ''}</option>)}</select></label>}
+        {!!availableTemplates.length && <div className="bulk-template-choices" role="group" aria-label="Plantillas disponibles">{availableTemplates.map(t => <button key={`${t.name}:${t.language}`} type="button" className="bulk-template-choice" aria-pressed={templateKey === `${t.name}:${t.language}`} disabled={busy} onClick={() => { setTemplateKey(`${t.name}:${t.language}`); invalidate(); }}><strong>{t.name.replaceAll('_', ' ')}</strong><small>{formatWhatsAppTemplateCategory(t.category)} · {t.language}</small><span>{t.text.replace(/{{\s*\d+\s*}}/g, '…')}</span></button>)}</div>}
         {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
         {selected && !templateReady && <p role="status">Esta plantilla no está disponible para envíos masivos.</p>}
         <div className="bulk-recipient-choice"><strong>¿Cómo agregarás los destinatarios?</strong><div className="bulk-tabs bulk-recipient-options">{recipientModeControls}</div></div>
