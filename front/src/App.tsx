@@ -200,7 +200,7 @@ export default function App() {
 
 function LandingFallback() {
   return (
-    <main className="grid min-h-screen place-items-center bg-[#f6f7f2] px-4 text-emerald-800 dark:bg-[#101e19] dark:text-emerald-200" aria-label="Cargando Futsi" role="status">
+    <main className="grid min-h-screen place-items-center bg-[#f6f7f2] px-4 text-emerald-800 dark:bg-[#101e19] dark:text-emerald-200" aria-label={`Cargando ${isSoccerWa ? "Soccer WA" : "Futsi"}`} role="status">
       <div className="size-8 animate-spin rounded-full border-2 border-emerald-700/20 border-t-emerald-600" aria-hidden="true" />
     </main>
   );
