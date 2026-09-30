@@ -5,7 +5,6 @@ import './bulk-templates.css';
 import { UvmContactPicker } from './UvmContactPicker';
 import { FileContactFilters, initialFileFilters, type FileContact, type FileFilters } from './FileContactFilters';
 import { firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue, type BulkReview as Review, type RecipientParameters, type TemplateParameter } from './bulkReview';
-import { formatWhatsAppTemplateCategory } from './model';
 import { WhatsAppTemplatePreview } from './WhatsAppTemplatePreview';
 
 type Kind = 'veronica' | 'academy';
@@ -45,8 +44,6 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const [jobsMore, setJobsMore] = useState(false);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [offset, setOffset] = useState(0);
-  const [consent, setConsent] = useState(false);
-  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const directoryChannel = channels.find(c => c.channel === channel);
   const hasDirectory = kind === 'academy' && !!directoryChannel?.contact_directory;
   const directoryLabel = directoryChannel?.directory_label || directoryChannel?.label || 'este número';
@@ -107,7 +104,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     const controller = new AbortController();
     catalogGeneration.current += 1;
     setTemplates([]); setTemplateKey(''); setRecipientParameters({}); setCursor('');
-    setReview(null); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); setMode(null); setStep(1); setJob(null); setConsent(false); setError('');
+    setReview(null); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); setMode(null); setStep(1); setJob(null); setError('');
     requestId.current = crypto.randomUUID();
     setCatalogLoading(!!channel);
     if (channel) {
@@ -123,7 +120,6 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     if (draft && dialog && !dialog.open) dialog.showModal();
     else if (!draft && dialog?.open) { dialog.close(); (confirmButtonRef.current || stepHeadingRef.current)?.focus(); }
   }, [draft?.id]);
-  useEffect(() => { setReviewConfirmed(false); }, [draft?.id]);
   useEffect(() => { stepHeadingRef.current?.focus(); }, [step, processing]);
   useEffect(() => {
     setPollError('');
@@ -193,8 +189,8 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     loadReview({ ...fileReview, phones, names, count: phones.length });
     setStep(4); setError('');
   }
-  function newJob() { setJob(null); setConsent(false); setOffset(0); invalidate(); setMode(null); setStep(1); setHistoryOpen(false); setError(''); setPollError(''); }
-  function closeConfirmation() { if (!busy) { setJob(null); setConsent(false); setError(''); } }
+  function newJob() { setJob(null); setOffset(0); invalidate(); setMode(null); setStep(1); setHistoryOpen(false); setError(''); setPollError(''); }
+  function closeConfirmation() { if (!busy) { setJob(null); setError(''); } }
   const previewPhone = review?.phones[0];
   const previewText = selected ? selectedParameters.reduce((message, parameter, index) => {
     const recipientValue = previewPhone ? recipientParameters[previewPhone]?.[parameter.key]?.trim() : '';
@@ -244,10 +240,8 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         {!(mode === 'file' && fileReview?.file_contacts?.length) && <button className="primary" disabled={busy || (mode === 'file' ? !file : !text.trim())} onClick={() => void loadNumbers()}>{busy ? 'Procesando…' : mode === 'file' ? 'Leer archivo y mostrar filtros' : 'Cargar y revisar números'}</button>}
         </>}
       </section>}
-      {step === 4 && review && !review.needs_column && <section className="bulk-card"><header className="bulk-step-heading"><div><button className="bulk-back-button" type="button" aria-label="Regresar a cargar destinatarios" title="Regresar" disabled={busy} onClick={() => { if (fileReview) setReview(fileReview); setStep(3); setError(''); }}><ArrowLeft aria-hidden="true" size={18} /></button><h3 ref={stepHeadingRef} tabIndex={-1}>Revisa los destinatarios</h3></div></header><div className="bulk-review" aria-live="polite"><h4>{review.count} números válidos · {review.duplicates} duplicados excluidos · {review.invalid.length} inválidos excluidos</h4>
+      {step === 4 && review && !review.needs_column && <section className="bulk-card"><header className="bulk-step-heading"><div><button className="bulk-back-button" type="button" aria-label="Regresar a cargar destinatarios" title="Regresar" disabled={busy} onClick={() => { if (fileReview) setReview(fileReview); setStep(3); setError(''); }}><ArrowLeft aria-hidden="true" size={18} /></button><h3 ref={stepHeadingRef} tabIndex={-1}>Revisa los destinatarios</h3></div></header><div className="bulk-review" aria-live="polite">
           {kind === 'veronica' && !!((review.added_filter_options?.platform.length || 0) + (review.added_filter_options?.vacancy_type.length || 0)) && <p className="bulk-alert">Se agregaron categorías nuevas: {[...(review.added_filter_options?.platform || []), ...(review.added_filter_options?.vacancy_type || [])].join(', ')}.</p>}
-          <p>Solo los números que aparecen aquí se agregarán al lote. Ningún mensaje se ha enviado.</p>
-          {!!selectedParameters.length && <p>Completamos lo disponible desde cada contacto y desde las columnas del archivo. El nombre es opcional; si queda vacío, el saludo usará 👋. Los demás campos de la plantilla sí son obligatorios.</p>}
           <div className="bulk-table-wrap"><table><thead><tr><th>Número</th>{selectedParameters.map(parameter => <th key={parameter.key}>{parameter.label}{parameter.contact_name ? ' (opcional)' : ''}</th>)}{kind === 'veronica' && <><th>Plataforma</th><th>Tipo de vacante</th></>}</tr></thead><tbody>{review.phones.slice(reviewPage*50, reviewPage*50+50).map(phone => <tr key={phone}><td>{phone}</td>{selectedParameters.map(parameter => <td key={parameter.key}><input aria-label={`${parameter.label} de ${phone}`} placeholder={parameter.contact_name ? 'Opcional' : `Escribe ${parameter.label.toLocaleLowerCase('es-MX')}`} disabled={busy} maxLength={parameter.contact_name ? 120 : 500} value={recipientParameters[phone]?.[parameter.key] || ''} onChange={e => { const value = e.target.value; setRecipientParameters(old => ({ ...old, [phone]: { ...old[phone], [parameter.key]: value } })); if (parameter.contact_name) setReview(old => old ? { ...old, names: { ...old.names, [phone]: value } } : old); requestId.current = crypto.randomUUID(); }} /></td>)}{kind === 'veronica' && <><td><input aria-label={`Plataforma de ${phone}`} placeholder="Ej. OCC" disabled={busy} maxLength={80} value={review.filters?.[phone]?.platform || ''} onChange={e => { const value = e.target.value; setReview(old => old ? { ...old, filters: { ...old.filters, [phone]: { ...old.filters?.[phone], platform: value } } } : old); requestId.current = crypto.randomUUID(); }} /></td><td><input aria-label={`Tipo de vacante de ${phone}`} placeholder="Ej. Coach" disabled={busy} maxLength={80} value={review.filters?.[phone]?.vacancy_type || ''} onChange={e => { const value = e.target.value; setReview(old => old ? { ...old, filters: { ...old.filters, [phone]: { ...old.filters?.[phone], vacancy_type: value } } } : old); requestId.current = crypto.randomUUID(); }} /></td></>}</tr>)}</tbody></table></div>
           {review.count > 50 && <div className="bulk-pages"><button disabled={!reviewPage} onClick={() => setReviewPage(p => p-1)}>Anterior</button><span>Página {reviewPage+1} de {Math.ceil(review.count/50)}</span><button disabled={(reviewPage+1)*50 >= review.count} onClick={() => setReviewPage(p => p+1)}>Siguiente</button></div>}
           {!!review.invalid.length && <details><summary>Ver números excluidos y corregir ({review.invalid.length})</summary><div className="bulk-exclusions">{review.invalid.map((r, i) => <p key={i}>Fila {r.row}: {r.value} — {r.reason}</p>)}</div><p>Corrige el texto o el archivo y vuelve a cargarlo.</p></details>}
@@ -256,7 +250,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       <div className="bulk-actions"><button ref={confirmButtonRef} className="primary bulk-prepare" aria-describedby={blockedReason ? 'bulk-prepare-reason' : undefined} disabled={!!blockedReason} onClick={() => void action(async () => {
         if (blockedReason) return;
         const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, ...(selectedParameters.length ? { recipient_parameters: recipientParameters } : { parameters: {} }), phones: review?.phones, names: review?.names || {}, ...(kind === 'veronica' ? { filters: review?.filters || {} } : {}), ...(review?.contact_ids ? { contact_ids: review.contact_ids } : {}) });
-        setJob(saved); setOffset(0); setConsent(false);
+        setJob(saved); setOffset(0);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}
     </div>{(step === 1 || step === 4) && <WhatsAppTemplatePreview className={step === 1 ? 'bulk-preview-selection' : ''} loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name.replaceAll('_', ' ')} />}</div> : job && <section className="bulk-card">
@@ -269,22 +263,16 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       {['draft', 'queued', 'running', 'paused'].includes(job.status) && <button disabled={busy} onClick={() => void action(async () => { setJob(await post<Job>('cancel', { id: job.id })); })}>Cancelar pendientes</button>}
       <h4>Destinatarios del lote</h4><div className="bulk-table-wrap"><table><thead><tr><th>Nombre</th><th>Número</th><th>Estado</th><th>Qué ocurrió</th></tr></thead><tbody>{job.recipients?.map(r => <tr key={r.id}><td>{r.name || 'Sin nombre'}</td><td>{r.phone}</td><td><span className={`bulk-state ${r.status}`}>{labels[r.status] || r.status}</span></td><td>{r.detail || '—'}</td></tr>)}</tbody></table></div>
       <div className="bulk-pages"><button disabled={!offset} onClick={() => setOffset(n => n-50)}>Anterior</button><span>Página {Math.floor(offset/50)+1} de {Math.max(1, Math.ceil(job.total/50))}</span><button disabled={!job.has_more} onClick={() => setOffset(n => n+50)}>Siguiente</button></div>
-      {hasDirectory && job.directory?.dataset === directoryChannel?.contact_directory && <button className="primary" disabled={busy} onClick={() => { setJob(null); setConsent(false); invalidate(); setMode('directory'); setStep(3); }}>Elegir el siguiente lote de {directoryLabel}</button>}
+      {hasDirectory && job.directory?.dataset === directoryChannel?.contact_directory && <button className="primary" disabled={busy} onClick={() => { setJob(null); invalidate(); setMode('directory'); setStep(3); }}>Elegir el siguiente lote de {directoryLabel}</button>}
     </section>}
     <dialog ref={dialogRef} className="bulk-modal" aria-labelledby="bulk-confirm-title" onCancel={e => { e.preventDefault(); closeConfirmation(); }}>
       {draft && <div className="bulk-card"><header className="bulk-heading"><h3 id="bulk-confirm-title">Confirmar envío</h3><button aria-label="Cerrar confirmación" disabled={busy} onClick={closeConfirmation}>Cerrar</button></header>
-        <p><strong>{draft.total} destinatarios</strong> · {channels.find(c => c.channel === draft.channel)?.label || draft.channel}</p>
-        <p>Plantilla: {draft.template.name}</p>
-        <div className="bulk-cost"><div><span>Costo total estimado</span><strong>${money(draft.quote.total)} {draft.quote.currency}</strong></div><p>${money(draft.quote.unit)} {draft.quote.currency} por mensaje · {formatWhatsAppTemplateCategory(draft.quote.category)} · México</p><p>{draft.quote.note}</p><a href={draft.quote.source} target="_blank" rel="noreferrer">Tarifas · verificadas {draft.quote.verified_on}</a></div>
-        <div className="bulk-confirm"><label><input type="checkbox" checked={consent} disabled={busy} onChange={e => setConsent(e.target.checked)} />Confirmo que estos destinatarios autorizaron recibir mensajes de este canal y acepto el costo estimado.</label></div>
-        {!!draft.directory?.unverified_consent_count && <p>El Excel no acredita el consentimiento de {draft.directory.unverified_consent_count} contactos. Confirma la casilla anterior únicamente si cuentas con su autorización. Esta confirmación queda registrada con el lote y no modifica el análisis original.</p>}
-        {!!draft.directory?.needs_review_count && <div className="bulk-confirm"><label><input type="checkbox" checked={reviewConfirmed} disabled={busy} onChange={e => setReviewConfirmed(e.target.checked)} />Revisé el contexto de los {draft.directory.needs_review_count} contactos marcados para revisión y confirmo que el mensaje es pertinente.</label></div>}
+        <div className="bulk-cost"><div><span>Costo total estimado</span><strong>${money(draft.quote.total)} {draft.quote.currency}</strong></div></div>
         {error && <div role="alert" className="bulk-alert error">{error}</div>}
-        <div className="bulk-actions"><button disabled={busy} onClick={closeConfirmation}>Volver sin enviar</button><button className="primary" disabled={busy || !consent || (!!draft.directory?.needs_review_count && !reviewConfirmed)} onClick={() => void action(async () => { const next = await post<Job>('start', { id: draft.id, consent: true, review_confirmed: reviewConfirmed }); setJob(next); setHistoryOpen(false); })}>{busy ? 'Confirmando…' : `Confirmar y enviar a ${draft.total} contactos`}</button></div>
-        <p className="bulk-modal-note">Los mensajes se enviarán al confirmar. La entrega se mostrará en la siguiente pantalla.</p>
+        <div className="bulk-actions"><button disabled={busy} onClick={closeConfirmation}>Volver sin enviar</button><button className="primary" disabled={busy} onClick={() => void action(async () => { const next = await post<Job>('start', { id: draft.id, consent: true, review_confirmed: true }); setJob(next); setHistoryOpen(false); })}>{busy ? 'Enviando…' : `Confirmar y enviar a ${draft.total} contactos`}</button></div>
       </div>}
     </dialog>
-    {historyView && !job && <section className="bulk-card" aria-busy={jobsLoading}><h3>{kind === 'veronica' ? 'Lotes anteriores de Verónica' : 'Lotes enviados'}</h3><p>Consulta el avance, los destinatarios y los errores de cada envío.</p>{jobsLoading ? <><span className="bulk-visually-hidden" role="status">Cargando lotes enviados…</span><div className="bulk-jobs bulk-jobs-skeleton" aria-hidden="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></span><i className="bulk-skeleton button" /></div>)}</div></> : <>{!jobs.length && !pollError && <p>No hay lotes registrados.</p>}<div className="bulk-jobs">{jobs.map(j => <button key={j.id} disabled={busy} onClick={() => { setJob(j); setOffset(0); setConsent(false); setError(''); setHistoryOpen(false); }}><span><strong>{j.title}</strong><small>{new Date(j.created_at).toLocaleString('es-MX')} · {j.total} destinatarios</small></span><span className={`bulk-state ${j.status}`}>{labels[j.status] || j.status} · {j.percent}%</span></button>)}</div></>}
+    {historyView && !job && <section className="bulk-card" aria-busy={jobsLoading}><h3>{kind === 'veronica' ? 'Lotes anteriores de Verónica' : 'Lotes enviados'}</h3><p>Consulta el avance, los destinatarios y los errores de cada envío.</p>{jobsLoading ? <><span className="bulk-visually-hidden" role="status">Cargando lotes enviados…</span><div className="bulk-jobs bulk-jobs-skeleton" aria-hidden="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></span><i className="bulk-skeleton button" /></div>)}</div></> : <>{!jobs.length && !pollError && <p>No hay lotes registrados.</p>}<div className="bulk-jobs">{jobs.map(j => <button key={j.id} disabled={busy} onClick={() => { setJob(j); setOffset(0); setError(''); setHistoryOpen(false); }}><span><strong>{j.title}</strong><small>{new Date(j.created_at).toLocaleString('es-MX')} · {j.total} destinatarios</small></span><span className={`bulk-state ${j.status}`}>{labels[j.status] || j.status} · {j.percent}%</span></button>)}</div></>}
       <div className="bulk-pages"><button disabled={jobsLoading || !jobsPage} onClick={() => setJobsPage(p => p-1)}>Anterior</button><span>Página {jobsPage+1}</span><button disabled={jobsLoading || !jobsMore} onClick={() => setJobsPage(p => p+1)}>Siguiente</button></div>
     </section>}
   </section>;
