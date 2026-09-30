@@ -11,7 +11,6 @@ type Kind = 'veronica' | 'academy';
 type Template = { name: string; language: string; category: string; text: string; sendable: boolean; reason?: string; parameters?: TemplateParameter[] };
 type Job = { id: string; title: string; channel: string; status: string; detail: string; created_at: string; heartbeat_at: string | null; percent: number; processed: number; total: number; counts: Record<string, number>; template: { name: string; language: string; text: string }; quote: { total: string; currency: string; unit: string; category: string; note: string; verified_on: string; source: string }; recipients?: { id: number; phone: string; name?: string; status: string; detail: string }[]; has_more?: boolean; directory?: { dataset?: string; needs_review_count?: number; unverified_consent_count?: number } };
 const labels: Record<string, string> = { draft: 'Por confirmar', queued: 'En cola', running: 'Enviando', completed: 'Intentos terminados', cancelled: 'Cancelado', paused: 'Detenido: requiere revisión', pending: 'Pendiente', sending: 'En proceso', accepted: 'Aceptado, sin entrega confirmada', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Resultado sin confirmar', skipped: 'Excluido: no desea mensajes' };
-const money = (n: string) => Number(n).toLocaleString('es-MX', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
 function recipientFields(review: Review, template?: Template): RecipientParameters {
   return Object.fromEntries(review.phones.map(phone => [phone, Object.fromEntries((template?.parameters || []).map(parameter => {
@@ -262,7 +261,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     </section>}
     <dialog ref={dialogRef} className="bulk-modal" aria-labelledby="bulk-confirm-title" onCancel={e => { e.preventDefault(); closeConfirmation(); }}>
       {draft && <div className="bulk-card"><header className="bulk-heading"><h3 id="bulk-confirm-title">Confirmar envío</h3><button aria-label="Cerrar confirmación" disabled={busy} onClick={closeConfirmation}>Cerrar</button></header>
-        <div className="bulk-cost"><div><span>Costo total estimado</span><strong>${money(draft.quote.total)} {draft.quote.currency}</strong></div></div>
+        <p>¿Estás seguro de enviar estos mensajes?</p>
         {error && <div role="alert" className="bulk-alert error">{error}</div>}
         <div className="bulk-actions"><button disabled={busy} onClick={closeConfirmation}>Volver sin enviar</button><button className="primary" disabled={busy} onClick={() => void action(async () => { const next = await post<Job>('start', { id: draft.id, consent: true, review_confirmed: true }); setJob(next); setHistoryOpen(false); })}>{busy ? 'Enviando…' : `Confirmar y enviar a ${draft.total} contactos`}</button></div>
       </div>}
