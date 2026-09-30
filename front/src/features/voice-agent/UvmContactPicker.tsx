@@ -8,7 +8,7 @@ type Contact = { id: number; ordinal: number; phone: string; name: string; footb
 type Detail = Contact & { source_data: Record<string, unknown>; evidence: Record<string, unknown>; audios: Record<string, unknown>[]; notes: string; manually_blocked: boolean; source_no_contact: boolean };
 type Directory = { contacts: Contact[]; total: number; dataset_total: number; facets: Record<string, string[]>; has_more: boolean; source_file: string; dataset_label?: string; domain?: string; filter_labels?: Record<string, string> };
 const facets: Record<string, string> = { relationship: 'Relación con la academia', interest: 'Interés principal' };
-const initialFilters = { q: '', relationship: '', interest: '', needs_review: '', age_operator: 'gt', age_value: '', since: '', league_role: '', league_relevance: '', team: '' };
+const initialFilters = { q: '', relationship: '', interest: '', age_operator: 'gt', age_value: '', since: '', league_role: '', league_relevance: '', team: '' };
 const sentDate = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' });
 type ContactFilters = typeof initialFilters;
 type ContactFilterKey = keyof ContactFilters;
@@ -128,9 +128,6 @@ export function UvmContactPicker({ token, channel, label = 'este canal', onLoad 
         <section><div className="uvm-filter-section-heading"><h4>Relación e interés</h4><p>Define qué tipo de contacto quieres incluir.</p></div><div className="uvm-filter-grid">
           {selectFilter('relationship', filterDraft, draftFilter)}{selectFilter('interest', filterDraft, draftFilter)}
           {result?.domain === 'league' && <>{selectFilter('league_relevance', filterDraft, draftFilter)}{selectFilter('league_role', filterDraft, draftFilter)}<label>Equipo<input value={filterDraft.team} onChange={e => draftFilter('team', e.target.value)} disabled={busy} placeholder="Nombre del equipo" /></label></>}
-        </div></section>
-        <section><div className="uvm-filter-section-heading"><h4>Revisión</h4><p>Identifica contactos que necesitan una revisión antes del envío.</p></div><div className="uvm-filter-grid">
-          <label>Requiere revisión<select disabled={busy} value={filterDraft.needs_review} onChange={e => draftFilter('needs_review', e.target.value)}><option value="">Todos</option><option value="true">Sí</option><option value="false">No</option></select></label>
         </div></section>
         <section><div className="uvm-filter-section-heading"><h4>Actividad</h4><p>Los contactos aparecen del más reciente al más antiguo.{result?.domain === 'academy' && ' La edad requiere un valor claro; no se infiere de categorías ni años de nacimiento.'}</p></div><div className="uvm-filter-grid">
           {result?.domain === 'academy' && <><label>Edad mencionada<select value={filterDraft.age_operator} onChange={e => draftFilter('age_operator', e.target.value)} disabled={busy}><option value="gt">Mayor a</option><option value="lt">Menor a</option><option value="eq">Igual a</option></select></label><label>Años<input type="number" min="1" max="120" step="1" inputMode="numeric" value={filterDraft.age_value} onChange={e => draftFilter('age_value', e.target.value)} disabled={busy} placeholder="Ej. 12" /></label></>}
