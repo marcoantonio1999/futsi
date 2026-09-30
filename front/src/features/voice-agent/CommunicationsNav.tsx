@@ -11,9 +11,10 @@ const academyBulkItems: CommunicationItem[] = [
 ];
 
 const courtCoordinatorItems: CommunicationItem[] = [
+  academyBulkItems[0],
   { key: "whatsapp", label: "Bandeja de WhatsApp" },
   { key: "templates", label: "Plantillas de WhatsApp" },
-  ...academyBulkItems,
+  academyBulkItems[1],
   { key: "weekly-stats", label: "Estadísticas de mi cancha" },
 ];
 
@@ -101,7 +102,6 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
               <span><AreaIcon size={13} aria-hidden="true" />{area.label}</span><ChevronDown className="comm-nav-chevron" size={14} aria-hidden="true" />
             </button>
             <ul id={`communications-${compact ? "map" : "menu"}-${area.key}`} className="comm-nav-children" aria-label={area.label} hidden={!expanded}>
-              {areaItems.filter(item => !academyBulkItems.some(bulkItem => bulkItem.key === item.key)).map(item => <NavItem key={item.key} item={item} section={section} compact={compact} onSelect={onSelect} />)}
               {area.key === "courts" && academyBulkItems.some(item => areaItems.some(areaItem => areaItem.key === item.key)) && <li className="comm-nav-subgroup comm-nav-nested-subgroup">
                 <button type="button" className="comm-nav-subgroup-toggle" aria-expanded={academyBulkExpanded} aria-controls={`communications-${compact ? "map" : "menu"}-academy-bulk`} onClick={() => setAcademyBulkExpanded(value => !value)}>
                   <span>Envíos masivos</span><ChevronDown className="comm-nav-chevron" size={14} aria-hidden="true" />
@@ -110,6 +110,7 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
                   {academyBulkItems.filter(item => areaItems.some(areaItem => areaItem.key === item.key)).map(item => <NavItem key={item.key} item={item} section={section} compact={compact} onSelect={onSelect} />)}
                 </ul>
               </li>}
+              {areaItems.filter(item => !academyBulkItems.some(bulkItem => bulkItem.key === item.key)).map(item => <NavItem key={item.key} item={item} section={section} compact={compact} onSelect={onSelect} />)}
             </ul>
           </section>;
         })}</div> : <ul className="comm-nav-children" aria-label={group.label}>

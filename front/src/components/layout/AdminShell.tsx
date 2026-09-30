@@ -63,11 +63,12 @@ export function AdminShell({
   const veronicaOnly = user.section_permissions?.includes('veronica_only') ?? false;
   const courtCommunicationsOnly = user.section_permissions?.includes('court_communications_only') ?? false;
   const communicationsOnly = veronicaOnly || courtCommunicationsOnly || isSoccerWa;
+  const defaultCommunicationsSection: CommunicationsSubsection = veronicaOnly ? 'veronica' : courtCommunicationsOnly || ['admin', 'owner', 'dev'].includes(user.role) ? 'bulk-academy' : 'summary';
   const [activeTab, setActiveTab] = useState<TabKey>(() => communicationsOnly ? 'communications' : (user.role === "cashier" ? "billing" : "dashboard"));
   const [attendanceSubsection, setAttendanceSubsection] = useState<AttendanceSubsection>("report");
   const [billingSection, setBillingSection] = useState<BillingSubsection>("scheduled");
   const [communicationsMenuExpanded, setCommunicationsMenuExpanded] = useState(communicationsOnly);
-  const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>(veronicaOnly ? 'veronica' : courtCommunicationsOnly ? 'whatsapp' : "summary");
+  const [communicationsSection, setCommunicationsSection] = useState<CommunicationsSubsection>(defaultCommunicationsSection);
   const [studentsMenuExpanded, setStudentsMenuExpanded] = useState(false);
   const [studentsSection, setStudentsSection] = useState<StudentsSubsection>("overview");
   const [coachesSection, setCoachesSection] = useState<CoachesSection>("overview");
@@ -141,12 +142,12 @@ export function AdminShell({
     }
     if (courtCommunicationsOnly) {
       setActiveTab('communications'); setBusinessScope('academy');
-      setCommunicationsSection('whatsapp'); setCommunicationsMenuExpanded(true);
+      setCommunicationsSection(defaultCommunicationsSection); setCommunicationsMenuExpanded(true);
       return;
     }
     if (isSoccerWa) {
       setActiveTab('communications'); setBusinessScope('academy');
-      setCommunicationsSection('summary'); setCommunicationsMenuExpanded(true);
+      setCommunicationsSection(defaultCommunicationsSection); setCommunicationsMenuExpanded(true);
       return;
     }
     if (user.role === "adult_representative" || user.role === "adult_player") {
@@ -206,6 +207,7 @@ export function AdminShell({
   function toggleCommunicationsMenu() {
     if (effectiveActiveTab !== "communications") {
       setActiveTab("communications");
+      setCommunicationsSection(defaultCommunicationsSection);
       setCommunicationsMenuExpanded(true);
       scrollToTop();
       return;
