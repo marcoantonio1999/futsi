@@ -138,8 +138,10 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         const result = await apiRequest<{ jobs: Job[]; has_more: boolean }>(base+'list/?'+new URLSearchParams({ channel, offset: String(jobsPage*20) }), token);
         if (!disposed) { setJobs(result.jobs); setJobsMore(result.has_more); }
         if (activeId) {
-          const next = await apiRequest<Job>(base+'detail/?'+new URLSearchParams({ id: activeId, offset: String(offset) }), token);
-          if (!disposed) setJob(next);
+          const next = await apiRequest<Job>(base+'detail/?'+new URLSearchParams({ id: activeId, offset: '0' }), token);
+          const pages = next.has_more ? await Promise.all(Array.from({ length: Math.ceil(next.total / 50) - 1 }, (_, index) =>
+            apiRequest<Job>(base+'detail/?'+new URLSearchParams({ id: activeId, offset: String((index + 1) * 50) }), token))) : [];
+          if (!disposed) setJob({ ...next, recipients: [...(next.recipients || []), ...pages.flatMap(page => page.recipients || [])], has_more: false });
         }
         if (!disposed) setPollError('');
       } catch (e) { if (!disposed) setPollError(e instanceof Error ? e.message : 'No se pudo actualizar el avance.'); }
@@ -253,17 +255,10 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         setJob(saved); setOffset(0);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}
-    </div>{(step === 1 || step === 4) && <WhatsAppTemplatePreview className={step === 1 ? 'bulk-preview-selection' : ''} loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name.replaceAll('_', ' ')} />}</div> : job && <section className="bulk-card">
-      <header className="bulk-heading"><div><h3>{job.title}</h3><p>{channels.find(c => c.channel === job.channel)?.label || job.channel} · {new Date(job.created_at).toLocaleString('es-MX')}</p></div><strong className={`bulk-state ${job.status}`}>{labels[job.status] || job.status}</strong></header>
+    </div>{(step === 1 || step === 4) && <WhatsAppTemplatePreview className={step === 1 ? 'bulk-preview-selection' : ''} loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name.replaceAll('_', ' ')} />}</div> : job && <section className="bulk-card bulk-send-progress-card">
       {job.detail && <div role="alert" className="bulk-alert error">{job.detail}</div>}
-      <h3 ref={stepHeadingRef} tabIndex={-1}>Progreso del envío</h3>
-      <details><summary>Consultar costo estimado · ${money(job.quote.total)} {job.quote.currency}</summary><p>{job.quote.note}</p></details>
-      <details><summary>Ver contenido de la plantilla</summary><p className="bulk-template">{job.template.text}</p></details>
-      <div className="bulk-progress"><label htmlFor="bulk-progress">{job.processed} de {job.total} procesados · {job.percent}%</label><progress id="bulk-progress" value={job.processed} max={job.total || 1} /><p>El avance cuenta intentos terminados; “aceptado” no significa “entregado”. Puedes salir de esta página y volver al lote.</p><div className="bulk-counts">{Object.entries(job.counts).map(([s, n]) => <span key={s} className={`bulk-state ${s}`}>{labels[s] || s}: {n}</span>)}</div></div>
-      {['draft', 'queued', 'running', 'paused'].includes(job.status) && <button disabled={busy} onClick={() => void action(async () => { setJob(await post<Job>('cancel', { id: job.id })); })}>Cancelar pendientes</button>}
-      <h4>Destinatarios del lote</h4><div className="bulk-table-wrap"><table><thead><tr><th>Nombre</th><th>Número</th><th>Estado</th><th>Qué ocurrió</th></tr></thead><tbody>{job.recipients?.map(r => <tr key={r.id}><td>{r.name || 'Sin nombre'}</td><td>{r.phone}</td><td><span className={`bulk-state ${r.status}`}>{labels[r.status] || r.status}</span></td><td>{r.detail || '—'}</td></tr>)}</tbody></table></div>
-      <div className="bulk-pages"><button disabled={!offset} onClick={() => setOffset(n => n-50)}>Anterior</button><span>Página {Math.floor(offset/50)+1} de {Math.max(1, Math.ceil(job.total/50))}</span><button disabled={!job.has_more} onClick={() => setOffset(n => n+50)}>Siguiente</button></div>
-      {hasDirectory && job.directory?.dataset === directoryChannel?.contact_directory && <button className="primary" disabled={busy} onClick={() => { setJob(null); invalidate(); setMode('directory'); setStep(3); }}>Elegir el siguiente lote de {directoryLabel}</button>}
+      <div className="bulk-progress"><progress id="bulk-progress" aria-label="Avance del envío" value={job.processed} max={job.total || 1} /></div>
+      <div className="bulk-table-wrap bulk-send-recipients" role="region" aria-label="Detalle de los destinatarios" tabIndex={0}><table><thead><tr><th>Nombre</th><th>Número</th><th>Estado</th><th>Qué ocurrió</th></tr></thead><tbody>{job.recipients?.map(r => <tr key={r.id}><td>{r.name || 'Sin nombre'}</td><td>{r.phone}</td><td><span className={`bulk-state ${r.status}`}>{labels[r.status] || r.status}</span></td><td>{r.detail || '—'}</td></tr>)}</tbody></table></div>
     </section>}
     <dialog ref={dialogRef} className="bulk-modal" aria-labelledby="bulk-confirm-title" onCancel={e => { e.preventDefault(); closeConfirmation(); }}>
       {draft && <div className="bulk-card"><header className="bulk-heading"><h3 id="bulk-confirm-title">Confirmar envío</h3><button aria-label="Cerrar confirmación" disabled={busy} onClick={closeConfirmation}>Cerrar</button></header>
