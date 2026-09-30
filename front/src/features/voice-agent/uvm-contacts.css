@@ -14,6 +14,8 @@
 .uvm-selection-bar>div:first-child span { min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .uvm-selection-bar>.bulk-actions { flex:0 0 auto; flex-wrap:nowrap; }
 .uvm-selection-bar>.bulk-actions button { min-height:34px; padding:6px 8px; font-size:10.5px; white-space:nowrap; }
+.uvm-selection-limit{display:grid;gap:2px;width:120px;flex:0 0 120px;font-size:11px;font-weight:600}.bulk-templates .uvm-selection-limit input{width:100%;padding:0;min-height:18px;accent-color:#40795b}.uvm-sent-filter{display:flex;align-items:center;gap:10px;font-weight:600}.bulk-templates .uvm-sent-filter input{width:18px;min-height:18px;accent-color:#40795b}
+@media(max-width:1200px){.uvm-directory-toolbar{flex-wrap:wrap;overflow:visible}.uvm-selection-bar{flex-basis:100%;flex-wrap:wrap}.uvm-selection-bar>.bulk-actions{flex-wrap:wrap}}
 .uvm-contact-table td span, .uvm-contact-table td small { display:block; margin-top:2px; }
 .uvm-contact-table td small { color:var(--muted, #61726a); font-size:10px; line-height:1.25; }
 .uvm-contact-table { flex:1; min-height:0; max-height:none; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; }
