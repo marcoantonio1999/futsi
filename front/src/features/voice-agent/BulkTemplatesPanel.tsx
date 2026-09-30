@@ -43,6 +43,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobsPage, setJobsPage] = useState(0);
   const [jobsMore, setJobsMore] = useState(false);
+  const [jobsLoading, setJobsLoading] = useState(true);
   const [offset, setOffset] = useState(0);
   const [consent, setConsent] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
@@ -127,6 +128,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   useEffect(() => {
     setPollError('');
     if (!channel || (!historyView && !activeId)) {
+      setJobsLoading(!!historyView && channelsLoading);
       if (!historyView) {
         setJobs([]);
         setJobsMore(false);
@@ -134,6 +136,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       return;
     }
     let disposed = false;
+    setJobsLoading(true);
     async function refresh() {
       try {
         const result = await apiRequest<{ jobs: Job[]; has_more: boolean }>(base+'list/?'+new URLSearchParams({ channel, offset: String(jobsPage*20) }), token);
@@ -144,11 +147,12 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         }
         if (!disposed) setPollError('');
       } catch (e) { if (!disposed) setPollError(e instanceof Error ? e.message : 'No se pudo actualizar el avance.'); }
+      finally { if (!disposed) setJobsLoading(false); }
     }
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 5000);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [base, token, channel, activeId, offset, jobsPage, historyView]);
+  }, [base, token, channel, activeId, offset, jobsPage, historyView, channelsLoading]);
   async function loadTemplates(after = '') {
     const generation = catalogGeneration.current;
     if (!after) setCatalogLoading(true);
@@ -280,8 +284,8 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
         <p className="bulk-modal-note">Los mensajes se enviarán al confirmar. La entrega se mostrará en la siguiente pantalla.</p>
       </div>}
     </dialog>
-    {historyView && !job && <section className="bulk-card"><h3>{kind === 'veronica' ? 'Lotes anteriores de Verónica' : 'Lotes enviados'}</h3><p>Consulta el avance, los destinatarios y los errores de cada envío.</p>{!jobs.length && <p>No hay lotes registrados.</p>}<div className="bulk-jobs">{jobs.map(j => <button key={j.id} disabled={busy} onClick={() => { setJob(j); setOffset(0); setConsent(false); setError(''); setHistoryOpen(false); }}><span><strong>{j.title}</strong><small>{new Date(j.created_at).toLocaleString('es-MX')} · {j.total} destinatarios</small></span><span className={`bulk-state ${j.status}`}>{labels[j.status] || j.status} · {j.percent}%</span></button>)}</div>
-      <div className="bulk-pages"><button disabled={!jobsPage} onClick={() => setJobsPage(p => p-1)}>Anterior</button><span>Página {jobsPage+1}</span><button disabled={!jobsMore} onClick={() => setJobsPage(p => p+1)}>Siguiente</button></div>
+    {historyView && !job && <section className="bulk-card" aria-busy={jobsLoading}><h3>{kind === 'veronica' ? 'Lotes anteriores de Verónica' : 'Lotes enviados'}</h3><p>Consulta el avance, los destinatarios y los errores de cada envío.</p>{jobsLoading ? <><span className="bulk-visually-hidden" role="status">Cargando lotes enviados…</span><div className="bulk-jobs bulk-jobs-skeleton" aria-hidden="true">{Array.from({ length: 5 }, (_, index) => <div key={index}><span><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></span><i className="bulk-skeleton button" /></div>)}</div></> : <>{!jobs.length && !pollError && <p>No hay lotes registrados.</p>}<div className="bulk-jobs">{jobs.map(j => <button key={j.id} disabled={busy} onClick={() => { setJob(j); setOffset(0); setConsent(false); setError(''); setHistoryOpen(false); }}><span><strong>{j.title}</strong><small>{new Date(j.created_at).toLocaleString('es-MX')} · {j.total} destinatarios</small></span><span className={`bulk-state ${j.status}`}>{labels[j.status] || j.status} · {j.percent}%</span></button>)}</div></>}
+      <div className="bulk-pages"><button disabled={jobsLoading || !jobsPage} onClick={() => setJobsPage(p => p-1)}>Anterior</button><span>Página {jobsPage+1}</span><button disabled={jobsLoading || !jobsMore} onClick={() => setJobsPage(p => p+1)}>Siguiente</button></div>
     </section>}
   </section>;
 }

@@ -32,6 +32,7 @@
 .bulk-state.delivered, .bulk-state.read { background:#d9f3e2; color:#165333; }
 .bulk-table-wrap { overflow:auto; } .bulk-templates table { width:100%; text-align:left; border-collapse:collapse; } .bulk-templates td, .bulk-templates th { padding:12px; border-bottom:1px solid #d9e4dd; }
 .bulk-jobs { display:grid; gap:8px; } .bulk-jobs button { display:flex; justify-content:space-between; align-items:center; gap:12px; text-align:left; } .bulk-jobs small { display:block; font-weight:400; margin-top:4px; }
+.bulk-jobs-skeleton>div{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:80px;padding:16px;border:1px solid var(--comm-line,#d7e1dc);border-radius:8px}.bulk-jobs-skeleton>div>span{display:grid;gap:10px;min-width:0;flex:1}.bulk-jobs-skeleton .bulk-skeleton.heading{width:min(360px,85%)}.bulk-jobs-skeleton .bulk-skeleton.compact{width:min(250px,70%)}
 .bulk-templates :focus-visible { outline:3px solid #0e9365; outline-offset:3px; } .bulk-templates summary { cursor:pointer; }
 @media(max-width:640px) { .bulk-card {padding:16px;} .bulk-jobs button {align-items:start;flex-direction:column;} }
 .dark .bulk-templates { color:#e2eee7; } .dark .bulk-card, .dark .bulk-templates button { background:#172820; } .dark .bulk-templates .primary, .dark .bulk-tabs button[aria-pressed=true] { background:#087b55; } .dark .bulk-template, .dark .bulk-drop, .dark .bulk-cost { background:#213a2d; }
