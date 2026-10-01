@@ -11,7 +11,7 @@ def test_veronica_only_login_and_allowed_channel(auth_client):
     with patch('core.api.veronica.VeronicaConsoleView.forward') as forward:
         from rest_framework.response import Response
         forward.return_value = Response({"conversations": []})
-        for operation in ('inbox', 'history', 'templates', 'auto-pdf'):
+        for operation in ('inbox', 'channels', 'history', 'templates', 'auto-pdf'):
             assert client.get('/api/veronica/' + operation + '/').status_code == 200
         assert client.post('/api/veronica/send/', {}, format='json').status_code == 200
         assert client.post('/api/veronica/contact/', {'conversation_id': 1, 'name': 'Santiago'}, format='json').status_code == 200
@@ -47,6 +47,11 @@ def test_unassigned_collaborator_cannot_use_veronica(auth_client):
 
 
 def test_allowlist_is_exact():
+    assert veronica_route_allowed('/api/veronica/channels/', 'GET')
+    assert veronica_route_allowed('/api/veronica/channels/', 'HEAD')
+    for method in ('POST', 'PATCH', 'DELETE'):
+        assert not veronica_route_allowed('/api/veronica/channels/', method)
+    assert not veronica_route_allowed('/api/veronica/channels/other/', 'GET')
     assert not veronica_route_allowed('/api/veronica/anything/', 'GET')
     assert not veronica_route_allowed('/api/veronica/inbox/', 'DELETE')
     assert not veronica_route_allowed('/api/auth/me/', 'PATCH')
