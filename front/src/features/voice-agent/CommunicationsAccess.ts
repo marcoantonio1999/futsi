@@ -3,5 +3,5 @@ import { createContext } from 'react';
 // Shared by the desktop, mobile and inline navigation inside the normal shell.
 export const VeronicaOnlyContext = createContext(false);
 export const CourtCommunicationsOnlyContext = createContext(false);
-export const isVeronicaSection = (section: string) => section === 'veronica' || section === 'veronica-filters' || section === 'bulk-veronica' || section === 'connections';
+export const isVeronicaSection = (section: string) => section === 'veronica' || section === 'veronica-filters' || section === 'bulk-veronica' || section === 'veronica-templates';
 export const isCourtCommunicationsSection = (section: string) => section === 'whatsapp' || section === 'templates' || section === 'bulk-academy' || section === 'bulk-academy-history' || section === 'weekly-stats';

@@ -29,14 +29,14 @@ function templateCategory(template: Template) {
 
 function templatePreview(template: Template | null) {
   if (!template) return { text: "", buttons: [] as string[] };
-  const example = (position: number) => position === 1 ? "María" : position === 2 ? "Empresa" : `Ejemplo ${position}`;
+  const example = (position: number) => position === 1 ? "María" : position === 2 && template.name.includes('vacante') ? "Auxiliar administrativo" : position === 2 ? "Empresa" : `Ejemplo ${position}`;
   const text = template.components.filter(component => component.text).map(component => component.text).join("\n\n")
     .replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, position: string) => example(Number(position)));
   const buttons = template.components.flatMap(component => component.buttons || []).map(button => button.text).filter(Boolean);
   return { text, buttons };
 }
 
-function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token: string; channel: TemplateChannel; showChannelDetails: boolean }) {
+function WhatsAppTemplateCatalog({ token, channel, showChannelDetails, veronica = false }: { token: string; channel: TemplateChannel; showChannelDetails: boolean; veronica?: boolean }) {
   const address = channel.business_address;
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
@@ -53,7 +53,7 @@ function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError("");
-    apiRequest<Catalog>(`/whatsapp-conversations/templates/?${new URLSearchParams({ business_address: address, after: cursor })}`, token, { signal: controller.signal })
+    apiRequest<Catalog>(veronica ? `/veronica/bulk/catalog/?${new URLSearchParams({ channel: address, after: cursor })}` : `/whatsapp-conversations/templates/?${new URLSearchParams({ business_address: address, after: cursor })}`, token, { signal: controller.signal })
       .then(next => {
         if (controller.signal.aborted) return;
         setRecentTemplates(recentWhatsAppTemplatesFor(address, next.templates));
@@ -64,7 +64,7 @@ function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token
       .catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "No se pudo consultar el catálogo."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [token, address, cursor, retry]);
+  }, [token, address, cursor, retry, veronica]);
 
   useEffect(() => {
     setRecentTemplates(recentWhatsAppTemplatesFor(address));
@@ -108,7 +108,7 @@ function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token
       <div className="comm-toolbar"><select className={inputClass} aria-label="Estado de plantilla" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">Todas las cargadas ({templates.length})</option><option value="approved">Aprobadas ({approved})</option><option value="other">No disponibles ({templates.length - approved})</option></select><input type="search" className={inputClass} aria-label="Buscar plantilla" placeholder="Buscar plantilla" value={search} onChange={e => setSearch(e.target.value)} /></div>
       {visible.length > 0 && <section className="comm-panel comm-template-list" aria-label="Plantillas disponibles">
         {visible.map(template => <article key={`${template.id}:${template.name}:${template.language}`} className="comm-template-row">
-          <button type="button" className="comm-row-main comm-template-preview-select" aria-pressed={previewTemplate === template} onClick={() => setPreviewTemplate(template)}><strong>{template.name}</strong><span>{template.language.replace("_", "-")} · {templateCategory(template)}</span></button>
+          <button type="button" className="comm-row-main comm-template-preview-select" aria-pressed={previewTemplate === template} onClick={() => setPreviewTemplate(template)}><strong>{veronica ? template.name.replaceAll('_', ' ') : template.name}</strong>{!veronica && <span>{template.language.replace("_", "-")} · {templateCategory(template)}</span>}</button>
           <span className={`comm-badge ${template.status.toUpperCase() === "APPROVED" ? "green" : "amber"}`}>{templateStatus(template)}</span>
           <button type="button" className={`${secondaryButtonClass} comm-template-detail-button`} onClick={() => { setPreviewTemplate(template); setDetailTemplate(template); }}>Ver detalles</button>
         </article>)}
@@ -117,7 +117,7 @@ function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token
       {catalog.next_cursor && <button className={secondaryButtonClass} disabled={loading} onClick={() => setCursor(catalog.next_cursor)}>Cargar más plantillas</button>}
     </>}
 
-    </div><WhatsAppTemplatePreview className="template-catalog-preview" channelLabel={channel.label} text={preview.text} buttons={preview.buttons} templateName={previewTemplate?.name} meta={previewTemplate ? `${templateCategory(previewTemplate)} · ${previewTemplate.language.replace("_", "-")}` : ""} /></div>
+    </div><WhatsAppTemplatePreview className="template-catalog-preview" channelLabel={channel.label} text={preview.text} buttons={preview.buttons} templateName={previewTemplate?.name} meta={!veronica && previewTemplate ? `${templateCategory(previewTemplate)} · ${previewTemplate.language.replace("_", "-")}` : ""} /></div>
 
     <dialog ref={detailDialog} className="comm-template-modal" aria-labelledby="comm-template-detail-title" onCancel={event => { event.preventDefault(); closeDetails(); }} onClose={() => setDetailTemplate(null)} onClick={event => { if (event.target === event.currentTarget) closeDetails(); }}>
       {detailTemplate && <article>
@@ -126,7 +126,7 @@ function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token
           <button type="button" className="comm-template-modal-close" aria-label="Cerrar detalle" onClick={closeDetails}>×</button>
         </header>
         <div className="comm-template-modal-summary">
-          <span>{detailTemplate.language.replace("_", "-")}</span><span>{templateCategory(detailTemplate)}</span><span className={`comm-badge ${detailTemplate.status.toUpperCase() === "APPROVED" ? "green" : "amber"}`}>{templateStatus(detailTemplate)}</span>
+          {!veronica && <><span>{detailTemplate.language.replace("_", "-")}</span><span>{templateCategory(detailTemplate)}</span></>}<span className={`comm-badge ${detailTemplate.status.toUpperCase() === "APPROVED" ? "green" : "amber"}`}>{templateStatus(detailTemplate)}</span>
         </div>
         <div className="comm-template-modal-body">
           {detailTemplate.components.map((component, index) => <section key={index} className="comm-template-component">
@@ -142,15 +142,15 @@ function WhatsAppTemplateCatalog({ token, channel, showChannelDetails }: { token
   </>;
 }
 
-export function WhatsAppTemplatesPanel({ token, channels, showChannelDetails = true }: { token: string; channels: TemplateChannel[]; showChannelDetails?: boolean }) {
+export function WhatsAppTemplatesPanel({ token, channels, showChannelDetails = true, veronica = false }: { token: string; channels: TemplateChannel[]; showChannelDetails?: boolean; veronica?: boolean }) {
   if (!channels.length) return <section className="comm-panel p-5"><h3>Sin números configurados</h3><p className="mt-2 text-sm">Esta selección no tiene un número de atención vinculado para consultar plantillas.</p></section>;
 
-  if (channels.length === 1) return <WhatsAppTemplateCatalog token={token} channel={channels[0]} showChannelDetails={showChannelDetails} />;
+  if (channels.length === 1) return <WhatsAppTemplateCatalog token={token} channel={channels[0]} showChannelDetails={showChannelDetails} veronica={veronica} />;
 
   return <div className="grid gap-4">
     <p className="comm-reference">Mostrando las plantillas de los {channels.length} números incluidos en esta selección.</p>
     {channels.map(channel => <section className="comm-panel p-5" key={channel.business_address}>
-      <WhatsAppTemplateCatalog token={token} channel={channel} showChannelDetails={showChannelDetails} />
+      <WhatsAppTemplateCatalog token={token} channel={channel} showChannelDetails={showChannelDetails} veronica={veronica} />
     </section>)}
   </div>;
 }

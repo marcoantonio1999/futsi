@@ -73,7 +73,7 @@ def veronica_route_allowed(path, method):
         "/api/veronica/filter-options/": {"GET", "HEAD", "POST"},
         "/api/veronica/auto-pdf/": {"GET", "HEAD", "POST"},
     }
-    for operation in ('channels', 'catalog', 'list', 'detail', 'connections'):
+    for operation in ('channels', 'catalog', 'list', 'detail'):
         allowed[f'/api/veronica/bulk/{operation}/'] = {'GET', 'HEAD'}
     for operation in ('import', 'create', 'start', 'cancel'):
         allowed[f'/api/veronica/bulk/{operation}/'] = {'POST'}

@@ -46,6 +46,8 @@ class BulkView(APIView):
         return None
 
     def get(self, request, kind, operation):
+        if operation == 'connections' and request.user.role not in {'admin', 'owner', 'dev'}:
+            return Response({'detail': 'Solo los administradores pueden consultar conexiones.'}, status=403)
         if not self.allowed(request, kind):
             return Response({'detail': 'Sin acceso a este canal.'}, status=403)
         if operation not in {'channels', 'catalog', 'list', 'detail', 'connections', 'contacts', 'contact-detail'}:

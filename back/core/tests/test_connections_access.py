@@ -7,9 +7,11 @@ from rest_framework.response import Response
 def test_connections_scope_is_fixed_by_route(auth_client):
     client, _, _ = auth_client(role='collaborator', section_permissions=['veronica_only'])
     with patch('core.api.bulk.BulkView.forward', return_value=Response({'connections': []})) as forward:
-        assert client.get('/api/veronica/bulk/connections/?kind=academy').status_code == 200
-        assert forward.call_args.args == ('veronica', 'connections')
-        assert forward.call_args.kwargs['query'] == {}
+        assert client.get('/api/veronica/bulk/connections/?kind=academy').status_code == 403
+        forward.assert_not_called()
+        forward.reset_mock()
+        assert client.get('/api/veronica/bulk/catalog/?channel=meta:1255168474339309').status_code == 200
+        assert forward.call_args.args == ('veronica', 'catalog')
         forward.reset_mock()
         assert client.get('/api/whatsapp-bulk/connections/').status_code == 403
         assert client.post('/api/veronica/bulk/connections/', {}, format='json').status_code in (403, 405)
