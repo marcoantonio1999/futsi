@@ -28,6 +28,7 @@ const courtAttentionItems: CommunicationItem[] = [
 ];
 
 const hrAttentionItems: CommunicationItem[] = [
+  { key: "veronica-stats", label: "Mis estadísticas", admin: true },
   { key: "veronica-templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas", admin: true },
   { key: "veronica", label: "Atención manual", shortLabel: "Atención manual", admin: true },
   { key: "veronica-filters", label: "Filtros de reclutamiento", shortLabel: "Filtros", admin: true },

@@ -55,3 +55,27 @@ def test_allowlist_is_exact():
     assert not veronica_route_allowed('/api/veronica/anything/', 'GET')
     assert not veronica_route_allowed('/api/veronica/inbox/', 'DELETE')
     assert not veronica_route_allowed('/api/auth/me/', 'PATCH')
+
+
+@pytest.mark.django_db
+def test_veronica_statistics_include_only_recruitment_and_human_replies(auth_client):
+    from datetime import timedelta
+    from django.utils import timezone
+    from core.models import WhatsAppConversation, WhatsAppMessage
+    client, _, _ = auth_client(role='collaborator', section_permissions=['veronica_only'])
+    now = timezone.now()
+    for address, kind in [('meta:1255168474339309', 'veronica_manual'), ('meta:1100529023150528', 'veronica_manual'), ('whatsapp:+525574858165', 'academy')]:
+        chat = WhatsAppConversation.objects.create(to_address=address, contact_phone='+525512345678', context={'kind': kind})
+        incoming = WhatsAppMessage.objects.create(conversation=chat, direction='inbound', body='Hola')
+        reply = WhatsAppMessage.objects.create(conversation=chat, direction='outbound', body='Hola', response_source='human_dashboard')
+        WhatsAppMessage.objects.filter(pk=incoming.pk).update(created_at=now - timedelta(minutes=5))
+        WhatsAppMessage.objects.filter(pk=reply.pk).update(created_at=now)
+    result = client.get('/api/veronica/weekly-stats/')
+    assert result.status_code == 200
+    assert result.data['summary']['total'] == 2
+    assert result.data['summary']['average_response_seconds'] == 300
+    selected = client.get('/api/veronica/weekly-stats/', {'channel': 'meta:1255168474339309'})
+    assert selected.data['summary']['total'] == 1
+    assert client.get('/api/veronica/weekly-stats/', {'channel': 'whatsapp:+525574858165'}).data['summary']['total'] == 0
+    assert client.get('/api/veronica/weekly-stats/', {'week_start': 'invalid'}).status_code == 400
+    assert client.post('/api/veronica/weekly-stats/', {}).status_code == 403

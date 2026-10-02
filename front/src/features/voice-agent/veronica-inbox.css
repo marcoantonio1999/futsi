@@ -1,0 +1,9 @@
+.veronica-console .vero-sidebar { background: #e3f0e8; border-color: #92b8a1; }
+.veronica-console .vero-sidebar h3 { color: #285e43; }
+.veronica-console .vero-contacts button { background: #f6fbf7; border-color: #c4dace; }
+.veronica-console .vero-contacts button:hover { background: #d8eee1; }
+.veronica-console .vero-contacts button[aria-pressed=true] { background: #c4e3ce; box-shadow: inset 4px 0 #397454; }
+.dark .veronica-console .vero-sidebar { background: #163b29; border-color: #397454; }
+.dark .veronica-console .vero-sidebar h3 { color: #d5eedf; }
+.dark .veronica-console .vero-contacts button { background: #203e2e; }
+.dark .veronica-console .vero-contacts button:hover, .dark .veronica-console .vero-contacts button[aria-pressed=true] { background: #285b3e; }

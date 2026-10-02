@@ -5,6 +5,7 @@ import { CourtCommunicationsOnlyContext, VeronicaOnlyContext, isCourtCommunicati
 import { VeronicaPanel } from '../../features/voice-agent/VeronicaPanel';
 import { BulkTemplatesPanel } from '../../features/voice-agent/BulkTemplatesPanel';
 import { VeronicaTemplatesPanel } from '../../features/voice-agent/VeronicaTemplatesPanel';
+import { VeronicaStatsPanel } from '../../features/voice-agent/VeronicaStatsPanel';
 import '../../features/voice-agent/communications.css';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { TabKey } from "../../types";
@@ -452,7 +453,7 @@ export function AdminShell({
             onLogout={onLogout}
           />
           {veronicaOnly ? <div className="communications"><div className="mt-5">
-            {communicationsSection === 'veronica-templates' ? <VeronicaTemplatesPanel token={token} /> : communicationsSection === 'bulk-veronica' ? <BulkTemplatesPanel token={token} kind="veronica" /> : <VeronicaPanel token={token} />}
+            {communicationsSection === 'veronica-stats' ? <VeronicaStatsPanel token={token} onOpenConversation={() => selectCommunicationsSection('veronica')} /> : communicationsSection === 'veronica-templates' ? <VeronicaTemplatesPanel token={token} /> : communicationsSection === 'bulk-veronica' ? <BulkTemplatesPanel token={token} kind="veronica" /> : <VeronicaPanel token={token} />}
           </div></div> : <AdminShellContent
             coachesSection={coachesSection}
             onSelectCoachesSection={selectCoachesSection}

@@ -12,6 +12,20 @@ from core.veronica_access import CanUseVeronica
 from core.api.veronica_filters import catalog, ensure_option
 
 
+class VeronicaWeeklyStatsView(APIView):
+    permission_classes = [CanUseVeronica]
+
+    def get_queryset(self):
+        from core.models import WhatsAppConversation
+        rows = WhatsAppConversation.objects.filter(context__kind='veronica_manual')
+        channel = self.request.query_params.get('channel', '')
+        return rows.filter(to_address=channel) if channel else rows
+
+    def get(self, request):
+        from core.api.trials import WhatsAppConversationViewSet
+        return WhatsAppConversationViewSet.weekly_stats(self, request)
+
+
 class VeronicaConsoleView(APIView):
     permission_classes = [CanUseVeronica]
 

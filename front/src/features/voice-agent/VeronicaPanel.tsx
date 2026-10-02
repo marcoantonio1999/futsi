@@ -3,6 +3,7 @@ import { ArrowLeft, FileText, RefreshCw, X } from "lucide-react";
 import { apiRequest } from "../../api";
 import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } from "./model";
 import "./veronica.css";
+import "./veronica-inbox.css";
 import { deliveryProblem } from "./veronicaDelivery";
 import { VeronicaAutomaticPdf } from './VeronicaAutomaticPdf';
 import { templateStatusMeta } from "./veronicaTemplateStatus";

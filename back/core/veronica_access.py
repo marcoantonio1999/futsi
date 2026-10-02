@@ -64,6 +64,7 @@ def veronica_route_allowed(path, method):
         "/api/auth/logout/": {"POST"},
         "/api/veronica/inbox/": {"GET", "HEAD"},
         "/api/veronica/channels/": {"GET", "HEAD"},
+        "/api/veronica/weekly-stats/": {"GET", "HEAD"},
         "/api/veronica/history/": {"GET", "HEAD"},
         "/api/veronica/templates/": {"GET", "HEAD"},
         "/api/veronica/send/": {"POST"},

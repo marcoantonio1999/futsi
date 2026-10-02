@@ -17,6 +17,7 @@ import { WhatsAppTemplatesPanel } from "./WhatsAppTemplatesPanel";
 import { WhatsAppTemplateBuilder } from "./WhatsAppTemplateBuilder";
 import { VeronicaPanel } from "./VeronicaPanel";
 import { VeronicaTemplatesPanel } from "./VeronicaTemplatesPanel";
+import { VeronicaStatsPanel } from "./VeronicaStatsPanel";
 import { BulkTemplatesPanel } from "./BulkTemplatesPanel";
 import { ConnectionsPanel } from "./ConnectionsPanel";
 import { VeronicaFiltersPanel } from "./VeronicaFiltersPanel";
@@ -30,6 +31,7 @@ const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
 const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
   connections: { title: "Conexiones" },
   "veronica-templates": { title: "Plantillas de WhatsApp" },
+  "veronica-stats": { title: "Estadísticas de Verónica" },
   "bulk-veronica": { title: "Verónica · envíos masivos" },
   "veronica-filters": { title: "Verónica · filtros de RH" },
   "bulk-academy": { title: "Canchas · envíos masivos" },
@@ -202,6 +204,7 @@ export function VoiceDashboardPanel({
 
   if (!canManageTrials || (courtCommunicationsOnly && !isCourtCommunicationsSection(section))) return null;
   if (section === 'veronica-templates') return canReviewCalls ? <div className="communications"><VeronicaTemplatesPanel token={token} /></div> : null;
+  if (section === 'veronica-stats') return canReviewCalls ? <div className="communications"><VeronicaStatsPanel token={token} onOpenConversation={() => onSelectSection('veronica')} /></div> : null;
   if (section === 'connections') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><ConnectionsPanel token={token} /></div> : null;
   if (section === 'veronica-filters') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><VeronicaFiltersPanel token={token} /></div> : null;
   if (section === 'bulk-veronica' || section === 'bulk-academy' || section === 'bulk-academy-history') return (canReviewCalls || (courtCommunicationsOnly && section !== 'bulk-veronica')) ? <div className="communications">
