@@ -107,6 +107,7 @@ export function VoiceDashboardPanel({
   }, [communicationsData, user.primary_site, user.role]);
   const [selectedSite, setSelectedSite] = useState(user.role === "site_coordinator" ? String(user.primary_site ?? "unassigned") : "all");
   const [selectedAddress, setSelectedAddress] = useState("all");
+  const [statisticsArea, setStatisticsArea] = useState<'courts' | 'veronica'>('courts');
   const [channels, setChannels] = useState<CommunicationChannel[]>([]);
   const [channelError, setChannelError] = useState("");
   const [channelsReady, setChannelsReady] = useState(false);
@@ -242,9 +243,10 @@ export function VoiceDashboardPanel({
     <div className={`communications ${pageClass}`}>
       <header className="comm-page-heading">
         <div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{courtCommunicationsOnly && section === "weekly-stats" ? "Estadísticas de mi cancha" : sectionDetail.title}</h2></div>
-        {section !== "whatsapp" && !(courtCommunicationsOnly && section === "weekly-stats") && scopePanel}
+        {section !== "whatsapp" && !(courtCommunicationsOnly && section === "weekly-stats") && !(section === 'weekly-stats' && statisticsArea === 'veronica') && scopePanel}
       </header>
       <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
+      {section === 'weekly-stats' && canReviewCalls && !courtCommunicationsOnly && <label className="comm-inline">Estadísticas de <select className="rounded-lg border p-2" aria-label="Elegir estadísticas de canchas o Verónica" value={statisticsArea} onChange={event => setStatisticsArea(event.target.value as 'courts' | 'veronica')}><option value="courts">Canchas</option><option value="veronica">Verónica · ambos números</option></select></label>}
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
       {channelsReady && <div key={query} className={section === "summary" ? "comm-summary-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
@@ -295,7 +297,7 @@ export function VoiceDashboardPanel({
       ) : null}
 
       {section === "weekly-stats" && (canReviewCalls || courtCommunicationsOnly) ? (
-        <WhatsAppWeeklyStatsPanel scopeQuery={query} value={courtCommunicationsOnly ? null : voiceData.whatsappWeeklyStats} token={token} onOpenConversation={openConversation} />
+        <WhatsAppWeeklyStatsPanel key={statisticsArea} scopeQuery={statisticsArea === 'veronica' && canReviewCalls ? '' : query} value={courtCommunicationsOnly || statisticsArea === 'veronica' ? null : voiceData.whatsappWeeklyStats} endpoint={statisticsArea === 'veronica' && canReviewCalls ? '/veronica/weekly-stats/' : '/whatsapp-conversations/weekly-stats/'} showClassifications={statisticsArea !== 'veronica'} token={token} onOpenConversation={statisticsArea === 'veronica' ? () => onSelectSection('veronica') : openConversation} />
       ) : null}
 
       {section === "chat-export" && canReviewCalls ? (
