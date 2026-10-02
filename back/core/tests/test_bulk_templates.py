@@ -167,12 +167,23 @@ def test_only_admin_and_vero_can_use_bulk(auth_client):
 @pytest.mark.django_db
 def test_import_enriches_missing_names_and_preserves_excel_names(auth_client):
     client, _, _ = auth_client(role='admin')
-    with patch('core.api.bulk.BulkView.forward', return_value=Response({'names': {'5512345678': 'Saved', '5587654321': 'Known'}})) as lookup:
+    history = {'5512345678': {'sent_at': '2026-10-01T12:00:00+00:00'}}
+    with patch('core.api.bulk.BulkView.forward', return_value=Response({'names': {'5512345678': 'Saved', '5587654321': 'Known'}, 'sent_history': history})) as lookup:
         result = client.post('/api/whatsapp-bulk/import/', {'channel': 'meta:123', 'file': file('n.csv', b'Nombre,Telefono\nExcel,5512345678\n,5587654321')}, format='multipart')
         assert result.status_code == 200
         assert result.data['names'] == {'5512345678': 'Excel', '5587654321': 'Known'}
+        assert result.data['sent_history'] == history
         assert lookup.call_args.args == ('academy', 'names')
         assert lookup.call_args.kwargs['data']['channel'] == 'meta:123'
+
+@pytest.mark.django_db
+def test_manual_import_exposes_sent_history(auth_client):
+    client, _, _ = auth_client(role='admin')
+    history = {'5512345678': {'sent_at': '2026-10-01T12:00:00+00:00'}}
+    with patch('core.api.bulk.BulkView.forward', return_value=Response({'names': {}, 'sent_history': history})):
+        result = client.post('/api/veronica/bulk/import/', {'channel': 'meta:123', 'text': '5512345678\n5587654321'})
+    assert result.status_code == 200
+    assert result.data['sent_history'] == history
 
 @pytest.mark.django_db
 def test_veronica_import_creates_unknown_filter_categories(auth_client):

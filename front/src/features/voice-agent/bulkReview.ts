@@ -27,6 +27,7 @@ export function recipientPreviewValue(parameter: TemplateParameter, value: strin
 export type BulkReview = {
   phones: string[];
   names?: Record<string, string>;
+  sent_history?: Record<string, { sent_at: string }>;
   parameter_values?: RecipientParameters;
   filters?: Record<string, { platform?: string; vacancy_type?: string }>;
   added_filter_options?: { platform: string[]; vacancy_type: string[] };
