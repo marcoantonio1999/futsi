@@ -77,6 +77,10 @@ def test_recruitment_columns_are_imported_by_phone():
         '5587654321': {'platform': 'Indeed', 'vacancy_type': 'Contador'},
     }
 
+def test_manual_numbers_have_no_default_recruitment_classification():
+    result = import_recipients(text='5512345678\n5587654321')
+    assert result['filters'] == {}
+
 def test_multiple_columns_require_selection():
     content = b'Nombre,Contacto\nUno,5512345678'
     pending = import_recipients(file('n.csv', content))
