@@ -15,6 +15,12 @@ export function VeronicaAutomaticPdf({ token, onSaved }: { token: string; onSave
   const [notice, setNotice] = useState('');
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
+  const feedback = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!notice && !error) return;
+    feedback.current?.focus({ preventScroll: true });
+    feedback.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [notice, error]);
   function chooseFile(files: FileList | null) {
     if (busy || !files?.length) return;
     setNotice('');
@@ -40,7 +46,7 @@ export function VeronicaAutomaticPdf({ token, onSaved }: { token: string; onSave
       if (file) form.set('file', file);
       const c = await apiFormRequest<Config>('/veronica/auto-pdf/', token, form);
       setSaved(c); setCaption(c.caption); setEnabled(c.enabled); setFile(null);
-      setNotice('Guardado. Se aplicará a las próximas respuestas; no se enviaron mensajes al guardar.');
+      setNotice(`Mensaje y configuración guardados correctamente. ${c.enabled ? 'El PDF automático está activo.' : 'El PDF automático está pausado.'} El cambio se aplicará a las próximas respuestas; guardar no envía mensajes.`);
       onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar el PDF.'); }
     finally { setBusy(false); }
@@ -48,8 +54,6 @@ export function VeronicaAutomaticPdf({ token, onSaved }: { token: string; onSave
   return <section className="comm-panel" aria-label="Configuración del PDF automático">
     <h3>PDF automático</h3>
     <p><strong>{saved?.enabled && saved.configured ? 'Activo' : 'Inactivo'}</strong> · {saved?.filename || 'Sin archivo seleccionado'}</p>
-    {error && <p className="comm-error" role="alert">{error}</p>}
-    {notice && <p role="status">{notice}</p>}
     <details><summary>{saved?.configured ? 'Cambiar PDF o mensaje' : 'Elegir PDF y configurar'}</summary>
       <input ref={picker} className="vero-pdf-input" type="file" accept=".pdf,application/pdf" tabIndex={-1} aria-hidden="true" disabled={busy} onChange={e => { chooseFile(e.target.files); e.target.value = ''; }} />
       <div className={`vero-pdf-drop${dragging ? ' is-dragging' : ''}${busy ? ' is-disabled' : ''}`} role="group" aria-label="Cargar PDF automático"
@@ -63,10 +67,14 @@ export function VeronicaAutomaticPdf({ token, onSaved }: { token: string; onSave
       </div>
       {file && <div className="vero-pdf-selected" role="status"><FileText size={26} aria-hidden="true" /><div><strong>{file.name}</strong><small>{(file.size / 1024).toLocaleString('es-MX', { maximumFractionDigits: 0 })} KB · Listo para guardar</small></div><button type="button" disabled={busy} aria-label="Quitar PDF seleccionado" onClick={() => setFile(null)}><X size={20} /></button></div>}
       {file && <small>El PDF actual se reemplazará únicamente al guardar.</small>}
-      <label>Mensaje que acompaña al PDF<textarea className={inputClass} rows={3} maxLength={1024} value={caption} disabled={busy} onChange={e => setCaption(e.target.value)} /></label>
-      <label><input type="checkbox" checked={enabled} disabled={busy} onChange={e => setEnabled(e.target.checked)} /> Enviar automáticamente cuando el contacto responda</label>
+      <label>Mensaje que acompaña al PDF<textarea className={inputClass} rows={3} maxLength={1024} value={caption} disabled={busy} onChange={e => { setCaption(e.target.value); setNotice(''); }} /></label>
+      <label><input type="checkbox" checked={enabled} disabled={busy} onChange={e => { setEnabled(e.target.checked); setNotice(''); }} /> Enviar automáticamente cuando el contacto responda</label>
       <p>El archivo se guarda de forma privada. No es necesario cambiar variables ni volver a desplegar.</p>
       <button className={primaryButtonClass} disabled={busy || !saved || (enabled && !file && !saved.configured)} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar PDF automático'}</button>
     </details>
+    <div ref={feedback} tabIndex={-1}>
+      {error && <p className="comm-error" role="alert">{error}</p>}
+      {notice && <p className="vero-pdf-saved" role="status">{notice}</p>}
+    </div>
   </section>;
 }
