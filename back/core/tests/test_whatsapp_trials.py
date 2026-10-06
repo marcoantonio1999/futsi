@@ -920,6 +920,28 @@ def test_weekly_whatsapp_stats_recovers_manual_channel_without_events(auth_clien
     assert data["outside_business_hours"]["total"] == 0
 
 
+@pytest.mark.parametrize('pending_question', [False, True])
+@pytest.mark.parametrize('reaction_direction', ['inbound', 'outbound'])
+def test_weekly_whatsapp_stats_ignores_reactions_without_closing_questions(auth_client, pending_question, reaction_direction):
+    conversation = WhatsAppConversation.objects.create(
+        contact_phone='+525500000113', from_address='whatsapp:+525500000113',
+        to_address=f'whatsapp:{WHATSAPP_NUMBER}', status='active', current_step='faq',
+        last_message_at=timezone.now(),
+    )
+    if pending_question:
+        WhatsAppMessage.objects.create(conversation=conversation, direction='inbound', body='¿Qué horarios tienen?')
+    WhatsAppMessage.objects.create(
+        conversation=conversation, direction=reaction_direction, body=' [Reaction] ',
+        response_source='human_whatsapp' if reaction_direction == 'outbound' else 'unknown',
+    )
+    client, _, _ = auth_client(role='admin')
+    response = client.get('/api/whatsapp-conversations/weekly-stats/')
+    assert response.status_code == 200
+    assert response.json()['summary']['total'] == int(pending_question)
+    assert response.json()['summary']['unanswered'] == int(pending_question)
+    assert response.json()['summary']['answered'] == 0
+
+
 def test_weekly_whatsapp_stats_does_not_recover_bot_handled_message(auth_client):
     conversation = WhatsAppConversation.objects.create(
         contact_phone="+525500000112",

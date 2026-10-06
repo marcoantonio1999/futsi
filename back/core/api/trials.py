@@ -98,6 +98,7 @@ def _manual_response_events(conversations, recorded_events, start_at, end_at):
             created_at__lt=end_at,
         )
         .exclude(conversation_id__in=recorded_conversations)
+        .exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$')
         .select_related("conversation", "conversation__booking", "sent_by")
         .defer("body", "classification_evidence")
         .order_by("conversation_id", "created_at", "id")
@@ -853,6 +854,7 @@ class WhatsAppConversationViewSet(
                 first_inbound_at__gte=start_at,
                 first_inbound_at__lt=end_at,
             )
+            .exclude(first_inbound_message__body__iregex=r'^\s*\[(reaction|revoke)\]\s*$')
             .select_related(
                 "conversation",
                 "conversation__booking",
