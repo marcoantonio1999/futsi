@@ -65,26 +65,7 @@ export function VoiceDashboardPanel({
   const canReviewCalls = adminRoles.has(user.role);
   const [inboxConversations, setInboxConversations] = useState(data.whatsappConversations);
   useEffect(() => { setInboxConversations(data.whatsappConversations); }, [data.whatsappConversations]);
-  useEffect(() => {
-    if (section !== "whatsapp") return;
-    let active = true;
-    const refresh = () => {
-      if (document.visibilityState === "hidden") return;
-      void apiRequest<WhatsAppConversation[]>("/whatsapp-conversations/?scope=all", token)
-        .then(rows => { if (active) setInboxConversations(rows); })
-        .catch(() => undefined);
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 10_000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [section, token]);
+  // Inbox data comes from the initial page load; refresh the page for new chats.
   const communicationsData = useMemo(
     () => ({ ...data, whatsappConversations: inboxConversations }),
     [data, inboxConversations],
