@@ -25,7 +25,7 @@ class PlayerEnrollmentTests(TestCase):
         cache.clear()
         self.emilio = User.objects.create_user(username="emilio", password="test-pass-123", role="collaborator", section_permissions=["player_enrollments_only"])
         self.other = User.objects.create_user(username="other", role="collaborator", section_permissions=["player_enrollments_only"])
-        self.site = Site.objects.create(name='Sede de prueba', code='prueba')
+        self.site = Site.objects.create(name='Colegio Franco', code='prueba')
         self.tournament = Tournament.objects.create(site=self.site, name='Torneo', billing_type='weekly_match')
         self.team = Team.objects.create(tournament=self.tournament, name='Equipo', representative_name='Responsable de prueba', representative_phone='5512345678')
         self.invitation = self.new_invitation()
@@ -34,6 +34,38 @@ class PlayerEnrollmentTests(TestCase):
 
     def new_invitation(self):
         return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name)
+
+    def test_emilio_pilot_cannot_access_other_courts(self):
+        outside = Site.objects.create(name='Otra cancha', code='otra')
+        tournament = Tournament.objects.create(site=outside, name='Privado', billing_type='weekly_match')
+        team = Team.objects.create(tournament=tournament, name='Equipo externo')
+        self.client.force_authenticate(self.emilio)
+        catalog = self.client.get('/api/player-enrollments/catalog/').json()
+        self.assertEqual([row['id'] for row in catalog['sites']], [self.site.pk])
+        self.assertNotIn(tournament.pk, [row['id'] for row in catalog['tournaments']])
+        self.assertEqual(self.client.post('/api/player-enrollments/catalog/', {'kind':'tournament','name':'No permitido','site':outside.pk,'billing_type':'weekly_match'}, format='json').status_code,403)
+        self.assertEqual(self.client.post('/api/player-enrollments/', {'tournament_id':tournament.pk,'team_id':team.pk}, format='json').status_code,403)
+        for method in ('get','delete'):
+            url = f'/api/player-enrollments/tournaments/{tournament.pk}/' + ('deletion-preview/' if method == 'get' else '')
+            self.assertEqual(getattr(self.client,method)(url).status_code,404)
+        self.assertTrue(Tournament.objects.filter(pk=tournament.pk).exists())
+
+    def test_franco_deletion_reuses_confirmation_and_protects_enrollments(self):
+        self.client.force_authenticate(self.emilio)
+        row = Tournament.objects.create(site=self.site, name='Eliminar prueba', billing_type='weekly_match')
+        url = f'/api/player-enrollments/tournaments/{row.pk}/'
+        self.assertEqual(self.client.delete(url,{},format='json').status_code,400)
+        preview = self.client.get(url+'deletion-preview/').json()
+        payload = {'confirmation_token':preview['confirmation_token'],'confirmation_name':row.name}
+        self.assertEqual(self.client.delete(url,payload,format='json').status_code,200)
+        self.assertFalse(Tournament.objects.filter(pk=row.pk).exists())
+        protected = f'/api/player-enrollments/tournaments/{self.tournament.pk}/'
+        self.assertEqual(self.client.delete(protected,{},format='json').status_code,400)
+        self.assertTrue(PlayerEnrollmentInvitation.objects.filter(pk=self.invitation.pk).exists())
+
+    def test_other_enrollment_operator_cannot_delete(self):
+        self.client.force_authenticate(self.other)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/tournaments/{self.tournament.pk}/deletion-preview/').status_code,403)
 
     def payload(self, minor=False, tutor=True, blank=False):
         data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}

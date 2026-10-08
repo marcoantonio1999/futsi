@@ -13,14 +13,15 @@ export function StudentDeleteDialog({ student, token, onClose, onDelete }: {
 
 type DeletionPreview = Pick<StudentDeletionPreview, "full_name" | "items" | "file_count" | "confirmation_token"> & { students?: { id: number; full_name: string }[] };
 
-export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete }: {
+export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, collectionPath }: {
   record: { id: number; full_name: string; site_name?: string }; kind: "student" | "guardian" | "tournament"; token: string; onClose: () => void;
   onDelete: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
+  collectionPath?: string;
 }) {
   const isGuardian = kind === "guardian";
   const isTournament = kind === "tournament";
   const noun = isTournament ? "torneo" : isGuardian ? "tutor" : "alumno";
-  const collection = isTournament ? "tournaments" : isGuardian ? "guardians" : "students";
+  const collection = collectionPath || (isTournament ? "tournaments" : isGuardian ? "guardians" : "students");
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);

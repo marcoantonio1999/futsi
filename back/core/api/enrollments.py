@@ -8,7 +8,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
@@ -17,6 +17,14 @@ from core.models import Team, Tournament, Site
 from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
+
+
+def enrollment_sites(user):
+    sites = Site.objects.filter(is_active=True)
+    if user.username.casefold() == 'emilio':
+        # Fail closed: this pilot must never grant access to another court.
+        sites = sites.filter(name__iexact='Colegio Franco')
+    return sites
 
 
 def enrollment_staff(user):
@@ -30,6 +38,8 @@ class EnrollmentStaffPermission(permissions.BasePermission):
 
 def invitations_for(user):
     rows = PlayerEnrollmentInvitation.objects.all()
+    if user.username.casefold() == 'emilio':
+        rows = rows.filter(team_record__tournament__site__in=enrollment_sites(user))
     return rows if user.role in {"admin", "owner", "dev"} else rows.filter(created_by=user)
 
 
@@ -189,6 +199,8 @@ class EnrollmentAdminView(APIView):
         serializer.is_valid(raise_exception=True)
         team = serializer.validated_data['team_id']
         tournament = serializer.validated_data['tournament_id']
+        if not enrollment_sites(request.user).filter(pk=tournament.site_id).exists():
+            raise PermissionDenied('Esta prueba está habilitada únicamente para Colegio Franco.')
         row = PlayerEnrollmentInvitation.objects.create(created_by=request.user, expires_at=timezone.now() + timedelta(days=30), team_record=team, team=team.name, tournament=tournament.name)
         return Response({"token": row.token, "expires_at": row.expires_at}, status=201)
 
@@ -197,9 +209,11 @@ class EnrollmentCatalogView(APIView):
     """Usa los modelos y validadores existentes de Torneos/Equipos."""
     permission_classes = [EnrollmentStaffPermission]
     def get(self, request):
-        tournaments = Tournament.objects.filter(is_active=True, site__is_active=True).order_by('name', 'id')
-        teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__is_active=True).order_by('name', 'id')
-        return Response({'sites': list(Site.objects.filter(is_active=True).values('id','name')),
+        sites = enrollment_sites(request.user)
+        tournaments = Tournament.objects.filter(is_active=True, site__in=sites).order_by('name', 'id')
+        teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__in=sites).order_by('name', 'id')
+        can_delete = request.user.username.casefold() == 'emilio' or request.user.role in {'admin', 'owner', 'dev'}
+        return Response({'sites': list(sites.values('id','name')), 'deletable_tournament_ids': list(tournaments.filter(site__name__iexact='Colegio Franco').values_list('pk', flat=True)) if can_delete else [],
                          'tournaments': TournamentSerializer(tournaments, many=True).data,
                          'teams': list(teams.values('id','name','tournament','is_active'))})
     def post(self, request):
@@ -211,6 +225,9 @@ class EnrollmentCatalogView(APIView):
         data = {key: value for key,value in request.data.items() if key in allowed[kind]}
         serializer = (TournamentSerializer if kind == 'tournament' else TeamSerializer)(data=data)
         serializer.is_valid(raise_exception=True)
+        site = serializer.validated_data['site'] if kind == 'tournament' else serializer.validated_data['tournament'].site
+        if not enrollment_sites(request.user).filter(pk=site.pk).exists():
+            raise PermissionDenied('Esta prueba está habilitada únicamente para Colegio Franco.')
         if kind == 'tournament' and not serializer.validated_data['site'].is_active:
             raise ValidationError('Selecciona una sede activa.')
         if kind == 'team':
@@ -219,6 +236,45 @@ class EnrollmentCatalogView(APIView):
                 raise ValidationError('Selecciona un torneo activo.')
         serializer.save()
         return Response(serializer.data, status=201)
+
+
+class EnrollmentTournamentDeletionView(APIView):
+    permission_classes = [EnrollmentStaffPermission]
+
+    def post(self, request):
+        from core.models import AuditLog
+        from core.services.student_deletion import cleanup_files
+        if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
+            raise PermissionDenied('No tienes permiso para eliminar torneos.')
+        deletion_id = request.data.get('deletion_id')
+        if not isinstance(deletion_id, int) or isinstance(deletion_id, bool):
+            raise ValidationError('La referencia de eliminación no es válida.')
+        sites = enrollment_sites(request.user).filter(name__iexact='Colegio Franco')
+        with transaction.atomic():
+            audit = get_object_or_404(AuditLog.objects.select_for_update(), pk=deletion_id,
+                action='tournament_deleted', actor=request.user, metadata__site_id__in=list(sites.values_list('pk', flat=True)))
+            return Response(cleanup_files(audit))
+
+    def target(self, request, pk):
+        if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
+            raise PermissionDenied('No tienes permiso para eliminar torneos.')
+        return get_object_or_404(Tournament, pk=pk, site__in=enrollment_sites(request.user).filter(name__iexact='Colegio Franco'))
+
+    def get(self, request, pk):
+        from core.services import tournament_deletion
+        return Response(tournament_deletion.preview(self.target(request, pk), request.user))
+
+    def delete(self, request, pk):
+        from core.services import tournament_deletion
+        from django.db.models.deletion import ProtectedError
+        tournament = self.target(request, pk)
+        # Signed enrollment files must not be lost by deleting their team.
+        if PlayerEnrollmentInvitation.objects.filter(team_record__tournament=tournament).exists():
+            raise ValidationError('Este torneo tiene enlaces o inscripciones firmadas. No se puede eliminar para conservar sus documentos.')
+        try:
+            return Response(tournament_deletion.permanently_delete(tournament, request.user, request.data))
+        except ProtectedError:
+            raise ValidationError('El torneo tiene registros protegidos y no puede eliminarse.')
 
 
 class EnrollmentDocumentView(APIView):

@@ -20,8 +20,8 @@ const data = { ...emptyData, sites: [{ id: 9, name: "Sede ficticia" }], tourname
   teams: [{ id: 82, tournament: 81, name: "Equipo ficticio", is_active: true, representative_name: "CONTACTO_PRIVADO", representative_phone: "CONTACTO_PRIVADO" }] };
 const noop = () => {};
 const unavailable = async () => { throw new Error("Not allowed in fixture"); };
-function render(section, setupOnly = true) {
-  return renderToStaticMarkup(React.createElement(TournamentsPanel, { data, token: "local-test-only", scope: "adult", setupOnly, section,
+function render(section, setupOnly = true, deletableTournamentIds = []) {
+  return renderToStaticMarkup(React.createElement(TournamentsPanel, { data, token: "local-test-only", scope: "adult", setupOnly, section, deletableTournamentIds,
     onSelectSection: noop, onCreateTournament: unavailable, onCreateTeam: unavailable, onDeleteTournament: unavailable,
     onRegisterStudent: unavailable, onUpdateRegistration: unavailable, onCreateMatch: unavailable, onUpdateMatch: unavailable }));
 }
@@ -54,4 +54,9 @@ test("Normal Futsi teams view remains unchanged outside restricted setup", () =>
   const html = render("teams", false);
   assert.match(html, /CONTACTO_PRIVADO/);
   assert.match(html, /Partidos|Dashboard/);
+});
+
+test("Pilot displays deletion only for server-authorized tournaments", () => {
+  assert.match(render("overview", true, [81]), /Eliminar torneo Torneo ficticio/);
+  assert.doesNotMatch(render("overview", true, [99]), /Eliminar torneo/);
 });

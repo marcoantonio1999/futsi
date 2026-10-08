@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
-import type { AppData, User, Team, Tournament, Site } from "../../types";
+import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
 
@@ -18,7 +18,7 @@ type Enrollment = {
   terms_text: string[]; documents: Document[];
 };
 type Defaults = { team: string; tournament: string; terms: string[] };
-type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: Pick<Team, "id" | "name" | "tournament" | "is_active">[] };
+type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: Pick<Team, "id" | "name" | "tournament" | "is_active">[]; deletable_tournament_ids?: number[] };
 
 export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: User) => void }) {
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
@@ -252,6 +252,14 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   const tournamentData: AppData = { ...emptyData, sites: catalog.sites as Site[],
     tournaments: catalog.tournaments, teams: catalog.teams as Team[] };
   const unsupportedAction = async () => { throw new Error("Acción no disponible en Inscripciones."); };
+  async function deleteTournament(id: number, confirmation: StudentDeletionConfirmation) {
+    const result = await apiRequest<StudentDeletionResult>(`/player-enrollments/tournaments/${id}/`, token, {
+      method: "DELETE", body: JSON.stringify(confirmation),
+    });
+    chooseTournament("");
+    await loadCatalog().catch(() => undefined);
+    return result;
+  }
   async function loadCatalog() {
     setCatalogBusy(true); setCatalogError("");
     try {
@@ -329,6 +337,8 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       </nav>
       {tournamentSection !== null ? <section className="operator-controls no-print">
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
+          deletableTournamentIds={catalog.deletable_tournament_ids || []}
+          deletionCollectionPath="player-enrollments/tournaments"
           section={tournamentSection} onSelectSection={setTournamentSection}
           selectedTournamentId={inviteTournament ? Number(inviteTournament) : undefined}
           onSelectTournament={id => chooseTournament(String(id))}
@@ -338,7 +348,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
             setInviteTournament(String(created.tournament)); setInviteTeam(String(created.id)); setLink("");
             return created;
           }}
-          onDeleteTournament={unsupportedAction} onRegisterStudent={unsupportedAction}
+          onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
         <button className="primary" onClick={() => setTournamentSection(null)}>Continuar a generar enlace de inscripción</button>
       </section> : <>
