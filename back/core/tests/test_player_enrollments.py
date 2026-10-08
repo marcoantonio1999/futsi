@@ -142,6 +142,47 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.delete(url, payload, format='json').status_code, 400)
         self.assertTrue(Team.objects.filter(pk=team.pk).exists())
 
+    def test_deleted_faceguard_clip_is_preserved_without_blocking_team(self):
+        import json
+        from django.db import connection
+        team, player, match, session = self.empty_team_match()
+        with connection.cursor() as cursor:
+            cursor.execute('CREATE TABLE video_clips (id TEXT PRIMARY KEY, status TEXT, match_id INTEGER, attendance_session_id INTEGER, metadata TEXT)')
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['clip-test','deleted',match.pk,session.pk,'{"evidence":"keep"}'])
+            url = f'/api/player-enrollments/teams/{team.pk}/'
+            response = self.client.get(url+'deletion-preview/')
+            self.assertEqual(response.status_code, 200)
+            payload = {'confirmation_token':response.json()['confirmation_token'], 'confirmation_name':team.name}
+            self.assertEqual(self.client.delete(url, payload, format='json').status_code, 200)
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT status,match_id,attendance_session_id,metadata FROM video_clips WHERE id=%s', ['clip-test'])
+                row = cursor.fetchone()
+            self.assertEqual(row[:3], ('deleted',None,None))
+            metadata = json.loads(row[3])
+            self.assertEqual(metadata['evidence'], 'keep')
+            self.assertEqual(metadata['team_deletion_evidence']['match_id'], match.pk)
+            player.refresh_from_db()
+            self.assertIsNone(player.team_id)
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute('DROP TABLE video_clips')
+
+    def test_active_faceguard_clip_blocks_empty_match_deletion(self):
+        from django.db import connection
+        team, _, match, session = self.empty_team_match()
+        with connection.cursor() as cursor:
+            cursor.execute('CREATE TABLE video_clips (id TEXT PRIMARY KEY, status TEXT, match_id INTEGER, attendance_session_id INTEGER, metadata TEXT)')
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['clip-active','uploaded',match.pk,session.pk,'{}'])
+            self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 400)
+            self.assertTrue(Team.objects.filter(pk=team.pk).exists())
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute('DROP TABLE video_clips')
+
     def payload(self, minor=False, tutor=True, blank=False):
         data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
         if minor:

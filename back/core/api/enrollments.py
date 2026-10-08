@@ -306,7 +306,14 @@ class EnrollmentTeamDeletionView(APIView):
 
     def delete(self, request, pk):
         from core.services import team_deletion
-        return Response(team_deletion.permanently_delete(self.target(request, pk), request.user, request.data))
+        try:
+            return Response(team_deletion.permanently_delete(self.target(request, pk), request.user, request.data))
+        except (APIException, Http404):
+            raise
+        except Exception:
+            reference = uuid4().hex[:12]
+            logger.exception('ENROLLMENT_TEAM_DELETE_FAILED reference=%s team_id=%s', reference, pk)
+            return Response({'detail': f'No se pudo eliminar el equipo. Referencia del error: {reference}.'}, status=500)
 
 
 class EnrollmentDocumentView(APIView):
