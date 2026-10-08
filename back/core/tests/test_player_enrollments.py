@@ -325,6 +325,18 @@ class PlayerEnrollmentTests(TestCase):
         self.client.force_authenticate(regular)
         self.assertEqual(self.client.get('/api/player-enrollments/catalog/').status_code,403)
 
+    def test_catalog_creates_team_without_representative(self):
+        self.client.force_authenticate(self.emilio)
+        for index, fields in enumerate(({}, {'representative_name': '', 'representative_phone': ''})):
+            response = self.client.post('/api/player-enrollments/catalog/', {
+                'kind': 'team', 'tournament': self.tournament.pk,
+                'name': f'Equipo academia {index}', **fields,
+            }, format='json')
+            self.assertEqual(response.status_code, 201, response.data)
+            team = Team.objects.get(pk=response.data['id'])
+            self.assertEqual(team.representative_name, '')
+            self.assertEqual(team.representative_phone, '')
+
     def test_old_ambiguous_links_are_not_guessed(self):
         invitation=PlayerEnrollmentInvitation.objects.create(created_by=self.emilio,expires_at=timezone.now()+timedelta(days=1),team='Nombre libre',tournament='Nombre libre')
         self.assertEqual(self.client.get(f'/api/player-enrollments/public/{invitation.token}/').status_code,410)

@@ -84,6 +84,21 @@
 .tournament-actions { display:flex; align-items:center; justify-content:flex-end; gap:12px; margin:22px 0; }
 .tournament-actions.centered { justify-content:center; padding:0 18px; }
 .tournament-create { max-width:900px; margin-inline:auto; }
+.tournament-create-card { background:var(--t-bg); border:1px solid var(--t-line); border-radius:14px; padding:22px; box-shadow:0 3px 12px #00000004; }
+.tournament-create-card fieldset { border:0; padding:0; margin:0; }
+.tournament-create-heading { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
+.tournament-create-icon { display:grid; place-items:center; flex-shrink:0; width:44px; height:44px; border-radius:12px; background:#ecfdf5; color:#047857; }
+.tournament-create-heading h2 { font-size:20px; font-weight:700; margin:0; line-height:1.3; }
+.tournament-create-heading p { margin:4px 0 0; font-size:13px; color:var(--t-muted); }
+.tournament-create-card .tournament-form-grid { gap:16px 20px; }
+.tournament-create-card .tournament-actions { margin:20px 0 0; padding-top:16px; border-top:1px solid var(--t-line); }
+.enrollment-page .tournament-create-card label { margin:0; font-size:13px; font-weight:600; }
+.enrollment-page .tournament-create-card input,.enrollment-page .tournament-create-card select { border-radius:8px; border-color:var(--t-line); min-height:42px; margin-top:6px; padding:9px 12px; font-size:14px; font-weight:400; }
+.enrollment-page .tournament-create-heading h2 { font-size:20px; font-weight:700; margin:0; }
+.enrollment-page .tournament-create-heading p { margin:4px 0 0; }
+.enrollment-page .tournament-create-card .tournament-button { display:inline-flex; align-items:center; justify-content:center; border-radius:8px; min-height:42px; }
+.enrollment-page .tournament-create-card .tournament-button.primary { background:#047857; border-color:#047857; padding:10px 18px; }
+.enrollment-page .tournament-create-card .tournament-button.primary:hover { background:#065f46; }
 .tournament-form-section { padding:26px; display:grid; gap:20px; }
 .tournament-form-section h3 { display:flex; align-items:center; gap:9px; font-weight:650; }
 .tournament-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
@@ -110,7 +125,7 @@
 .dark .tournament-eyebrow,.dark .tournament-back,.dark .tournament-text-button,.dark .tournament-quick-actions button { color:#6ee7b7; }
 .dark .tournament-icon-button.danger { color:#fda4af; border-color:#881337; }
 @media(max-width:1150px) { .tournament-dashboard-grid { grid-template-columns:1fr; } }
-.tournament-team-delete-action { display:flex; justify-content:flex-start; margin-bottom:16px; }
+.tournament-team-delete-action { display:flex; justify-content:flex-end; margin-bottom:16px; }
 .enrollment-page .tournament-team-delete-button,.tournament-ui .tournament-team-delete-button { display:inline-flex; align-items:center; gap:8px; background:#b42338; color:#fff; border:1px solid #b42338; border-radius:8px; padding:9px 13px; font-size:13px; font-weight:600; cursor:pointer; }
 .enrollment-page .tournament-team-delete-button:hover,.tournament-ui .tournament-team-delete-button:hover { background:#951b2d; border-color:#951b2d; }
 .tournament-team-delete-button:focus-visible { outline:3px solid #fda4af; outline-offset:3px; }

@@ -12,5 +12,26 @@
 .enrollment-admin-header h1{margin:0;font-size:22px}
 .enrollment-admin-header>div{display:flex;gap:10px}
 .enrollment-admin-header button{display:inline-flex;align-items:center;gap:8px;border:1px solid #e4e7e5;border-radius:8px;color:#52545d}
+.enrollment-admin-layout .enrollment-tournament-create{background:transparent;border:0;padding:0;margin:0}
+.enrollment-admin-layout.enrollment-directory-layout{height:100dvh;min-height:0;box-sizing:border-box;overflow:hidden;align-items:stretch}
+.enrollment-directory-layout .enrollment-admin-sidebar{min-height:0;overflow:auto}
+.enrollment-directory-layout .operator-page{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.enrollment-directory-layout .enrollment-admin-header{flex-shrink:0;margin-bottom:16px}
+.enrollment-directory-layout .enrollment-tournament-workspace{flex:1;min-height:0;display:flex;flex-direction:column;margin:0;padding:16px;border-radius:12px;overflow:hidden}
+.enrollment-directory-layout .tournament-ui{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.enrollment-directory-layout .tournament-directory-list{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.enrollment-directory-layout .tournament-directory-list .tournament-page-heading{margin:0;flex-shrink:0;gap:8px}
+.enrollment-directory-layout .tournament-directory-filters{flex-shrink:0;padding:12px;gap:12px;margin:0;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 130px}
+.enrollment-directory-layout .tournament-directory-filters label{margin:0}
+.enrollment-directory-layout .tournament-directory-list>p{margin:0;flex-shrink:0}
+.enrollment-directory-layout .tournament-directory-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;border:1px solid #e4e7e5;border-radius:10px;background:white}
+.enrollment-directory-layout .tournament-directory-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;text-align:left}
+.enrollment-directory-layout .tournament-directory-table th{position:sticky;top:0;z-index:1;background:#f3f7f5;color:#41614f;font-weight:650;white-space:nowrap}
+.enrollment-directory-layout .tournament-directory-table th,.enrollment-directory-layout .tournament-directory-table td{padding:14px 16px;border-bottom:1px solid #e4e7e5;vertical-align:middle}
+.enrollment-directory-layout .tournament-directory-table tbody tr:hover{background:#f8fbf9}
+.enrollment-directory-layout .tournament-directory-table td:first-child{min-width:180px}
+.enrollment-directory-layout .tournament-directory-table .tournament-row-actions{flex-wrap:nowrap;justify-content:flex-end}
+.enrollment-directory-layout .tournament-directory-table .danger{color:#b42338;border-color:#f3cbd0;background:#fff5f6}
+.enrollment-directory-layout .tournament-directory-empty{text-align:center;color:#71717a;padding:32px!important}
 @media(max-width:760px){.enrollment-admin-layout{grid-template-columns:170px minmax(0,1fr);gap:10px;padding:10px}.enrollment-admin-sidebar{top:10px;padding:18px 10px}.enrollment-sidebar-submenu{margin-left:8px}.enrollment-admin-header button span{display:none}.enrollment-admin-layout .enrollment-admin-header{padding:12px;gap:8px}}
 @media print{.enrollment-admin-layout{display:block;padding:0}.enrollment-admin-layout .operator-page{width:100%}}

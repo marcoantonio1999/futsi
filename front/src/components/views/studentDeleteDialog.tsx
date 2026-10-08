@@ -21,6 +21,7 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, co
   const isGuardian = kind === "guardian";
   const isTournament = kind === "tournament";
   const isTeam = kind === "team";
+  const requiresTypedName = !isTeam && !isTournament;
   const noun = isTeam ? "equipo" : isTournament ? "torneo" : isGuardian ? "tutor" : "alumno";
   const collection = collectionPath || (isTournament ? "tournaments" : isGuardian ? "guardians" : "students");
   const dialog = useRef<HTMLDialogElement>(null);
@@ -43,10 +44,10 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, co
     finally { inFlight.current = false; setBusy(false); }
   }
   async function remove() {
-    if (inFlight.current || !preview || name.trim() !== preview.full_name.trim()) return;
+    if (inFlight.current || !preview || (requiresTypedName && name.trim() !== preview.full_name.trim())) return;
     inFlight.current = true; setBusy(true); setError("");
     try {
-      const result = await onDelete(record.id, { confirmation_token: preview.confirmation_token, confirmation_name: name.trim() });
+      const result = await onDelete(record.id, { confirmation_token: preview.confirmation_token, confirmation_name: requiresTypedName ? name.trim() : preview.full_name.trim() });
       if (result.cleanup_pending) setCleanup(result);
       else setCompleted(true);
     } catch (reason) { setError(reason instanceof Error ? reason.message : `No se pudo eliminar al ${noun}.`); }
@@ -76,7 +77,7 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, co
     <div className="student-delete-symbol">{preview ? <AlertTriangle size={24} /> : <Trash2 size={24} />}</div>
     <h2 id="student-delete-title">{isTeam ? "Eliminar equipo" : cleanup ? `${isTournament ? "Torneo" : isGuardian ? "Tutor" : "Alumno"} eliminado; falta borrar ${cleanup.cleanup_pending === 1 ? "un archivo" : `${cleanup.cleanup_pending} archivos`}` : preview ? (isTournament ? "Eliminar torneo e historial" : isGuardian ? "Eliminar tutor, alumnos e historial" : "Eliminar alumno e historial") : isTournament ? "¿Eliminar este torneo?" : `¿Eliminar a este ${noun}?`}</h2>
     <p className="student-delete-name">{record.full_name}</p><p className="student-hint">{record.site_name}</p>
-    <p id="student-delete-detail">{isTeam ? "Solo se elimina el equipo y se retira la asignación de sus integrantes. No se borran personas ni documentos. Si tiene partidos, movimientos o enlaces, se protege su historial." : cleanup
+    <p id="student-delete-detail">{isTeam ? "Se elimina el equipo y se retira la asignación de sus integrantes. También se eliminan los partidos solo programados y sus sesiones sin actividad que aparezcan en el resumen. No se borran personas ni documentos; los resultados, asistencias y movimientos registrados se protegen." : cleanup
       ? `La ficha y el historial ya se eliminaron correctamente. Solo queda pendiente la limpieza del almacenamiento; reintentar no vuelve a borrar el registro.`
       : preview
         ? "Esta eliminación es definitiva. También desaparecerán los siguientes registros y cambiarán los totales de cobranza, pagos y asistencias."
@@ -86,14 +87,14 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, co
       {isGuardian && Boolean(preview.students?.length) && <div className="student-error my-3"><strong>También se eliminarán estos alumnos:</strong><ul>{preview.students?.map(row => <li key={row.id}>{row.full_name}</li>)}</ul><p>Si deben seguir en la academia, cancela y asígnalos a otro tutor desde Editar alumno antes de borrar este tutor.</p></div>}
       <ul className="student-delete-inventory" aria-label="Datos que se eliminarán">{preview.items.map(item => <li key={item.label}><span>{item.label}</span><strong>{item.count}</strong></li>)}{preview.file_count > 0 && <li><span>Archivos propios en Futsi</span><strong>{preview.file_count}</strong></li>}</ul>
       <p className="student-hint my-3">{isTournament ? "Se conservan las fichas de alumnos, sus tutores, la sede y los datos de otros torneos." : isGuardian ? "Se conservan las sedes, equipos y sesiones compartidas. La cuenta de acceso, si existe, se administra por separado en Usuarios." : "Se conservarán el tutor, sus otros alumnos y los recursos compartidos, como sedes, equipos y sesiones."}</p>
-      <label className="student-delete-name-input">Escribe <strong>{preview.full_name}</strong> para confirmar<input autoComplete="off" spellCheck={false} value={name} disabled={busy} onChange={event => setName(event.target.value)} aria-label={`Nombre del ${noun} para confirmar eliminación definitiva`} /></label>
+      {requiresTypedName && <label className="student-delete-name-input">Escribe <strong>{preview.full_name}</strong> para confirmar<input autoComplete="off" spellCheck={false} value={name} disabled={busy} onChange={event => setName(event.target.value)} aria-label={`Nombre del ${noun} para confirmar eliminación definitiva`} /></label>}
     </>}
     {error && <p role="alert" className="student-error mt-3">{error}</p>}
     {error && preview && !cleanup && <button className="student-text-button" onClick={() => void review()} disabled={busy}>Actualizar detalle antes de confirmar</button>}
     <div className="student-actions">
       <button autoFocus className="student-button secondary" onClick={onClose} disabled={busy}>{cleanup ? "Cerrar" : "Cancelar"}</button>
       {cleanup ? <button className="student-button student-delete-confirm" disabled={busy} onClick={() => void retryFiles()}>{busy ? "Reintentando…" : "Reintentar archivos"}</button>
-        : preview ? <button className="student-button student-delete-confirm" onClick={() => void remove()} disabled={busy || name.trim() !== preview.full_name.trim()}><Trash2 size={15} />{busy ? "Eliminando…" : "Eliminar definitivamente"}</button>
+        : preview ? <button className="student-button student-delete-confirm" onClick={() => void remove()} disabled={busy || (requiresTypedName && name.trim() !== preview.full_name.trim())}><Trash2 size={15} />{busy ? "Eliminando…" : "Eliminar definitivamente"}</button>
           : <button className="student-button student-delete-confirm" onClick={() => void review()} disabled={busy}>{busy ? "Consultando…" : "Revisar datos asociados"}<ArrowRight size={15} /></button>}
     </div>
     </>}

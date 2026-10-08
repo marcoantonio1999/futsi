@@ -29,6 +29,10 @@ class TeamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Team
         fields = "__all__"
+        extra_kwargs = {
+            "representative_name": {"required": False, "allow_blank": True},
+            "representative_phone": {"required": False, "allow_blank": True},
+        }
 
 
 class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):

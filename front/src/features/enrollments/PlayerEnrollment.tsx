@@ -329,7 +329,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   }
   const groups = new Map<string, Enrollment[]>();
   rows.forEach(row => { const key = row.team_id ? `team:${row.team_id}` : row.team + "\u0000" + row.tournament; groups.set(key, [...(groups.get(key) || []), row]); });
-  return <main className="enrollment-page enrollment-admin-layout">
+  return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" ? " enrollment-directory-layout" : ""}`}>
     <aside className="enrollment-admin-sidebar no-print">
       <h2>Inscripciones BPower</h2><p>Administración de inscripciones</p>
       <nav aria-label="Administración de inscripciones">
@@ -340,7 +340,6 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
           <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}>Crear torneo</button>
           <button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}><UsersRound size={16} />Equipos</button>
         </div>
-        {!restricted && <a href="#">Volver a administración</a>}
       </nav>
     </aside>
     <div className="operator-page">
@@ -351,7 +350,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
       {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
-      {tournamentSection !== null ? <section className="operator-controls no-print">
+      {tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           deletableTournamentIds={catalog.deletable_tournament_ids || []}
           deletionCollectionPath="player-enrollments/tournaments"
@@ -366,7 +365,6 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
           }}
           onDeleteTeam={deleteTeam} onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-        <button className="primary" onClick={() => setTournamentSection(null)}>Continuar a generar enlace de inscripción</button>
       </section> : <>
       <section className="operator-controls no-print">
         <h2>Enviar una nueva inscripción</h2><p>Crea un enlace por jugador. Tiene vigencia de 30 días.</p>

@@ -5,9 +5,9 @@ import { TournamentDialog } from "./TournamentDialog";
 import { durationFromRange, today } from "./utils";
 
 export function CreateTeamDialog({ tournament, adult, onSave, onClose }: { tournament: Tournament; adult: boolean; onSave: (payload: unknown) => Promise<void>; onClose: () => void }) {
-  return <TournamentDialog title="Crear equipo" description={tournament.name} submitLabel="Crear equipo" onClose={onClose} onSubmit={async form => onSave({ tournament: tournament.id, name: String(form.get("name")).trim(), representative_name: adult ? form.get("representative_name") : "Equipo infantil", representative_phone: adult ? form.get("representative_phone") : "N/A", representative_email: adult ? form.get("representative_email") : "", is_active: true })}>
+  return <TournamentDialog title="Crear equipo" description={tournament.name} submitLabel="Crear equipo" onClose={onClose} onSubmit={async form => onSave({ tournament: tournament.id, name: String(form.get("name")).trim(), representative_name: adult ? String(form.get("representative_name") || "").trim() : "", representative_phone: adult ? String(form.get("representative_phone") || "").trim() : "", is_active: true })}>
     <TextInput label="Nombre del equipo" name="name" required maxLength={140} placeholder="Ej. Halcones Sub-12" />
-    {adult ? <><TextInput label="Representante del equipo" name="representative_name" required maxLength={160} /><div className="tournament-form-grid"><TextInput label="Teléfono" type="tel" name="representative_phone" required maxLength={30} /><TextInput label="Correo (opcional)" name="representative_email" type="email" /></div></> : <p className="tournament-info">Una vez creado, podrás agregar alumnos desde el botón «Inscribir alumnos» del equipo.</p>}
+    {adult ? <><TextInput label="Representante del equipo (opcional)" name="representative_name" maxLength={160} /><TextInput label="Teléfono (opcional)" type="tel" name="representative_phone" maxLength={30} /><p className="tournament-info">Para equipos de niños o academia puedes dejar estos datos vacíos.</p></> : <p className="tournament-info">Una vez creado, podrás agregar alumnos desde el botón «Inscribir alumnos» del equipo.</p>}
   </TournamentDialog>;
 }
 

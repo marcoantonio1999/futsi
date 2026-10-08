@@ -41,7 +41,6 @@ export function TournamentTeamsSection({
               <>
                 <TextInput label="Representante" name="representative_name" placeholder="Nombre del responsable" required />
                 <TextInput label="Telefono" name="representative_phone" placeholder="55..." required />
-                <TextInput label="Correo" name="representative_email" type="email" />
               </>
             )}
             <button className="self-end rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Crear equipo</button>
