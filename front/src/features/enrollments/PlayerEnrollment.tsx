@@ -122,96 +122,122 @@ function Terms({ items, guardian, player }: { items: string[]; guardian?: string
 }
 
 export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
+  const [step, setStep] = useState(0), [accepted, setAccepted] = useState(false);
   const [birthDate, setBirthDate] = useState(""), minor = under18(birthDate);
   const [identity, setIdentity] = useState("ine");
   const [defaults, setDefaults] = useState<Defaults | null>(null);
   const [files, setFiles] = useState<Record<string, Blob | null>>({});
   const [error, setError] = useState(""), [done, setDone] = useState(false), [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const content = useRef<HTMLDivElement>(null);
+  const today = new Date();
+  const maxDate = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
   useEffect(() => {
-    document.title = "Hoja de registro";
+    document.title = "Inscripción BPower";
+    let active = true;
     fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/")
       .then(async response => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.detail || "No se pudo abrir el registro.");
-        if (body.completed) setDone(true); else setDefaults(body);
-      }).catch(err => setError(err.message));
+        if (active) { if (body.completed) setDone(true); else setDefaults(body); }
+      }).catch(err => { if (active) setError(err.message); });
+    return () => { active = false; };
   }, [invitation]);
   function attach(kind: string, file: Blob | null) { setFiles(current => ({ ...current, [kind]: file })); }
   const kind = minor ? "minor" : identity;
-  const required = ["player_photo", "player_signature",
-    ...(minor ? ["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back", "guardian_signature"]
-      : identity === "ine" ? ["ine_front", "ine_back"] : ["identity_document"])];
+  const documentKinds = minor ? ["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back"]
+    : identity === "ine" ? ["ine_front", "ine_back"] : ["identity_document"];
+  const required = ["player_photo", "player_signature", ...documentKinds, ...(minor ? ["guardian_signature"] : [])];
+  function navigate(next: number) { setError(""); setStep(next); if (content.current) content.current.scrollTop = 0; }
+  function next() {
+    setError("");
+    if (step === 0) { if (accepted) navigate(1); return; }
+    if (!birthDate || birthDate > maxDate || Number(birthDate.slice(0, 4)) < today.getFullYear() - 110) {
+      setError("Revisa la fecha de nacimiento."); return;
+    }
+    if (documentKinds.some(item => !files[item])) { setError("Adjunta los documentos de identificación."); return; }
+    if (documentKinds.some(item => (files[item]?.size || 0) > 3_000_000)) { setError("Cada documento debe pesar máximo 3 MB."); return; }
+    navigate(2);
+  }
   async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError("");
-    if (required.some(item => !files[item])) { setError("Completa la foto, los documentos y las firmas obligatorias."); return; }
-    setBusy(true);
+    event.preventDefault();
+    if (step !== 2 || !accepted || saving.current) return;
+    setError("");
+    const formElement = event.currentTarget;
+    if (!birthDate || birthDate > maxDate || Number(birthDate.slice(0, 4)) < today.getFullYear() - 110) {
+      setStep(1); setError("Revisa la fecha de nacimiento."); return;
+    }
+    if (!formElement.checkValidity()) {
+      const invalid = formElement.querySelector<HTMLInputElement>("input:invalid");
+      setError(`Revisa ${invalid?.closest("label")?.textContent?.trim().toLocaleLowerCase() || "los campos obligatorios"}.`);
+      invalid?.scrollIntoView({ block: "center" }); invalid?.focus(); return;
+    }
+    const missing = required.filter(item => !files[item]);
+    if (missing.length) { setError("Falta: " + missing.map(item => item === "player_photo" ? "selfie del jugador" : labels[item] || item).join(", ") + "."); return; }
+    saving.current = true; setBusy(true);
     try {
-      const form = new FormData(event.currentTarget);
-      form.set("identity_type", kind);
+      const form = new FormData(formElement);
+      form.set("birth_date", birthDate); form.set("identity_type", kind); form.set("accepted_terms", "true");
       required.forEach(item => form.append(item, files[item]!,
         item.includes("signature") ? item + ".png" : (files[item] as File).name));
       const response = await fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/",
-        { method: "POST", body: form });
-      const body = await response.json();
+        { method: "POST", body: form, signal: AbortSignal.timeout(60000) });
+      const body = await response.json().catch(() => { throw new Error("El servidor no respondió correctamente. Intenta de nuevo."); });
       if (!response.ok) throw new Error(body.detail || Object.values(body).flat().join(" ") || "No se pudo guardar. Intenta de nuevo.");
       setDone(true);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo guardar."); }
-    finally { setBusy(false); }
+    finally { saving.current = false; setBusy(false); }
   }
-  return <main className="enrollment-page">
-    {done ? <section className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados. No necesitas enviarlos de nuevo.</p></section> :
-      <form className="registration-sheet" onSubmit={submit}>
-        <h1>Hoja de registro</h1>
-        <p className="help">Completa todos los campos. Puedes adjuntar documentos o tomar fotos desde tu celular.</p>
-        {error && <p className="error" role="alert">{error}</p>}
-        {!defaults ? <p>{error ? "Solicita otro enlace si este ya no está disponible." : "Cargando…"}</p> : <>
-          <div className="sheet-top">
-            <section className="documentation-frame">
-              <h2>Foto de documentación</h2>
-              <label>Fecha de nacimiento<input name="birth_date" type="date" required value={birthDate}
-                max={new Date().toLocaleDateString("en-CA")}
-                onChange={event => setBirthDate(event.target.value)}
-                onInput={event => setBirthDate(event.currentTarget.value)}
-                onBlur={event => setBirthDate(event.currentTarget.value)} /></label>
-              {!minor && <label>Identificación<select value={identity} onChange={event => setIdentity(event.target.value)}>
-                <option value="ine">INE</option><option value="passport">Pasaporte</option>
-                <option value="military_card">Cartilla</option>
-              </select></label>}
-              {minor ? <>
-                <p>En caso de ser menor: credencial, CURP e INE del tutor.</p>
-                {["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back"].map(item =>
-                  <Upload key={item} label={labels[item]} onChange={file => attach(item, file)} />)}
-              </> : (identity === "ine" ? ["ine_front", "ine_back"] : ["identity_document"]).map(item =>
-                <Upload key={item + identity} label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
-                  onChange={file => attach(item, file)} />)}
+  return <main className="enrollment-page public-enrollment-wizard">
+    {done ? <section className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></section> :
+      <form className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate>
+        <header className="enrollment-wizard-header"><span>Paso {step + 1} de 3</span><h1>{["Aviso y aceptación", "Fecha e identificación", "Selfie y datos del jugador"][step]}</h1></header>
+        <div ref={content} className="enrollment-wizard-content">
+          {!defaults ? <p>{error ? "Solicita otro enlace si este ya no está disponible." : "Cargando…"}</p> : <>
+            <section hidden={step !== 0}>
+              <Terms items={defaults.terms} />
+              <label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />
+                He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
+              </label>
             </section>
-            <section className="player-frame">
-              <div className="photo-and-signatures">
-                <Upload label="Foto de jugador" photo onChange={file => attach("player_photo", file)} />
-                <div>
-                  <Signature label="Firma de jugador" onChange={blob => attach("player_signature", blob)} />
-                  {minor ? <Signature label="Firma del tutor (obligatoria)" onChange={blob => attach("guardian_signature", blob)} /> :
-                    <div className="adult-signature-note">Firma del tutor: no aplica para mayores de edad.</div>}
+            <section hidden={step !== 1}>
+              <div className="enrollment-wizard-identity-fields">
+              <label>Fecha de nacimiento<input name="birth_date" type="date" required value={birthDate} max={maxDate} onChange={event => setBirthDate(event.target.value)} /></label>
+              {!minor && <label>Identificación<select value={identity} onChange={event => setIdentity(event.target.value)}>
+                <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option>
+              </select></label>}
+              </div>
+              <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
+                <Upload key={item + kind} label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
+                  onChange={file => attach(item, file)} />)}</div>
+            </section>
+            <section hidden={step !== 2}>
+              <div className="enrollment-wizard-player">
+                <Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} />
+                <div className="player-fields">
+                  <label className="full">Nombre<input name="name" required maxLength={160} autoComplete="name" disabled={step !== 2} /></label>
+                  <label>Equipo<input readOnly value={defaults.team} /></label>
+                  <label>Torneo<input readOnly value={defaults.tournament} /></label>
+                  <label>Fecha de nacimiento<input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></label>
+                  <label>Teléfono de contacto<input name="phone" required type="tel" maxLength={30} disabled={step !== 2} /></label>
+                  <label>Teléfono de emergencia (opcional)<input name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></label>
+                  {minor && <label className="full">Nombre del padre o tutor<input name="guardian_name" required maxLength={160} disabled={step !== 2} /></label>}
                 </div>
               </div>
-              <div className="player-fields">
-                <label className="full">Nombre<input name="name" required maxLength={160} autoComplete="name" /></label>
-                <label>Equipo<input readOnly value={defaults.team} /></label>
-                <label>Torneo<input readOnly value={defaults.tournament} /></label>
-                <label>Teléfono de contacto<input name="phone" required type="tel" maxLength={30} /></label>
-                <label>Teléfono de emergencia<input name="phone_secondary" required type="tel" maxLength={30} /></label>
-                <label>Folio de pago (opcional)<input name="payment_reference" maxLength={80} /></label>
-                {minor && <label className="full">Nombre del padre o tutor<input name="guardian_name" required maxLength={160} /></label>}
-              </div>
+              <div className="enrollment-wizard-signatures"><Signature label="Firma del jugador" onChange={blob => attach("player_signature", blob)} />
+                {minor && <Signature label="Firma del tutor" onChange={blob => attach("guardian_signature", blob)} />}</div>
+              {minor && <p>El padre o tutor autoriza la participación del menor y acepta los compromisos anteriores.</p>}
             </section>
-          </div>
-          <Terms items={defaults.terms} />
-          {minor && <p>El padre o tutor autoriza la participación del menor y acepta los compromisos anteriores.</p>}
-          <label className="consent"><input type="checkbox" name="accepted_terms" value="true" required />
-            He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
-          </label>
-          <button className="primary" disabled={busy}>{busy ? "Guardando…" : "Firmar y enviar inscripción"}</button>
-        </>}
+          </>}
+        </div>
+        <div className="enrollment-wizard-footer">
+        {error && <p className="error" role="alert">{error}</p>}
+        {defaults && <footer className="enrollment-wizard-actions">
+          {step > 0 && <button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</button>}
+          {step < 2 ? <button type="button" className="primary" disabled={step === 0 && !accepted} onClick={next}>{step === 0 ? "Aceptar y continuar" : "Siguiente"}</button>
+            : <button className="primary" disabled={busy}>{busy ? "Guardando…" : "Confirmar inscripción"}</button>}
+        </footer>}
+        </div>
       </form>}
   </main>;
 }
@@ -234,6 +260,43 @@ function PrivateImage({ document, token, alt }: { document?: Document; token: st
   return url ? <img src={url} alt={alt} /> : <span className="photo-placeholder">{document ? "Cargando imagen…" : "Sin foto"}</span>;
 }
 
+function TeamRosterPage({ team, tournament, token, onBack }: { team: Team; tournament?: Tournament; token: string; onBack: () => void }) {
+  const [players, setPlayers] = useState<Enrollment[]>([]);
+  const [busy, setBusy] = useState(true), [error, setError] = useState("");
+  const [date, setDate] = useState(""), [round, setRound] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadRoster() {
+      try {
+        const all: Enrollment[] = [];
+        let page = 1, count = 0;
+        do {
+          const params = new URLSearchParams({ team_id: String(team.id), tournament_id: String(team.tournament), page: String(page) });
+          const result = await apiRequest<{ results: Enrollment[]; count: number }>("/player-enrollments/?" + params, token, { signal: controller.signal });
+          count = result.count;
+          if (!result.results.length && all.length < count) throw new Error("No se pudo cargar la plantilla completa.");
+          all.push(...result.results); page += 1;
+        } while (all.length < count);
+        if (!controller.signal.aborted) setPlayers(Array.from(new Map(all.map(row => [row.id, row])).values()));
+      } catch (reason) { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "No se pudo cargar la plantilla."); }
+      finally { if (!controller.signal.aborted) setBusy(false); }
+    }
+    void loadRoster(); return () => controller.abort();
+  }, [team.id, team.tournament, token]);
+  return <section className="enrollment-team-roster-view">
+    <div className="operator-controls no-print"><button type="button" onClick={onBack}>Volver a equipos</button>
+      <div className="control-grid"><label>Fecha<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><label>Jornada<input value={round} maxLength={30} onChange={event => setRound(event.target.value)} /></label><button type="button" disabled={busy || Boolean(error) || !players.length} onClick={() => window.print()}>Imprimir / guardar PDF</button></div>
+    </div>
+    {busy && <p role="status">Cargando plantilla…</p>}{error && <p className="error" role="alert">{error}</p>}
+    {!busy && !error && <div className="enrollment-team-roster-scroll"><section className="roster-sheet">
+      <div className="roster-header"><div><p><strong>Equipo:</strong> {team.name}</p><p><strong>Torneo:</strong> {tournament?.name || players[0]?.tournament || ""}</p></div><div><p><strong>Fecha:</strong> {date ? date.split("-").reverse().join("/") : ""}</p><p><strong>Jornada:</strong> {round}</p></div></div>
+      <div className="roster-grid">{players.map(row => <article className="enrollment-roster-card" key={row.id}><PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={row.name} /><div><strong>{row.name}</strong><span>{row.birth_date.split("-").reverse().join("/")}</span></div></article>)}</div>
+      {!players.length && <p className="enrollment-roster-empty">Este equipo aún no tiene jugadores inscritos.</p>}
+      <footer><p>La presente cédula ampara a los jugadores que cumplen con los requisitos para participar en partidos de temporada y liguilla.</p><p>Solo podrán ingresar a la cancha los jugadores y delegados del presente documento.</p><p>Equipo que ingrese jugador no registrado perderá automáticamente su partido.</p></footer>
+    </section></div>}
+  </section>;
+}
+
 export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   token: string; onLogout: () => void; restricted?: boolean;
 }) {
@@ -246,6 +309,9 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
   const [inviteTournament, setInviteTournament] = useState(""), [inviteTeam, setInviteTeam] = useState("");
   const [tournamentSection, setTournamentSection] = useState<TournamentSection | null>(null);
+  const [enrollmentSection, setEnrollmentSection] = useState<"send" | "history">("history");
+  const [rosterTeam, setRosterTeam] = useState<Team | null>(null);
+  const [rosterRevision, setRosterRevision] = useState(0);
   const invitationSaving = useRef(false);
   const selectedTournament = catalog.tournaments.find(item => String(item.id) === inviteTournament);
   const availableTeams = catalog.teams.filter(item => String(item.tournament) === inviteTournament);
@@ -329,28 +395,30 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   }
   const groups = new Map<string, Enrollment[]>();
   rows.forEach(row => { const key = row.team_id ? `team:${row.team_id}` : row.team + "\u0000" + row.tournament; groups.set(key, [...(groups.get(key) || []), row]); });
-  return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" ? " enrollment-directory-layout" : ""}`}>
+  return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}`}>
     <aside className="enrollment-admin-sidebar no-print">
       <h2>Inscripciones BPower</h2><p>Administración de inscripciones</p>
-      <nav aria-label="Administración de inscripciones">
-        <button aria-current={tournamentSection === null ? "page" : undefined} onClick={() => setTournamentSection(null)}><ClipboardList size={18} />Inscripciones</button>
+      <nav aria-label="Administración de inscripciones" onClickCapture={() => setRosterTeam(null)}>
+        <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setSelected(null); setError(""); setMessage(""); }}>Enviar enlace</button>
+        <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={18} />Inscripciones</button>
         <div className="enrollment-sidebar-heading"><Trophy size={18} />Torneos</div>
         <div className="enrollment-sidebar-submenu">
           <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}>Torneos activos</button>
           <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}>Crear torneo</button>
           <button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}><UsersRound size={16} />Equipos</button>
+          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "team-create" ? "page" : undefined} onClick={() => setTournamentSection("team-create")}>Crear equipo</button>
         </div>
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print"><h1>{tournamentSection === "create" ? "Crear torneo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : "Inscripciones"}</h1><div>
-        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { void load(page); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
+      <header className="operator-header enrollment-admin-header no-print"><h1>{rosterTeam ? "Plantilla" : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Enviar enlace" : "Inscripciones"}</h1><div>
+        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { if (rosterTeam) setRosterRevision(value => value + 1); void load(page); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
         <button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
       {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
-      {tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
+      {rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} onBack={() => setRosterTeam(null)} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           deletableTournamentIds={catalog.deletable_tournament_ids || []}
           deletionCollectionPath="player-enrollments/tournaments"
@@ -364,11 +432,11 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
             return created;
           }}
           onDeleteTeam={deleteTeam} onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
+          onViewTeamRoster={setRosterTeam}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </section> : <>
+      </section> : enrollmentSection === "send" ?
       <section className="operator-controls no-print">
-        <h2>Enviar una nueva inscripción</h2><p>Crea un enlace por jugador. Tiene vigencia de 30 días.</p>
-        <p>Elige un torneo existente y uno de sus equipos. El jugador recibirá el formulario con esa asignación fija.</p>
+        <h2>Enviar enlace</h2>
         <form onSubmit={invite} className="control-grid">
           <label>Torneo para la inscripción<select required value={inviteTournament} disabled={catalogBusy || busy}
             onChange={event => chooseTournament(event.target.value)}><option value="">Selecciona un torneo</option>
@@ -379,13 +447,13 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
           <button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</button>
         </form>
         {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» del menú izquierdo.</p>}
-        {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos. Abre la subsección «Equipos» y pulsa «Crear equipo».</p>}
+        {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos.</p>}
         {link && <div className="share-link"><input readOnly value={link} aria-label="Enlace de inscripción" /><div>
           <button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</button>
           <a href={"https://wa.me/?text=" + encodeURIComponent("Hola, completa y firma tu inscripción aquí: " + link)} target="_blank" rel="noreferrer">Compartir por WhatsApp</a>
           <a href={link} target="_blank" rel="noreferrer">Ver formulario</a>
         </div></div>}
-      </section>
+      </section> : <>
       <section className="operator-controls no-print">
         <h2>Historial · {count} inscritos</h2>
         <form onSubmit={event => { event.preventDefault(); void load(1); }} className="control-grid">

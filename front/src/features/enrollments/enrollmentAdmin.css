@@ -33,5 +33,58 @@
 .enrollment-directory-layout .tournament-directory-table .tournament-row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .enrollment-directory-layout .tournament-directory-table .danger{color:#b42338;border-color:#f3cbd0;background:#fff5f6}
 .enrollment-directory-layout .tournament-directory-empty{text-align:center;color:#71717a;padding:32px!important}
+.enrollment-teams-layout .tournament-back{align-self:flex-start;flex-shrink:0;margin-bottom:8px}
+.enrollment-teams-layout .tournament-page-heading{flex-shrink:0;margin:0 0 12px;align-items:center;gap:12px}
+.enrollment-teams-layout .tournament-context-select{gap:4px}
+.enrollment-teams-layout .tournament-context-select label{margin:0}
+.enrollment-teams-layout .tournament-team-list{display:flex;flex-direction:column;flex:1;min-height:0;gap:12px;overflow:hidden}
+.enrollment-teams-layout .tournament-section-heading{flex-shrink:0;padding:0;gap:12px}
+.enrollment-teams-layout .tournament-section-heading h3{margin:0}
+.enrollment-teams-layout .tournament-section-heading p{margin:4px 0 0}
+.enrollment-teams-layout .tournament-directory-table th:last-child{text-align:right}
+.enrollment-admin-layout .enrollment-team-create-form{max-width:760px;width:100%;min-height:0;overflow:auto;overscroll-behavior:contain}
+.enrollment-admin-layout .enrollment-team-create-form label{margin:0 0 12px}
+.enrollment-admin-layout .enrollment-team-create-form input{border-radius:8px;border-color:#d4d4d8}
+.enrollment-admin-layout .enrollment-team-create-form h3{margin:0 0 18px}
+.enrollment-admin-layout .enrollment-team-create-form .tournament-create-footer{display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:14px;margin-top:24px;padding-top:18px;border-top:1px solid #e4e7e5}
+.enrollment-admin-layout .enrollment-team-create-form .tournament-create-footer button{min-width:112px}
+.enrollment-teams-layout .tournament-directory-table .tournament-team-delete-button{display:inline-flex;align-items:center;gap:6px;color:white;border:1px solid #b42338;background:#b42338;border-radius:8px;white-space:nowrap}
 @media(max-width:760px){.enrollment-admin-layout{grid-template-columns:170px minmax(0,1fr);gap:10px;padding:10px}.enrollment-admin-sidebar{top:10px;padding:18px 10px}.enrollment-sidebar-submenu{margin-left:8px}.enrollment-admin-header button span{display:none}.enrollment-admin-layout .enrollment-admin-header{padding:12px;gap:8px}}
 @media print{.enrollment-admin-layout{display:block;padding:0}.enrollment-admin-layout .operator-page{width:100%}}
+.public-enrollment-wizard{height:100dvh;min-height:0;box-sizing:border-box;overflow:hidden}
+.public-enrollment-wizard .enrollment-wizard-sheet{display:flex;flex-direction:column;height:100%;min-height:0;box-sizing:border-box;margin:0 auto;border:1px solid #e4e7e5;border-radius:14px;padding:0;overflow:hidden;max-width:960px}
+.enrollment-wizard-header{flex-shrink:0;padding:20px 24px;border-bottom:1px solid #e4e7e5}
+.enrollment-wizard-header span{font-size:12px;color:#71717a}
+.enrollment-wizard-header h1{margin:6px 0 0}
+.enrollment-wizard-content{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:20px 24px}
+.enrollment-wizard-content [hidden]{display:none!important}
+.enrollment-wizard-content .commitments{margin-top:0}
+.enrollment-wizard-actions{display:flex;justify-content:flex-end;gap:14px;flex-shrink:0;padding:18px 24px;border-top:1px solid #e4e7e5}
+.enrollment-wizard-actions button{min-width:112px;border-radius:8px}
+.enrollment-wizard-footer{flex-shrink:0;max-height:35%;overflow:auto;border-top:1px solid #e4e7e5}
+.enrollment-wizard-footer .error{margin:12px 24px 0}
+.enrollment-wizard-footer .enrollment-wizard-actions{border-top:0}
+.enrollment-wizard-uploads,.enrollment-wizard-signatures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.enrollment-wizard-player{display:grid;grid-template-columns:minmax(200px,0.7fr) minmax(0,1.3fr);gap:20px}
+.enrollment-wizard-player .player-fields{padding:0;align-content:start}
+.enrollment-wizard-content input[readonly]{background:#f3f5f4!important;color:#52545d!important}
+.public-enrollment-wizard .enrollment-consent-card{display:flex;align-items:center;gap:16px;padding:20px;margin:24px 0 8px;border:2px solid #327557;border-radius:12px;background:#f0faf4;color:#183d2b;font-size:16px;font-weight:600;line-height:1.6;cursor:pointer}
+.public-enrollment-wizard .enrollment-consent-card input[type=checkbox]{appearance:auto;flex:0 0 28px;width:28px;height:28px;margin:0;accent-color:#327557;cursor:pointer}
+.public-enrollment-wizard .enrollment-consent-card.is-accepted{background:#dff3e7;border-color:#22643f}
+.public-enrollment-wizard .enrollment-consent-card:focus-within{outline:3px solid #86bfa0;outline-offset:3px}
+.enrollment-wizard-identity-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:start}
+.enrollment-wizard-identity-fields input,.enrollment-wizard-identity-fields select{min-height:46px;box-sizing:border-box}
+@media(max-width:600px){.enrollment-wizard-identity-fields{grid-template-columns:1fr;gap:4px}}
+.enrollment-team-roster-view{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:16px}
+.enrollment-team-roster-view .operator-controls{margin:0;border-radius:12px;flex-shrink:0}
+.enrollment-team-roster-scroll{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain}
+.enrollment-team-roster-scroll .roster-sheet{max-width:800px;margin:0 auto}
+.enrollment-roster-card{display:grid;grid-template-columns:80px minmax(0,1fr);min-height:112px;border-right:1px solid #bbb;border-bottom:1px solid #bbb;break-inside:avoid}
+.enrollment-roster-card img{width:80px;height:112px;object-fit:cover}
+.enrollment-roster-card .photo-placeholder{min-height:112px}
+.enrollment-roster-card>div{display:flex;flex-direction:column;justify-content:space-between;gap:10px;padding:12px 10px;text-align:center}
+.enrollment-roster-card strong{font-size:14px;overflow-wrap:anywhere}
+.enrollment-roster-card span{align-self:flex-end;font-size:11px}
+.enrollment-roster-empty{padding:20px;text-align:center}
+@media print{.enrollment-roster-layout,.enrollment-roster-layout .operator-page,.enrollment-roster-layout .enrollment-team-roster-view,.enrollment-roster-layout .enrollment-team-roster-scroll{display:block!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important}.enrollment-team-roster-scroll .roster-sheet{max-width:none;margin:0}.enrollment-roster-card{grid-template-columns:70px minmax(0,1fr);min-height:96px}.enrollment-roster-card img{width:70px;height:96px}.enrollment-roster-card strong{font-size:12px}.enrollment-roster-card>div{padding:8px}}
+@media(max-width:600px){.public-enrollment-wizard{padding:10px}.enrollment-wizard-header,.enrollment-wizard-content{padding:16px}.enrollment-wizard-header h1{font-size:21px}.enrollment-wizard-uploads,.enrollment-wizard-player,.enrollment-wizard-signatures{grid-template-columns:1fr}.enrollment-wizard-actions{padding:14px 16px}}

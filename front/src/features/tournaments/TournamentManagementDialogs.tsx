@@ -1,14 +1,54 @@
-import { useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import type { AppData, StudentTournamentRegistration, Team, Tournament } from "../../types";
 import { SelectInput, TextInput } from "../../components/views/shared";
 import { TournamentDialog } from "./TournamentDialog";
 import { durationFromRange, today } from "./utils";
 
-export function CreateTeamDialog({ tournament, adult, onSave, onClose }: { tournament: Tournament; adult: boolean; onSave: (payload: unknown) => Promise<void>; onClose: () => void }) {
-  return <TournamentDialog title="Crear equipo" description={tournament.name} submitLabel="Crear equipo" onClose={onClose} onSubmit={async form => onSave({ tournament: tournament.id, name: String(form.get("name")).trim(), representative_name: adult ? String(form.get("representative_name") || "").trim() : "", representative_phone: adult ? String(form.get("representative_phone") || "").trim() : "", is_active: true })}>
+function teamPayload(form: FormData, tournament: Tournament, adult: boolean) {
+  return { tournament: tournament.id, name: String(form.get("name") || "").trim(), representative_name: adult ? String(form.get("representative_name") || "").trim() : "", representative_phone: adult ? String(form.get("representative_phone") || "").trim() : "", is_active: true };
+}
+
+function CreateTeamFields({ adult }: { adult: boolean }) {
+  return <>
     <TextInput label="Nombre del equipo" name="name" required maxLength={140} placeholder="Ej. Halcones Sub-12" />
     {adult ? <><TextInput label="Representante del equipo (opcional)" name="representative_name" maxLength={160} /><TextInput label="Teléfono (opcional)" type="tel" name="representative_phone" maxLength={30} /><p className="tournament-info">Para equipos de niños o academia puedes dejar estos datos vacíos.</p></> : <p className="tournament-info">Una vez creado, podrás agregar alumnos desde el botón «Inscribir alumnos» del equipo.</p>}
-  </TournamentDialog>;
+  </>;
+}
+
+export function CreateTeamDialog({ tournament, adult, onSave, onClose }: { tournament: Tournament; adult: boolean; onSave: (payload: unknown) => Promise<void>; onClose: () => void }) {
+  return <TournamentDialog title="Crear equipo" description={tournament.name} submitLabel="Crear equipo" onClose={onClose} onSubmit={async form => onSave(teamPayload(form, tournament, adult))}><CreateTeamFields adult={adult} /></TournamentDialog>;
+}
+
+export function CreateTeamPage({ tournaments, sites, adult, onSave, onBack }: { tournaments: Tournament[]; sites: AppData["sites"]; adult: boolean; onSave: (payload: unknown, tournamentId: number) => Promise<void>; onBack: () => void }) {
+  const [tournamentId, setTournamentId] = useState("");
+  const [details, setDetails] = useState(false);
+  const available = tournaments.filter(row => row.is_active && sites.some(site => site.id === row.site && site.is_active !== false));
+  const tournament = available.find(row => String(row.id) === tournamentId);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const saving = useRef(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving.current || !details || !tournament) return;
+    const payload = teamPayload(new FormData(event.currentTarget), tournament, adult);
+    saving.current = true; setBusy(true); setError("");
+    try { await onSave(payload, tournament.id); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo crear el equipo."); }
+    finally { saving.current = false; setBusy(false); }
+  }
+  return <form className="tournament-create-card enrollment-team-create-form" onSubmit={submit}><fieldset disabled={busy}>
+    <legend className="sr-only">Crear equipo</legend>
+    <h3>{details && tournament ? "2. Completa los datos del equipo" : "1. Selecciona el torneo"}</h3>
+    {!details || !tournament ? <>
+      <SelectInput label="Torneo" required value={tournamentId} onChange={event => setTournamentId(event.target.value)}><option value="">Selecciona un torneo</option>{available.map(row => <option key={row.id} value={row.id}>{row.name} · {sites.find(site => site.id === row.site)?.name}</option>)}</SelectInput>
+      {!available.length && <p className="tournament-info">No hay torneos disponibles. Crea uno desde «Crear torneo».</p>}
+    </> : <>
+      <div className="tournament-context"><strong>{tournament.name}</strong><span>{sites.find(site => site.id === tournament.site)?.name}</span><button type="button" className="tournament-text-button" onClick={() => { setDetails(false); setError(""); }}>Cambiar torneo</button></div>
+      <CreateTeamFields adult={adult} />
+    </>}
+    {error && <p className="tournament-feedback error" role="alert">{error}</p>}
+    <footer className="tournament-create-footer"><button type="button" className="tournament-button secondary" onClick={onBack}>Cancelar</button>{details && tournament ? <button className="tournament-button primary" disabled={busy}>{busy ? "Guardando…" : "Confirmar y crear equipo"}</button> : <button type="button" className="tournament-button primary" disabled={!tournament || busy} onClick={() => setDetails(true)}>Continuar</button>}</footer>
+  </fieldset></form>;
 }
 
 export function EnrollmentDialog({ tournament, students, teams, registrations, existing, initialTeam, onSave, onClose }: {
