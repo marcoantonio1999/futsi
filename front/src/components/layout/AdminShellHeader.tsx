@@ -1,5 +1,6 @@
 import { LogOut, Menu, Moon, RefreshCw, Sun } from "lucide-react";
 import { roleLabels } from "../../appState";
+import { isSoccerWa } from "../../appBrand";
 import type { ThemeMode, User } from "../../types";
 import type { BusinessScope, SidebarTab } from "./adminShellModel";
 
@@ -20,6 +21,7 @@ export function AdminShellHeader({ user, businessScope, canToggleAdultDashboard,
         <h1 className="truncate text-base font-semibold sm:text-xl">{effectiveActiveTabMeta?.label || "Dashboard"}</h1>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {!isSoccerWa && ["admin", "owner", "dev"].includes(user.role) && <a href="#/admin/inscripciones" className="rounded-md border border-emerald-200 px-2 py-2 text-xs font-semibold text-emerald-800">Inscripciones</a>}
         <button className={buttonClass} onClick={onRefresh} aria-label="Actualizar" title="Actualizar" type="button"><RefreshCw size={16} /></button>
         <button data-testid="theme-toggle" className={buttonClass} onClick={onToggleTheme} aria-label={theme === "light" ? "Cambiar a tema oscuro" : "Cambiar a tema claro"} type="button">{theme === "light" ? <Moon size={16} /> : <Sun size={16} />}</button>
         <div className="hidden items-center gap-2 px-2 md:flex">

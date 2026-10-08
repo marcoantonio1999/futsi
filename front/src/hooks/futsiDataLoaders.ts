@@ -283,6 +283,9 @@ export async function loadAppDataForUser(authToken: string): Promise<{ user: Use
   const user = await apiRequest<User>("/auth/me/", authToken);
 
   const initialSection = initialTabForUser(user);
+  if (user.section_permissions?.includes("player_enrollments_only")) {
+    return { user, initialSection, data: emptyData };
+  }
   if (user.role === "guardian") {
     const [students, attendanceRecords, charges, payments, discounts, invoices, tournaments, matches, standings, studentAssessments, studentTournamentRegistrations] = await Promise.all([
       apiRequest<Student[]>("/students/", authToken),

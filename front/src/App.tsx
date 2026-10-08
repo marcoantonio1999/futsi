@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { canUseSoccerWa, isSoccerWa } from "./appBrand";
 import { LogOut, RefreshCw } from "lucide-react";
 import { roleLabels } from "./appState";
@@ -14,8 +14,19 @@ const GuardianPortal = lazy(() => import("./components/views/guardian").then((mo
 const AccountingPortal = lazy(() => import("./components/views/accounting").then((module) => ({ default: module.AccountingPortal })));
 const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults").then((module) => ({ default: module.AdultLeagueDashboardPanel })));
 const AdminShell = lazy(() => import("./components/layout/AdminShell").then((module) => ({ default: module.AdminShell })));
+const PublicPlayerEnrollment = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerEnrollment })));
+const EnrollmentDashboard = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentDashboard })));
 
 export default function App() {
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => { const update = () => setHash(window.location.hash); window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update); }, []);
+  if (!isSoccerWa && hash.startsWith("#/inscripcion/")) {
+    return <Suspense fallback={<LandingFallback />}><PublicPlayerEnrollment invitation={hash.slice("#/inscripcion/".length)} /></Suspense>;
+  }
+  return <FutsiApplication enrollmentAdmin={hash === "#/admin/inscripciones"} />;
+}
+
+function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   const { theme, toggleTheme } = useThemeMode();
   const {
     token,
@@ -71,6 +82,10 @@ export default function App() {
   }
 
   const hasCustomSectionPermissions = Boolean(currentUser.section_permissions?.length);
+  const enrollmentOnly = currentUser.section_permissions?.includes("player_enrollments_only") ?? false;
+  if (!isSoccerWa && (enrollmentOnly || (enrollmentAdmin && ["admin", "owner", "dev"].includes(currentUser.role)))) {
+    return <Suspense fallback={<AppSkeleton />}><EnrollmentDashboard token={token} onLogout={logout} restricted={enrollmentOnly} /></Suspense>;
+  }
 
   if (isSoccerWa && !canUseSoccerWa(currentUser)) {
     return <main className="grid min-h-screen place-items-center bg-stone-50 px-5 text-zinc-950"><section className="max-w-sm text-center"><img src="./soccer-wa-logo.png" alt="Soccer WA" className="mx-auto mb-6 w-64" /><h1 className="text-xl font-semibold">Sin acceso a Comunicaciones</h1><p className="mt-2 text-sm text-zinc-600">Esta cuenta no tiene permiso para entrar a Soccer WA.</p><button type="button" onClick={logout} className="mt-5 rounded-md bg-emerald-800 px-5 py-2 text-white">Salir</button></section></main>;

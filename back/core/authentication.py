@@ -19,6 +19,10 @@ class ExpiringTokenAuthentication(TokenAuthentication):
 
     def authenticate(self, request):
         result = super().authenticate(request)
+        if result and "player_enrollments_only" in (result[0].section_permissions or []):
+            allowed = request.path_info.startswith("/api/player-enrollments/") or request.path_info in {"/api/auth/me/", "/api/auth/logout/"}
+            if not allowed:
+                raise PermissionDenied("Esta cuenta solo tiene acceso a inscripciones de jugadores.")
         if result and is_veronica_only(result[0]) and not veronica_route_allowed(request.path_info, request.method):
             raise PermissionDenied("Esta cuenta solo tiene acceso a Comunicaciones de Verónica.")
         if result and is_court_communications_only(result[0]) and not court_communications_route_allowed(request.path_info, request.method):

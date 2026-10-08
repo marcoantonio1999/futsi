@@ -7,6 +7,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from core.bulk_models import WhatsAppBulkCampaign, WhatsAppBulkRecipient, WhatsAppBulkReceipt
 from core.document_models import WhatsAppChannelDocument
+from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
 
 from core.whatsapp.defaults import (
     DEFAULT_WHATSAPP_ASSISTANT_INSTRUCTIONS,
