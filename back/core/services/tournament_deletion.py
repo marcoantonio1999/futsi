@@ -36,7 +36,9 @@ def deletion_plan(tournament, *, lock=False):
     teams = add(Team, "Equipos", Q(tournament=tournament))
     rounds = add(Round, "Jornadas", Q(tournament=tournament))
     registrations = add(StudentTournamentRegistration, "Inscripciones de alumnos", Q(tournament=tournament) | Q(team_id__in=teams))
-    players = add(Player, "Jugadores de equipos de adultos", Q(team_id__in=teams))
+    player_query = Player.objects.filter(team_id__in=teams).order_by("pk")
+    preserved_players = list(player_query.select_for_update() if lock else player_query)
+    players = [row.pk for row in preserved_players]
     matches = add(Match, "Partidos y marcadores", Q(tournament=tournament) | Q(round_id__in=rounds) | Q(home_team_id__in=teams) | Q(away_team_id__in=teams))
     sessions = add(AttendanceSession, "Sesiones del torneo", Q(tournament=tournament) | Q(team_id__in=teams) | Q(round_id__in=rounds) | Q(match_id__in=matches))
     charges = add(Charge, "Cargos del torneo", Q(tournament_registration_id__in=registrations) | Q(team_id__in=teams))
@@ -44,12 +46,11 @@ def deletion_plan(tournament, *, lock=False):
     add(Discount, "Descuentos del torneo", Q(charge_id__in=charges) | Q(team_id__in=teams))
     add(Invoice, "Facturas vinculadas", Q(charge_id__in=charges) | Q(payment_id__in=payments))
     add(AttendanceRecord, "Asistencias del torneo", Q(session_id__in=sessions) | Q(team_id__in=teams))
-    add(PlayerAttendanceRecord, "Asistencias de jugadores", Q(session_id__in=sessions) | Q(player_id__in=players))
+    add(PlayerAttendanceRecord, "Asistencias de jugadores", Q(session_id__in=sessions))
     add(FaceRecognitionAttempt, "Reconocimientos del torneo", Q(session_id__in=sessions))
-    add(FaceStationEvent, "Eventos vinculados de FaceGuard", Q(session_id__in=sessions) | Q(player_id__in=players))
-    add(FaceStationUnknownLink, "Vínculos de jugadores en FaceGuard", Q(player_id__in=players))
-    keys = [f"player:{pk}" for pk in players]
-    add(FaceStationDailyPresence, "Presencias de jugadores", Q(canonical_person_key__in=keys) | Q(subject_key__in=keys))
+    add(FaceStationEvent, "Eventos vinculados de FaceGuard", Q(session_id__in=sessions))
+    add(FaceStationUnknownLink, "Vínculos de jugadores en FaceGuard", Q(pk__in=[]))
+    add(FaceStationDailyPresence, "Presencias de jugadores", Q(pk__in=[]))
     groups.append({"model": Tournament, "label": "Torneo", "rows": [tournament]})
     history = Q(pk__in=[])
     for group in groups:
@@ -59,8 +60,9 @@ def deletion_plan(tournament, *, lock=False):
     fingerprint = hashlib.sha256(json.dumps({
         "records": [[group["model"]._meta.label, [[row.pk, {field.attname: getattr(row, field.attname) for field in row._meta.fields}] for row in group["rows"]]] for group in groups],
         "files": files,
+        "preserved_players": [[row.pk, row.team_id, str(row.updated_at)] for row in preserved_players],
     }, sort_keys=True, default=str).encode()).hexdigest()
-    return {"groups": groups, "files": files, "fingerprint": fingerprint}
+    return {"groups": groups, "files": files, "fingerprint": fingerprint, "preserved_players": players}
 
 
 def preview(tournament, actor):
@@ -69,6 +71,7 @@ def preview(tournament, actor):
         "tournament_id": tournament.pk, "full_name": tournament.name,
         "items": [{"label": group["label"], "count": len(group["rows"])} for group in plan["groups"] if group["rows"]],
         "file_count": len(plan["files"]),
+        "preserved_player_count": len(plan["preserved_players"]),
         "confirmation_token": signing.dumps({"tournament": tournament.pk, "actor": actor.pk, "fingerprint": plan["fingerprint"]}, salt=SALT),
     }
 
@@ -94,7 +97,8 @@ def permanently_delete(tournament, actor, payload):
         reports = list(FaceStationDailyReport.objects.select_for_update().filter(pk__in=report_ids).order_by("pk"))
         order = [HistoricalImportRow, Invoice, Discount, Payment, Charge, StudentTournamentRegistration,
                  AttendanceRecord, PlayerAttendanceRecord, FaceRecognitionAttempt, FaceStationEvent,
-                 FaceStationUnknownLink, FaceStationDailyPresence, AttendanceSession, Match, Round, Player, Team, Tournament]
+                 FaceStationUnknownLink, FaceStationDailyPresence, AttendanceSession, Match, Round, Team, Tournament]
+        Player.objects.filter(pk__in=plan["preserved_players"]).update(team=None)
         for model in order:
             ids = by_model[model]
             AuditLog.objects.filter(table_name=model._meta.db_table, record_id__in=[str(pk) for pk in ids]).delete()
@@ -103,5 +107,5 @@ def permanently_delete(tournament, actor, payload):
             report.row_count = report.presences.count()
             report.save(update_fields=["row_count", "updated_at"])
         audit = AuditLog.objects.create(actor=actor, action="tournament_deleted", table_name="tournaments", record_id=str(tournament.pk),
-            metadata={"site_id": tournament.site_id, "counts": {group["model"]._meta.db_table: len(group["rows"]) for group in plan["groups"]}, "pending_files": plan["files"]})
+            metadata={"site_id": tournament.site_id, "preserved_player_ids": plan["preserved_players"], "counts": {group["model"]._meta.db_table: len(group["rows"]) for group in plan["groups"]}, "pending_files": plan["files"]})
     return cleanup_files(audit)

@@ -262,6 +262,13 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     await loadCatalog().catch(() => undefined);
     return result;
   }
+  async function deleteTeam(id: number, confirmation: StudentDeletionConfirmation) {
+    const result = await apiRequest<StudentDeletionResult>(`/player-enrollments/teams/${id}/`, token, {method: "DELETE", body: JSON.stringify(confirmation)});
+    setCatalog(previous => ({...previous, teams: previous.teams.filter(team => team.id !== id)}));
+    if (inviteTeam === String(id)) {setInviteTeam(""); setLink("");}
+    await loadCatalog().catch(() => undefined);
+    return result;
+  }
   async function loadCatalog() {
     setCatalogBusy(true); setCatalogError("");
     try {
@@ -357,7 +364,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
             setInviteTournament(String(created.tournament)); setInviteTeam(String(created.id)); setLink("");
             return created;
           }}
-          onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
+          onDeleteTeam={deleteTeam} onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
         <button className="primary" onClick={() => setTournamentSection(null)}>Continuar a generar enlace de inscripción</button>
       </section> : <>

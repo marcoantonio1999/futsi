@@ -67,6 +67,33 @@ class PlayerEnrollmentTests(TestCase):
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.get(f'/api/player-enrollments/tournaments/{self.tournament.pk}/deletion-preview/').status_code,403)
 
+    def test_delete_team_keeps_client_and_tournament(self):
+        from core.models import Player
+        self.client.force_authenticate(self.emilio)
+        team = Team.objects.create(tournament=self.tournament, name='Equipo sin historial')
+        player = Player.objects.create(team=team, full_name='Cliente permanente', photo_url='https://example.com/photo.jpg')
+        url = f'/api/player-enrollments/teams/{team.pk}/'
+        self.assertEqual(self.client.delete(url, {}, format='json').status_code, 400)
+        preview = self.client.get(url+'deletion-preview/')
+        self.assertEqual(preview.status_code, 200)
+        payload = {'confirmation_token': preview.json()['confirmation_token'], 'confirmation_name': team.name}
+        self.assertEqual(self.client.delete(url, payload, format='json').status_code, 200)
+        player.refresh_from_db()
+        self.assertIsNone(player.team_id)
+        self.assertEqual(player.photo_url, 'https://example.com/photo.jpg')
+        self.assertTrue(Tournament.objects.filter(pk=self.tournament.pk).exists())
+        self.assertFalse(Team.objects.filter(pk=team.pk).exists())
+
+    def test_team_deletion_scope_and_signed_links_are_protected(self):
+        self.client.force_authenticate(self.emilio)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{self.team.pk}/deletion-preview/').status_code, 400)
+        outside = Site.objects.create(name='Fuera de Franco')
+        tournament = Tournament.objects.create(site=outside, name='Otro')
+        team = Team.objects.create(tournament=tournament, name='Ajeno')
+        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 404)
+        self.client.force_authenticate(self.other)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 403)
+
     def payload(self, minor=False, tutor=True, blank=False):
         data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
         if minor:

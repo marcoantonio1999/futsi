@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from PIL import Image, ImageStat, UnidentifiedImageError
 from django.db import transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, serializers
@@ -282,13 +282,31 @@ class EnrollmentTournamentDeletionView(APIView):
             return Response(tournament_deletion.permanently_delete(tournament, request.user, request.data))
         except ProtectedError:
             raise ValidationError('El torneo tiene registros protegidos y no puede eliminarse.')
-        except APIException:
+        except (APIException, Http404):
             raise
         except Exception:
             reference = uuid4().hex[:12]
             # Full exception chain and stack, but never headers, payload or locals.
             logger.exception('ENROLLMENT_TOURNAMENT_DELETE_FAILED reference=%s tournament_id=%s stage=%s', reference, pk, stage)
             return Response({'detail': f'No se pudo eliminar el torneo. Referencia del error: {reference}.'}, status=500)
+
+
+class EnrollmentTeamDeletionView(APIView):
+    permission_classes = [EnrollmentStaffPermission]
+
+    def target(self, request, pk):
+        if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
+            raise PermissionDenied('No tienes permiso para eliminar equipos.')
+        return get_object_or_404(Team.objects.select_related('tournament'), pk=pk,
+            tournament__site__in=enrollment_sites(request.user).filter(name__iexact='Colegio Franco'))
+
+    def get(self, request, pk):
+        from core.services import team_deletion
+        return Response(team_deletion.preview(self.target(request, pk), request.user))
+
+    def delete(self, request, pk):
+        from core.services import team_deletion
+        return Response(team_deletion.permanently_delete(self.target(request, pk), request.user, request.data))
 
 
 class EnrollmentDocumentView(APIView):

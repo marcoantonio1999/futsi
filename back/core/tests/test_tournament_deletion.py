@@ -111,17 +111,24 @@ def test_deletion_rolls_back_if_any_dependent_cannot_be_removed(auth_client):
     assert not AuditLog.objects.filter(action="tournament_deleted").exists()
 
 
-def test_owned_files_can_be_retried_after_tournament_has_been_deleted(auth_client):
+def test_player_and_owned_files_survive_tournament_deletion_and_can_be_reassigned(auth_client):
     tournament = make_tournament()
     player = make_player(team=make_team(tournament=tournament), photo_url="supabase://private/photo-test.jpg")
     client, _, _ = auth_client()
     with patch("core.services.student_deletion.delete_private_file", side_effect=RuntimeError("storage unavailable")):
         response = client.delete(f"/api/tournaments/{tournament.pk}/", confirmation(client, tournament), format="json")
     assert response.status_code == 200, response.content
-    assert response.json()["cleanup_pending"] == 1
-    assert not type(player).objects.filter(pk=player.pk).exists()
+    assert response.json()["cleanup_pending"] == 0
+    player.refresh_from_db()
+    assert player.team_id is None
+    assert player.photo_url == "supabase://private/photo-test.jpg"
+    new_team = make_team()
+    moved = client.patch(f"/api/players/{player.pk}/", {"team": new_team.pk}, format="json")
+    assert moved.status_code == 200, moved.content
+    player.refresh_from_db()
+    assert player.team_id == new_team.pk
     with patch("core.services.student_deletion.delete_private_file") as remove_file:
         retry = client.post("/api/tournaments/deletion-cleanup/", {"deletion_id": response.json()["deletion_id"]}, format="json")
     assert retry.status_code == 200
     assert retry.json()["cleanup_pending"] == 0
-    remove_file.assert_called_once()
+    remove_file.assert_not_called()

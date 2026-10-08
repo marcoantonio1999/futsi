@@ -14,13 +14,14 @@ export function StudentDeleteDialog({ student, token, onClose, onDelete }: {
 type DeletionPreview = Pick<StudentDeletionPreview, "full_name" | "items" | "file_count" | "confirmation_token"> & { students?: { id: number; full_name: string }[] };
 
 export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, collectionPath }: {
-  record: { id: number; full_name: string; site_name?: string }; kind: "student" | "guardian" | "tournament"; token: string; onClose: () => void;
+  record: { id: number; full_name: string; site_name?: string }; kind: "student" | "guardian" | "tournament" | "team"; token: string; onClose: () => void;
   onDelete: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   collectionPath?: string;
 }) {
   const isGuardian = kind === "guardian";
   const isTournament = kind === "tournament";
-  const noun = isTournament ? "torneo" : isGuardian ? "tutor" : "alumno";
+  const isTeam = kind === "team";
+  const noun = isTeam ? "equipo" : isTournament ? "torneo" : isGuardian ? "tutor" : "alumno";
   const collection = collectionPath || (isTournament ? "tournaments" : isGuardian ? "guardians" : "students");
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
@@ -66,16 +67,16 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, co
     {completed ? <>
       <div className="student-delete-symbol student-delete-success"><CheckCircle2 size={26} /></div>
       <div role="status">
-        <h2 id="student-delete-title">{isTournament ? "Torneo eliminado correctamente" : isGuardian ? "Tutor eliminado correctamente" : "Alumno eliminado correctamente"}</h2>
+        <h2 id="student-delete-title">{isTeam ? "Equipo eliminado correctamente" : isTournament ? "Torneo eliminado correctamente" : isGuardian ? "Tutor eliminado correctamente" : "Alumno eliminado correctamente"}</h2>
         <p className="student-delete-name">{record.full_name}</p>
-        <p id="student-delete-detail">{isTournament ? "Se eliminó el torneo y sus datos asociados. Los alumnos y tutores siguen en la academia." : isGuardian ? "Se eliminaron su ficha, los alumnos a su cargo y los datos asociados." : "Se eliminaron su ficha y sus datos asociados."}</p>
+        <p id="student-delete-detail">{isTeam ? "Se eliminó el equipo. Las fichas y documentos de alumnos y jugadores se conservan para nuevas asignaciones." : isTournament ? "Se eliminó el torneo y sus datos asociados. Los alumnos y tutores siguen en la academia." : isGuardian ? "Se eliminaron su ficha, los alumnos a su cargo y los datos asociados." : "Se eliminaron su ficha y sus datos asociados."}</p>
       </div>
       <div className="student-actions"><button ref={successButton} type="button" className="student-button primary" onClick={onClose}>Entendido</button></div>
     </> : <>
     <div className="student-delete-symbol">{preview ? <AlertTriangle size={24} /> : <Trash2 size={24} />}</div>
-    <h2 id="student-delete-title">{cleanup ? `${isTournament ? "Torneo" : isGuardian ? "Tutor" : "Alumno"} eliminado; falta borrar ${cleanup.cleanup_pending === 1 ? "un archivo" : `${cleanup.cleanup_pending} archivos`}` : preview ? (isTournament ? "Eliminar torneo e historial" : isGuardian ? "Eliminar tutor, alumnos e historial" : "Eliminar alumno e historial") : isTournament ? "¿Eliminar este torneo?" : `¿Eliminar a este ${noun}?`}</h2>
+    <h2 id="student-delete-title">{isTeam ? "Eliminar equipo" : cleanup ? `${isTournament ? "Torneo" : isGuardian ? "Tutor" : "Alumno"} eliminado; falta borrar ${cleanup.cleanup_pending === 1 ? "un archivo" : `${cleanup.cleanup_pending} archivos`}` : preview ? (isTournament ? "Eliminar torneo e historial" : isGuardian ? "Eliminar tutor, alumnos e historial" : "Eliminar alumno e historial") : isTournament ? "¿Eliminar este torneo?" : `¿Eliminar a este ${noun}?`}</h2>
     <p className="student-delete-name">{record.full_name}</p><p className="student-hint">{record.site_name}</p>
-    <p id="student-delete-detail">{cleanup
+    <p id="student-delete-detail">{isTeam ? "Solo se elimina el equipo y se retira la asignación de sus integrantes. No se borran personas ni documentos. Si tiene partidos, movimientos o enlaces, se protege su historial." : cleanup
       ? `La ficha y el historial ya se eliminaron correctamente. Solo queda pendiente la limpieza del almacenamiento; reintentar no vuelve a borrar el registro.`
       : preview
         ? "Esta eliminación es definitiva. También desaparecerán los siguientes registros y cambiarán los totales de cobranza, pagos y asistencias."

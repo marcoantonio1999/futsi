@@ -193,6 +193,7 @@ function ActivePanel(props: AdminShellContentProps) {
       {effectiveActiveTab === "adult-dashboard" && (
         <AdultLeagueDashboardPanel
           data={scopedData}
+          onAssignPlayer={user.role === "admin" || user.role === "owner" || user.role === "dev" ? async (id, team) => { if (!await onUpdateRecord(`/players/${id}/`, { team }, "Asignación del cliente actualizada.")) throw new Error("No se pudo guardar la asignación."); } : undefined}
           collectionOnly={user.role === "cashier"}
           onCreateSession={(payload) => onCreateAndReturn<AttendanceSession>("/attendance-sessions/", payload)}
           onMarkPlayer={onMarkAdultPlayer}

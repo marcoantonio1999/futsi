@@ -81,6 +81,7 @@ export function AdultLeagueDashboardPanel({
   onMarkPlayer,
   onCreatePayment,
   onPaymentAction,
+  onAssignPlayer,
 }: {
   data: AppData;
   readOnly?: boolean;
@@ -89,8 +90,13 @@ export function AdultLeagueDashboardPanel({
   onMarkPlayer: (payload: unknown) => Promise<void>;
   onCreatePayment: (payload: unknown) => void;
   onPaymentAction: (paymentId: number, action: string) => void;
+  onAssignPlayer?: (id: number, team: number | null) => Promise<unknown>;
 }) {
   const today = new Date().toISOString().slice(0, 10);
+  const [assignmentPlayer, setAssignmentPlayer] = useState("");
+  const [assignmentTeam, setAssignmentTeam] = useState("");
+  const [assignmentNotice, setAssignmentNotice] = useState("");
+  const [assigning, setAssigning] = useState(false);
   const adultTeams = data.teams.filter((team) => team.is_active);
   const adultTeamIds = new Set(adultTeams.map((team) => team.id));
   const adultPlayers = data.players.filter((player) => adultTeamIds.has(player.team) && player.is_active);
@@ -201,6 +207,18 @@ export function AdultLeagueDashboardPanel({
 
   return (
     <section className="grid gap-5 rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+      {!readOnly && !collectionOnly && onAssignPlayer && <form className="grid gap-3 rounded-md border p-4" onSubmit={async event => {
+        event.preventDefault(); if (!assignmentPlayer || assigning) return;
+        setAssigning(true); setAssignmentNotice("");
+        try { await onAssignPlayer(Number(assignmentPlayer), assignmentTeam ? Number(assignmentTeam) : null); setAssignmentNotice("Asignación actualizada. La ficha y sus documentos se conservan."); }
+        catch (error) { setAssignmentNotice(error instanceof Error ? error.message : "No se pudo cambiar la asignación."); }
+        finally { setAssigning(false); }
+      }}><h3 className="font-semibold">Asignar o cambiar equipo de un cliente</h3>
+        <SelectInput label="Cliente" value={assignmentPlayer} onChange={event => setAssignmentPlayer(event.target.value)} required><option value="">Selecciona una persona</option>{data.players.map(player => <option key={player.id} value={player.id}>{player.full_name} · {player.team_name || "Sin equipo"}</option>)}</SelectInput>
+        <SelectInput label="Equipo de destino" value={assignmentTeam} onChange={event => setAssignmentTeam(event.target.value)}><option value="">Sin equipo por ahora</option>{adultTeams.map(team => <option key={team.id} value={team.id}>{team.name} · {data.tournaments.find(row => row.id === team.tournament)?.name}</option>)}</SelectInput>
+        <button disabled={assigning || !assignmentPlayer} className="rounded-md bg-blue-700 px-4 py-2 text-white">{assigning ? "Guardando…" : "Guardar asignación"}</button>
+        {assignmentNotice && <p role="status">{assignmentNotice}</p>}
+      </form>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Operacion adultos</p>

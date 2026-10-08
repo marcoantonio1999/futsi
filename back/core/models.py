@@ -285,7 +285,8 @@ class Player(TimestampedModel):
         on_delete=models.SET_NULL,
         related_name="adult_player_profile",
     )
-    team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="players")
+    # The client survives the team: team is only their current assignment.
+    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.SET_NULL, related_name="players")
     full_name = models.CharField(max_length=160)
     phone = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)

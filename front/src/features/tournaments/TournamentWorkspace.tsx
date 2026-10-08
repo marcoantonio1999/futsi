@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Plus, Shield, Trophy, UsersRound, X, Trash2 } from "lucide-react";
-import type { AppData, Match, StudentDeletionConfirmation, StudentDeletionResult, StudentTournamentRegistration, Tournament, User } from "../../types";
+import type { AppData, Match, StudentDeletionConfirmation, StudentDeletionResult, StudentTournamentRegistration, Tournament, Team, User } from "../../types";
 import { SelectInput, TextInput } from "../../components/views/shared";
 import { standingsForTournament } from "../../components/views/sportsViewModel";
 import { TournamentStandingsTable } from "./TournamentStandingsTable";
@@ -17,6 +17,7 @@ import "../../components/views/students.css";
 export type TournamentSection = "overview" | "create" | "detail" | "teams" | "registrations" | "schedule";
 type Props = {
   token: string;
+  onDeleteTeam?: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   onDeleteTournament: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   data: AppData; user?: User; scope?: "academy" | "adult"; readOnly?: boolean; section: TournamentSection;
   setupOnly?: boolean;
@@ -39,6 +40,7 @@ export function TournamentsPanel(props: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [deletingTournament, setDeletingTournament] = useState<Tournament | null>(null);
+  const [deletingTeam, setDeletingTeam] = useState<Team | null>(null);
   const [notice, setNotice] = useState("");
   const [rosterTeam, setRosterTeam] = useState("");
   const scoped = useMemo(() => {
@@ -88,6 +90,8 @@ export function TournamentsPanel(props: Props) {
       {section === "registrations" && !adult && <TournamentRoster key={`${selected.id}:${rosterTeam}`} registrations={registrations} teams={teams} initialTeam={rosterTeam} canEdit={!readOnly} onAdd={() => setDialog({ kind: "enrollment" })} onEdit={row => setDialog({ kind: "enrollment", row })} onWithdraw={row => setDialog({ kind: "withdraw", row })} />}
       {section === "schedule" && <TournamentMatches key={selected.id} matches={matches} canEdit={!readOnly} canSchedule={teams.filter(row => row.is_active).length >= 2} onSchedule={() => setDialog({ kind: "match" })} onCreateTeams={() => go("teams")} onUpdate={async (id, payload) => { await props.onUpdateMatch(id, payload); setNotice("Partido actualizado correctamente."); }} />}
       </>}
+    {section === "teams" && !readOnly && props.onDeleteTeam && <section className="tournament-surface"><h3>Eliminar equipos</h3><p>Las fichas y documentos de sus integrantes se conservan.</p>{teams.map(team => <div className="tournament-row-actions" key={team.id}><span>{team.name}</span><button className="tournament-icon-button danger" aria-label={`Eliminar equipo ${team.name}`} onClick={() => setDeletingTeam(team)}><Trash2 size={16} /></button></div>)}</section>}
+    {deletingTeam && !readOnly && props.onDeleteTeam && <AcademyDeleteDialog kind="team" collectionPath="player-enrollments/teams" record={{id: deletingTeam.id, full_name: deletingTeam.name}} token={props.token} onDelete={props.onDeleteTeam} onClose={() => setDeletingTeam(null)} />}
     {selected && !readOnly && dialog?.kind === "team" && <CreateTeamDialog tournament={selected} adult={adult} onClose={() => setDialog(null)} onSave={async payload => { await props.onCreateTeam(payload); setNotice("Equipo creado correctamente. Ya puedes inscribir alumnos."); }} />}
     {selected && !readOnly && dialog?.kind === "match" && <ScheduleMatchDialog tournament={selected} teams={teams.filter(row => row.is_active)} onClose={() => setDialog(null)} onSave={async payload => { await props.onCreateMatch(payload); setNotice("Partido agendado correctamente."); }} />}
     {selected && !readOnly && dialog?.kind === "enrollment" && <EnrollmentDialog tournament={selected} students={data.students} teams={teams.filter(row => row.is_active || row.id === dialog.row?.team)} registrations={registrations} existing={dialog.row} initialTeam={dialog.team} onClose={() => setDialog(null)} onSave={async (payload, id) => { if (id) { if (!await props.onUpdateRegistration(id, payload)) throw new Error("No se pudo actualizar la inscripción."); } else await props.onRegisterStudent(payload); setNotice("Inscripción guardada correctamente."); }} />}

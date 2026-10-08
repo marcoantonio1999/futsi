@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView, VeronicaWeeklyStatsView
 from core.api.bulk import BulkView
-from core.api.enrollments import PublicEnrollmentView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView
+from core.api.enrollments import PublicEnrollmentView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
 
 from core.api.automatic_attendance import (
     AutomaticAttendanceCancelJobView,
@@ -73,6 +73,8 @@ from futsi_api.health import (
 urlpatterns = [
     path("api/player-enrollments/", EnrollmentAdminView.as_view()),
     path("api/player-enrollments/catalog/", EnrollmentCatalogView.as_view()),
+    path("api/player-enrollments/teams/<int:pk>/deletion-preview/", EnrollmentTeamDeletionView.as_view()),
+    path("api/player-enrollments/teams/<int:pk>/", EnrollmentTeamDeletionView.as_view()),
     path("api/player-enrollments/tournaments/deletion-cleanup/", EnrollmentTournamentDeletionView.as_view()),
     path("api/player-enrollments/tournaments/<int:pk>/deletion-preview/", EnrollmentTournamentDeletionView.as_view()),
     path("api/player-enrollments/tournaments/<int:pk>/", EnrollmentTournamentDeletionView.as_view()),
