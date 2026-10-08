@@ -9,11 +9,15 @@ from django.db import migrations, models
 def protect_private_tables(apps, schema_editor):
     if schema_editor.connection.vendor != "postgresql":
         return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute("SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated')")
+        public_roles = [row[0] for row in cursor.fetchall()]
     for table in ("player_enrollment_invitations", "player_enrollments", "player_enrollment_documents"):
         schema_editor.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
         # Only the trusted Django database role should reach these tables.
         # No Data API policy is granted to public Supabase clients.
-        schema_editor.execute(f'REVOKE ALL ON TABLE "{table}" FROM anon, authenticated')
+        for role in public_roles:
+            schema_editor.execute(f'REVOKE ALL ON TABLE "{table}" FROM "{role}"')
 
 
 class Migration(migrations.Migration):
