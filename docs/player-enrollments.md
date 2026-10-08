@@ -2,9 +2,13 @@
 
 En Futsi, el botón **Inscripciones** de Administración abre el historial y permite crear un enlace por jugador. La cuenta independiente `emilio` entra directamente a esa pantalla, sin sede, correo ni acceso a otras áreas.
 
-Cada enlace dura 30 días y admite una única inscripción. Puede compartirse por WhatsApp o copiarse. El formulario público requiere nombre, equipo, categoría, teléfono, nacimiento, INE frente y reverso, aceptación del formato y firma dibujada del jugador. Para menores de 18 años también exige nombre y firma del tutor; el INE solicitado es el del tutor. El folio de pago y segundo teléfono son opcionales. La lista de documentación presentada reproduce los campos del formato y no afirma que se hayan validado esos documentos.
+Cada enlace dura 30 días y admite una única inscripción. Puede compartirse por WhatsApp o copiarse. El formulario público, sin logotipo ni nombre de aplicación, reproduce la hoja de firma en dos columnas: documentación a la izquierda y foto, firmas y datos a la derecha. Requiere nombre, equipo, torneo, teléfono de contacto, teléfono de emergencia, nacimiento, foto frontal del jugador, aceptación de compromisos y firma dibujada del jugador. La categoría y el folio de pago son opcionales.
 
-El formato de compromisos original está en `front/public/registro-supergol.pdf`, SHA-256 `1a6c8aea8f33065626e085fb0c9817263cab6e413d4f70e1b04014254c3f6a34`. La versión aceptada queda registrada con fecha de servidor. Si el formato cambia, debe cambiarse también `TERMS_VERSION` en el servidor.
+Adultos: INE frente y reverso, o pasaporte, o cartilla. Menores: credencial del menor, CURP, INE del tutor frente y reverso, nombre y firma del tutor. La fecha de nacimiento determina los requisitos tanto en la pantalla como en el servidor.
+
+El historial muestra una cédula de dos columnas con fotos y nombres, agrupada por equipo y torneo. Permite buscar, paginar, elegir fecha y jornada de impresión y abrir la hoja firmada del jugador. La impresión incluye únicamente los registros de la página mostrada; no oculta esta limitación. El botón Imprimir / guardar PDF usa la impresión del navegador.
+
+El PDF anterior queda como referencia histórica en `front/public/registro-supergol.pdf`. Los compromisos vigentes provienen de la nueva referencia proporcionada por el usuario y se muestran completos desde `core/enrollment_terms.py`. Su texto y versión se guardan en cada inscripción junto a la fecha de servidor. Si el formato cambia, debe cambiarse también `TERMS_VERSION`.
 
 El registro conserva la evidencia de firma dibujada y aceptación; no es una firma electrónica certificada ni verifica la identidad contra una autoridad.
 

@@ -28,7 +28,11 @@ class PlayerEnrollmentTests(TestCase):
         self.client = APIClient()
 
     def payload(self, minor=False, tutor=True, blank=False):
-        data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "team": "Equipo", "category": "Categoría", "phone": "5512345678", "accepted_terms": "true", "ine_front": image_file("frente.png"), "ine_back": image_file("reverso.png"), "player_signature": image_file("firma.png", blank)}
+        data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "team": "Equipo", "category": "Categoría", "tournament": "Torneo", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
+        if minor:
+            data.update({kind: image_file(kind + ".png") for kind in ("minor_credential", "curp", "guardian_ine_front", "guardian_ine_back")})
+        else:
+            data.update(ine_front=image_file("frente.png"), ine_back=image_file("reverso.png"))
         if minor and tutor:
             data.update(guardian_name="Tutor de prueba", guardian_signature=image_file("tutor.png"))
         return data
@@ -37,7 +41,33 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.post(self.url, self.payload(), format="multipart").status_code, 201)
         self.assertEqual(self.client.post(self.url, self.payload(), format="multipart").status_code, 409)
         self.assertEqual(PlayerEnrollment.objects.count(), 1)
-        self.assertEqual(PlayerEnrollmentDocument.objects.count(), 3)
+        self.assertEqual(PlayerEnrollmentDocument.objects.count(), 4)
+
+    def test_passport_and_cartilla_are_accepted(self):
+        for kind in ("passport", "military_card"):
+            invitation = PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1))
+            data = self.payload(); data["identity_type"] = kind
+            del data["ine_front"]; del data["ine_back"]
+            data["identity_document"] = image_file("documento.png")
+            self.assertEqual(self.client.post(f"/api/player-enrollments/public/{invitation.token}/", data, format="multipart").status_code, 201)
+
+    def test_player_photo_is_required_and_must_be_image(self):
+        data = self.payload(); del data["player_photo"]
+        self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
+        data = self.payload(); data["player_photo"] = SimpleUploadedFile("foto.pdf", b"%PDF-1.4 test", content_type="application/pdf")
+        self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
+
+    def test_minor_requires_curp_and_tutor_identity(self):
+        for kind in ("curp", "guardian_ine_front", "minor_credential"):
+            data = self.payload(minor=True); del data[kind]
+            self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
+
+    def test_team_and_tournament_filter_and_terms_snapshot(self):
+        self.client.post(self.url, self.payload(), format="multipart")
+        self.client.force_authenticate(self.emilio)
+        self.assertEqual(self.client.get("/api/player-enrollments/?team=Equipo&tournament=Torneo").json()["count"], 1)
+        self.assertEqual(self.client.get("/api/player-enrollments/?team=Otro").json()["count"], 0)
+        self.assertTrue(PlayerEnrollment.objects.first().terms_text)
 
     def test_minor_needs_tutor_name_and_signature(self):
         self.assertEqual(self.client.post(self.url, self.payload(minor=True, tutor=False), format="multipart").status_code, 400)

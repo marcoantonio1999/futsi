@@ -12,6 +12,7 @@ class PlayerEnrollmentInvitation(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     team = models.CharField(max_length=120, blank=True)
     category = models.CharField(max_length=80, blank=True)
+    tournament = models.CharField(max_length=120, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     class Meta:
@@ -24,12 +25,15 @@ class PlayerEnrollment(models.Model):
     birth_date = models.DateField()
     team = models.CharField(max_length=120)
     category = models.CharField(max_length=80)
+    tournament = models.CharField(max_length=120, blank=True)
+    identity_type = models.CharField(max_length=20, default="ine")
     phone = models.CharField(max_length=30)
     phone_secondary = models.CharField(max_length=30, blank=True)
     guardian_name = models.CharField(max_length=160, blank=True)
     payment_reference = models.CharField(max_length=80, blank=True)
     document_checklist = models.JSONField(default=list)
     terms_version = models.CharField(max_length=80)
+    terms_text = models.JSONField(default=list)
     signed_at = models.DateTimeField(auto_now_add=True)
     class Meta:
         db_table = "player_enrollments"

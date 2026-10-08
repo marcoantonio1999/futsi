@@ -16,12 +16,13 @@ const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults")
 const AdminShell = lazy(() => import("./components/layout/AdminShell").then((module) => ({ default: module.AdminShell })));
 const PublicPlayerEnrollment = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerEnrollment })));
 const EnrollmentDashboard = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentDashboard })));
+const EnrollmentLogin = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentLogin })));
 
 export default function App() {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => { const update = () => setHash(window.location.hash); window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update); }, []);
   if (!isSoccerWa && hash.startsWith("#/inscripcion/")) {
-    return <Suspense fallback={<LandingFallback />}><PublicPlayerEnrollment invitation={hash.slice("#/inscripcion/".length)} /></Suspense>;
+    return <Suspense fallback={<main className="min-h-screen bg-white p-8">Cargando registro…</main>}><PublicPlayerEnrollment invitation={hash.slice("#/inscripcion/".length)} /></Suspense>;
   }
   return <FutsiApplication enrollmentAdmin={hash === "#/admin/inscripciones"} />;
 }
@@ -70,6 +71,7 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   }
 
   if (!token || !currentUser) {
+    if (!isSoccerWa && enrollmentAdmin) return <Suspense fallback={<main className="bg-white p-8">Cargando acceso…</main>}><EnrollmentLogin onLogin={handleLogin} /></Suspense>;
     return (
       <>
         <Suspense fallback={<LandingFallback />}>

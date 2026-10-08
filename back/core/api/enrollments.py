@@ -14,7 +14,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
 
-TERMS_VERSION = "supergol-2026-10-07-v1"
+from core.enrollment_terms import TERMS_VERSION, TERMS
 
 
 def enrollment_staff(user):
@@ -47,9 +47,11 @@ class EnrollmentInput(serializers.Serializer):
     name = serializers.CharField(max_length=160)
     birth_date = serializers.DateField()
     team = serializers.CharField(max_length=120)
-    category = serializers.CharField(max_length=80)
+    category = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
+    tournament = serializers.CharField(max_length=120)
+    identity_type = serializers.ChoiceField(choices=["ine", "passport", "military_card", "minor"])
     phone = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
-    phone_secondary = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
+    phone_secondary = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
     guardian_name = serializers.CharField(max_length=160, required=False, allow_blank=True, default="")
     payment_reference = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
     document_checklist = serializers.ListField(child=serializers.ChoiceField(choices=["credential", "waiver", "other", "birth_certificate", "curp", "guardian_ine"]), required=False, default=list)
@@ -61,6 +63,8 @@ class EnrollmentInput(serializers.Serializer):
             raise ValidationError("Debes aceptar los compromisos del formato.")
         if is_minor(data["birth_date"]) and not data["guardian_name"]:
             raise ValidationError("Para menores es obligatorio el nombre del padre o tutor.")
+        if is_minor(data["birth_date"]) != (data["identity_type"] == "minor"):
+            raise ValidationError("Revisa el tipo de documentación según la edad del jugador.")
         return data
 
 
@@ -73,7 +77,7 @@ def validated_file(upload, kind):
     content = upload.read(limit + 1)
     if len(content) > limit:
         raise ValidationError("El documento es demasiado grande.")
-    if content.startswith(b"%PDF-") and "signature" not in kind:
+    if content.startswith(b"%PDF-") and "signature" not in kind and kind != "player_photo":
         return content, "application/pdf"
     try:
         with Image.open(BytesIO(content)) as image:
@@ -89,6 +93,11 @@ def validated_file(upload, kind):
                 background.paste(rgba, mask=rgba.getchannel("A"))
                 if max(ImageStat.Stat(background).stddev) < 2:
                     raise ValidationError("Dibuja la firma antes de continuar.")
+            if kind == "player_photo":
+                image = image.convert("RGB")
+                image.thumbnail((400, 500))
+                output = BytesIO(); image.save(output, "JPEG", quality=85)
+                return output.getvalue(), "image/jpeg"
             return content, "image/png" if image.format == "PNG" else "image/jpeg"
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise ValidationError("El archivo no es una imagen válida. Usa JPG, PNG o PDF para el INE.")
@@ -104,17 +113,19 @@ class PublicEnrollmentView(APIView):
             return Response({"detail": "El enlace venció. Pide a Emilio uno nuevo."}, status=410)
         if PlayerEnrollment.objects.filter(invitation=invitation).exists():
             return Response({"completed": True})
-        return Response({"team": invitation.team, "category": invitation.category, "terms_version": TERMS_VERSION})
+        return Response({"team": invitation.team, "category": invitation.category, "tournament": invitation.tournament, "terms_version": TERMS_VERSION, "terms": TERMS})
 
     def post(self, request, token):
         serializer = EnrollmentInput(data=request.data)
         serializer.is_valid(raise_exception=True)
         fields = serializer.validated_data
-        kinds = ["ine_front", "ine_back", "player_signature"]
+        kinds = ["player_photo", "player_signature"]
         if is_minor(fields["birth_date"]):
-            kinds.append("guardian_signature")
-        elif request.FILES.get("guardian_signature"):
-            kinds.append("guardian_signature")
+            kinds.extend(["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back", "guardian_signature"])
+        elif fields["identity_type"] == "ine":
+            kinds.extend(["ine_front", "ine_back"])
+        else:
+            kinds.append("identity_document")
         files = [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
         with transaction.atomic():
             invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_for_update(), token=token)
@@ -123,7 +134,7 @@ class PublicEnrollmentView(APIView):
             if PlayerEnrollment.objects.filter(invitation=invitation).exists():
                 return Response({"detail": "Esta inscripción ya fue recibida.", "completed": True}, status=409)
             checklist = fields.pop("document_checklist", [])
-            row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, document_checklist=checklist, **fields)
+            row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, terms_text=TERMS, document_checklist=checklist, **fields)
             PlayerEnrollmentDocument.objects.bulk_create([
                 PlayerEnrollmentDocument(enrollment=row, kind=kind, content=content, content_type=mime, sha256=sha256(content).hexdigest())
                 for kind, content, mime in files
@@ -139,6 +150,9 @@ class EnrollmentAdminView(APIView):
         except (ValueError, TypeError):
             raise ValidationError("Página inválida.")
         rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).prefetch_related("documents")
+        for field in ("team", "tournament"):
+            if request.query_params.get(field):
+                rows = rows.filter(**{field: request.query_params[field][:120]})
         search = request.query_params.get("search", "")[:160]
         if search:
             rows = rows.filter(name__icontains=search)
@@ -148,13 +162,14 @@ class EnrollmentAdminView(APIView):
         count = rows.count()
         result = []
         for row in rows[(page - 1) * 25:page * 25]:
-            result.append({"id": row.pk, "name": row.name, "birth_date": row.birth_date, "team": row.team, "category": row.category, "phone": row.phone, "phone_secondary": row.phone_secondary, "guardian_name": row.guardian_name, "payment_reference": row.payment_reference, "document_checklist": row.document_checklist, "signed_at": row.signed_at, "terms_version": row.terms_version, "status": "Inscrito", "documents": [{"id": doc.pk, "kind": doc.kind, "sha256": doc.sha256} for doc in row.documents.all()]})
+            result.append({"id": row.pk, "name": row.name, "birth_date": row.birth_date, "team": row.team, "category": row.category, "tournament": row.tournament, "identity_type": row.identity_type, "terms_text": row.terms_text, "phone": row.phone, "phone_secondary": row.phone_secondary, "guardian_name": row.guardian_name, "payment_reference": row.payment_reference, "document_checklist": row.document_checklist, "signed_at": row.signed_at, "terms_version": row.terms_version, "status": "Inscrito", "documents": [{"id": doc.pk, "kind": doc.kind, "sha256": doc.sha256} for doc in row.documents.all()]})
         response = Response({"results": result, "count": count, "page": page})
         response["Cache-Control"] = "no-store"
         return response
 
     def post(self, request):
         class InvitationInput(serializers.Serializer):
+            tournament = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
             team = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
             category = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
         serializer = InvitationInput(data=request.data)
