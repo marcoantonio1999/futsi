@@ -10,25 +10,44 @@ from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment
 SALT = "futsi.team-deletion.v1"
 
 
-def plan(team):
+def plan(team, *, lock=False):
     players = list(Player.objects.filter(team=team).order_by('pk').values_list('pk', 'updated_at'))
     registrations = list(StudentTournamentRegistration.objects.filter(team=team).order_by('pk').values_list('pk', 'updated_at'))
-    if (Match.objects.filter(Q(home_team=team) | Q(away_team=team)).exists()
-        or AttendanceSession.objects.filter(team=team).exists()
-        or AttendanceRecord.objects.filter(team=team).exists()
+    match_query = Match.objects.filter(Q(home_team=team) | Q(away_team=team)).order_by('pk')
+    matches = list(match_query.select_for_update() if lock else match_query)
+    session_query = AttendanceSession.objects.filter(Q(team=team) | Q(match_id__in=[m.pk for m in matches])).order_by('pk')
+    sessions = list(session_query.select_for_update() if lock else session_query)
+    if any(m.status != 'scheduled' or m.home_goals or m.away_goals for m in matches):
+        raise ValidationError('El equipo tiene partidos con actividad o resultados registrados. No se elimina su historial.')
+    for session in sessions:
+        if session.closed_at or any(relation.related_model.objects.filter(**{relation.field.attname: session.pk}).exists()
+                                    for relation in AttendanceSession._meta.related_objects):
+            raise ValidationError('El equipo tiene sesiones con asistencias, reconocimientos u otra actividad registrada. No se elimina su historial.')
+    for match in matches:
+        if any(relation.related_model is not AttendanceSession
+               and relation.related_model.objects.filter(**{relation.field.attname: match.pk}).exists()
+               for relation in Match._meta.related_objects):
+            raise ValidationError('El equipo tiene datos registrados en sus partidos. No se elimina su historial.')
+    if (AttendanceRecord.objects.filter(team=team).exists()
         or Charge.objects.filter(team=team).exists()
         or Payment.objects.filter(team=team).exists()
         or Discount.objects.filter(team=team).exists()
         or PlayerEnrollmentInvitation.objects.filter(team_record=team).exists()
         or PlayerEnrollment.objects.filter(team_record=team).exists()):
         raise ValidationError('Este equipo tiene partidos, movimientos o enlaces de inscripción. No se elimina para conservar ese historial; primero revisa sus registros.')
-    fingerprint = sha256(repr((team.pk, team.name, team.updated_at, players, registrations)).encode()).hexdigest()
-    return players, registrations, fingerprint
+    scheduled_records = [(row._meta.label, [(field.attname, getattr(row, field.attname)) for field in row._meta.fields]) for row in matches + sessions]
+    fingerprint = sha256(repr((team.pk, team.name, team.updated_at, players, registrations, scheduled_records)).encode()).hexdigest()
+    return players, registrations, fingerprint, matches, sessions
 
 
 def preview(team, actor):
-    players, registrations, fingerprint = plan(team)
-    return {'full_name': team.name, 'items': [{'label': 'Equipo', 'count': 1}], 'file_count': 0,
+    players, registrations, fingerprint, matches, sessions = plan(team)
+    items = [{'label': 'Equipo', 'count': 1}]
+    if matches:
+        items.append({'label': 'Partidos programados sin resultados', 'count': len(matches)})
+    if sessions:
+        items.append({'label': 'Sesiones sin actividad registrada', 'count': len(sessions)})
+    return {'full_name': team.name, 'items': items, 'file_count': 0,
         'preserved_player_count': len(players), 'preserved_registration_count': len(registrations),
         'confirmation_token': signing.dumps({'team': team.pk, 'actor': actor.pk, 'fingerprint': fingerprint}, salt=SALT)}
 
@@ -44,13 +63,16 @@ def permanently_delete(team, actor, payload):
             raise ValidationError('Escribe el nombre del equipo para confirmar.')
         list(Player.objects.select_for_update().filter(team=team))
         list(StudentTournamentRegistration.objects.select_for_update().filter(team=team))
-        players, registrations, fingerprint = plan(team)
+        players, registrations, fingerprint, matches, sessions = plan(team, lock=True)
         if fingerprint != confirmation.get('fingerprint'):
             raise ValidationError('El equipo cambió. Actualiza el detalle antes de confirmar.')
         audit = AuditLog.objects.create(actor=actor, action='team_deleted', table_name='teams', record_id=str(team.pk),
             metadata={'site_id': team.tournament.site_id, 'team_name': team.name,
-                      'preserved_player_ids': [pk for pk, _ in players], 'preserved_registration_ids': [pk for pk, _ in registrations]})
+                      'preserved_player_ids': [pk for pk, _ in players], 'preserved_registration_ids': [pk for pk, _ in registrations],
+                      'deleted_scheduled_match_ids': [row.pk for row in matches], 'deleted_empty_session_ids': [row.pk for row in sessions]})
         Player.objects.filter(team=team).update(team=None)
         StudentTournamentRegistration.objects.filter(team=team).update(team=None)
+        AttendanceSession.objects.filter(pk__in=[row.pk for row in sessions]).delete()
+        Match.objects.filter(pk__in=[row.pk for row in matches]).delete()
         team.delete()
         return {'deletion_id': audit.pk, 'cleanup_pending': 0, 'cleanup_items': []}

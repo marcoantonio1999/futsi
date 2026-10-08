@@ -94,6 +94,54 @@ class PlayerEnrollmentTests(TestCase):
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 403)
 
+    def empty_team_match(self):
+        from core.models import Match, AttendanceSession, Player
+        team = Team.objects.create(tournament=self.tournament, name='Equipo programado')
+        player = Player.objects.create(team=team, full_name='Cliente que se conserva')
+        match = Match.objects.create(tournament=self.tournament, site=self.site, home_team=team, away_team=self.team)
+        session = AttendanceSession.objects.create(site=self.site, tournament=self.tournament, team=team,
+            match=match, session_type='tournament_match', date=match.played_on, captured_by=self.emilio)
+        self.client.force_authenticate(self.emilio)
+        return team, player, match, session
+
+    def test_delete_team_removes_only_empty_scheduled_match_and_preserves_clients(self):
+        from core.models import Match, AttendanceSession, Player
+        team, player, match, session = self.empty_team_match()
+        url = f'/api/player-enrollments/teams/{team.pk}/'
+        response = self.client.get(url+'deletion-preview/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['count'] for item in response.json()['items']], [1, 1, 1])
+        payload = {'confirmation_token':response.json()['confirmation_token'], 'confirmation_name':team.name}
+        self.assertEqual(self.client.delete(url, payload, format='json').status_code, 200)
+        player.refresh_from_db()
+        self.assertIsNone(player.team_id)
+        self.assertTrue(Player.objects.filter(pk=player.pk).exists())
+        self.assertTrue(Team.objects.filter(pk=self.team.pk).exists())
+        self.assertFalse(Match.objects.filter(pk=match.pk).exists())
+        self.assertFalse(AttendanceSession.objects.filter(pk=session.pk).exists())
+
+    def test_team_match_results_are_protected(self):
+        team, _, match, _ = self.empty_team_match()
+        match.home_goals = 1
+        match.save()
+        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 400)
+
+    def test_team_player_attendance_is_protected(self):
+        from core.models import PlayerAttendanceRecord
+        team, player, _, session = self.empty_team_match()
+        PlayerAttendanceRecord.objects.create(session=session, player=player, status='present', captured_by=self.emilio)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 400)
+
+    def test_team_match_changes_invalidate_review(self):
+        team, _, match, _ = self.empty_team_match()
+        url = f'/api/player-enrollments/teams/{team.pk}/'
+        response = self.client.get(url+'deletion-preview/')
+        match.duration_minutes += 1
+        match.save()
+        payload = {'confirmation_token':response.json()['confirmation_token'], 'confirmation_name':team.name}
+        self.assertEqual(self.client.delete(url, payload, format='json').status_code, 400)
+        self.assertTrue(Team.objects.filter(pk=team.pk).exists())
+
     def payload(self, minor=False, tutor=True, blank=False):
         data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
         if minor:
