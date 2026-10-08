@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
-import type { User } from "../../types";
+import type { User, Team, Tournament, Site } from "../../types";
+import { TournamentCreatePage } from "../tournaments/TournamentCreatePage";
+import { CreateTeamDialog } from "../tournaments/TournamentManagementDialogs";
+import "../tournaments/tournaments.css";
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
@@ -11,15 +14,16 @@ const labels: Record<string, string> = {
 };
 type Document = { id: number; kind: string };
 type Enrollment = {
-  id: number; name: string; birth_date: string; team: string; tournament: string; category: string;
+  id: number; name: string; birth_date: string; team: string; tournament: string; team_id: number | null; tournament_id: number | null;
   phone: string; phone_secondary: string; guardian_name: string; signed_at: string;
   terms_text: string[]; documents: Document[];
 };
-type Defaults = { team: string; tournament: string; category: string; terms: string[] };
+type Defaults = { team: string; tournament: string; terms: string[] };
+type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: Pick<Team, "id" | "name" | "tournament" | "is_active">[] };
 
 export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: User) => void }) {
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
-  useEffect(() => { document.title = "Acceso a inscripciones"; }, []);
+  useEffect(() => { document.title = "Inscripciones BPower"; }, []);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     try {
@@ -32,7 +36,7 @@ export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: Us
     finally { setBusy(false); }
   }
   return <main className="enrollment-page"><form className="registration-sheet" style={{ maxWidth: 440, marginTop: 60 }} onSubmit={submit}>
-    <h1>Acceso a inscripciones</h1>{error && <p role="alert" className="error">{error}</p>}
+    <h1>Inscripciones BPower</h1>{error && <p role="alert" className="error">{error}</p>}
     <label>Usuario<input name="username" autoComplete="username" required /></label>
     <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>
     <button className="primary" disabled={busy}>{busy ? "Entrando…" : "Entrar"}</button>
@@ -191,11 +195,10 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
               </div>
               <div className="player-fields">
                 <label className="full">Nombre<input name="name" required maxLength={160} autoComplete="name" /></label>
-                <label>Equipo<input name="team" required maxLength={120} defaultValue={defaults.team} /></label>
-                <label>Torneo<input name="tournament" required maxLength={120} defaultValue={defaults.tournament} /></label>
+                <label>Equipo<input readOnly value={defaults.team} /></label>
+                <label>Torneo<input readOnly value={defaults.tournament} /></label>
                 <label>Teléfono de contacto<input name="phone" required type="tel" maxLength={30} /></label>
                 <label>Teléfono de emergencia<input name="phone_secondary" required type="tel" maxLength={30} /></label>
-                <label>Categoría (opcional)<input name="category" maxLength={80} defaultValue={defaults.category} /></label>
                 <label>Folio de pago (opcional)<input name="payment_reference" maxLength={80} /></label>
                 {minor && <label className="full">Nombre del padre o tutor<input name="guardian_name" required maxLength={160} /></label>}
               </div>
@@ -238,24 +241,60 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   const [date, setDate] = useState(""), [round, setRound] = useState("");
   const [link, setLink] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false), [selected, setSelected] = useState<Enrollment | null>(null);
+  const [catalog, setCatalog] = useState<EnrollmentCatalog>({ sites: [], tournaments: [], teams: [] });
+  const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
+  const [inviteTournament, setInviteTournament] = useState(""), [inviteTeam, setInviteTeam] = useState("");
+  const [createTournament, setCreateTournament] = useState(false), [createTeam, setCreateTeam] = useState(false);
+  const invitationSaving = useRef(false);
+  const selectedTournament = catalog.tournaments.find(item => String(item.id) === inviteTournament);
+  const availableTeams = catalog.teams.filter(item => String(item.tournament) === inviteTournament);
+  async function loadCatalog() {
+    setCatalogBusy(true); setCatalogError("");
+    try {
+      const result = await apiRequest<EnrollmentCatalog>("/player-enrollments/catalog/", token);
+      setCatalog(result); return result;
+    } catch (err) {
+      setCatalogError(err instanceof Error ? err.message : "No pudimos cargar los torneos y equipos.");
+      throw err;
+    } finally { setCatalogBusy(false); }
+  }
+  function chooseTournament(value: string) {
+    setInviteTournament(value); setInviteTeam(""); setLink("");
+  }
+  async function saveCatalog(kind: "team" | "tournament", payload: unknown) {
+    const created = await apiRequest<Team | Tournament>("/player-enrollments/catalog/", token, {
+      method: "POST", body: JSON.stringify({ ...(payload as Record<string, unknown>), kind }),
+    });
+    setCatalog(previous => kind === "team"
+      ? { ...previous, teams: [...previous.teams, created as Team] }
+      : { ...previous, tournaments: [...previous.tournaments, created as Tournament] });
+    // Creation succeeded: a failed refresh must not invite a duplicate POST.
+    await loadCatalog().catch(() => undefined);
+    return created;
+  }
   async function load(next = page) {
     setBusy(true); setError("");
     try {
-      const params = new URLSearchParams({ page: String(next), search, team, tournament });
+      const params = new URLSearchParams({ page: String(next), search, team_id: team, tournament_id: tournament });
       const result = await apiRequest<{ results: Enrollment[]; count: number }>("/player-enrollments/?" + params, token);
       setRows(result.results); setCount(result.count); setPage(next);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo cargar el historial."); }
     finally { setBusy(false); }
   }
-  useEffect(() => { document.title = "Inscripciones"; void load(1); }, [token]);
+  useEffect(() => { document.title = "Inscripciones BPower"; void load(1); void loadCatalog().catch(() => undefined); }, [token]);
   async function invite(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(""); setMessage("");
+    event.preventDefault();
+    if (invitationSaving.current) return;
+    if (!selectedTournament || !availableTeams.some(item => String(item.id) === inviteTeam)) {
+      setError("Selecciona un torneo y uno de sus equipos."); return;
+    }
+    invitationSaving.current = true; setBusy(true); setError(""); setMessage(""); setLink("");
     try {
-      const data = Object.fromEntries(new FormData(event.currentTarget));
+      const data = { tournament_id: Number(inviteTournament), team_id: Number(inviteTeam) };
       const result = await apiRequest<{ token: string }>("/player-enrollments/", token, { method: "POST", body: JSON.stringify(data) });
       setLink(window.location.origin + window.location.pathname + "#/inscripcion/" + result.token);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo crear el enlace."); }
-    finally { setBusy(false); }
+    finally { invitationSaving.current = false; setBusy(false); }
   }
   async function download(doc: Document, enrollment: number) {
     try {
@@ -268,21 +307,47 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo descargar."); }
   }
   const groups = new Map<string, Enrollment[]>();
-  rows.forEach(row => { const key = row.team + "\u0000" + row.tournament; groups.set(key, [...(groups.get(key) || []), row]); });
+  rows.forEach(row => { const key = row.team_id ? `team:${row.team_id}` : row.team + "\u0000" + row.tournament; groups.set(key, [...(groups.get(key) || []), row]); });
   return <main className="enrollment-page">
     <div className="operator-page">
-      <header className="operator-header no-print"><h1>Inscripciones de jugadores</h1><div>
+      <header className="operator-header no-print"><h1>Inscripciones BPower</h1><div>
         {!restricted && <a href="#">Volver a administración</a>}<button onClick={onLogout}>Salir</button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
+      {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
+      <nav className="operator-controls no-print" aria-label="Administración de inscripciones">
+        <button onClick={() => { setCreateTournament(false); setCreateTeam(false); }}>Inscripciones</button>
+        <button disabled={catalogBusy || busy} onClick={() => { setCreateTournament(true); setCreateTeam(false); }}>Crear torneo</button>
+        <button disabled={catalogBusy || busy} onClick={() => { setCreateTournament(false); setCreateTeam(true); }}>Crear equipo</button>
+        <button disabled={catalogBusy || busy} onClick={() => void loadCatalog().catch(() => undefined)}>Actualizar equipos y torneos</button>
+      </nav>
+      {createTournament ? <section className="operator-controls no-print">
+        <TournamentCreatePage sites={catalog.sites} onBack={() => setCreateTournament(false)}
+          onCreate={payload => saveCatalog("tournament", payload)} onCreated={created => {
+            chooseTournament(String(created.id)); setCreateTournament(false); setMessage("Torneo creado. Ahora selecciona o crea su equipo.");
+          }} />
+      </section> : <>
       <section className="operator-controls no-print">
         <h2>Enviar una nueva inscripción</h2><p>Crea un enlace por jugador. Tiene vigencia de 30 días.</p>
+        <p>Elige un torneo existente y uno de sus equipos. El jugador recibirá el formulario con esa asignación fija.</p>
         <form onSubmit={invite} className="control-grid">
-          <label>Equipo<input name="team" maxLength={120} /></label><label>Torneo<input name="tournament" maxLength={120} /></label>
-          <label>Categoría (opcional)<input name="category" maxLength={80} /></label>
-          <button disabled={busy} className="primary">Crear enlace</button>
+          <label>Torneo para la inscripción<select required value={inviteTournament} disabled={catalogBusy || busy}
+            onChange={event => chooseTournament(event.target.value)}><option value="">Selecciona un torneo</option>
+            {catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name} · {catalog.sites.find(site => site.id === item.site)?.name}</option>)}</select></label>
+          <label>Equipo del torneo<select required value={inviteTeam} disabled={catalogBusy || busy || !inviteTournament}
+            onChange={event => { setInviteTeam(event.target.value); setLink(""); }}><option value="">Selecciona un equipo</option>
+            {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</button>
         </form>
+        {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo con el botón «Crear torneo».</p>}
+        {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos. Usa «Crear equipo».</p>}
+        {createTeam && !selectedTournament && <p role="status">Selecciona arriba el torneo al que pertenecerá el nuevo equipo.</p>}
+        {createTeam && selectedTournament && <CreateTeamDialog tournament={selectedTournament} adult onClose={() => setCreateTeam(false)}
+          onSave={async payload => {
+            const created = await saveCatalog("team", payload) as Team;
+            setInviteTeam(String(created.id)); setLink(""); setCreateTeam(false); setMessage("Equipo creado en el torneo seleccionado.");
+          }} />}
         {link && <div className="share-link"><input readOnly value={link} aria-label="Enlace de inscripción" /><div>
           <button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</button>
           <a href={"https://wa.me/?text=" + encodeURIComponent("Hola, completa y firma tu inscripción aquí: " + link)} target="_blank" rel="noreferrer">Compartir por WhatsApp</a>
@@ -293,8 +358,10 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
         <h2>Historial · {count} inscritos</h2>
         <form onSubmit={event => { event.preventDefault(); void load(1); }} className="control-grid">
           <label>Nombre<input value={search} onChange={event => setSearch(event.target.value)} /></label>
-          <label>Equipo<input value={team} onChange={event => setTeam(event.target.value)} placeholder="Todos" /></label>
-          <label>Torneo<input value={tournament} onChange={event => setTournament(event.target.value)} placeholder="Todos" /></label>
+          <label>Torneo del historial<select value={tournament} onChange={event => { setTournament(event.target.value); setTeam(""); }}><option value="">Todos</option>
+            {catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Equipo del historial<select value={team} onChange={event => setTeam(event.target.value)}><option value="">Todos</option>
+            {catalog.teams.filter(item => !tournament || String(item.tournament) === tournament).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <button disabled={busy}>Buscar / actualizar</button>
         </form>
         <div className="control-grid">
@@ -328,7 +395,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       </section> : <>
         {busy && <p className="no-print">Cargando…</p>}
         {!busy && !rows.length && <p>Todavía no hay inscripciones firmadas para esta búsqueda.</p>}
-        {Array.from(groups.values()).map(group => <section className="roster-sheet" key={group[0].team + group[0].tournament}>
+        {Array.from(groups.entries()).map(([key, group]) => <section className="roster-sheet" key={key}>
           <div className="roster-header">
             <div><p><strong>Equipo:</strong> {group[0].team}</p><p><strong>Torneo:</strong> {group[0].tournament || "Sin torneo"}</p></div>
             <div><p><strong>Fecha:</strong> {date}</p><p><strong>Jornada:</strong> {round}</p></div>
@@ -347,6 +414,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
           <span>Página {page} · {rows.length} jugadores en esta página</span>
           <button disabled={busy || page * 25 >= count} onClick={() => void load(page + 1)}>Siguiente</button>
         </div>
+      </>}
       </>}
     </div>
   </main>;

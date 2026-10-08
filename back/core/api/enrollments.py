@@ -13,6 +13,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
+from core.models import Team, Tournament, Site
+from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
 
@@ -46,9 +48,6 @@ def is_minor(birth_date):
 class EnrollmentInput(serializers.Serializer):
     name = serializers.CharField(max_length=160)
     birth_date = serializers.DateField()
-    team = serializers.CharField(max_length=120)
-    category = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
-    tournament = serializers.CharField(max_length=120)
     identity_type = serializers.ChoiceField(choices=["ine", "passport", "military_card", "minor"])
     phone = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
     phone_secondary = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
@@ -108,12 +107,14 @@ class PublicEnrollmentView(APIView):
     authentication_classes = []
     throttle_classes = [EnrollmentThrottle]
     def get(self, request, token):
-        invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token)
+        invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_related('team_record__tournament'), token=token)
         if invitation.expires_at < timezone.now():
             return Response({"detail": "El enlace venció. Pide a Emilio uno nuevo."}, status=410)
         if PlayerEnrollment.objects.filter(invitation=invitation).exists():
             return Response({"completed": True})
-        return Response({"team": invitation.team, "category": invitation.category, "tournament": invitation.tournament, "terms_version": TERMS_VERSION, "terms": TERMS})
+        if not invitation.team_record_id:
+            return Response({"detail": "Este enlace necesita un equipo y torneo registrados. Pide un enlace nuevo."}, status=410)
+        return Response({"team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "terms_version": TERMS_VERSION, "terms": TERMS})
 
     def post(self, request, token):
         serializer = EnrollmentInput(data=request.data)
@@ -128,11 +129,14 @@ class PublicEnrollmentView(APIView):
             kinds.append("identity_document")
         files = [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
         with transaction.atomic():
-            invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_for_update(), token=token)
+            invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_for_update(of=('self',)).select_related('team_record__tournament'), token=token)
             if invitation.expires_at < timezone.now():
                 return Response({"detail": "El enlace venció. Pide uno nuevo."}, status=410)
             if PlayerEnrollment.objects.filter(invitation=invitation).exists():
                 return Response({"detail": "Esta inscripción ya fue recibida.", "completed": True}, status=409)
+            if not invitation.team_record_id or not invitation.team_record.is_active or not invitation.team_record.tournament.is_active:
+                raise ValidationError('El equipo o torneo del enlace ya no está disponible. Solicita un enlace nuevo.')
+            fields.update(team=invitation.team, tournament=invitation.tournament, team_record=invitation.team_record)
             checklist = fields.pop("document_checklist", [])
             row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, terms_text=TERMS, document_checklist=checklist, **fields)
             PlayerEnrollmentDocument.objects.bulk_create([
@@ -149,10 +153,16 @@ class EnrollmentAdminView(APIView):
             page = max(1, min(int(request.query_params.get("page", 1)), 100000))
         except (ValueError, TypeError):
             raise ValidationError("Página inválida.")
-        rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).prefetch_related("documents")
+        rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).select_related('team_record__tournament').prefetch_related("documents")
         for field in ("team", "tournament"):
             if request.query_params.get(field):
-                rows = rows.filter(**{field: request.query_params[field][:120]})
+                rows = rows.filter(**{field: request.query_params[field][:140]})
+        for field in ('team_id', 'tournament_id'):
+            value = request.query_params.get(field)
+            if value:
+                if not value.isdigit():
+                    raise ValidationError('Selecciona un equipo y torneo válidos.')
+                rows = rows.filter(**{('team_record_id' if field == 'team_id' else 'team_record__tournament_id'): int(value)})
         search = request.query_params.get("search", "")[:160]
         if search:
             rows = rows.filter(name__icontains=search)
@@ -162,20 +172,53 @@ class EnrollmentAdminView(APIView):
         count = rows.count()
         result = []
         for row in rows[(page - 1) * 25:page * 25]:
-            result.append({"id": row.pk, "name": row.name, "birth_date": row.birth_date, "team": row.team, "category": row.category, "tournament": row.tournament, "identity_type": row.identity_type, "terms_text": row.terms_text, "phone": row.phone, "phone_secondary": row.phone_secondary, "guardian_name": row.guardian_name, "payment_reference": row.payment_reference, "document_checklist": row.document_checklist, "signed_at": row.signed_at, "terms_version": row.terms_version, "status": "Inscrito", "documents": [{"id": doc.pk, "kind": doc.kind, "sha256": doc.sha256} for doc in row.documents.all()]})
+            result.append({"id": row.pk, "name": row.name, "birth_date": row.birth_date, "team": row.team, "team_id": row.team_record_id, "tournament": row.tournament, "tournament_id": row.team_record.tournament_id if row.team_record_id else None, "identity_type": row.identity_type, "terms_text": row.terms_text, "phone": row.phone, "phone_secondary": row.phone_secondary, "guardian_name": row.guardian_name, "payment_reference": row.payment_reference, "document_checklist": row.document_checklist, "signed_at": row.signed_at, "terms_version": row.terms_version, "status": "Inscrito", "documents": [{"id": doc.pk, "kind": doc.kind, "sha256": doc.sha256} for doc in row.documents.all()]})
         response = Response({"results": result, "count": count, "page": page})
         response["Cache-Control"] = "no-store"
         return response
 
     def post(self, request):
         class InvitationInput(serializers.Serializer):
-            tournament = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
-            team = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
-            category = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
+            tournament_id = serializers.PrimaryKeyRelatedField(queryset=Tournament.objects.filter(is_active=True, site__is_active=True))
+            team_id = serializers.PrimaryKeyRelatedField(queryset=Team.objects.filter(is_active=True).select_related('tournament'))
+            def validate(self, data):
+                if data['team_id'].tournament_id != data['tournament_id'].pk:
+                    raise ValidationError('El equipo debe pertenecer al torneo seleccionado.')
+                return data
         serializer = InvitationInput(data=request.data)
         serializer.is_valid(raise_exception=True)
-        row = PlayerEnrollmentInvitation.objects.create(created_by=request.user, expires_at=timezone.now() + timedelta(days=30), **serializer.validated_data)
+        team = serializer.validated_data['team_id']
+        tournament = serializer.validated_data['tournament_id']
+        row = PlayerEnrollmentInvitation.objects.create(created_by=request.user, expires_at=timezone.now() + timedelta(days=30), team_record=team, team=team.name, tournament=tournament.name)
         return Response({"token": row.token, "expires_at": row.expires_at}, status=201)
+
+
+class EnrollmentCatalogView(APIView):
+    """Usa los modelos y validadores existentes de Torneos/Equipos."""
+    permission_classes = [EnrollmentStaffPermission]
+    def get(self, request):
+        tournaments = Tournament.objects.filter(is_active=True, site__is_active=True).order_by('name', 'id')
+        teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__is_active=True).order_by('name', 'id')
+        return Response({'sites': list(Site.objects.filter(is_active=True).values('id','name')),
+                         'tournaments': TournamentSerializer(tournaments, many=True).data,
+                         'teams': list(teams.values('id','name','tournament','is_active'))})
+    def post(self, request):
+        kind = request.data.get('kind')
+        allowed = {'tournament': {'site','name','billing_type','starts_on','expected_weeks','is_active'},
+                   'team': {'tournament','name','representative_name','representative_phone','representative_email','is_active'}}
+        if kind not in allowed:
+            raise ValidationError('Elige crear un equipo o un torneo.')
+        data = {key: value for key,value in request.data.items() if key in allowed[kind]}
+        serializer = (TournamentSerializer if kind == 'tournament' else TeamSerializer)(data=data)
+        serializer.is_valid(raise_exception=True)
+        if kind == 'tournament' and not serializer.validated_data['site'].is_active:
+            raise ValidationError('Selecciona una sede activa.')
+        if kind == 'team':
+            tournament = serializer.validated_data['tournament']
+            if not tournament.is_active or not tournament.site.is_active:
+                raise ValidationError('Selecciona un torneo activo.')
+        serializer.save()
+        return Response(serializer.data, status=201)
 
 
 class EnrollmentDocumentView(APIView):

@@ -5,7 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
-from core.models import User
+from core.models import User, Site, Tournament, Team
 from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
 from core.api.enrollments import is_minor
 
@@ -21,14 +21,22 @@ def image_file(name, blank=False):
 @override_settings(ALLOWED_HOSTS=["testserver"], MIGRATION_MODULES={"core": None})
 class PlayerEnrollmentTests(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         self.emilio = User.objects.create_user(username="emilio", password="test-pass-123", role="collaborator", section_permissions=["player_enrollments_only"])
         self.other = User.objects.create_user(username="other", role="collaborator", section_permissions=["player_enrollments_only"])
-        self.invitation = PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1))
+        self.site = Site.objects.create(name='Sede de prueba', code='prueba')
+        self.tournament = Tournament.objects.create(site=self.site, name='Torneo', billing_type='weekly_match')
+        self.team = Team.objects.create(tournament=self.tournament, name='Equipo', representative_name='Responsable de prueba', representative_phone='5512345678')
+        self.invitation = self.new_invitation()
         self.url = f"/api/player-enrollments/public/{self.invitation.token}/"
         self.client = APIClient()
 
+    def new_invitation(self):
+        return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name)
+
     def payload(self, minor=False, tutor=True, blank=False):
-        data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "team": "Equipo", "category": "Categoría", "tournament": "Torneo", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
+        data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
         if minor:
             data.update({kind: image_file(kind + ".png") for kind in ("minor_credential", "curp", "guardian_ine_front", "guardian_ine_back")})
         else:
@@ -45,7 +53,7 @@ class PlayerEnrollmentTests(TestCase):
 
     def test_passport_and_cartilla_are_accepted(self):
         for kind in ("passport", "military_card"):
-            invitation = PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1))
+            invitation = self.new_invitation()
             data = self.payload(); data["identity_type"] = kind
             del data["ine_front"]; del data["ine_back"]
             data["identity_document"] = image_file("documento.png")
@@ -111,6 +119,58 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.get("/api/sites/").status_code, 403)
         self.assertEqual(self.client.get("/api/auth/me/").status_code, 200)
         self.assertEqual(self.client.get("/api/player-enrollments/").status_code, 200)
+        self.assertEqual(self.client.get('/api/player-enrollments/catalog/').status_code, 200)
+        self.assertEqual(self.client.delete('/api/player-enrollments/catalog/').status_code, 405)
+
+    def test_invitation_requires_existing_team_in_selected_tournament(self):
+        self.client.force_authenticate(self.emilio)
+        url='/api/player-enrollments/'
+        self.assertEqual(self.client.post(url,{'team':'Equipo','tournament':'Torneo'},format='json').status_code,400)
+        other=Tournament.objects.create(site=self.site,name='Otro torneo',billing_type='weekly_match')
+        self.assertEqual(self.client.post(url,{'team_id':self.team.pk,'tournament_id':other.pk},format='json').status_code,400)
+        response=self.client.post(url,{'team_id':self.team.pk,'tournament_id':self.tournament.pk},format='json')
+        self.assertEqual(response.status_code,201)
+        invitation=PlayerEnrollmentInvitation.objects.get(token=response.json()['token'])
+        self.assertEqual(invitation.team_record_id,self.team.pk)
+        public=self.client.get(f'/api/player-enrollments/public/{invitation.token}/').json()
+        self.assertEqual(public['team'],'Equipo')
+        self.assertEqual(public['tournament_id'],self.tournament.pk)
+        self.assertNotIn('category',public)
+        self.team.is_active=False;self.team.save()
+        self.assertEqual(self.client.post(url,{'team_id':self.team.pk,'tournament_id':self.tournament.pk},format='json').status_code,400)
+
+    def test_public_submission_cannot_change_assigned_team_or_tournament(self):
+        data=self.payload()
+        data.update(team='Otro equipo',tournament='Otro torneo',category='No existe',team_id=999)
+        self.assertEqual(self.client.post(self.url,data,format='multipart').status_code,201)
+        row=PlayerEnrollment.objects.get()
+        self.assertEqual((row.team,row.tournament,row.team_record_id,row.category),('Equipo','Torneo',self.team.pk,''))
+        self.client.force_authenticate(self.emilio)
+        result=self.client.get(f'/api/player-enrollments/?team_id={self.team.pk}&tournament_id={self.tournament.pk}').json()
+        self.assertEqual(result['count'],1)
+        self.assertNotIn('category',result['results'][0])
+        self.assertEqual(self.client.get('/api/player-enrollments/?team_id=invalid').status_code,400)
+
+    def test_catalog_reuses_existing_models_and_keeps_other_areas_private(self):
+        self.assertEqual(self.client.get('/api/player-enrollments/catalog/').status_code,401)
+        self.client.force_authenticate(self.emilio)
+        response=self.client.post('/api/player-enrollments/catalog/',{'kind':'tournament','site':self.site.pk,'name':'Copa compartida','billing_type':'weekly_match','is_active':True},format='json')
+        self.assertEqual(response.status_code,201)
+        tournament=Tournament.objects.get(name='Copa compartida')
+        response=self.client.post('/api/player-enrollments/catalog/',{'kind':'team','tournament':tournament.pk,'name':'Halcones','representative_name':'Responsable','representative_phone':'5512345678','is_active':True},format='json')
+        self.assertEqual(response.status_code,201)
+        team=Team.objects.get(name='Halcones')
+        self.assertEqual(team.tournament_id,tournament.pk)
+        catalog=self.client.get('/api/player-enrollments/catalog/').json()
+        self.assertIn(team.pk,[item['id'] for item in catalog['teams']])
+        self.assertNotIn('representative_phone',catalog['teams'][0])
+        regular=User.objects.create_user(username='normal',role='collaborator')
+        self.client.force_authenticate(regular)
+        self.assertEqual(self.client.get('/api/player-enrollments/catalog/').status_code,403)
+
+    def test_old_ambiguous_links_are_not_guessed(self):
+        invitation=PlayerEnrollmentInvitation.objects.create(created_by=self.emilio,expires_at=timezone.now()+timedelta(days=1),team='Nombre libre',tournament='Nombre libre')
+        self.assertEqual(self.client.get(f'/api/player-enrollments/public/{invitation.token}/').status_code,410)
 
     def test_eighteenth_birthday_is_adult(self):
         today = timezone.localdate()

@@ -4,7 +4,7 @@ import type { AppData, Tournament } from "../../types";
 import { SelectInput, TextInput } from "../../components/views/shared";
 import { today } from "./utils";
 
-export function TournamentCreatePage({ sites, onBack, onCreate, onCreated }: { sites: AppData["sites"]; onBack: () => void; onCreate: (payload: unknown) => Promise<unknown>; onCreated: (tournament: Tournament) => void }) {
+export function TournamentCreatePage({ sites, onBack, onCreate, onCreated }: { sites: Pick<AppData["sites"][number], "id" | "name">[]; onBack: () => void; onCreate: (payload: unknown) => Promise<unknown>; onCreated: (tournament: Tournament) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saving = useRef(false);

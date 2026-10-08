@@ -2,7 +2,11 @@
 
 En Futsi, el botón **Inscripciones** de Administración abre el historial y permite crear un enlace por jugador. La cuenta independiente `emilio` entra directamente a esa pantalla, sin sede, correo ni acceso a otras áreas.
 
-Cada enlace dura 30 días y admite una única inscripción. Puede compartirse por WhatsApp o copiarse. El formulario público, sin logotipo ni nombre de aplicación, reproduce la hoja de firma en dos columnas: documentación a la izquierda y foto, firmas y datos a la derecha. Requiere nombre, equipo, torneo, teléfono de contacto, teléfono de emergencia, nacimiento, foto frontal del jugador, aceptación de compromisos y firma dibujada del jugador. La categoría y el folio de pago son opcionales.
+Cada enlace dura 30 días y admite una única inscripción. Antes de generarlo se elige un torneo existente y uno de sus equipos. El equipo se vincula al mismo registro `Team` de Administración, y el servidor verifica que pertenezca al torneo seleccionado. Los botones Crear torneo y Crear equipo reutilizan `TournamentCreatePage`, `CreateTeamDialog` y los mismos modelos y validadores de Administración; no hay catálogos paralelos. La cuenta de Emilio usa una ruta limitada bajo Inscripciones, sin obtener acceso al resto de la aplicación.
+
+El enlace puede compartirse por WhatsApp o copiarse. El formulario público conserva el formato de dos columnas y muestra equipo y torneo fijos, sin permitir cambiarlos. Requiere nombre, teléfono de contacto, teléfono de emergencia, nacimiento, foto frontal del jugador, aceptación y firma. No existe un campo de categoría en este flujo. El folio de pago es opcional.
+
+La migración conserva inscripciones y documentos existentes, vinculando nombres anteriores solamente cuando hay una coincidencia única entre torneo y equipo. Los enlaces antiguos sin asignación inequívoca requieren uno nuevo; no se inventa un equipo ni se mezclan homónimos. La columna histórica de categoría permanece sin solicitarse ni exponerse, para no destruir datos anteriores.
 
 Adultos: INE frente y reverso, o pasaporte, o cartilla. Menores: credencial del menor, CURP, INE del tutor frente y reverso, nombre y firma del tutor. La fecha de nacimiento determina los requisitos tanto en la pantalla como en el servidor.
 
@@ -27,3 +31,10 @@ La migración activa RLS y revoca el acceso a `anon` y `authenticated` de Supaba
 `DB_ENGINE=sqlite ALLOW_SQLITE=true python manage.py test core.tests.test_player_enrollments --settings=futsi_api.enrollment_test_settings`
 
 Pruebas: adulto sin tutor, menor con tutor obligatorio, rechazo de firma vacía, identificación y consentimiento obligatorios, expiración, protección de documentos, permisos de cuenta y cumpleaños número 18. El entorno de prueba usa una base independiente y no altera producción.
+
+## Acceso en Futsi
+
+El acceso es `https://futsi.bpoweracademy.mx/#/admin/inscripciones`, dentro del
+frontend existente de Render, con la misma API y base de datos de Futsi. La
+sección muestra el nombre Inscripciones BPower. No requiere otro servicio,
+subdominio ni cambios de DNS. Los permisos y documentos privados se conservan.

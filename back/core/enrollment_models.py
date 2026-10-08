@@ -10,9 +10,10 @@ def invitation_token():
 class PlayerEnrollmentInvitation(models.Model):
     token = models.CharField(max_length=64, unique=True, default=invitation_token)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    team = models.CharField(max_length=120, blank=True)
+    team = models.CharField(max_length=140, blank=True)
+    team_record = models.ForeignKey('core.Team', null=True, blank=True, on_delete=models.PROTECT, related_name='player_enrollment_invitations')
     category = models.CharField(max_length=80, blank=True)
-    tournament = models.CharField(max_length=120, blank=True)
+    tournament = models.CharField(max_length=140, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     class Meta:
@@ -23,9 +24,11 @@ class PlayerEnrollment(models.Model):
     invitation = models.OneToOneField(PlayerEnrollmentInvitation, on_delete=models.PROTECT)
     name = models.CharField(max_length=160)
     birth_date = models.DateField()
-    team = models.CharField(max_length=120)
-    category = models.CharField(max_length=80)
-    tournament = models.CharField(max_length=120, blank=True)
+    team = models.CharField(max_length=140)
+    team_record = models.ForeignKey('core.Team', null=True, blank=True, on_delete=models.PROTECT, related_name='signed_player_enrollments')
+    # Solo se conserva para los registros históricos; no se solicita en los nuevos.
+    category = models.CharField(max_length=80, blank=True, default='')
+    tournament = models.CharField(max_length=140, blank=True)
     identity_type = models.CharField(max_length=20, default="ine")
     phone = models.CharField(max_length=30)
     phone_secondary = models.CharField(max_length=30, blank=True)
