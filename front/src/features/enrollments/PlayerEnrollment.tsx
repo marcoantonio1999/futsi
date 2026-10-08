@@ -331,7 +331,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   rows.forEach(row => { const key = row.team_id ? `team:${row.team_id}` : row.team + "\u0000" + row.tournament; groups.set(key, [...(groups.get(key) || []), row]); });
   return <main className="enrollment-page enrollment-admin-layout">
     <aside className="enrollment-admin-sidebar no-print">
-      <h2>FUTSI</h2><p>Inscripciones BPower</p>
+      <h2>Inscripciones BPower</h2><p>Administración de inscripciones</p>
       <nav aria-label="Administración de inscripciones">
         <button aria-current={tournamentSection === null ? "page" : undefined} onClick={() => setTournamentSection(null)}><ClipboardList size={18} />Inscripciones</button>
         <div className="enrollment-sidebar-heading"><Trophy size={18} />Torneos</div>
@@ -380,7 +380,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
             {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</button>
         </form>
-        {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» de Futsi.</p>}
+        {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» del menú izquierdo.</p>}
         {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos. Abre la subsección «Equipos» y pulsa «Crear equipo».</p>}
         {link && <div className="share-link"><input readOnly value={link} aria-label="Enlace de inscripción" /><div>
           <button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</button>
