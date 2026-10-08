@@ -11,6 +11,88 @@ from core.tests.factories import (
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
 
 
+@pytest.fixture
+def video_evidence_table():
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute('CREATE TABLE video_clips (id TEXT PRIMARY KEY, status TEXT, match_id INTEGER REFERENCES matches(id), attendance_session_id INTEGER REFERENCES attendance_sessions(id), metadata TEXT)')
+    try:
+        yield connection
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute('DROP TABLE video_clips')
+
+
+@pytest.mark.parametrize('clip_status', ['deleted', 'processed', 'failed'])
+def test_tournament_deletion_preserves_faceguard_evidence_and_people(auth_client, video_evidence_table, clip_status):
+    import json
+    tournament = make_tournament()
+    team = make_team(tournament=tournament)
+    player = make_player(team=team, photo_url='supabase://private/permanent-photo.jpg')
+    match = make_match(tournament=tournament, home_team=team)
+    session = make_attendance_session(site=tournament.site, tournament=tournament, match=match)
+    with video_evidence_table.cursor() as cursor:
+        cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['evidence-test',clip_status,match.pk,session.pk,'{"original":"preserved"}'])
+    client, _, _ = auth_client()
+    payload = confirmation(client, tournament)
+    response = client.delete(f'/api/tournaments/{tournament.pk}/', payload, format='json')
+    assert response.status_code == 200, response.content
+    player.refresh_from_db()
+    assert player.team_id is None
+    assert player.photo_url == 'supabase://private/permanent-photo.jpg'
+    with video_evidence_table.cursor() as cursor:
+        cursor.execute('SELECT status,match_id,attendance_session_id,metadata FROM video_clips')
+        row = cursor.fetchone()
+    assert row[:3] == (clip_status,None,None)
+    metadata = json.loads(row[3])
+    assert metadata['original'] == 'preserved'
+    assert metadata['tournament_deletion_evidence']['attendance_session_id'] == session.pk
+    assert metadata['tournament_deletion_evidence']['tournament_id'] == tournament.pk
+    assert not Tournament.objects.filter(pk=tournament.pk).exists()
+
+
+def test_tournament_pending_video_is_protected(auth_client, video_evidence_table):
+    tournament = make_tournament()
+    match = make_match(tournament=tournament)
+    with video_evidence_table.cursor() as cursor:
+        cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['pending','uploaded',match.pk,None,'{}'])
+    client, _, _ = auth_client()
+    assert client.get(f'/api/tournaments/{tournament.pk}/deletion-preview/').status_code == 400
+    assert Tournament.objects.filter(pk=tournament.pk).exists()
+
+
+def test_tournament_new_video_invalidates_review(auth_client, video_evidence_table):
+    tournament = make_tournament()
+    match = make_match(tournament=tournament)
+    client, _, _ = auth_client()
+    payload = confirmation(client, tournament)
+    with video_evidence_table.cursor() as cursor:
+        cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['new','processed',match.pk,None,'{}'])
+    assert client.delete(f'/api/tournaments/{tournament.pk}/', payload, format='json').status_code == 409
+    assert Tournament.objects.filter(pk=tournament.pk).exists()
+
+
+def test_tournament_failure_rolls_back_evidence_detachment(auth_client, video_evidence_table):
+    from django.db.models.query import QuerySet
+    tournament = make_tournament()
+    match = make_match(tournament=tournament)
+    with video_evidence_table.cursor() as cursor:
+        cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['rollback','processed',match.pk,None,'{}'])
+    client, _, _ = auth_client()
+    payload = confirmation(client, tournament)
+    original = QuerySet.delete
+    def fail_parent(query):
+        if query.model is Tournament:
+            raise RuntimeError('simulated failure after evidence detachment')
+        return original(query)
+    with patch.object(QuerySet, 'delete', fail_parent), pytest.raises(RuntimeError):
+        client.delete(f'/api/tournaments/{tournament.pk}/', payload, format='json')
+    with video_evidence_table.cursor() as cursor:
+        cursor.execute('SELECT match_id,metadata FROM video_clips WHERE id=%s', ['rollback'])
+        assert cursor.fetchone() == (match.pk,'{}')
+    assert Tournament.objects.filter(pk=tournament.pk).exists()
+
+
 def confirmation(client, tournament):
     response = client.get(f"/api/tournaments/{tournament.pk}/deletion-preview/")
     assert response.status_code == 200, response.content

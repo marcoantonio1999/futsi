@@ -15,6 +15,7 @@ from core.models import (
     Charge, Payment, Discount, Invoice, HistoricalImportRow, AuditLog,
 )
 from .student_deletion import collect_owned_files, cleanup_files
+from .team_deletion import linked_clips, preserve_clip_evidence
 
 SALT = "futsi.tournament-deletion.v1"
 
@@ -56,13 +57,16 @@ def deletion_plan(tournament, *, lock=False):
     for group in groups:
         history |= Q(target_table=group["model"]._meta.db_table, target_id__in=[str(row.pk) for row in group["rows"]])
     add(HistoricalImportRow, "Filas de importaciones vinculadas", history)
+    by_model = {group['model']: group['rows'] for group in groups}
+    clips = linked_clips(by_model[Match], by_model[AttendanceSession], lock=lock, record_label='torneo')
     files = collect_owned_files(groups)
     fingerprint = hashlib.sha256(json.dumps({
         "records": [[group["model"]._meta.label, [[row.pk, {field.attname: getattr(row, field.attname) for field in row._meta.fields}] for row in group["rows"]]] for group in groups],
         "files": files,
         "preserved_players": [[row.pk, row.team_id, str(row.updated_at)] for row in preserved_players],
+        "preserved_video_clips": clips,
     }, sort_keys=True, default=str).encode()).hexdigest()
-    return {"groups": groups, "files": files, "fingerprint": fingerprint, "preserved_players": players}
+    return {"groups": groups, "files": files, "fingerprint": fingerprint, "preserved_players": players, "preserved_video_clips": clips}
 
 
 def preview(tournament, actor):
@@ -72,6 +76,7 @@ def preview(tournament, actor):
         "items": [{"label": group["label"], "count": len(group["rows"])} for group in plan["groups"] if group["rows"]],
         "file_count": len(plan["files"]),
         "preserved_player_count": len(plan["preserved_players"]),
+        "preserved_video_count": len(plan["preserved_video_clips"]),
         "confirmation_token": signing.dumps({"tournament": tournament.pk, "actor": actor.pk, "fingerprint": plan["fingerprint"]}, salt=SALT),
     }
 
@@ -95,6 +100,8 @@ def permanently_delete(tournament, actor, payload):
         by_model = {group["model"]: [row.pk for row in group["rows"]] for group in plan["groups"]}
         report_ids = FaceStationDailyPresence.objects.filter(pk__in=by_model[FaceStationDailyPresence]).values_list("report_id", flat=True)
         reports = list(FaceStationDailyReport.objects.select_for_update().filter(pk__in=report_ids).order_by("pk"))
+        preserve_clip_evidence(plan['preserved_video_clips'], 'tournament_deletion_evidence',
+                               {'tournament_id': tournament.pk, 'tournament_name': tournament.name})
         order = [HistoricalImportRow, Invoice, Discount, Payment, Charge, StudentTournamentRegistration,
                  AttendanceRecord, PlayerAttendanceRecord, FaceRecognitionAttempt, FaceStationEvent,
                  FaceStationUnknownLink, FaceStationDailyPresence, AttendanceSession, Match, Round, Team, Tournament]
@@ -107,5 +114,7 @@ def permanently_delete(tournament, actor, payload):
             report.row_count = report.presences.count()
             report.save(update_fields=["row_count", "updated_at"])
         audit = AuditLog.objects.create(actor=actor, action="tournament_deleted", table_name="tournaments", record_id=str(tournament.pk),
-            metadata={"site_id": tournament.site_id, "preserved_player_ids": plan["preserved_players"], "counts": {group["model"]._meta.db_table: len(group["rows"]) for group in plan["groups"]}, "pending_files": plan["files"]})
+            metadata={"site_id": tournament.site_id, "preserved_player_ids": plan["preserved_players"],
+                      "preserved_video_clip_ids": [str(row[0]) for row in plan['preserved_video_clips']],
+                      "counts": {group["model"]._meta.db_table: len(group["rows"]) for group in plan["groups"]}, "pending_files": plan["files"]})
     return cleanup_files(audit)

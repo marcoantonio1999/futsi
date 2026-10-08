@@ -11,7 +11,7 @@ from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment
 SALT = "futsi.team-deletion.v1"
 
 
-def linked_clips(matches, sessions, *, lock=False):
+def linked_clips(matches, sessions, *, lock=False, record_label='equipo'):
     # FaceGuard owns this table outside Django's model registry.
     if 'video_clips' not in connection.introspection.table_names():
         return []
@@ -28,8 +28,18 @@ def linked_clips(matches, sessions, *, lock=False):
                        + ' OR '.join(conditions) + ' ORDER BY id' + suffix, params)
         clips = cursor.fetchall()
     if any(row[1] not in {'deleted', 'processed', 'failed'} for row in clips):
-        raise ValidationError('Estos partidos tienen grabaciones o procesos de video pendientes. Espera a que terminen antes de eliminar el equipo.')
+        raise ValidationError(f'Estos partidos tienen grabaciones o procesos de video pendientes. Espera a que terminen antes de eliminar el {record_label}.')
     return clips
+
+
+def preserve_clip_evidence(clips, metadata_key, evidence):
+    with connection.cursor() as cursor:
+        for clip_id, _, match_id, session_id, metadata in clips:
+            metadata = json.loads(metadata) if isinstance(metadata, str) else dict(metadata or {})
+            metadata[metadata_key] = {**evidence, 'match_id': match_id, 'attendance_session_id': session_id}
+            json_value = '%s::jsonb' if connection.vendor == 'postgresql' else '%s'
+            cursor.execute(f'UPDATE video_clips SET match_id=NULL, attendance_session_id=NULL, metadata={json_value} WHERE id=%s',
+                           [json.dumps(metadata), clip_id])
 
 
 def plan(team, *, lock=False):
@@ -96,14 +106,7 @@ def permanently_delete(team, actor, payload):
                       'preserved_player_ids': [pk for pk, _ in players], 'preserved_registration_ids': [pk for pk, _ in registrations],
                       'deleted_scheduled_match_ids': [row.pk for row in matches], 'deleted_empty_session_ids': [row.pk for row in sessions],
                       'preserved_video_clip_ids': [str(row[0]) for row in clips]})
-        with connection.cursor() as cursor:
-            for clip_id, _, match_id, session_id, metadata in clips:
-                metadata = json.loads(metadata) if isinstance(metadata, str) else dict(metadata or {})
-                metadata['team_deletion_evidence'] = {'team_id': team.pk, 'match_id': match_id,
-                    'attendance_session_id': session_id, 'deletion_id': audit.pk}
-                json_value = '%s::jsonb' if connection.vendor == 'postgresql' else '%s'
-                cursor.execute(f'UPDATE video_clips SET match_id=NULL, attendance_session_id=NULL, metadata={json_value} WHERE id=%s',
-                               [json.dumps(metadata), clip_id])
+        preserve_clip_evidence(clips, 'team_deletion_evidence', {'team_id': team.pk, 'deletion_id': audit.pk})
         Player.objects.filter(team=team).update(team=None)
         StudentTournamentRegistration.objects.filter(team=team).update(team=None)
         AttendanceSession.objects.filter(pk__in=[row.pk for row in sessions]).delete()
