@@ -1,0 +1,16 @@
+.enrollment-admin-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:22px;padding:24px;align-items:start;background:#f8faf9}
+.enrollment-admin-layout .operator-page{width:100%;max-width:none;margin:0;min-width:0}
+.enrollment-admin-sidebar{position:sticky;top:24px;min-height:calc(100vh - 48px);background:white;border:1px solid #e4e7e5;border-radius:10px;padding:24px 18px;box-shadow:0 1px 4px #00000008}
+.enrollment-admin-sidebar h2{font-size:28px;font-weight:800;color:#327557;margin-bottom:4px}
+.enrollment-admin-sidebar>p{color:#777;font-size:12px;margin-bottom:30px}
+.enrollment-admin-sidebar nav{display:grid;gap:8px}
+.enrollment-admin-sidebar nav button,.enrollment-admin-sidebar nav a{display:flex;align-items:center;gap:10px;text-align:left;border:0;border-radius:8px;padding:12px;background:transparent;width:100%;color:#52545d}
+.enrollment-admin-sidebar nav button[aria-current=page]{background:#edf9f2;color:#286a4c;font-weight:600}
+.enrollment-sidebar-heading{display:flex;align-items:center;gap:10px;padding:12px;color:#327557;font-weight:600}
+.enrollment-sidebar-submenu{display:grid;gap:4px;margin-left:24px;border-left:1px solid #edf0ee;padding-left:10px}
+.enrollment-admin-layout .enrollment-admin-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;background:white;border:1px solid #e4e7e5;border-radius:8px;padding:16px 20px;margin-bottom:24px;box-shadow:0 1px 4px #00000008}
+.enrollment-admin-header h1{margin:0;font-size:22px}
+.enrollment-admin-header>div{display:flex;gap:10px}
+.enrollment-admin-header button{display:inline-flex;align-items:center;gap:8px;border:1px solid #e4e7e5;border-radius:8px;color:#52545d}
+@media(max-width:760px){.enrollment-admin-layout{grid-template-columns:170px minmax(0,1fr);gap:10px;padding:10px}.enrollment-admin-sidebar{top:10px;padding:18px 10px}.enrollment-sidebar-submenu{margin-left:8px}.enrollment-admin-header button span{display:none}.enrollment-admin-layout .enrollment-admin-header{padding:12px;gap:8px}}
+@media print{.enrollment-admin-layout{display:block;padding:0}.enrollment-admin-layout .operator-page{width:100%}}

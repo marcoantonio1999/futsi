@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList } from "lucide-react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
+import "./enrollmentAdmin.css";
 import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
@@ -320,21 +322,28 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   }
   const groups = new Map<string, Enrollment[]>();
   rows.forEach(row => { const key = row.team_id ? `team:${row.team_id}` : row.team + "\u0000" + row.tournament; groups.set(key, [...(groups.get(key) || []), row]); });
-  return <main className="enrollment-page">
+  return <main className="enrollment-page enrollment-admin-layout">
+    <aside className="enrollment-admin-sidebar no-print">
+      <h2>FUTSI</h2><p>Inscripciones BPower</p>
+      <nav aria-label="Administración de inscripciones">
+        <button aria-current={tournamentSection === null ? "page" : undefined} onClick={() => setTournamentSection(null)}><ClipboardList size={18} />Inscripciones</button>
+        <div className="enrollment-sidebar-heading"><Trophy size={18} />Torneos</div>
+        <div className="enrollment-sidebar-submenu">
+          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}>Torneos activos</button>
+          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}>Crear torneo</button>
+          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}><UsersRound size={16} />Equipos</button>
+        </div>
+        {!restricted && <a href="#">Volver a administración</a>}
+      </nav>
+    </aside>
     <div className="operator-page">
-      <header className="operator-header no-print"><h1>Inscripciones BPower</h1><div>
-        {!restricted && <a href="#">Volver a administración</a>}<button onClick={onLogout}>Salir</button>
+      <header className="operator-header enrollment-admin-header no-print"><h1>{tournamentSection === "create" ? "Crear torneo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : "Inscripciones"}</h1><div>
+        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { void load(page); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
+        <button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
       {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
-      <nav className="operator-controls no-print" aria-label="Administración de inscripciones">
-        <button aria-current={tournamentSection === null ? "page" : undefined} onClick={() => setTournamentSection(null)}>Inscripciones</button>
-        <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}>Torneos activos</button>
-        <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}>Crear torneo</button>
-        <button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}>Equipos</button>
-        <button disabled={catalogBusy || busy} onClick={() => void loadCatalog().catch(() => undefined)}>Actualizar equipos y torneos</button>
-      </nav>
       {tournamentSection !== null ? <section className="operator-controls no-print">
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           deletableTournamentIds={catalog.deletable_tournament_ids || []}
