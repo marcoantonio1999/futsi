@@ -142,7 +142,7 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.delete(url, payload, format='json').status_code, 400)
         self.assertTrue(Team.objects.filter(pk=team.pk).exists())
 
-    def test_deleted_faceguard_clip_is_preserved_without_blocking_team(self):
+    def check_faceguard_evidence_preserved(self, clip_status):
         import json
         from django.db import connection
         team, player, match, session = self.empty_team_match()
@@ -150,7 +150,7 @@ class PlayerEnrollmentTests(TestCase):
             cursor.execute('CREATE TABLE video_clips (id TEXT PRIMARY KEY, status TEXT, match_id INTEGER, attendance_session_id INTEGER, metadata TEXT)')
         try:
             with connection.cursor() as cursor:
-                cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['clip-test','deleted',match.pk,session.pk,'{"evidence":"keep"}'])
+                cursor.execute('INSERT INTO video_clips VALUES (%s,%s,%s,%s,%s)', ['clip-test',clip_status,match.pk,session.pk,'{"evidence":"keep"}'])
             url = f'/api/player-enrollments/teams/{team.pk}/'
             response = self.client.get(url+'deletion-preview/')
             self.assertEqual(response.status_code, 200)
@@ -159,7 +159,7 @@ class PlayerEnrollmentTests(TestCase):
             with connection.cursor() as cursor:
                 cursor.execute('SELECT status,match_id,attendance_session_id,metadata FROM video_clips WHERE id=%s', ['clip-test'])
                 row = cursor.fetchone()
-            self.assertEqual(row[:3], ('deleted',None,None))
+            self.assertEqual(row[:3], (clip_status,None,None))
             metadata = json.loads(row[3])
             self.assertEqual(metadata['evidence'], 'keep')
             self.assertEqual(metadata['team_deletion_evidence']['match_id'], match.pk)
@@ -168,6 +168,15 @@ class PlayerEnrollmentTests(TestCase):
         finally:
             with connection.cursor() as cursor:
                 cursor.execute('DROP TABLE video_clips')
+
+    def test_deleted_faceguard_clip_is_preserved_without_blocking_team(self):
+        self.check_faceguard_evidence_preserved('deleted')
+
+    def test_processed_faceguard_clip_is_preserved_without_blocking_team(self):
+        self.check_faceguard_evidence_preserved('processed')
+
+    def test_failed_faceguard_clip_is_preserved_without_blocking_team(self):
+        self.check_faceguard_evidence_preserved('failed')
 
     def test_active_faceguard_clip_blocks_empty_match_deletion(self):
         from django.db import connection

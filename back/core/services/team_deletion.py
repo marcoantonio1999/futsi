@@ -27,8 +27,8 @@ def linked_clips(matches, sessions, *, lock=False):
         cursor.execute('SELECT id, status, match_id, attendance_session_id, metadata FROM video_clips WHERE '
                        + ' OR '.join(conditions) + ' ORDER BY id' + suffix, params)
         clips = cursor.fetchall()
-    if any(row[1] != 'deleted' for row in clips):
-        raise ValidationError('Estos partidos tienen videos pendientes o conservados. No se elimina su historial mientras estén activos.')
+    if any(row[1] not in {'deleted', 'processed', 'failed'} for row in clips):
+        raise ValidationError('Estos partidos tienen grabaciones o procesos de video pendientes. Espera a que terminen antes de eliminar el equipo.')
     return clips
 
 
@@ -73,6 +73,7 @@ def preview(team, actor):
         items.append({'label': 'Sesiones sin actividad registrada', 'count': len(sessions)})
     return {'full_name': team.name, 'items': items, 'file_count': 0,
         'preserved_player_count': len(players), 'preserved_registration_count': len(registrations),
+        'preserved_video_count': len(clips),
         'confirmation_token': signing.dumps({'team': team.pk, 'actor': actor.pk, 'fingerprint': fingerprint}, salt=SALT)}
 
 
@@ -94,7 +95,7 @@ def permanently_delete(team, actor, payload):
             metadata={'site_id': team.tournament.site_id, 'team_name': team.name,
                       'preserved_player_ids': [pk for pk, _ in players], 'preserved_registration_ids': [pk for pk, _ in registrations],
                       'deleted_scheduled_match_ids': [row.pk for row in matches], 'deleted_empty_session_ids': [row.pk for row in sessions],
-                      'preserved_deleted_clip_ids': [str(row[0]) for row in clips]})
+                      'preserved_video_clip_ids': [str(row[0]) for row in clips]})
         with connection.cursor() as cursor:
             for clip_id, _, match_id, session_id, metadata in clips:
                 metadata = json.loads(metadata) if isinstance(metadata, str) else dict(metadata or {})
