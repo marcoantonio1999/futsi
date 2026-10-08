@@ -296,6 +296,19 @@ class PlayerEnrollmentTests(TestCase):
         self.team.is_active=False;self.team.save()
         self.assertEqual(self.client.post(url,{'team_id':self.team.pk,'tournament_id':self.tournament.pk},format='json').status_code,400)
 
+    def test_emergency_phone_is_optional_but_validated_when_present(self):
+        from core.api.enrollments import EnrollmentInput
+        base = {'name': 'Jugador', 'birth_date': '1990-01-01',
+                'identity_type': 'ine', 'phone': '5512345678', 'accepted_terms': True}
+        for extra in ({}, {'phone_secondary': ''}, {'phone_secondary': '5587654321'}):
+            with self.subTest(extra=extra):
+                serializer = EnrollmentInput(data={**base, **extra})
+                self.assertTrue(serializer.is_valid(), serializer.errors)
+                self.assertEqual(serializer.validated_data['phone_secondary'], extra.get('phone_secondary', ''))
+        serializer = EnrollmentInput(data={**base, 'phone_secondary': 'incorrecto'})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('phone_secondary', serializer.errors)
+
     def test_public_submission_cannot_change_assigned_team_or_tournament(self):
         data=self.payload()
         data.update(team='Otro equipo',tournament='Otro torneo',category='No existe',team_id=999)

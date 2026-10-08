@@ -64,7 +64,7 @@ class EnrollmentInput(serializers.Serializer):
     birth_date = serializers.DateField()
     identity_type = serializers.ChoiceField(choices=["ine", "passport", "military_card", "minor"])
     phone = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
-    phone_secondary = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
+    phone_secondary = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$", required=False, allow_blank=True, default="")
     guardian_name = serializers.CharField(max_length=160, required=False, allow_blank=True, default="")
     payment_reference = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
     document_checklist = serializers.ListField(child=serializers.ChoiceField(choices=["credential", "waiver", "other", "birth_certificate", "curp", "guardian_ine"]), required=False, default=list)
