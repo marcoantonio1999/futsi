@@ -211,6 +211,10 @@ function ActivePanel(props: AdminShellContentProps) {
           section={tournamentSection}
           token={token}
           onDeleteTournament={props.onDeleteTournament}
+          onDeleteTeam={user.role === "admin" || user.role === "owner" || user.role === "dev" ? async (id, confirmation) => {
+            const result = await apiRequest<StudentDeletionResult>(`/player-enrollments/teams/${id}/`, token, { method: "DELETE", body: JSON.stringify(confirmation) });
+            onRefreshActiveSection(); return result;
+          } : undefined}
           onSelectSection={props.onSelectTournamentSection}
           onUpdateRegistration={(id, payload) => onUpdateRecord(`/student-tournament-registrations/${id}/`, payload, "Inscripción actualizada.")}
           readOnly={user.role === "coach"}
