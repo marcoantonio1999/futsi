@@ -1,6 +1,8 @@
 from datetime import timedelta
 from hashlib import sha256
 from io import BytesIO
+import logging
+from uuid import uuid4
 
 from PIL import Image, ImageStat, UnidentifiedImageError
 from django.db import transaction
@@ -8,7 +10,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, serializers
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import ValidationError, PermissionDenied, APIException
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
@@ -17,6 +19,8 @@ from core.models import Team, Tournament, Site
 from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
+
+logger = logging.getLogger(__name__)
 
 
 def enrollment_sites(user):
@@ -267,14 +271,24 @@ class EnrollmentTournamentDeletionView(APIView):
     def delete(self, request, pk):
         from core.services import tournament_deletion
         from django.db.models.deletion import ProtectedError
-        tournament = self.target(request, pk)
-        # Signed enrollment files must not be lost by deleting their team.
-        if PlayerEnrollmentInvitation.objects.filter(team_record__tournament=tournament).exists():
-            raise ValidationError('Este torneo tiene enlaces o inscripciones firmadas. No se puede eliminar para conservar sus documentos.')
+        stage = 'permission_and_target'
         try:
+            tournament = self.target(request, pk)
+            stage = 'protected_enrollment_check'
+            # Signed enrollment files must not be lost by deleting their team.
+            if PlayerEnrollmentInvitation.objects.filter(team_record__tournament=tournament).exists():
+                raise ValidationError('Este torneo tiene enlaces o inscripciones firmadas. No se puede eliminar para conservar sus documentos.')
+            stage = 'confirmed_tournament_deletion'
             return Response(tournament_deletion.permanently_delete(tournament, request.user, request.data))
         except ProtectedError:
             raise ValidationError('El torneo tiene registros protegidos y no puede eliminarse.')
+        except APIException:
+            raise
+        except Exception:
+            reference = uuid4().hex[:12]
+            # Full exception chain and stack, but never headers, payload or locals.
+            logger.exception('ENROLLMENT_TOURNAMENT_DELETE_FAILED reference=%s tournament_id=%s stage=%s', reference, pk, stage)
+            return Response({'detail': f'No se pudo eliminar el torneo. Referencia del error: {reference}.'}, status=500)
 
 
 class EnrollmentDocumentView(APIView):
