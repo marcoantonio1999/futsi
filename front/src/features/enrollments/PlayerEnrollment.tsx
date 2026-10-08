@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
-import type { User, Team, Tournament, Site } from "../../types";
-import { TournamentCreatePage } from "../tournaments/TournamentCreatePage";
-import { CreateTeamDialog } from "../tournaments/TournamentManagementDialogs";
-import "../tournaments/tournaments.css";
+import type { AppData, User, Team, Tournament, Site } from "../../types";
+import { emptyData } from "../../appState";
+import { TournamentsPanel, type TournamentSection } from "../tournaments";
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
@@ -244,10 +243,15 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   const [catalog, setCatalog] = useState<EnrollmentCatalog>({ sites: [], tournaments: [], teams: [] });
   const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
   const [inviteTournament, setInviteTournament] = useState(""), [inviteTeam, setInviteTeam] = useState("");
-  const [createTournament, setCreateTournament] = useState(false), [createTeam, setCreateTeam] = useState(false);
+  const [tournamentSection, setTournamentSection] = useState<TournamentSection | null>(null);
   const invitationSaving = useRef(false);
   const selectedTournament = catalog.tournaments.find(item => String(item.id) === inviteTournament);
   const availableTeams = catalog.teams.filter(item => String(item.tournament) === inviteTournament);
+  // The shared workspace only uses catalog fields in setupOnly mode. It never
+  // loads students, finance, matches or representative contact details here.
+  const tournamentData: AppData = { ...emptyData, sites: catalog.sites as Site[],
+    tournaments: catalog.tournaments, teams: catalog.teams as Team[] };
+  const unsupportedAction = async () => { throw new Error("Acción no disponible en Inscripciones."); };
   async function loadCatalog() {
     setCatalogBusy(true); setCatalogError("");
     try {
@@ -317,16 +321,26 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       {message && <p className="no-print" role="status">{message}</p>}
       {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
       <nav className="operator-controls no-print" aria-label="Administración de inscripciones">
-        <button onClick={() => { setCreateTournament(false); setCreateTeam(false); }}>Inscripciones</button>
-        <button disabled={catalogBusy || busy} onClick={() => { setCreateTournament(true); setCreateTeam(false); }}>Crear torneo</button>
-        <button disabled={catalogBusy || busy} onClick={() => { setCreateTournament(false); setCreateTeam(true); }}>Crear equipo</button>
+        <button aria-current={tournamentSection === null ? "page" : undefined} onClick={() => setTournamentSection(null)}>Inscripciones</button>
+        <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}>Torneos activos</button>
+        <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}>Crear torneo</button>
+        <button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}>Equipos</button>
         <button disabled={catalogBusy || busy} onClick={() => void loadCatalog().catch(() => undefined)}>Actualizar equipos y torneos</button>
       </nav>
-      {createTournament ? <section className="operator-controls no-print">
-        <TournamentCreatePage sites={catalog.sites} onBack={() => setCreateTournament(false)}
-          onCreate={payload => saveCatalog("tournament", payload)} onCreated={created => {
-            chooseTournament(String(created.id)); setCreateTournament(false); setMessage("Torneo creado. Ahora selecciona o crea su equipo.");
-          }} />
+      {tournamentSection !== null ? <section className="operator-controls no-print">
+        <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
+          section={tournamentSection} onSelectSection={setTournamentSection}
+          selectedTournamentId={inviteTournament ? Number(inviteTournament) : undefined}
+          onSelectTournament={id => chooseTournament(String(id))}
+          onCreateTournament={payload => saveCatalog("tournament", payload)}
+          onCreateTeam={async payload => {
+            const created = await saveCatalog("team", payload) as Team;
+            setInviteTournament(String(created.tournament)); setInviteTeam(String(created.id)); setLink("");
+            return created;
+          }}
+          onDeleteTournament={unsupportedAction} onRegisterStudent={unsupportedAction}
+          onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
+        <button className="primary" onClick={() => setTournamentSection(null)}>Continuar a generar enlace de inscripción</button>
       </section> : <>
       <section className="operator-controls no-print">
         <h2>Enviar una nueva inscripción</h2><p>Crea un enlace por jugador. Tiene vigencia de 30 días.</p>
@@ -340,14 +354,8 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
             {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</button>
         </form>
-        {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo con el botón «Crear torneo».</p>}
-        {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos. Usa «Crear equipo».</p>}
-        {createTeam && !selectedTournament && <p role="status">Selecciona arriba el torneo al que pertenecerá el nuevo equipo.</p>}
-        {createTeam && selectedTournament && <CreateTeamDialog tournament={selectedTournament} adult onClose={() => setCreateTeam(false)}
-          onSave={async payload => {
-            const created = await saveCatalog("team", payload) as Team;
-            setInviteTeam(String(created.id)); setLink(""); setCreateTeam(false); setMessage("Equipo creado en el torneo seleccionado.");
-          }} />}
+        {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» de Futsi.</p>}
+        {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos. Abre la subsección «Equipos» y pulsa «Crear equipo».</p>}
         {link && <div className="share-link"><input readOnly value={link} aria-label="Enlace de inscripción" /><div>
           <button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</button>
           <a href={"https://wa.me/?text=" + encodeURIComponent("Hola, completa y firma tu inscripción aquí: " + link)} target="_blank" rel="noreferrer">Compartir por WhatsApp</a>
