@@ -113,8 +113,9 @@ if args.controlled_deletion:
                         storage.delete_document(doc.storage_path)
                     enrollment.delete()
                 invitation.delete()
-        from core.models import Match, AttendanceSession
-        match = Match.objects.create(tournament_id=tournament["id"], site_id=site, home_team_id=team["id"], away_team_id=team["id"])
+        from core.models import Match, AttendanceSession, Team
+        rival = Team.objects.create(tournament_id=tournament["id"], name=name + " rival")
+        match = Match.objects.create(tournament_id=tournament["id"], site_id=site, home_team_id=team["id"], away_team=rival)
         AttendanceSession.objects.create(site_id=site, tournament_id=tournament["id"], team_id=team["id"], match=match,
             session_type="tournament_match", date=match.played_on, captured_by=token.user)
         delete_fixture("teams", team)
