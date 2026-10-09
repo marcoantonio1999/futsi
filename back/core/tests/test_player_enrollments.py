@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from io import BytesIO
+from unittest.mock import patch
 from PIL import Image, ImageDraw
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -7,7 +8,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from core.models import User, Site, Tournament, Team
 from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
-from core.api.enrollments import is_minor
+from core.api.enrollments import is_minor, validated_file, ENROLLMENT_FILE_MAX_BYTES
+from rest_framework.exceptions import ValidationError
 
 
 def image_file(name, blank=False):
@@ -21,6 +23,11 @@ def image_file(name, blank=False):
 @override_settings(ALLOWED_HOSTS=["testserver"], MIGRATION_MODULES={"core": None})
 class PlayerEnrollmentTests(TestCase):
     def setUp(self):
+        self.storage = {}
+        self.upload_storage = patch("core.api.enrollments.enrollment_storage.upload_document", side_effect=lambda path, content, mime: self.storage.__setitem__(path, content)).start()
+        patch("core.api.enrollments.enrollment_storage.read_document", side_effect=lambda path: self.storage[path]).start()
+        self.delete_storage = patch("core.api.enrollments.enrollment_storage.delete_document", side_effect=lambda path: self.storage.pop(path, None)).start()
+        self.addCleanup(patch.stopall)
         from django.core.cache import cache
         cache.clear()
         self.emilio = User.objects.create_user(username="emilio", password="test-pass-123", role="collaborator", section_permissions=["player_enrollments_only"])
@@ -221,6 +228,73 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
         data = self.payload(); data["player_photo"] = SimpleUploadedFile("foto.pdf", b"%PDF-1.4 test", content_type="application/pdf")
         self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
+
+    def test_large_phone_photos_and_identity_documents_are_accepted(self):
+        for kind in ("player_photo", "ine_front"):
+            with self.subTest(kind=kind):
+                source = image_file("phone.png").read() + b"\0" * 3_100_000
+                content, mime = validated_file(SimpleUploadedFile("phone.png", source), kind)
+                self.assertTrue(content)
+                self.assertIn(mime, ("image/jpeg", "image/png"))
+        image = Image.new("RGB", (5000, 3400), "white")
+        buffer = BytesIO(); image.save(buffer, "JPEG")
+        content, mime = validated_file(SimpleUploadedFile("high-resolution.jpg", buffer.getvalue()), "player_photo")
+        with Image.open(BytesIO(content)) as saved:
+            self.assertLessEqual(saved.width, 400)
+            self.assertLessEqual(saved.height, 500)
+
+    def test_enrollment_upload_size_limits_remain_enforced(self):
+        for kind, limit in (("player_photo", ENROLLMENT_FILE_MAX_BYTES), ("ine_front", ENROLLMENT_FILE_MAX_BYTES), ("player_signature", 500_000)):
+            with self.subTest(kind=kind), self.assertRaises(ValidationError):
+                validated_file(SimpleUploadedFile("oversized.png", b"x" * (limit + 1)), kind)
+
+    def test_new_documents_are_private_storage_references_not_database_blobs(self):
+        self.assertEqual(self.client.post(self.url, self.payload(), format="multipart").status_code, 201)
+        for doc in PlayerEnrollmentDocument.objects.all():
+            self.assertEqual(bytes(doc.content), b"")
+            self.assertIn(doc.storage_path, self.storage)
+        self.client.force_authenticate(self.other)
+        doc = PlayerEnrollmentDocument.objects.first()
+        self.assertEqual(self.client.get(f"/api/player-enrollments/documents/{doc.pk}/").status_code, 404)
+
+    def test_failed_storage_upload_does_not_create_partial_enrollment(self):
+        self.upload_storage.side_effect = RuntimeError("storage unavailable")
+        self.assertEqual(self.client.post(self.url, self.payload(), format="multipart").status_code, 503)
+        self.assertEqual(PlayerEnrollment.objects.count(), 0)
+        self.assertEqual(PlayerEnrollmentDocument.objects.count(), 0)
+        self.assertTrue(self.delete_storage.called)
+
+    def test_legacy_migration_verifies_storage_before_clearing_database(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from hashlib import sha256
+        self.assertEqual(self.client.post(self.url, self.payload(), format="multipart").status_code, 201)
+        doc = PlayerEnrollmentDocument.objects.first()
+        original = self.storage[doc.storage_path]
+        doc.storage_path = ""; doc.content = original; doc.sha256 = sha256(original).hexdigest(); doc.save()
+        with patch("core.services.enrollment_storage.ensure_private_bucket"), patch("core.services.enrollment_storage.verify_document", side_effect=CommandError("verification failed")):
+            with self.assertRaises(CommandError):
+                call_command("migrate_enrollment_documents_to_storage", apply=True, stdout=StringIO())
+        doc.refresh_from_db()
+        self.assertEqual(bytes(doc.content), original)
+        self.assertEqual(doc.storage_path, "")
+        with patch("core.services.enrollment_storage.ensure_private_bucket"):
+            call_command("migrate_enrollment_documents_to_storage", apply=True, stdout=StringIO())
+        doc.refresh_from_db()
+        self.assertEqual(bytes(doc.content), b"")
+        self.assertEqual(self.storage[doc.storage_path], original)
+
+    def test_legacy_database_document_stays_readable(self):
+        from hashlib import sha256
+        self.assertEqual(self.client.post(self.url, self.payload(), format="multipart").status_code, 201)
+        doc = PlayerEnrollmentDocument.objects.first()
+        content = self.storage[doc.storage_path]
+        doc.storage_path = ""; doc.content = content; doc.sha256 = sha256(content).hexdigest(); doc.save()
+        self.client.force_authenticate(self.emilio)
+        response = self.client.get(f"/api/player-enrollments/documents/{doc.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, content)
 
     def test_minor_requires_curp_and_tutor_identity(self):
         for kind in ("curp", "guardian_ine_front", "minor_credential"):

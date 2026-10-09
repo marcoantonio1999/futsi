@@ -46,7 +46,8 @@ class PlayerEnrollment(models.Model):
 class PlayerEnrollmentDocument(models.Model):
     enrollment = models.ForeignKey(PlayerEnrollment, on_delete=models.CASCADE, related_name="documents")
     kind = models.CharField(max_length=30)
-    content = models.BinaryField(editable=False)
+    content = models.BinaryField(editable=False, default=bytes)
+    storage_path = models.CharField(max_length=500, blank=True, default="")
     content_type = models.CharField(max_length=40)
     sha256 = models.CharField(max_length=64)
     class Meta:

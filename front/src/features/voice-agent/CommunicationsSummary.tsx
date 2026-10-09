@@ -21,7 +21,7 @@ export function CommunicationsSummary({ data, canReview, onNavigate, onOpenInbox
       <button className="comm-metric attention-green" onClick={() => onOpenInbox("up_to_date")}><span><CheckCheck size={18} /> Sin pendientes</span><strong>{count("up_to_date")}</strong></button>
     </div>
     <section className="comm-panel comm-weekly-chart">
-      <header className="comm-section-heading"><div><h3>Mensajes por semana</h3><p>Actividad de las últimas seis semanas para la sede y el número seleccionados.</p></div></header>
+      <header className="comm-section-heading"><div><h3>Mensajes por semana</h3></div></header>
       <div className="comm-chart-area" role="img" aria-label="Gráfica semanal de mensajes recibidos, respuestas enviadas, mensajes esperando respuesta y mensajes atendidos">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={weeklyTrend} margin={{ top: 12, right: 20, bottom: 8, left: 0 }}>

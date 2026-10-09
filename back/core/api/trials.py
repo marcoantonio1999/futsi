@@ -512,6 +512,22 @@ class WhatsAppConversationViewSet(
             row["template_management_available"] = template_mutation_available(row["business_address"])
         return Response(result)
 
+    @action(detail=False, methods=["get"], url_path="contact-audit")
+    def contact_audit(self, request):
+        from core.services.whatsapp_contact_audit import contact_audit
+        # Reuse channel authorization; never accept unrestricted dataset ids.
+        self.get_queryset()  # Validate site/address input through the existing scope.
+        rows = self.channels(request).data
+        address = request.query_params.get("business_address", "").strip()
+        site = request.query_params.get("site", "").strip()
+        if address:
+            rows = [row for row in rows if row["business_address"] == address]
+        if site == "unassigned":
+            rows = [row for row in rows if row["site"] is None]
+        elif site.isdigit():
+            rows = [row for row in rows if row["site"] == int(site)]
+        return Response(contact_audit({row["business_address"] for row in rows}))
+
     @action(
         detail=False,
         methods=["get"],

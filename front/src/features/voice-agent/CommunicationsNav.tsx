@@ -15,11 +15,11 @@ const courtCoordinatorItems: CommunicationItem[] = [
   { key: "whatsapp", label: "Bandeja de WhatsApp" },
   { key: "templates", label: "Plantillas de WhatsApp" },
   academyBulkItems[1],
-  { key: "weekly-stats", label: "Estadísticas de mi cancha" },
+  { key: "weekly-stats", label: "Auditoria Numeros Whatsapp" },
 ];
 
 const courtAttentionItems: CommunicationItem[] = [
-  { key: "summary", label: "Resumen" },
+  { key: "summary", label: "Auditoria Numeros Whatsapp" },
   { key: "whatsapp", label: "Bandeja de WhatsApp", shortLabel: "WhatsApp" },
   { key: "templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas" },
   { key: "template-builder", label: "Crear plantilla", shortLabel: "Crear plantilla" },
@@ -53,7 +53,6 @@ export const communicationGroups: Array<{
   { label: "Gestión", icon: Settings2, items: [
     { key: "connections", label: "Conexiones", admin: true },
     { key: "collections", label: "Cobranza por WhatsApp", shortLabel: "Cobranza" },
-    { key: "weekly-stats", label: "Estadísticas", admin: true },
     { key: "chat-export", label: "Exportar chats", admin: true },
     { key: "settings", label: "Ajustes del asistente", shortLabel: "Ajustes" , admin: true },
   ] },
@@ -64,6 +63,8 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
 }) {
   const veronicaOnly = useContext(VeronicaOnlyContext);
   const courtCommunicationsOnly = useContext(CourtCommunicationsOnlyContext);
+  // Keep older statistics links pointing at the same unified page.
+  if (!courtCommunicationsOnly && section === "weekly-stats") section = "summary";
   const activeAttentionArea = hrAttentionItems.some(item => item.key === section) ? "hr" : "courts";
   const academyBulkActive = academyBulkItems.some(item => item.key === section);
   const [expandedAreas, setExpandedAreas] = useState<Record<string, boolean>>(() => ({

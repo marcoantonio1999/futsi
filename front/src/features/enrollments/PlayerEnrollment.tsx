@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList } from "lucide-react";
+import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus } from "lucide-react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
 import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
+import { CameraCapture } from "./CameraCapture";
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
@@ -13,6 +14,7 @@ const labels: Record<string, string> = {
   guardian_ine_front: "INE del tutor frente", guardian_ine_back: "INE del tutor reverso",
   player_signature: "Firma del jugador", guardian_signature: "Firma del tutor",
 };
+const ENROLLMENT_FILE_MAX_BYTES = 20_000_000;
 type Document = { id: number; kind: string };
 type Enrollment = {
   id: number; name: string; birth_date: string; team: string; tournament: string; team_id: number | null; tournament_id: number | null;
@@ -87,7 +89,8 @@ function Signature({ label, onChange }: { label: string; onChange: (blob: Blob |
 function Upload({ label, photo = false, onChange }: {
   label: string; photo?: boolean; onChange: (file: File | null) => void;
 }) {
-  const upload = useRef<HTMLInputElement>(null), camera = useRef<HTMLInputElement>(null);
+  const upload = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [name, setName] = useState(""), [preview, setPreview] = useState("");
   const previewRef = useRef("");
   useEffect(() => () => { if (previewRef.current) URL.revokeObjectURL(previewRef.current); }, []);
@@ -102,13 +105,13 @@ function Upload({ label, photo = false, onChange }: {
     {preview && <img src={preview} alt={label + " adjunta"} />}
     <div className="upload-actions">
       <button type="button" onClick={() => upload.current?.click()}>Adjuntar</button>
-      <button type="button" onClick={() => camera.current?.click()}>Tomar foto</button>
+      <button type="button" onClick={() => setCameraOpen(true)}>Tomar foto</button>
     </div>
     <input ref={upload} type="file" hidden accept={photo ? "image/jpeg,image/png" : "image/jpeg,image/png,application/pdf"}
       onChange={event => select(event.target.files?.[0] || null)} />
-    <input ref={camera} type="file" hidden accept="image/jpeg,image/png" capture={photo ? "user" : "environment"}
-      onChange={event => select(event.target.files?.[0] || null)} />
-    <small>{name || (photo ? "Foto obligatoria" : "JPG, PNG o PDF · máximo 3 MB")}</small>
+    {cameraOpen && <CameraCapture selfie={photo} onClose={() => setCameraOpen(false)}
+      onCapture={file => { select(file); setCameraOpen(false); }} />}
+    <small>{name || (photo ? "JPG o PNG · máximo 20 MB" : "JPG, PNG o PDF · máximo 20 MB")}</small>
   </section>;
 }
 
@@ -156,7 +159,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
       setError("Revisa la fecha de nacimiento."); return;
     }
     if (documentKinds.some(item => !files[item])) { setError("Adjunta los documentos de identificación."); return; }
-    if (documentKinds.some(item => (files[item]?.size || 0) > 3_000_000)) { setError("Cada documento debe pesar máximo 3 MB."); return; }
+    if (documentKinds.some(item => (files[item]?.size || 0) > ENROLLMENT_FILE_MAX_BYTES)) { setError("Cada foto o documento puede pesar hasta 20 MB."); return; }
     navigate(2);
   }
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -174,6 +177,9 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
     }
     const missing = required.filter(item => !files[item]);
     if (missing.length) { setError("Falta: " + missing.map(item => item === "player_photo" ? "selfie del jugador" : labels[item] || item).join(", ") + "."); return; }
+    if (["player_photo", ...documentKinds].some(item => (files[item]?.size || 0) > ENROLLMENT_FILE_MAX_BYTES)) {
+      setError("Cada foto o documento puede pesar hasta 20 MB."); return;
+    }
     saving.current = true; setBusy(true);
     try {
       const form = new FormData(formElement);
@@ -181,7 +187,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
       required.forEach(item => form.append(item, files[item]!,
         item.includes("signature") ? item + ".png" : (files[item] as File).name));
       const response = await fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/",
-        { method: "POST", body: form, signal: AbortSignal.timeout(60000) });
+        { method: "POST", body: form, signal: AbortSignal.timeout(180000) });
       const body = await response.json().catch(() => { throw new Error("El servidor no respondió correctamente. Intenta de nuevo."); });
       if (!response.ok) throw new Error(body.detail || Object.values(body).flat().join(" ") || "No se pudo guardar. Intenta de nuevo.");
       setDone(true);
@@ -399,14 +405,17 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     <aside className="enrollment-admin-sidebar no-print">
       <h2>Inscripciones BPower</h2><p>Administración de inscripciones</p>
       <nav aria-label="Administración de inscripciones" onClickCapture={() => setRosterTeam(null)}>
-        <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setSelected(null); setError(""); setMessage(""); }}>Enviar enlace</button>
-        <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={18} />Inscripciones</button>
+        <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Inscripciones</div>
+        <div className="enrollment-sidebar-submenu">
+          <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setSelected(null); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Enviar enlace</button>
+          <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Inscripciones</button>
+        </div>
         <div className="enrollment-sidebar-heading"><Trophy size={18} />Torneos</div>
         <div className="enrollment-sidebar-submenu">
-          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}>Torneos activos</button>
-          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}>Crear torneo</button>
+          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}><ListChecks size={16} aria-hidden="true" />Torneos activos</button>
+          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}><CirclePlus size={16} aria-hidden="true" />Crear torneo</button>
           <button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}><UsersRound size={16} />Equipos</button>
-          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "team-create" ? "page" : undefined} onClick={() => setTournamentSection("team-create")}>Crear equipo</button>
+          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "team-create" ? "page" : undefined} onClick={() => setTournamentSection("team-create")}><UserPlus size={16} aria-hidden="true" />Crear equipo</button>
         </div>
       </nav>
     </aside>

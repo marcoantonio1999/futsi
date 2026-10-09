@@ -1,4 +1,4 @@
-import { isSoccerWa } from "../../appBrand";
+import { isSoccerWa } from "../../appBrand.ts";
 import type { WhatsAppMessage, WhatsAppConversation, WhatsAppWeeklyStats } from "../../types";
 
 export function contactName(conversation: WhatsAppConversation) {

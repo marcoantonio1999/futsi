@@ -19,8 +19,10 @@ from core.models import Team, Tournament, Site
 from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
+from core.services import enrollment_storage
 
 logger = logging.getLogger(__name__)
+ENROLLMENT_FILE_MAX_BYTES = 20_000_000
 
 
 def enrollment_sites(user):
@@ -84,9 +86,9 @@ class EnrollmentInput(serializers.Serializer):
 def validated_file(upload, kind):
     if not upload:
         raise ValidationError(f"Falta adjuntar {kind}.")
-    limit = 500_000 if "signature" in kind else 3_000_000
+    limit = 500_000 if "signature" in kind else ENROLLMENT_FILE_MAX_BYTES
     if upload.size > limit:
-        raise ValidationError("El documento es demasiado grande (INE: máximo 3 MB; firma: 500 KB).")
+        raise ValidationError("La firma supera 500 KB." if "signature" in kind else "Cada foto o documento puede pesar hasta 20 MB.")
     content = upload.read(limit + 1)
     if len(content) > limit:
         raise ValidationError("El documento es demasiado grande.")
@@ -94,7 +96,7 @@ def validated_file(upload, kind):
         return content, "application/pdf"
     try:
         with Image.open(BytesIO(content)) as image:
-            if image.format not in {"JPEG", "PNG"} or image.width * image.height > 16_000_000:
+            if image.format not in {"JPEG", "PNG"} or image.width * image.height > 60_000_000:
                 raise ValidationError("Usa una imagen JPG o PNG de tamaño moderado.")
             image.verify()
         with Image.open(BytesIO(content)) as image:
@@ -107,6 +109,7 @@ def validated_file(upload, kind):
                 if max(ImageStat.Stat(background).stddev) < 2:
                     raise ValidationError("Dibuja la firma antes de continuar.")
             if kind == "player_photo":
+                image.draft("RGB", (800, 1000))
                 image = image.convert("RGB")
                 image.thumbnail((400, 500))
                 output = BytesIO(); image.save(output, "JPEG", quality=85)
@@ -142,20 +145,49 @@ class PublicEnrollmentView(APIView):
         else:
             kinds.append("identity_document")
         files = [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
+        # Reject invalid invitations before transferring any private files.
+        invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token)
+        if invitation.expires_at < timezone.now():
+            return Response({"detail": "El enlace venció. Pide uno nuevo."}, status=410)
+        if PlayerEnrollment.objects.filter(invitation=invitation).exists():
+            return Response({"detail": "Esta inscripción ya fue recibida.", "completed": True}, status=409)
+        paths = []
+        documents = []
+        batch = uuid4().hex
+        try:
+            for kind, content, mime in files:
+                digest = sha256(content).hexdigest()
+                path = f"inscripciones/{invitation.pk}/{batch}/{kind}/{digest}"
+                paths.append(path)
+                enrollment_storage.upload_document(path, content, mime)
+                documents.append(dict(kind=kind, storage_path=path, content=b"", content_type=mime, sha256=digest))
+            return self.save_enrollment(request, token, fields, documents=documents)
+        except Exception as exc:
+            for path in paths:
+                try:
+                    enrollment_storage.delete_document(path)
+                except Exception:
+                    logger.exception("ENROLLMENT_STORAGE_CLEANUP_FAILED")
+            if isinstance(exc, (APIException, Http404)):
+                raise
+            logger.exception("ENROLLMENT_STORAGE_SAVE_FAILED")
+            return Response({"detail": "No se pudieron guardar los archivos. Intenta nuevamente."}, status=503)
+
+    def save_enrollment(self, request, token, fields, documents):
         with transaction.atomic():
             invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_for_update(of=('self',)).select_related('team_record__tournament'), token=token)
             if invitation.expires_at < timezone.now():
-                return Response({"detail": "El enlace venció. Pide uno nuevo."}, status=410)
+                raise ValidationError("El enlace venció. Pide uno nuevo.")
             if PlayerEnrollment.objects.filter(invitation=invitation).exists():
-                return Response({"detail": "Esta inscripción ya fue recibida.", "completed": True}, status=409)
+                raise ValidationError("Esta inscripción ya fue recibida.")
             if not invitation.team_record_id or not invitation.team_record.is_active or not invitation.team_record.tournament.is_active:
                 raise ValidationError('El equipo o torneo del enlace ya no está disponible. Solicita un enlace nuevo.')
             fields.update(team=invitation.team, tournament=invitation.tournament, team_record=invitation.team_record)
             checklist = fields.pop("document_checklist", [])
             row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, terms_text=TERMS, document_checklist=checklist, **fields)
             PlayerEnrollmentDocument.objects.bulk_create([
-                PlayerEnrollmentDocument(enrollment=row, kind=kind, content=content, content_type=mime, sha256=sha256(content).hexdigest())
-                for kind, content, mime in files
+                PlayerEnrollmentDocument(enrollment=row, **document)
+                for document in documents
             ])
         return Response({"completed": True, "folio": row.pk}, status=201)
 
@@ -321,7 +353,14 @@ class EnrollmentDocumentView(APIView):
     def get(self, request, pk):
         doc = get_object_or_404(PlayerEnrollmentDocument, pk=pk, enrollment__invitation__in=invitations_for(request.user))
         extension = {"image/png": "png", "image/jpeg": "jpg", "application/pdf": "pdf"}[doc.content_type]
-        response = HttpResponse(bytes(doc.content), content_type=doc.content_type)
+        try:
+            content = enrollment_storage.read_document(doc.storage_path) if doc.storage_path else bytes(doc.content)
+            if sha256(content).hexdigest() != doc.sha256:
+                raise RuntimeError("Integridad del archivo incorrecta.")
+        except Exception:
+            logger.exception("ENROLLMENT_STORAGE_READ_FAILED document_id=%s", doc.pk)
+            return Response({"detail": "No se pudo recuperar el documento. Intenta nuevamente."}, status=503)
+        response = HttpResponse(content, content_type=doc.content_type)
         response["Content-Disposition"] = f'attachment; filename="inscripcion-{doc.enrollment_id}-{doc.kind}.{extension}"'
         response["Cache-Control"] = "no-store"
         response["X-Content-Type-Options"] = "nosniff"

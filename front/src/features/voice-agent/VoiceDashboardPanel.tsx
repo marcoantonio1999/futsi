@@ -40,11 +40,11 @@ const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
   templates: { title: "Plantillas de WhatsApp" },
   "template-builder": { title: "Crear plantilla de WhatsApp" },
   collections: { title: "Cobranza por WhatsApp" },
-  summary: { title: "Resumen de comunicaciones" },
+  summary: { title: "Auditoria Numeros Whatsapp" },
   bookings: { title: "Pruebas gratuitas" },
   calls: { title: "Llamadas y transcripciones" },
   whatsapp: { title: "Bandeja de WhatsApp" },
-  "weekly-stats": { title: "Resultados semanales" },
+  "weekly-stats": { title: "Auditoria Numeros Whatsapp" },
   "chat-export": { title: "Exportar chats" },
   availability: { title: "Disponibilidad para pruebas" },
   settings: { title: "Ajustes del asistente" },
@@ -199,8 +199,9 @@ export function VoiceDashboardPanel({
   </div> : null;
 
   const sectionDetail = sectionDetails[section];
-  const sectionGroup = courtCommunicationsOnly ? "Mi cancha" : communicationGroups.find(group => group.items.some(item => item.key === section))?.label;
-  const pageClass = section === "summary" ? "comm-summary-page" : section === "whatsapp" ? "comm-inbox-page" : "";
+  const auditPage = section === "summary" || section === "weekly-stats";
+  const sectionGroup = courtCommunicationsOnly ? "Mi cancha" : communicationGroups.find(group => group.items.some(item => item.key === (auditPage ? "summary" : section)))?.label;
+  const pageClass = auditPage ? "comm-audit-page" : section === "whatsapp" ? "comm-inbox-page" : "";
   const scopePanel = <CommunicationScopePicker
     sites={permittedData.sites}
     channels={channels}
@@ -210,6 +211,8 @@ export function VoiceDashboardPanel({
     allowAllSites={user.role !== "site_coordinator"}
     disabled={settingsBusy || !channelsReady}
     inbox={section === "whatsapp"}
+    statisticsArea={auditPage && canReviewCalls && !courtCommunicationsOnly ? statisticsArea : undefined}
+    onStatisticsAreaChange={auditPage && canReviewCalls && !courtCommunicationsOnly ? setStatisticsArea : undefined}
     onChange={(site, address) => {
       if (!canChangeScope()) return;
       setSettingsDirty(false);
@@ -223,18 +226,18 @@ export function VoiceDashboardPanel({
   return (
     <div className={`communications ${pageClass}`}>
       <header className="comm-page-heading">
-        <div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{courtCommunicationsOnly && section === "weekly-stats" ? "Estadísticas de mi cancha" : sectionDetail.title}</h2></div>
-        {section !== "whatsapp" && !(courtCommunicationsOnly && section === "weekly-stats") && !(section === 'weekly-stats' && statisticsArea === 'veronica') && scopePanel}
+        <div><p className="comm-eyebrow">Comunicaciones <span aria-hidden="true"> / </span> {sectionGroup}</p><h2>{sectionDetail.title}</h2></div>
+        {section !== "whatsapp" && !auditPage && scopePanel}
       </header>
       <CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} />
-      {section === 'weekly-stats' && canReviewCalls && !courtCommunicationsOnly && <label className="comm-inline">Estadísticas de <select className="rounded-lg border p-2" aria-label="Elegir estadísticas de canchas o Verónica" value={statisticsArea} onChange={event => setStatisticsArea(event.target.value as 'courts' | 'veronica')}><option value="courts">Canchas</option><option value="veronica">Verónica · ambos números</option></select></label>}
+      {auditPage && !courtCommunicationsOnly && <div className="comm-audit-filter">{scopePanel}</div>}
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
-      {channelsReady && <div key={query} className={section === "summary" ? "comm-summary-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
+      {channelsReady && <div key={query} className={auditPage ? "comm-audit-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
       {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} showChannelDetails={canReviewCalls} />}
       {section === "template-builder" && <WhatsAppTemplateBuilder token={token} channels={templateChannels} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
-      {section === "summary" && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
+      {auditPage && (statisticsArea === 'courts' || !canReviewCalls) && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
 
       {section === "bookings" ? (
         <TrialBookingsPanel
@@ -277,7 +280,7 @@ export function VoiceDashboardPanel({
         />
       ) : null}
 
-      {section === "weekly-stats" && (canReviewCalls || courtCommunicationsOnly) ? (
+      {auditPage && (canReviewCalls || courtCommunicationsOnly) ? (
         <WhatsAppWeeklyStatsPanel key={statisticsArea} scopeQuery={statisticsArea === 'veronica' && canReviewCalls ? '' : query} value={courtCommunicationsOnly || statisticsArea === 'veronica' ? null : voiceData.whatsappWeeklyStats} endpoint={statisticsArea === 'veronica' && canReviewCalls ? '/veronica/weekly-stats/' : '/whatsapp-conversations/weekly-stats/'} showClassifications={statisticsArea !== 'veronica'} token={token} onOpenConversation={statisticsArea === 'veronica' ? () => onSelectSection('veronica') : openConversation} />
       ) : null}
 
