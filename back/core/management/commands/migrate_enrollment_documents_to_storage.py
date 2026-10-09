@@ -9,8 +9,20 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true")
+        parser.add_argument("--restore-database-copy", action="store_true", help="Recupera archivos históricos verificados si falta configurar Storage en el servidor; conserva los objetos privados.")
 
     def handle(self, *args, **options):
+        if options["restore_database_copy"]:
+            restored = 0
+            for doc in PlayerEnrollmentDocument.objects.exclude(storage_path="").iterator(chunk_size=1):
+                if "/historicos/" not in doc.storage_path:
+                    continue
+                content = enrollment_storage.read_document(doc.storage_path)
+                if sha256(content).hexdigest() != doc.sha256:
+                    raise CommandError(f"Integridad inválida en documento {doc.pk}; no se cambia el registro.")
+                restored += PlayerEnrollmentDocument.objects.filter(pk=doc.pk, storage_path=doc.storage_path, sha256=doc.sha256).update(content=content, storage_path="")
+            self.stdout.write(f"Copias históricas recuperadas: {restored}. Los objetos privados se conservan.")
+            return
         rows = PlayerEnrollmentDocument.objects.filter(storage_path="")
         self.stdout.write(f"Documentos pendientes: {rows.count()}")
         if not options["apply"]:
