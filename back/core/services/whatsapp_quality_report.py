@@ -44,10 +44,17 @@ def quality_report(conversations, params):
     counts = Counter(row["status"] for row in summary_rows)
     metadata = {row["to_address"]: row for row in conversations.order_by().values("to_address", "channel_site_name", "channel_label").distinct()}
     sites = {}
+    activity_end = cutoff or min(now, end)
+    active = conversations.filter(messages__created_at__gte=start, messages__created_at__lt=activity_end).order_by().values("to_address").annotate(chats=models.Count("pk", distinct=True))
+    for row in active:
+        channel = row["to_address"]
+        label = metadata.get(channel, {})
+        sites[channel] = {"channel": channel, "site": label.get("channel_site_name") or label.get("channel_label") or channel,
+            "eligible": row["chats"], "completed": 0, "failed": 0, "skipped": 0, "proactive": 0, "insufficient": 0}
     for row in summary_rows:
         channel = row["channel"]
         label = metadata.get(channel, {})
-        item = sites.setdefault(channel, {"channel": channel, "site": label.get("channel_site_name") or label.get("channel_label") or channel, "completed": 0, "failed": 0, "skipped": 0, "proactive": 0, "insufficient": 0})
+        item = sites.setdefault(channel, {"channel": channel, "site": label.get("channel_site_name") or label.get("channel_label") or channel, "eligible": 0, "completed": 0, "failed": 0, "skipped": 0, "proactive": 0, "insufficient": 0})
         if row["status"] in item:
             item[row["status"]] += 1
         if row["status"] == "completed":
@@ -59,5 +66,6 @@ def quality_report(conversations, params):
     return {"week_start": start.isoformat(), "analyzed_until": cutoff.isoformat() if cutoff else None,
         "provisional": cutoff is not None and cutoff < end, "status_counts": dict(counts),
         "model": sorted({row["model"] for row in summary_rows if row["model"]}),
-        "effort": "high", "sites": list(sites.values()), "total": len(summary_rows), "offset": offset,
+        "effort": sorted({row["result"].get("reasoning_effort", "no registrado") for row in summary_rows if row["status"] == "completed"}),
+        "eligible": sum(row["eligible"] for row in sites.values()), "sites": list(sites.values()), "total": len(summary_rows), "offset": offset,
         "results": page, "outcomes_verified": False}

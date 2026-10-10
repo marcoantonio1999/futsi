@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from unittest.mock import patch
 
 import pytest
 from django.db import connection
 from core.services.whatsapp_quality_report import QualityAudit
-from core.models import WhatsAppAutomationSettings, WhatsAppConversation
+from core.models import WhatsAppAutomationSettings, WhatsAppConversation, WhatsAppMessage
 from core.tests.factories import make_site
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db(transaction=True)]
@@ -25,6 +25,8 @@ def private_table():
 def audited_chat(site, address):
     WhatsAppAutomationSettings.objects.create(site=site, business_address=address)
     chat = WhatsAppConversation.objects.create(site=site, to_address=address, contact_phone="+525500000001", from_address="whatsapp:+525500000001")
+    message = WhatsAppMessage.objects.create(conversation=chat, direction="inbound", body="Informes")
+    WhatsAppMessage.objects.filter(pk=message.pk).update(created_at=NOW-timedelta(hours=1))
     QualityAudit.objects.create(conversation_id=chat.pk, channel=address, period_end=NOW,
         rubric="commercial_v2", status="completed", model="gpt-6-luna", usage={},
         result={"commercial_initiative": "proactiva", "useful_response": "completa", "reasoning_effort": "high"})
@@ -40,6 +42,7 @@ def test_admin_sees_all_scoped_sites_and_current_partial_week(auth_client):
         response = client.get(URL)
     assert response.status_code == 200, response.content
     assert response.json()["total"] == 2
+    assert response.json()["eligible"] == 2
     assert response.json()["provisional"] is True
     assert response.json()["model"] == ["gpt-6-luna"]
     assert response.json()["sites"][0]["proactive"] == 1
