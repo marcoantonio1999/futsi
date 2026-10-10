@@ -72,6 +72,11 @@ test("missing averages are not shown as zero and durations do not overflow minut
   assert.equal(durationLabel(0), "0 s");
   assert.equal(durationLabel(7199), "1 h 59 min");
   assert.equal(durationLabel(7200), "2 h 0 min");
+  assert.equal(durationLabel(86400), "24 h 0 min");
+  assert.equal(durationLabel(86401), "1 día");
+  assert.equal(durationLabel(25 * 3600), "1 día 1 h");
+  assert.equal(durationLabel(48 * 3600), "2 días");
+  assert.equal(durationLabel(300 * 3600), "12 días 12 h");
 });
 test("week navigation crosses year boundaries without UTC date shifts", () => {
   assert.equal(mondayKey(new Date(2026, 8, 6, 12)), "2026-08-31");

@@ -38,6 +38,11 @@ export function durationLabel(seconds: number | null) {
   const minutes = Math.floor(Math.max(0, seconds) / 60);
   if (minutes < 1) return Math.floor(Math.max(0, seconds)) + " s";
   if (minutes < 60) return minutes + " min";
+  if (seconds > 86400) {
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor(minutes % 1440 / 60);
+    return `${days} ${days === 1 ? "día" : "días"}${hours ? ` ${hours} h` : ""}`;
+  }
   return Math.floor(minutes / 60) + " h " + minutes % 60 + " min";
 }
 export function nameNeedsReview(name: string) {
