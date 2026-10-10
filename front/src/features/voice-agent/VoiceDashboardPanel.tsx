@@ -96,6 +96,21 @@ export function VoiceDashboardPanel({
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  useEffect(() => {
+    const openAlert = () => {
+      if (section !== "whatsapp") return;
+      const saved = sessionStorage.getItem("futsi:attention-chat");
+      if (!saved) return;
+      try {
+        const alert = JSON.parse(saved);
+        setSelectedSite("all"); setSelectedAddress(alert.business_address);
+        setConversationId(alert.conversation_id || null);
+        setInboxFilter("all");
+      } finally { sessionStorage.removeItem("futsi:attention-chat"); }
+    };
+    openAlert(); window.addEventListener("futsi:open-attention-chat", openAlert);
+    return () => window.removeEventListener("futsi:open-attention-chat", openAlert);
+  }, [section]);
   const [inboxFilter, setInboxFilter] = useState<AttentionFilter>("all");
   const [bookingId, setBookingId] = useState<number | null>(null);
   useEffect(() => {

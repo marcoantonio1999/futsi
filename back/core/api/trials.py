@@ -213,6 +213,12 @@ class CanViewWhatsAppWeeklyStats(BasePermission):
         ))
 
 
+class CanViewWhatsAppNotifications(BasePermission):
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and
+                    request.user.role in (ADMIN_ROLES | {"site_coordinator", "coach"}))
+
+
 class SiteScopedTrialViewSetMixin:
     site_filter = "site_id"
 
@@ -435,13 +441,35 @@ class WhatsAppConversationViewSet(
         )
         user = self.request.user
         if user.role not in ADMIN_ROLES:
-            if user.role != "site_coordinator" or not user.primary_site_id:
+            allowed_role = user.role == "site_coordinator" or (user.role == "coach" and self.action == "attention_notifications")
+            if not allowed_role or not user.primary_site_id:
                 return queryset.none()
             queryset = queryset.filter(channel_site_id=user.primary_site_id)
             allowed_channels = court_communications_allowed_channels(user)
             if allowed_channels is not None:
                 queryset = queryset.filter(to_address__in=allowed_channels)
         return queryset
+
+    @action(detail=False, methods=["get"], url_path="attention-notifications",
+            permission_classes=[CanViewWhatsAppNotifications])
+    def attention_notifications(self, request):
+        from django.core.cache import cache
+        from hashlib import sha256
+        from .whatsapp_notifications import attention_notifications
+        # Never let UI-selected site/number hide notifications for an authorized site.
+        user = request.user
+        allowed = court_communications_allowed_channels(user)
+        scope = "all" if user.role in ADMIN_ROLES else f"site:{user.primary_site_id}:{allowed}"
+        # Shared per authorized scope, not per browser: no full inbox polling.
+        key = "whatsapp-attention:v2:last-seven-days:" + sha256(scope.encode()).hexdigest()
+        result = None if settings.FUTSI_ENV == "test" else cache.get(key)
+        if result is None:
+            result = attention_notifications(self.visible_conversations())
+            if settings.FUTSI_ENV != "test":
+                cache.set(key, result, 60)
+        response = Response(result)
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     def get_queryset(self):
         queryset = self.visible_conversations()

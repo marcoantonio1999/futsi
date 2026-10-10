@@ -1,10 +1,12 @@
 import { LogOut, Menu, Moon, RefreshCw, Sun } from "lucide-react";
 import { roleLabels } from "../../appState";
+import { AttentionNotifications } from "./AttentionNotifications";
 import { isSoccerWa } from "../../appBrand";
 import type { ThemeMode, User } from "../../types";
 import type { BusinessScope, SidebarTab } from "./adminShellModel";
 
 type AdminShellHeaderProps = {
+  token: string; onOpenChats: () => void;
   user: User; businessScope: BusinessScope; canToggleAdultDashboard: boolean;
   headerScrolled: boolean; effectiveActiveTabMeta: SidebarTab | undefined;
   theme: ThemeMode; onToggleTheme: () => void;
@@ -12,7 +14,7 @@ type AdminShellHeaderProps = {
   onSwitchScope: (scope: BusinessScope) => void; onLogout: () => void;
 };
 
-export function AdminShellHeader({ user, businessScope, canToggleAdultDashboard, headerScrolled, effectiveActiveTabMeta, theme, onToggleTheme, onOpenMobileMenu, onRefresh, onSwitchScope, onLogout }: AdminShellHeaderProps) {
+export function AdminShellHeader({ token, onOpenChats, user, businessScope, canToggleAdultDashboard, headerScrolled, effectiveActiveTabMeta, theme, onToggleTheme, onOpenMobileMenu, onRefresh, onSwitchScope, onLogout }: AdminShellHeaderProps) {
   const buttonClass = "grid size-9 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
   return <header className={"app-header fixed left-2 right-2 top-2 z-[900] rounded-md border px-3 py-2 shadow-sm backdrop-blur-md transition-colors duration-200 sm:left-3 sm:right-3 lg:sticky lg:left-auto lg:right-auto lg:top-4 " + (headerScrolled ? "border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-950/80" : "border-zinc-200 bg-white/95 dark:border-zinc-800 dark:bg-zinc-950/95")}>
     <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
@@ -22,7 +24,8 @@ export function AdminShellHeader({ user, businessScope, canToggleAdultDashboard,
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {!isSoccerWa && ["admin", "owner", "dev"].includes(user.role) && <a href="#/admin/inscripciones" className="rounded-md border border-emerald-200 px-2 py-2 text-xs font-semibold text-emerald-800">Inscripciones</a>}
-        <button className={buttonClass} onClick={onRefresh} aria-label="Actualizar" title="Actualizar" type="button"><RefreshCw size={16} /></button>
+        <button className={buttonClass} onClick={() => { onRefresh(); window.dispatchEvent(new Event("futsi:refresh-attention")); }} aria-label="Actualizar" title="Actualizar" type="button"><RefreshCw size={16} /></button>
+        <AttentionNotifications token={token} user={user} onOpenChats={onOpenChats} />
         <button data-testid="theme-toggle" className={buttonClass} onClick={onToggleTheme} aria-label={theme === "light" ? "Cambiar a tema oscuro" : "Cambiar a tema claro"} type="button">{theme === "light" ? <Moon size={16} /> : <Sun size={16} />}</button>
         <div className="hidden items-center gap-2 px-2 md:flex">
           <span className="grid size-8 place-items-center rounded-full bg-emerald-700 text-sm font-semibold text-white">{user.username.slice(0, 1).toUpperCase()}</span>

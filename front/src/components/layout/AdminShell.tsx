@@ -440,6 +440,8 @@ export function AdminShell({
         />
         <div className={`min-w-0 flex-1 pt-[116px] transition-[margin] duration-200 sm:pt-[116px] lg:pt-0 ${sidebarExpanded ? "lg:ml-[17rem]" : "lg:ml-[5.75rem]"}`}>
           <AdminShellHeader
+            token={token}
+            onOpenChats={() => selectCommunicationsSection('whatsapp')}
             theme={theme}
             onToggleTheme={onToggleTheme}
             user={user}
