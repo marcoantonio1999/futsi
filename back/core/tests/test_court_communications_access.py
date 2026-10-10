@@ -175,3 +175,23 @@ def test_restricted_bulk_job_cannot_be_started_from_another_channel(auth_client)
     assert forward.call_count == 1
     assert forward.call_args.args == ("academy", "detail")
 
+
+def test_restricted_contact_audit_keeps_site_and_channel_scope(auth_client):
+    own, other = make_site(), make_site()
+    for address, site in ((FRANCO_ACADEMY, own), (FRANCO_LEAGUE, own), (UVM, other)):
+        WhatsAppAutomationSettings.objects.create(business_address=address, site=site)
+    client = restricted_client(auth_client, own, FRANCO_ACADEMY)
+    with patch("core.services.whatsapp_contact_audit.contact_audit", return_value={}) as audit:
+        assert client.get(BASE + "contact-audit/", {"scope": "all", "site": own.pk}).status_code == 200
+        assert audit.call_args.args == ({FRANCO_ACADEMY},)
+        assert client.get(BASE + "contact-audit/", {"scope": "all", "site": other.pk}).status_code == 200
+        assert audit.call_args.args == (set(),)
+        assert client.get(BASE + "contact-audit/", {"scope": "all", "business_address": FRANCO_LEAGUE}).status_code == 200
+        assert audit.call_args.args == (set(),)
+
+
+@pytest.mark.parametrize("operation", ["contact-audit", "quality-audit", "attention-notifications"])
+def test_restricted_audits_and_notifications_are_read_only(auth_client, operation):
+    client = restricted_client(auth_client, make_site(), UVM)
+    assert client.post(BASE + operation + "/", {}, format="json").status_code == 403
+

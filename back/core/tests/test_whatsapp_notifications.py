@@ -53,6 +53,19 @@ def test_scope_only_own_site_and_channel_override(auth_client, role):
     assert client.get(f"/api/whatsapp-conversations/{other_chat.pk}/").status_code in (403, 404)
 
 
+def test_restricted_coordinator_notifications_include_only_assigned_number(auth_client):
+    own, other = make_site(), make_site()
+    mine, _ = chat(own)
+    chat(own, "meta:987654321")
+    chat(other, "meta:112233445")
+    client, _, _ = auth_client(role="site_coordinator", primary_site=own,
+        section_permissions=["court_communications_only", "whatsapp_channel:meta:123456789"])
+    with patch("core.api.whatsapp_notifications.timezone.now", return_value=NOW):
+        response = client.get(URL)
+    assert response.status_code == 200, response.content
+    assert [item["conversation_id"] for item in response.json()["items"]] == [mine.pk]
+
+
 def test_answer_and_review_clear_pending(auth_client):
     site = make_site()
     conversation, original = chat(site)

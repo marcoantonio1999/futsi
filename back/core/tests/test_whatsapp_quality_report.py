@@ -60,6 +60,20 @@ def test_coordinator_cannot_read_other_sites(auth_client):
     assert client.get(URL + f"&site={other.pk}").json()["total"] == 0
 
 
+def test_restricted_coordinator_can_read_only_assigned_channel_audits(auth_client):
+    own, other = make_site(), make_site()
+    mine = audited_chat(own, "meta:123456789")
+    audited_chat(own, "meta:987654321")
+    audited_chat(other, "meta:112233445")
+    client, _, _ = auth_client(role="site_coordinator", primary_site=own,
+        section_permissions=["court_communications_only", "whatsapp_channel:meta:123456789"])
+    response = client.get(URL + f"&site={own.pk}")
+    assert response.status_code == 200, response.content
+    assert [row["conversation_id"] for row in response.json()["results"]] == [mine.pk]
+    assert client.get(URL + f"&site={other.pk}").json()["total"] == 0
+    assert client.get(URL + "&business_address=meta:987654321").json()["total"] == 0
+
+
 def test_invalid_page_and_anonymous_denied(auth_client, api_client):
     assert api_client.get(URL).status_code in [401, 403]
     client, _, _ = auth_client(role="admin")
