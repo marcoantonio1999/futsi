@@ -556,6 +556,13 @@ class WhatsAppConversationViewSet(
             rows = [row for row in rows if row["site"] == int(site)]
         return Response(contact_audit({row["business_address"] for row in rows}))
 
+    @action(detail=False, methods=["get"], url_path="quality-audit")
+    def quality_audit(self, request):
+        from core.services.whatsapp_quality_report import quality_report
+        response = Response(quality_report(self.get_queryset(), request.query_params))
+        response["Cache-Control"] = "private, no-store"
+        return response
+
     @action(
         detail=False,
         methods=["get"],

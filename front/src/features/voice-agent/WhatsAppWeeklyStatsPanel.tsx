@@ -5,6 +5,7 @@ import type { WhatsAppWeeklyStats } from "../../types";
 import { durationLabel, mondayKey, shiftWeek } from "./communicationUtils";
 import { formatDateTime, inputClass, secondaryButtonClass } from "./model";
 import { ContactClassificationPanel } from "./ContactClassificationPanel";
+import { WhatsAppQualityPanel } from "./WhatsAppQualityPanel";
 
 export function WhatsAppWeeklyStatsPanel({ value, token, onOpenConversation, scopeQuery = "scope=all", endpoint = '/whatsapp-conversations/weekly-stats/', showClassifications = true }: {
   value: WhatsAppWeeklyStats | null; token: string; onOpenConversation: (id: number) => void;
@@ -36,6 +37,7 @@ export function WhatsAppWeeklyStatsPanel({ value, token, onOpenConversation, sco
   const summary = stats?.summary;
   const delta = summary?.average_response_seconds != null && previous?.summary.average_response_seconds != null ? summary.average_response_seconds - previous.summary.average_response_seconds : null;
   return <div className="grid min-w-0 gap-4" aria-busy={loading}>
+    {showClassifications && <WhatsAppQualityPanel token={token} scopeQuery={scopeQuery} week={week} onOpenConversation={onOpenConversation} />}
     <div className="comm-toolbar"><div className="comm-inline comm-week-picker"><button className={secondaryButtonClass} aria-label="Semana anterior" onClick={() => setWeek(shiftWeek(week, -1))}><ArrowLeft size={16} /></button><label>Semana del <input aria-label="Elegir semana" className={inputClass} type="date" value={week} max={currentWeek} onChange={e => { if (e.target.value) setWeek(mondayKey(new Date(e.target.value + "T12:00:00"))); }} /></label><button className={secondaryButtonClass} aria-label="Semana siguiente" disabled={week >= currentWeek} onClick={() => setWeek(shiftWeek(week, 1))}><ArrowRight size={16} /></button>{!isCurrent && <button className="comm-link" onClick={() => setWeek(currentWeek)}>Semana actual</button>}</div><span className="comm-badge">{isCurrent ? "Semana en curso" : "Semana completa"}</span></div>
     {error && <div className="comm-reference" role="alert"><p className="comm-error">{error}</p><button className="comm-link" onClick={() => setRetry(n => n + 1)}>Volver a intentar</button></div>}
     {loading && <p className="comm-muted" role="status">Consultando periodo…</p>}
