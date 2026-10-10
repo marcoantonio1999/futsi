@@ -9,6 +9,12 @@ export function WhatsAppQualityPanel({ token, scopeQuery, week, onOpenConversati
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
   const [offset, setOffset] = useState(0);
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    const update = () => setRefresh(value => value + 1);
+    window.addEventListener("futsi:refresh-attention", update);
+    return () => window.removeEventListener("futsi:refresh-attention", update);
+  }, []);
   useEffect(() => { setOffset(0); }, [week, scopeQuery]);
   useEffect(() => {
     const controller = new AbortController();
@@ -17,7 +23,7 @@ export function WhatsAppQualityPanel({ token, scopeQuery, week, onOpenConversati
       .then(value => { if (!controller.signal.aborted) setReport(value); })
       .catch(reason => { if (!controller.signal.aborted) setError(reason.message); });
     return () => controller.abort();
-  }, [token, scopeQuery, week, offset]);
+  }, [token, scopeQuery, week, offset, refresh]);
   return <section className="comm-panel">
     <header className="comm-section-heading"><div><h3>Calidad comercial de los chats</h3><p>{report?.model.length ? report.model.join(" / ") : "Luna 6"} · esfuerzo {report?.effort.includes("high") ? "alto" : report?.effort.join(" / ") || "alto"}{report?.analyzed_until ? ` · Corte ${new Date(report.analyzed_until).toLocaleString("es-MX")}${report.provisional ? " · Semana en curso" : ""}` : ""}</p></div></header>
     {error ? <p className="comm-error comm-stats-body" role="alert">{error}</p> : !report ? <p className="comm-stats-body" role="status">Consultando auditoría…</p> : !report.total ? <p className="comm-empty">Sin auditoría guardada para esta semana.</p> : <>

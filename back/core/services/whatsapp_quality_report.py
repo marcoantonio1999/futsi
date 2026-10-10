@@ -31,7 +31,7 @@ def quality_report(conversations, params):
         selected = datetime.fromisoformat(params["week_start"]).replace(tzinfo=zone) if params.get("week_start") else now
         start = selected.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=(selected.weekday()+1) % 7)
         offset = int(params.get("offset", 0))
-        if offset < 0:
+        if not 0 <= offset <= 10000000:
             raise ValueError()
     except (TypeError, ValueError):
         raise ValidationError("Semana o página inválida.")
@@ -66,6 +66,6 @@ def quality_report(conversations, params):
     return {"week_start": start.isoformat(), "analyzed_until": cutoff.isoformat() if cutoff else None,
         "provisional": cutoff is not None and cutoff < end, "status_counts": dict(counts),
         "model": sorted({row["model"] for row in summary_rows if row["model"]}),
-        "effort": sorted({row["result"].get("reasoning_effort", "no registrado") for row in summary_rows if row["status"] == "completed"}),
+        "effort": sorted({row["result"].get("reasoning_effort") or "no registrado" for row in summary_rows if row["status"] == "completed"}),
         "eligible": sum(row["eligible"] for row in sites.values()), "sites": list(sites.values()), "total": len(summary_rows), "offset": offset,
         "results": page, "outcomes_verified": False}
