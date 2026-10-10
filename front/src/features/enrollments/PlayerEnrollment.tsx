@@ -194,6 +194,9 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo guardar."); }
     finally { saving.current = false; setBusy(false); }
   }
+  const consent = <label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />
+    He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
+  </label>;
   return <main className="enrollment-page public-enrollment-wizard">
     {done ? <section className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></section> :
       <form className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate>
@@ -201,10 +204,9 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
         <div ref={content} className="enrollment-wizard-content">
           {!defaults ? <p>{error ? "Solicita otro enlace si este ya no está disponible." : "Cargando…"}</p> : <>
             <section hidden={step !== 0}>
+              {consent}
               <Terms items={defaults.terms} />
-              <label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />
-                He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
-              </label>
+              {consent}
             </section>
             <section hidden={step !== 1}>
               <div className="enrollment-wizard-identity-fields">
