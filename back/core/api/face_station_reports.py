@@ -136,7 +136,7 @@ def _person_snapshot(person_type: str, person) -> dict:
     }
 
 
-def _resolve_canonical_person(device, raw_key: str) -> tuple[str, dict]:
+def _canonical_key(raw_key: str) -> str:
     person_type, separator, raw_id = _bounded_text(raw_key, 80).partition(":")
     if not separator or person_type not in {"student", "player", "collaborator"}:
         raise ValueError("canonical_person_key no es valido.")
@@ -144,34 +144,52 @@ def _resolve_canonical_person(device, raw_key: str) -> tuple[str, dict]:
         person_id = int(raw_id)
     except (TypeError, ValueError) as exc:
         raise ValueError("canonical_person_key no es valido.") from exc
-    if person_type == "student":
-        person = Student.objects.filter(
-            pk=person_id,
-            site_id=device.site_id,
-        ).first()
-    elif person_type == "player":
-        person = (
-            Player.objects.select_related("team")
-            .filter(
-                pk=person_id,
-                team__tournament__site_id=device.site_id,
-            )
-            .first()
-        )
-    else:
-        person = (
-            User.objects.filter(
-                pk=person_id,
-                primary_site_id=device.site_id,
-                role__in=FACE_STATION_COLLABORATOR_ROLES,
-            )
-            .exclude(pk=device.service_user_id)
-            .first()
-        )
-    if person is None:
+    if person_id <= 0:
+        raise ValueError("canonical_person_key no es valido.")
+    return f"{person_type}:{person_id}"
+
+
+def _report_person_snapshots(device, keys: set[str], report_date: date) -> dict:
+    """Bounded batch lookups, with same-day, same-station historical ownership.
+
+    Deleting a tournament can SET NULL player.team. Preserve only identities
+    already validated in this exact report; never authorize new/foreign players
+    on the strength of client-provided names or historical appearances elsewhere.
+    """
+    ids = {kind: set() for kind in ("student", "player", "collaborator")}
+    for key in keys:
+        kind, raw_id = key.split(":")
+        ids[kind].add(int(raw_id))
+    snapshots = {}
+    for kind, queryset in (
+        ("student", Student.objects.filter(site_id=device.site_id, pk__in=ids["student"])),
+        ("player", Player.objects.select_related("team").filter(
+            team__tournament__site_id=device.site_id, pk__in=ids["player"],
+        )),
+        ("collaborator", User.objects.filter(
+            primary_site_id=device.site_id, pk__in=ids["collaborator"],
+            role__in=FACE_STATION_COLLABORATOR_ROLES,
+        ).exclude(pk=device.service_user_id)),
+    ):
+        for person in queryset:
+            snapshots[f"{kind}:{person.id}"] = _person_snapshot(kind, person)
+    missing_players = {key for key in keys - snapshots.keys() if key.startswith("player:")}
+    if missing_players:
+        # A player assigned to a different site must still be rejected.
+        attached = {f"player:{pk}" for pk in Player.objects.filter(
+            pk__in=[int(key.split(":")[1]) for key in missing_players],
+            team__isnull=False,
+        ).values_list("pk", flat=True)}
+        for previous in FaceStationDailyPresence.objects.filter(
+            report__device=device, report__site_id=device.site_id,
+            report__report_date=report_date,
+            canonical_person_key__in=missing_players - attached,
+        ).values("canonical_person_key", "name", "person_type", "group_name", "team_name"):
+            key = previous.pop("canonical_person_key")
+            snapshots.setdefault(key, previous)
+    if keys - snapshots.keys():
         raise ValueError("Una identidad registrada no pertenece a la sede de esta estacion.")
-    key = f"{person_type}:{person_id}"
-    return key, _person_snapshot(person_type, person)
+    return snapshots
 
 
 def _normalized_policy(raw_policy) -> dict:
@@ -231,6 +249,16 @@ def _normalize_daily_payload(device, raw_payload) -> dict:
     if len(raw_rows) > MAX_DAILY_ROWS:
         raise ValueError(f"El reporte admite hasta {MAX_DAILY_ROWS} identidades por dia.")
 
+    canonical_keys = set()
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            raise ValueError("Cada identidad del reporte debe ser un objeto.")
+        source = _bounded_text(raw_row.get("canonical_person_key"), 80)
+        if raw_row.get("subject_kind") == "known" and not source:
+            source = _bounded_text(raw_row.get("subject_key"), 120)
+        if source:
+            canonical_keys.add(_canonical_key(source))
+    snapshots = _report_person_snapshots(device, canonical_keys, report_date)
     normalized_by_key: dict[tuple[str, str], dict] = {}
     for raw_row in raw_rows:
         if not isinstance(raw_row, dict):
@@ -250,10 +278,8 @@ def _normalize_daily_payload(device, raw_payload) -> dict:
         canonical_person_key = ""
         server_snapshot = {}
         if canonical_source:
-            canonical_person_key, server_snapshot = _resolve_canonical_person(
-                device,
-                canonical_source,
-            )
+            canonical_person_key = _canonical_key(canonical_source)
+            server_snapshot = snapshots[canonical_person_key]
         first_seen_at = _parse_timestamp(raw_row.get("first_seen_at"))
         last_seen_at = _parse_timestamp(raw_row.get("last_seen_at"))
         normalized = {
