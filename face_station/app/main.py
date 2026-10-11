@@ -122,7 +122,7 @@ async def update_config(request: Request):
             "night_batch_atomic_commit_enabled",
             "night_embedding_batch_size",
             "batch_idle_seconds", "spool_jpeg_quality",
-            "bootstrap_interval_seconds",
+            "report_sync_interval_seconds",
             "quality_filter_enabled", "quality_model_path", "quality_max_yaw", "quality_max_pitch",
             "quality_max_roll", "quality_min_face_width", "quality_min_face_height",
             "quality_min_interocular", "quality_min_sharpness",

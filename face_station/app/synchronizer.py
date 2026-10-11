@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger("futsi.face_station")
 DAILY_REPORT_STATE_PREFIX = "daily_report_sync:"
+NIGHTLY_BOOTSTRAP_PREFIX = "nightly_bootstrap:"
 
 
 class StationSynchronizer:
@@ -25,9 +26,7 @@ class StationSynchronizer:
         self.runtime = runtime
 
     def run(self) -> None:
-        last_bootstrap = 0.0
         last_heartbeat = 0.0
-        last_reference_refresh = 0.0
         last_daily_report_sync = 0.0
         client = None
         client_signature = None
@@ -42,20 +41,14 @@ class StationSynchronizer:
                 continue
             signature = (config.api_url, config.station_token, config.reference_proxy_url)
             if client is None or signature != client_signature:
+                if client is not None:
+                    client.session.close()
                 client = FutsiClient(config.api_url, config.station_token, config.reference_proxy_url)
                 client_signature = signature
-                last_bootstrap = 0.0
                 last_heartbeat = 0.0
-                last_reference_refresh = 0.0
                 last_daily_report_sync = 0.0
             try:
                 now = time.monotonic()
-                if now - last_bootstrap >= config.bootstrap_interval_seconds:
-                    self._bootstrap(client)
-                    last_bootstrap = now
-                if self.runtime._engine and now - last_reference_refresh >= config.bootstrap_interval_seconds:
-                    last_reference_refresh = now
-                    self.runtime._refresh_reference_embeddings()
                 if now - last_heartbeat >= 60:
                     client.heartbeat()
                     last_heartbeat = now
@@ -64,7 +57,7 @@ class StationSynchronizer:
                 self._sync_unknown_registrations(client)
                 if (
                     now - last_daily_report_sync
-                    >= config.bootstrap_interval_seconds
+                    >= config.report_sync_interval_seconds
                 ):
                     last_daily_report_sync = now
                     if not getattr(
@@ -84,6 +77,48 @@ class StationSynchronizer:
                 self.runtime._client_error = str(exc)
                 LOGGER.warning("Sincronizacion pendiente: %s", exc)
             self.runtime._stop.wait(max(2, config.sync_interval_seconds))
+        if client is not None:
+            client.session.close()
+
+    def refresh_for_night(self, run_date: str) -> dict:
+        """One durable download attempt per nightly run, never from page loads.
+
+        Claim before HTTP: even a power loss after the server responds cannot
+        issue another full download that night. On failure keep the local cache.
+        """
+        datetime.strptime(run_date, "%Y-%m-%d")
+        state_key = f"{NIGHTLY_BOOTSTRAP_PREFIX}{run_date}"
+        with self.runtime._bootstrap_lock:
+            config = self.runtime.config_manager.config
+            if not config.station_token:
+                return {"status": "offline", "run_date": run_date}
+            claimed_at = datetime.now(timezone.utc).isoformat()
+            if not self.runtime.store.claim_runtime_operation(
+                state_key,
+                json.dumps({"status": "started", "attempted_at": claimed_at}),
+            ):
+                state = json.loads(self.runtime.store.runtime_state(state_key, "{}"))
+                if state.get("synced_at"):
+                    self.runtime._last_bootstrap_at = state["synced_at"]
+                return {**state, "run_date": run_date, "reused": True}
+            client = FutsiClient(config.api_url, config.station_token, config.reference_proxy_url)
+            try:
+                self._bootstrap(client)
+                state = {
+                    "status": "synced", "attempted_at": claimed_at,
+                    "synced_at": self.runtime._last_bootstrap_at,
+                }
+            except Exception as exc:
+                with self.runtime._state_lock:
+                    self.runtime._client_online = False
+                    self.runtime._client_error = client.last_error or str(exc)
+                state = {"status": "failed", "attempted_at": claimed_at, "error": str(exc)[:1000]}
+                LOGGER.warning("Padron nocturno %s: se conserva la copia local: %s", run_date, exc)
+            finally:
+                client.session.close()
+            self.runtime.store.set_runtime_state(state_key, json.dumps(state, sort_keys=True))
+            LOGGER.info("Padron nocturno %s: %s", run_date, state["status"])
+            return {**state, "run_date": run_date, "reused": False}
 
     def _bootstrap(self, client: FutsiClient) -> None:
         payload = client.bootstrap()
@@ -101,6 +136,13 @@ class StationSynchronizer:
             self.runtime._last_bootstrap_at = datetime.now(timezone.utc).isoformat()
             self.runtime._client_online = client.online
             self.runtime._client_error = client.last_error
+
+        self.runtime.store.set_runtime_state("bootstrap_device", json.dumps({
+            "last_bootstrap_at": self.runtime._last_bootstrap_at,
+            "site_name": self.runtime._site_name,
+            "device_name": self.runtime._device_name,
+            "station_id": self.runtime._station_id,
+        }, sort_keys=True))
 
     def _sync_known_events(self, client: FutsiClient) -> None:
         rows = self.runtime.store.pending_queue("known_event", limit=100)
@@ -217,21 +259,18 @@ class StationSynchronizer:
                 ).encode("utf-8")
             ).hexdigest()
             unchanged = state.get("source_hash") == source_hash
-            already_synced_today = (
-                state.get("last_synced_date") == today_value
-            )
-            if unchanged and (
-                report_date[:7] != current_month
-                or already_synced_today
-            ):
+            if unchanged:
                 continue
-            revision = max(1, int(state.get("revision") or 0))
-            if not unchanged:
-                revision += 1 if state else 0
+            if state.get("failed_source_hash") == source_hash:
+                next_attempt = state.get("next_attempt_at", "")
+                if next_attempt and datetime.fromisoformat(next_attempt) > datetime.now(timezone.utc):
+                    continue
+            base_revision = int(state.get("revision") or 0)
+            revision = base_revision + 1
             payload = {
                 **source,
                 "revision": revision,
-                "base_revision": int(state.get("revision") or 0),
+                "base_revision": base_revision,
                 "base_payload_sha256": state.get("server_hash") or "",
                 "generated_at": datetime.now(
                     timezone.utc
@@ -241,10 +280,41 @@ class StationSynchronizer:
             try:
                 response = client.sync_daily_report(payload)
             except Exception as exc:
+                response = getattr(exc, "response", None)
+                status_code = getattr(response, "status_code", None)
+                try:
+                    rejection = response.json() if response is not None else {}
+                except (ValueError, AttributeError):
+                    rejection = {}
+                if not isinstance(rejection, dict):
+                    rejection = {}
+                if status_code == 409 and rejection.get("code") == "revision_conflict":
+                    # Persist the server's optimistic-concurrency base; do not
+                    # retry in the same pass or loop on a stale revision.
+                    state["revision"] = int(rejection["current_revision"])
+                    state["server_hash"] = rejection.get("payload_sha256", "")
+                attempts = (
+                    int(state.get("attempts") or 0) + 1
+                    if state.get("failed_source_hash") == source_hash else 1
+                )
+                permanent = status_code in {400, 401, 403, 404, 422}
+                delay = 86400 if permanent else min(21600, 300 * 2 ** min(attempts - 1, 7))
+                self.runtime.store.set_runtime_state(
+                    state_key,
+                    json.dumps({
+                        **state,
+                        "failed_source_hash": source_hash,
+                        "attempts": attempts,
+                        "http_status": status_code,
+                        "last_error": str(rejection.get("detail") or exc)[:1000],
+                        "next_attempt_at": (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat(),
+                    }, sort_keys=True),
+                )
                 LOGGER.warning(
-                    "No se pudo sincronizar el reporte diario %s: %s",
+                    "Reporte diario %s pendiente; proximo intento en %ss: %s",
                     report_date,
-                    exc,
+                    delay,
+                    rejection.get("detail") or exc,
                 )
                 continue
             self.runtime.store.set_runtime_state(

@@ -29,7 +29,15 @@ class FutsiClient:
             return response
         except Exception as exc:
             self.online = False
-            self.last_error = str(exc)
+            detail = ""
+            if isinstance(exc, requests.HTTPError) and exc.response is not None:
+                try:
+                    rejection = exc.response.json()
+                    if isinstance(rejection, dict):
+                        detail = str(rejection.get("detail") or "")[:1000]
+                except ValueError:
+                    pass
+            self.last_error = f"{exc}: {detail}" if detail else str(exc)
             raise
 
     def bootstrap(self) -> dict:

@@ -102,7 +102,7 @@ class StationConfig:
     night_embedding_batch_size: int = 1
     batch_idle_seconds: int = 10
     spool_jpeg_quality: int = 95
-    bootstrap_interval_seconds: int = 300
+    report_sync_interval_seconds: int = 300
     sync_interval_seconds: int = 10
     retention_days: int = 90
     auto_start_engine: bool = True
@@ -114,6 +114,7 @@ class StationConfig:
     def from_dict(cls, payload: dict) -> "StationConfig":
         allowed = {item.name for item in fields(cls)}
         values = {key: value for key, value in payload.items() if key in allowed}
+        values.setdefault("report_sync_interval_seconds", payload.get("bootstrap_interval_seconds", 300))
         legacy_match_fee = values.get("match_fee_amount", 0.0)
         values.setdefault("match_day_fee_amount", legacy_match_fee)
         values.setdefault("match_evening_fee_amount", legacy_match_fee)
@@ -122,6 +123,9 @@ class StationConfig:
         return config
 
     def validate(self) -> None:
+        self.report_sync_interval_seconds = int(self.report_sync_interval_seconds)
+        if not 60 <= self.report_sync_interval_seconds <= 86400:
+            raise ValueError("report_sync_interval_seconds debe estar entre 60 y 86400.")
         self.api_url = self.api_url.rstrip("/")
         self.reference_proxy_url = str(self.reference_proxy_url).strip()
         if self.reference_proxy_url and not self.reference_proxy_url.startswith("https://"):

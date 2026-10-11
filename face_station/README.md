@@ -63,6 +63,19 @@ alcance de sede y las reglas de asistencia.
 
 Endpoints del backend:
 
+El padrón se descarga **una vez antes de la consolidación nocturna**, incluidos
+alumnos, jugadores de torneos y colaboradores de la sede. No se descarga al abrir
+la página ni cada cinco minutos. El intento se guarda antes de hacer HTTP, de
+modo que reiniciar o repetir el lote no genera otra descarga esa noche. Si falla
+la conexión, se conserva la copia local hasta la siguiente noche.
+
+El envío de asistencia es independiente: los reportes sin cambios no se reenvían.
+Los errores de validación esperan 24 horas o un cambio del reporte; los errores
+transitorios esperan entre 5 minutos y 6 horas. Los conflictos guardan la revisión
+del servidor antes del siguiente intento. Los plazos persisten tras reiniciar.
+`report_sync_interval_seconds` controla la revisión de envíos pendientes; al leer
+configuraciones antiguas se migra `bootstrap_interval_seconds` a este nombre.
+
 - `GET /api/face-station/bootstrap/`: padron, referencias y sesiones de la sede.
 - `POST /api/face-station/heartbeat/`: salud de la estacion.
 - `POST /api/face-station/events/batch/`: asistencias identificadas e idempotentes.

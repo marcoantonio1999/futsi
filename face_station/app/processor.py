@@ -154,6 +154,7 @@ class StationRuntime:
         self.config_manager = config_manager
         self.store = LocalStore(config_manager.data_dir)
         self._state_lock = RLock()
+        self._bootstrap_lock = Lock()
         self._preview_lock = RLock()
         self._lifecycle_lock = RLock()
         self._stop = Event()
@@ -224,9 +225,15 @@ class StationRuntime:
         self._state = "stopped"
         self._last_error = ""
         self._last_bootstrap_at = ""
+        self._night_roster_prepared_date = ""
         self._site_name = "Sin sincronizar"
         self._device_name = "Estacion local"
         self._station_id = ""
+        saved_device = json.loads(self.store.runtime_state("bootstrap_device", "{}"))
+        self._last_bootstrap_at = saved_device.get("last_bootstrap_at", "")
+        self._site_name = saved_device.get("site_name", self._site_name)
+        self._device_name = saved_device.get("device_name", self._device_name)
+        self._station_id = saved_device.get("station_id", "")
         self._provider = "Sin cargar"
         self._target_fps = 1.0
         self._processing_fps = 0.0
@@ -6249,6 +6256,10 @@ class StationRuntime:
                 with self._state_lock:
                     self._manual_batch_status = "loading"
             config = self.config_manager.config
+            roster_run_date = automatic_run_date or datetime.now(BUSINESS_TIME_ZONE).date().isoformat()
+            if self._night_roster_prepared_date != roster_run_date:
+                self._batch_state = "syncing_night_roster"
+                StationSynchronizer(self).refresh_for_night(roster_run_date)
             if (
                 not self._engine
                 or (
@@ -6274,6 +6285,9 @@ class StationRuntime:
                             error=str(exc),
                         )
                     continue
+            if self._night_roster_prepared_date != roster_run_date:
+                self._refresh_reference_embeddings()
+                self._night_roster_prepared_date = roster_run_date
             if manual_run and self._manual_batch_cancel_requested.is_set():
                 self._finish_manual_batch("cancelled")
                 continue
@@ -6968,7 +6982,10 @@ class StationRuntime:
 
         def download(person: dict):
             client = FutsiClient(config.api_url, config.station_token, config.reference_proxy_url)
-            return client.download_reference(person, self.store.references_dir)
+            try:
+                return client.download_reference(person, self.store.references_dir)
+            finally:
+                client.session.close()
 
         executor = ThreadPoolExecutor(max_workers=6, thread_name_prefix="futsi-reference")
         futures = {executor.submit(download, person): person for person in pending}

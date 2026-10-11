@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
+import requests
 from types import SimpleNamespace
 
 import numpy as np
@@ -39,6 +41,75 @@ class FailsOneDateClient(RecordingClient):
         if payload["report_date"] == self.rejected_date:
             raise RuntimeError("rechazo de prueba")
         return super().sync_daily_report(payload)
+
+
+class HttpFailureClient(RecordingClient):
+    def __init__(self, status=400, rejection=None):
+        super().__init__()
+        self.status = status
+        self.rejection = rejection or {"detail": "Invalid identity"}
+        self.calls = 0
+
+    def sync_daily_report(self, payload):
+        self.calls += 1
+        response = requests.Response()
+        response.status_code = self.status
+        response._content = json.dumps(self.rejection).encode()
+        raise requests.HTTPError("Failed report", response=response)
+
+
+def test_rejected_report_waits_across_restart_and_retries_when_source_changes(tmp_path):
+    store = LocalStore(tmp_path)
+    day = datetime.now(BUSINESS_TIME_ZONE) - timedelta(days=1)
+    store.upsert_presence("unknown-retry", "unknown", day, 0.7, "test.jpg")
+    client = HttpFailureClient()
+    for _ in range(3):
+        StationSynchronizer(build_runtime(LocalStore(tmp_path)))._sync_daily_reports(client)
+    assert client.calls == 1
+    key = f"daily_report_sync:{day.date().isoformat()}"
+    state = json.loads(store.runtime_state(key))
+    assert state["http_status"] == 400
+    assert datetime.fromisoformat(state["next_attempt_at"]) > datetime.now(timezone.utc) + timedelta(hours=23)
+    store.upsert_presence("unknown-retry", "unknown", day, 0.8, "test.jpg")
+    success = RecordingClient()
+    StationSynchronizer(build_runtime(store))._sync_daily_reports(success)
+    assert success.payloads[0]["revision"] == 1
+    assert "next_attempt_at" not in json.loads(store.runtime_state(key))
+
+
+def test_conflict_saves_server_revision_then_retries_with_correct_base(tmp_path):
+    store = LocalStore(tmp_path)
+    day = datetime.now(BUSINESS_TIME_ZONE) - timedelta(days=1)
+    store.upsert_presence("unknown-conflict", "unknown", day, 0.7, "test.jpg")
+    client = HttpFailureClient(409, {"code": "revision_conflict", "current_revision": 8, "payload_sha256": "server-8"})
+    sync = StationSynchronizer(build_runtime(store))
+    sync._sync_daily_reports(client)
+    sync._sync_daily_reports(client)
+    assert client.calls == 1
+    key = f"daily_report_sync:{day.date().isoformat()}"
+    state = json.loads(store.runtime_state(key))
+    state["next_attempt_at"] = datetime.now(timezone.utc).isoformat()
+    store.set_runtime_state(key, json.dumps(state))
+    success = RecordingClient()
+    sync._sync_daily_reports(success)
+    assert success.payloads[0]["base_revision"] == 8
+    assert success.payloads[0]["base_payload_sha256"] == "server-8"
+    assert success.payloads[0]["revision"] == 9
+
+
+def test_unchanged_current_month_report_is_not_resent_next_day(tmp_path):
+    store = LocalStore(tmp_path)
+    day = datetime.now(BUSINESS_TIME_ZONE) - timedelta(days=1)
+    store.upsert_presence("unknown-unchanged", "unknown", day, 0.7, "test.jpg")
+    sync = StationSynchronizer(build_runtime(store))
+    client = RecordingClient()
+    sync._sync_daily_reports(client)
+    key = f"daily_report_sync:{day.date().isoformat()}"
+    state = json.loads(store.runtime_state(key))
+    state["last_synced_date"] = day.date().isoformat()
+    store.set_runtime_state(key, json.dumps(state))
+    sync._sync_daily_reports(client)
+    assert len(client.payloads) == 1
 
 
 def build_runtime(store: LocalStore, monthly_fee=1000.0):

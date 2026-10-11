@@ -317,6 +317,15 @@ class LocalStore:
                 (str(key), str(value), utc_now()),
             )
 
+    def claim_runtime_operation(self, key: str, value: str) -> bool:
+        """Durably claim a one-shot operation, including across process restarts."""
+        with self.connection(immediate=True) as db:
+            result = db.execute(
+                "insert or ignore into runtime_state(state_key,state_value,updated_at) values (?,?,?)",
+                (str(key), str(value), utc_now()),
+            )
+            return result.rowcount == 1
+
     def attendance_report_dates(self) -> list[str]:
         with self.connection() as db:
             return [
