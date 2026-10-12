@@ -42,20 +42,44 @@ class PlayerEnrollmentTests(TestCase):
     def new_invitation(self):
         return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name)
 
-    def test_emilio_pilot_cannot_access_other_courts(self):
+    def test_emilio_administers_tournaments_in_all_active_sites(self):
         outside = Site.objects.create(name='Otra cancha', code='otra')
         tournament = Tournament.objects.create(site=outside, name='Privado', billing_type='weekly_match')
         team = Team.objects.create(tournament=tournament, name='Equipo externo')
         self.client.force_authenticate(self.emilio)
         catalog = self.client.get('/api/player-enrollments/catalog/').json()
-        self.assertEqual([row['id'] for row in catalog['sites']], [self.site.pk])
-        self.assertNotIn(tournament.pk, [row['id'] for row in catalog['tournaments']])
-        self.assertEqual(self.client.post('/api/player-enrollments/catalog/', {'kind':'tournament','name':'No permitido','site':outside.pk,'billing_type':'weekly_match'}, format='json').status_code,403)
-        self.assertEqual(self.client.post('/api/player-enrollments/', {'tournament_id':tournament.pk,'team_id':team.pk}, format='json').status_code,403)
-        for method in ('get','delete'):
-            url = f'/api/player-enrollments/tournaments/{tournament.pk}/' + ('deletion-preview/' if method == 'get' else '')
-            self.assertEqual(getattr(self.client,method)(url).status_code,404)
+        self.assertEqual({row['id'] for row in catalog['sites']}, {self.site.pk, outside.pk})
+        self.assertIn(tournament.pk, [row['id'] for row in catalog['tournaments']])
+        self.assertIn(tournament.pk, catalog['deletable_tournament_ids'])
+        self.assertEqual(self.client.post('/api/player-enrollments/catalog/', {'kind':'tournament','name':'Permitido','site':outside.pk,'billing_type':'weekly_match'}, format='json').status_code,201)
+        url = f'/api/player-enrollments/tournaments/{tournament.pk}/'
+        self.assertEqual(self.client.get(url+'deletion-preview/').status_code,200)
+        self.assertEqual(self.client.delete(url, {}, format='json').status_code,400)
         self.assertTrue(Tournament.objects.filter(pk=tournament.pk).exists())
+        self.assertEqual(self.client.post('/api/player-enrollments/', {'tournament_id':tournament.pk,'team_id':team.pk}, format='json').status_code,201)
+        self.assertEqual(self.client.delete(url, {}, format='json').status_code,400)
+
+        empty = Tournament.objects.create(site=outside, name='Eliminar otra sede')
+        url = f'/api/player-enrollments/tournaments/{empty.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        payload = {'confirmation_token':preview['confirmation_token'], 'confirmation_name':empty.name}
+        self.assertEqual(self.client.delete(url,payload,format='json').status_code,200)
+        self.assertFalse(Tournament.objects.filter(pk=empty.pk).exists())
+
+    def test_emilio_sees_other_operators_links_but_collaborators_keep_own_scope(self):
+        from core.api.enrollments import invitations_for
+        row = PlayerEnrollmentInvitation.objects.create(created_by=self.other, expires_at=timezone.now()+timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name)
+        self.assertTrue(invitations_for(self.emilio).filter(pk=row.pk).exists())
+        self.assertFalse(invitations_for(self.other).filter(pk=self.invitation.pk).exists())
+
+    def test_inactive_sites_and_other_operator_deletion_remain_restricted(self):
+        inactive = Site.objects.create(name='Inactiva', is_active=False)
+        row = Tournament.objects.create(site=inactive, name='No disponible')
+        self.client.force_authenticate(self.emilio)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/tournaments/{row.pk}/deletion-preview/').status_code,404)
+        self.client.force_authenticate(self.other)
+        self.assertEqual(self.client.get('/api/player-enrollments/catalog/').json()['deletable_tournament_ids'], [])
+        self.assertEqual(self.client.delete(f'/api/player-enrollments/tournaments/{self.tournament.pk}/', {}, format='json').status_code,403)
 
     def test_franco_deletion_reuses_confirmation_and_protects_enrollments(self):
         self.client.force_authenticate(self.emilio)
@@ -97,7 +121,7 @@ class PlayerEnrollmentTests(TestCase):
         outside = Site.objects.create(name='Fuera de Franco')
         tournament = Tournament.objects.create(site=outside, name='Otro')
         team = Team.objects.create(tournament=tournament, name='Ajeno')
-        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 200)
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 403)
 

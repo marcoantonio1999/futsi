@@ -26,11 +26,7 @@ ENROLLMENT_FILE_MAX_BYTES = 20_000_000
 
 
 def enrollment_sites(user):
-    sites = Site.objects.filter(is_active=True)
-    if user.username.casefold() == 'emilio':
-        # Fail closed: this pilot must never grant access to another court.
-        sites = sites.filter(name__iexact='Colegio Franco')
-    return sites
+    return Site.objects.filter(is_active=True)
 
 
 def enrollment_staff(user):
@@ -44,9 +40,9 @@ class EnrollmentStaffPermission(permissions.BasePermission):
 
 def invitations_for(user):
     rows = PlayerEnrollmentInvitation.objects.all()
-    if user.username.casefold() == 'emilio':
-        rows = rows.filter(team_record__tournament__site__in=enrollment_sites(user))
-    return rows if user.role in {"admin", "owner", "dev"} else rows.filter(created_by=user)
+    # Emilio administers enrollments across all sites, including links issued
+    # by other operators. Other collaborators retain their own-link scope.
+    return rows if user.username.casefold() == 'emilio' or user.role in {"admin", "owner", "dev"} else rows.filter(created_by=user)
 
 
 class EnrollmentThrottle(SimpleRateThrottle):
@@ -236,7 +232,7 @@ class EnrollmentAdminView(APIView):
         team = serializer.validated_data['team_id']
         tournament = serializer.validated_data['tournament_id']
         if not enrollment_sites(request.user).filter(pk=tournament.site_id).exists():
-            raise PermissionDenied('Esta prueba está habilitada únicamente para Colegio Franco.')
+            raise PermissionDenied('La sede no está disponible para inscripciones.')
         row = PlayerEnrollmentInvitation.objects.create(created_by=request.user, expires_at=timezone.now() + timedelta(days=30), team_record=team, team=team.name, tournament=tournament.name)
         return Response({"token": row.token, "expires_at": row.expires_at}, status=201)
 
@@ -249,7 +245,7 @@ class EnrollmentCatalogView(APIView):
         tournaments = Tournament.objects.filter(is_active=True, site__in=sites).order_by('name', 'id')
         teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__in=sites).order_by('name', 'id')
         can_delete = request.user.username.casefold() == 'emilio' or request.user.role in {'admin', 'owner', 'dev'}
-        return Response({'sites': list(sites.values('id','name')), 'deletable_tournament_ids': list(tournaments.filter(site__name__iexact='Colegio Franco').values_list('pk', flat=True)) if can_delete else [],
+        return Response({'sites': list(sites.values('id','name')), 'deletable_tournament_ids': list(tournaments.values_list('pk', flat=True)) if can_delete else [],
                          'tournaments': TournamentSerializer(tournaments, many=True).data,
                          'teams': list(teams.values('id','name','tournament','is_active'))})
     def post(self, request):
@@ -263,7 +259,7 @@ class EnrollmentCatalogView(APIView):
         serializer.is_valid(raise_exception=True)
         site = serializer.validated_data['site'] if kind == 'tournament' else serializer.validated_data['tournament'].site
         if not enrollment_sites(request.user).filter(pk=site.pk).exists():
-            raise PermissionDenied('Esta prueba está habilitada únicamente para Colegio Franco.')
+            raise PermissionDenied('La sede no está disponible para inscripciones.')
         if kind == 'tournament' and not serializer.validated_data['site'].is_active:
             raise ValidationError('Selecciona una sede activa.')
         if kind == 'team':
@@ -285,7 +281,7 @@ class EnrollmentTournamentDeletionView(APIView):
         deletion_id = request.data.get('deletion_id')
         if not isinstance(deletion_id, int) or isinstance(deletion_id, bool):
             raise ValidationError('La referencia de eliminación no es válida.')
-        sites = enrollment_sites(request.user).filter(name__iexact='Colegio Franco')
+        sites = enrollment_sites(request.user)
         with transaction.atomic():
             audit = get_object_or_404(AuditLog.objects.select_for_update(), pk=deletion_id,
                 action='tournament_deleted', actor=request.user, metadata__site_id__in=list(sites.values_list('pk', flat=True)))
@@ -294,7 +290,7 @@ class EnrollmentTournamentDeletionView(APIView):
     def target(self, request, pk):
         if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
             raise PermissionDenied('No tienes permiso para eliminar torneos.')
-        return get_object_or_404(Tournament, pk=pk, site__in=enrollment_sites(request.user).filter(name__iexact='Colegio Franco'))
+        return get_object_or_404(Tournament, pk=pk, site__in=enrollment_sites(request.user))
 
     def get(self, request, pk):
         from core.services import tournament_deletion
@@ -330,7 +326,7 @@ class EnrollmentTeamDeletionView(APIView):
         if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
             raise PermissionDenied('No tienes permiso para eliminar equipos.')
         return get_object_or_404(Team.objects.select_related('tournament'), pk=pk,
-            tournament__site__in=enrollment_sites(request.user).filter(name__iexact='Colegio Franco'))
+            tournament__site__in=enrollment_sites(request.user))
 
     def get(self, request, pk):
         from core.services import team_deletion
