@@ -14,6 +14,9 @@ from core.models import (
     FaceStationEvent, FaceStationUnknownLink, FaceStationDailyPresence, FaceStationDailyReport,
     Charge, Payment, Discount, Invoice, HistoricalImportRow, AuditLog,
 )
+from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
+from .enrollment_storage import BUCKET as ENROLLMENT_BUCKET
+from .supabase_storage import storage_uri
 from .student_deletion import collect_owned_files, cleanup_files
 from .team_deletion import linked_clips, preserve_clip_evidence
 
@@ -30,11 +33,16 @@ def deletion_plan(tournament, *, lock=False):
 
     def add(model, label, condition):
         query = model.objects.filter(condition).order_by("pk")
+        if model is PlayerEnrollmentDocument:
+            query = query.defer('content')
         rows = list(query.select_for_update() if lock else query)
         groups.append({"model": model, "label": label, "rows": rows})
         return [row.pk for row in rows]
 
     teams = add(Team, "Equipos", Q(tournament=tournament))
+    invitations = add(PlayerEnrollmentInvitation, "Enlaces de inscripción", Q(team_record_id__in=teams))
+    enrollments = add(PlayerEnrollment, "Inscripciones y firmas de jugadores", Q(team_record_id__in=teams) | Q(invitation_id__in=invitations))
+    documents = add(PlayerEnrollmentDocument, "Documentos de inscripción", Q(enrollment_id__in=enrollments))
     rounds = add(Round, "Jornadas", Q(tournament=tournament))
     registrations = add(StudentTournamentRegistration, "Inscripciones de alumnos", Q(tournament=tournament) | Q(team_id__in=teams))
     player_query = Player.objects.filter(team_id__in=teams).order_by("pk")
@@ -60,8 +68,13 @@ def deletion_plan(tournament, *, lock=False):
     by_model = {group['model']: group['rows'] for group in groups}
     clips = linked_clips(by_model[Match], by_model[AttendanceSession], lock=lock, record_label='torneo')
     files = collect_owned_files(groups)
+    # Storage contents are removed after the database transaction commits.
+    # Keep paths in the audit for durable retries, never delete shared objects.
+    paths = {row.storage_path for row in by_model[PlayerEnrollmentDocument] if row.storage_path}
+    shared = set(PlayerEnrollmentDocument.objects.exclude(pk__in=documents).filter(storage_path__in=paths).values_list('storage_path', flat=True))
+    files.extend({'kind': 'supabase', 'uri': storage_uri(ENROLLMENT_BUCKET, path)} for path in sorted(paths - shared))
     fingerprint = hashlib.sha256(json.dumps({
-        "records": [[group["model"]._meta.label, [[row.pk, {field.attname: getattr(row, field.attname) for field in row._meta.fields}] for row in group["rows"]]] for group in groups],
+        "records": [[group["model"]._meta.label, [[row.pk, {field.attname: getattr(row, field.attname) for field in row._meta.fields if field.name != 'content'}] for row in group["rows"]]] for group in groups],
         "files": files,
         "preserved_players": [[row.pk, row.team_id, str(row.updated_at)] for row in preserved_players],
         "preserved_video_clips": clips,
@@ -102,7 +115,8 @@ def permanently_delete(tournament, actor, payload):
         reports = list(FaceStationDailyReport.objects.select_for_update().filter(pk__in=report_ids).order_by("pk"))
         preserve_clip_evidence(plan['preserved_video_clips'], 'tournament_deletion_evidence',
                                {'tournament_id': tournament.pk, 'tournament_name': tournament.name})
-        order = [HistoricalImportRow, Invoice, Discount, Payment, Charge, StudentTournamentRegistration,
+        order = [HistoricalImportRow, PlayerEnrollmentDocument, PlayerEnrollment, PlayerEnrollmentInvitation,
+                 Invoice, Discount, Payment, Charge, StudentTournamentRegistration,
                  AttendanceRecord, PlayerAttendanceRecord, FaceRecognitionAttempt, FaceStationEvent,
                  FaceStationUnknownLink, FaceStationDailyPresence, AttendanceSession, Match, Round, Team, Tournament]
         Player.objects.filter(pk__in=plan["preserved_players"]).update(team=None)

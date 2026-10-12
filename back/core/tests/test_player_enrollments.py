@@ -98,6 +98,92 @@ class PlayerEnrollmentTests(TestCase):
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.get(f'/api/player-enrollments/tournaments/{self.tournament.pk}/deletion-preview/').status_code,403)
 
+    def signed_tournament_document(self):
+        row = PlayerEnrollment.objects.create(invitation=self.invitation, team_record=self.team,
+            name='Jugador', birth_date=date(2000,1,1), team=self.team.name,
+            tournament=self.tournament.name, phone='5512345678', terms_version='v1', terms_text=['Firmado'])
+        doc = PlayerEnrollmentDocument.objects.create(enrollment=row, kind='player_signature',
+            storage_path='inscripciones/test/firma.png', content=b'', content_type='image/png', sha256='a'*64)
+        return row, doc
+
+    def test_confirmed_tournament_delete_removes_signed_enrollments_and_files(self):
+        from core.services.enrollment_storage import BUCKET
+        row, doc = self.signed_tournament_document()
+        other = Tournament.objects.create(site=self.site, name='Se conserva')
+        other_team = Team.objects.create(tournament=other, name='Otro equipo')
+        link = PlayerEnrollmentInvitation.objects.create(created_by=self.other, team_record=other_team,
+            team=other_team.name, tournament=other.name, expires_at=timezone.now()+timedelta(days=1))
+        self.client.force_authenticate(self.emilio)
+        url = f'/api/player-enrollments/tournaments/{self.tournament.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        items = {item['label']:item['count'] for item in preview['items']}
+        self.assertEqual(items['Inscripciones y firmas de jugadores'],1)
+        self.assertEqual(items['Documentos de inscripción'],1)
+        self.assertEqual(items['Enlaces de inscripción'],1)
+        self.assertEqual(preview['file_count'],1)
+        payload = {'confirmation_token':preview['confirmation_token'], 'confirmation_name':self.tournament.name}
+        with patch('core.services.student_deletion.delete_private_file') as delete_file:
+            response = self.client.delete(url,payload,format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(response.data['cleanup_pending'],0)
+        delete_file.assert_called_once_with(BUCKET,doc.storage_path)
+        self.assertFalse(PlayerEnrollment.objects.filter(pk=row.pk).exists())
+        self.assertFalse(PlayerEnrollmentDocument.objects.filter(pk=doc.pk).exists())
+        self.assertFalse(PlayerEnrollmentInvitation.objects.filter(pk=self.invitation.pk).exists())
+        self.assertFalse(Team.objects.filter(pk=self.team.pk).exists())
+        self.assertFalse(Tournament.objects.filter(pk=self.tournament.pk).exists())
+        self.assertTrue(PlayerEnrollmentInvitation.objects.filter(pk=link.pk).exists())
+        self.assertEqual(self.client.get(self.url).status_code,404)
+
+    def test_signed_file_cleanup_failure_is_durable_and_retryable(self):
+        from core.models import AuditLog
+        row, doc = self.signed_tournament_document()
+        self.client.force_authenticate(self.emilio)
+        url = f'/api/player-enrollments/tournaments/{self.tournament.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        payload = {'confirmation_token':preview['confirmation_token'], 'confirmation_name':self.tournament.name}
+        with patch('core.services.student_deletion.delete_private_file',side_effect=RuntimeError('Storage unavailable')):
+            response = self.client.delete(url,payload,format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(response.data['cleanup_pending'],1)
+        self.assertFalse(PlayerEnrollment.objects.filter(pk=row.pk).exists())
+        self.assertEqual(len(AuditLog.objects.get(pk=response.data['deletion_id']).metadata['pending_files']),1)
+        with patch('core.services.student_deletion.delete_private_file'):
+            retried = self.client.post('/api/player-enrollments/tournaments/deletion-cleanup/', {'deletion_id':response.data['deletion_id']},format='json')
+        self.assertEqual(retried.status_code,200,retried.data)
+        self.assertEqual(retried.data['cleanup_pending'],0)
+
+    def test_new_signed_enrollment_invalidates_tournament_review(self):
+        self.client.force_authenticate(self.emilio)
+        url = f'/api/player-enrollments/tournaments/{self.tournament.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        row, doc = self.signed_tournament_document()
+        payload = {'confirmation_token':preview['confirmation_token'], 'confirmation_name':self.tournament.name}
+        with patch('core.services.student_deletion.delete_private_file') as delete_file:
+            response = self.client.delete(url,payload,format='json')
+        self.assertEqual(response.status_code,409,response.data)
+        delete_file.assert_not_called()
+        self.assertTrue(PlayerEnrollmentDocument.objects.filter(pk=doc.pk).exists())
+
+    def test_tournament_failure_rolls_back_signed_records_without_deleting_storage(self):
+        from django.db.models.query import QuerySet
+        row, doc = self.signed_tournament_document()
+        self.client.force_authenticate(self.emilio)
+        url = f'/api/player-enrollments/tournaments/{self.tournament.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        payload = {'confirmation_token':preview['confirmation_token'], 'confirmation_name':self.tournament.name}
+        original = QuerySet.delete
+        def fail_parent(query):
+            if query.model is Tournament:
+                raise RuntimeError('Simulated failure')
+            return original(query)
+        with patch.object(QuerySet, 'delete', fail_parent), patch('core.services.student_deletion.delete_private_file') as delete_file:
+            self.assertEqual(self.client.delete(url,payload,format='json').status_code,500)
+        delete_file.assert_not_called()
+        self.assertTrue(PlayerEnrollment.objects.filter(pk=row.pk).exists())
+        self.assertTrue(PlayerEnrollmentDocument.objects.filter(pk=doc.pk).exists())
+        self.assertTrue(PlayerEnrollmentInvitation.objects.filter(pk=self.invitation.pk).exists())
+
     def test_delete_team_keeps_client_and_tournament(self):
         from core.models import Player
         self.client.force_authenticate(self.emilio)

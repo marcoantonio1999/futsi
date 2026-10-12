@@ -302,10 +302,6 @@ class EnrollmentTournamentDeletionView(APIView):
         stage = 'permission_and_target'
         try:
             tournament = self.target(request, pk)
-            stage = 'protected_enrollment_check'
-            # Signed enrollment files must not be lost by deleting their team.
-            if PlayerEnrollmentInvitation.objects.filter(team_record__tournament=tournament).exists():
-                raise ValidationError('Este torneo tiene enlaces o inscripciones firmadas. No se puede eliminar para conservar sus documentos.')
             stage = 'confirmed_tournament_deletion'
             return Response(tournament_deletion.permanently_delete(tournament, request.user, request.data))
         except ProtectedError:
