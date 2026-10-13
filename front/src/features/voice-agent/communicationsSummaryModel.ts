@@ -1,4 +1,24 @@
 import type { WhatsAppConversation } from "../../types";
+import { auditPeriods, type AuditRange } from "./auditPeriods.ts";
+
+export function buildRangeMessageTrend(conversations: WhatsAppConversation[], range: AuditRange, end = new Date()): WeeklyMessageTrendRow[] {
+  const days = auditPeriods.find(item => item.key === range)!.days;
+  const endTime = end.getTime(), startTime = endTime - days * 86400000;
+  const bucketSize = range === 'day' ? 3600000 : 86400000;
+  const formatter = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', ...(range === 'day' ? { hour: 'numeric' as const } : { day: 'numeric' as const, month: 'short' as const }) });
+  const rows = Array.from({ length: (endTime-startTime)/bucketSize }, (_, index) => ({ week: new Date(startTime+index*bucketSize).toISOString(), label: formatter.format(startTime+index*bucketSize), received: 0, replied: 0, waiting: 0, attended: 0 }));
+  for (const conversation of conversations) {
+    const messages = conversation.messages.filter(message => message.event_type !== 'revoked' && Date.parse(message.created_at) < endTime).sort((a,b) => Date.parse(b.created_at)-Date.parse(a.created_at) || b.id-a.id);
+    let laterOutbound = false;
+    for (const message of messages) {
+      const time = Date.parse(message.created_at);
+      const row = time >= startTime ? rows[Math.floor((time-startTime)/bucketSize)] : undefined;
+      if (message.direction === 'outbound') { laterOutbound = true; if (row) row.replied++; }
+      else if (row) { row.received++; if (laterOutbound) row.attended++; else row.waiting++; }
+    }
+  }
+  return rows;
+}
 
 export type WeeklyMessageTrendRow = {
   week: string;

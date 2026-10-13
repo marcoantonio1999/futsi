@@ -10,6 +10,27 @@ from core.tests.factories import make_site
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db(transaction=True)]
 NOW = datetime(2026, 10, 9, 20, tzinfo=ZoneInfo("America/Mexico_City"))
+
+@pytest.mark.parametrize('key,days', [('day',1),('three_days',3),('week',7),('month',30)])
+def test_rolling_quality_uses_latest_snapshot_without_double_count(auth_client, key, days):
+    chat=audited_chat(make_site(), 'meta:123456789')
+    QualityAudit.objects.create(conversation_id=chat.pk, channel=chat.to_address, period_end=NOW-timedelta(hours=2), rubric='commercial_v2', status='completed', model='older-model', result={}, usage={})
+    client,_,_=auth_client(role='admin')
+    with patch('core.services.whatsapp_quality_report.timezone.now',return_value=NOW+timedelta(hours=1)):
+        response=client.get('/api/whatsapp-conversations/quality-audit/', {'scope':'all','range':key})
+    assert response.status_code==200,response.content
+    result=response.json()
+    assert result['total']==1
+    assert result['model']==['gpt-6-luna']
+    assert result['period_days']==days
+    assert result['period_basis']=='audit_cutoff'
+
+def test_rolling_quality_empty_day_is_not_old_week(auth_client):
+    audited_chat(make_site(), 'meta:123456789')
+    client,_,_=auth_client(role='admin')
+    with patch('core.services.whatsapp_quality_report.timezone.now',return_value=NOW+timedelta(days=2)):
+        result=client.get('/api/whatsapp-conversations/quality-audit/', {'scope':'all','range':'day'}).json()
+    assert result['total']==0
 URL = "/api/whatsapp-conversations/quality-audit/?scope=all&week_start=2026-10-05"
 
 

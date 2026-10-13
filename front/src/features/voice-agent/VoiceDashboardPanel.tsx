@@ -29,6 +29,7 @@ import { AuditPeriodPicker, lastCompletedQualityWeek } from "./AuditPeriodPicker
 import { mondayKey } from "./communicationUtils";
 import { type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
 import { CourtCommunicationsOnlyContext, isCourtCommunicationsSection } from "./CommunicationsAccess";
+import { auditPeriods, type AuditRange } from './auditPeriods';
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);

@@ -183,3 +183,7 @@
 .comm-classification-detail .comm-table-wrap{max-height:320px;overflow:auto}
 @media(max-width:1000px){.comm-classification-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.comm-classification-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.comm-period-buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.comm-period-buttons button { min-height: 44px; padding: 10px 18px; border: 1px solid var(--comm-line, #d8e0dc); border-radius: 10px; background: var(--comm-surface, #fff); color: var(--comm-text, #20352b); font-weight: 600; cursor: pointer; }
+.comm-period-buttons button[aria-pressed="true"] { background: #34694d; color: #fff; border-color: #34694d; }
+.comm-period-buttons button:focus-visible { outline: 3px solid #86b79a; outline-offset: 3px; }

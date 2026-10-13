@@ -543,6 +543,11 @@ class WhatsAppConversationViewSet(
     @action(detail=False, methods=["get"], url_path="contact-audit")
     def contact_audit(self, request):
         from core.services.whatsapp_contact_audit import contact_audit
+        from core.services.whatsapp_contact_audit import period_contact_audit
+        from core.services.whatsapp_reporting_period import rolling_period
+        period = rolling_period(request.query_params)
+        if period:
+            return Response({**period_contact_audit(self.get_queryset(), period[0], period[1]), 'range':period[2], 'period_days':period[3]})
         # Reuse channel authorization; never accept unrestricted dataset ids.
         self.get_queryset()  # Validate site/address input through the existing scope.
         rows = self.channels(request).data
@@ -885,6 +890,8 @@ class WhatsAppConversationViewSet(
                 raise ValueError()
         except (TypeError, ValueError):
             return Response({'detail': 'period_days debe ser un número entre 1 y 31.'}, status=status.HTTP_400_BAD_REQUEST)
+        from core.services.whatsapp_reporting_period import rolling_period
+        period = rolling_period(request.query_params)
         requested_start = str(request.query_params.get("week_start") or "").strip()
         try:
             week_start_date = (
@@ -905,6 +912,9 @@ class WhatsAppConversationViewSet(
         start_at = timezone.make_aware(datetime.combine(week_start_date, datetime.min.time()))
         end_at = timezone.make_aware(datetime.combine(week_end_date, datetime.min.time()))
         now = timezone.now()
+        if period:
+            start_at, end_at, _, _ = period
+            week_start_date, week_end_date = start_at.date(), end_at.date() + timedelta(days=1)
 
         conversations = self.get_queryset()
         events = list(
@@ -1013,6 +1023,7 @@ class WhatsAppConversationViewSet(
                 "week_end": (week_end_date - timedelta(days=1)).isoformat(),
                 "period_days": period_days,
                 "generated_at": now.isoformat(),
+                **({'range': period[2], 'period_days': period[3], 'period_start': start_at.isoformat(), 'period_end': end_at.isoformat()} if period else {}),
                 "summary": _response_event_summary(events),
                 "business_hours": _response_event_summary(
                     [event for event in events if event.within_business_hours]
