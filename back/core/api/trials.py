@@ -879,6 +879,12 @@ class WhatsAppConversationViewSet(
         permission_classes=[CanViewWhatsAppWeeklyStats],
     )
     def weekly_stats(self, request):
+        try:
+            period_days = int(request.query_params.get('period_days', 7))
+            if not 1 <= period_days <= 31:
+                raise ValueError()
+        except (TypeError, ValueError):
+            return Response({'detail': 'period_days debe ser un número entre 1 y 31.'}, status=status.HTTP_400_BAD_REQUEST)
         requested_start = str(request.query_params.get("week_start") or "").strip()
         try:
             week_start_date = (
@@ -891,8 +897,11 @@ class WhatsAppConversationViewSet(
                 {"detail": "week_start debe tener el formato AAAA-MM-DD."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        week_start_date -= timedelta(days=week_start_date.weekday())
-        week_end_date = week_start_date + timedelta(days=7)
+        if period_days == 7:
+            week_start_date -= timedelta(days=week_start_date.weekday())
+        elif not requested_start:
+            week_start_date -= timedelta(days=period_days - 1)
+        week_end_date = week_start_date + timedelta(days=period_days)
         start_at = timezone.make_aware(datetime.combine(week_start_date, datetime.min.time()))
         end_at = timezone.make_aware(datetime.combine(week_end_date, datetime.min.time()))
         now = timezone.now()
@@ -1002,6 +1011,7 @@ class WhatsAppConversationViewSet(
             {
                 "week_start": week_start_date.isoformat(),
                 "week_end": (week_end_date - timedelta(days=1)).isoformat(),
+                "period_days": period_days,
                 "generated_at": now.isoformat(),
                 "summary": _response_event_summary(events),
                 "business_hours": _response_event_summary(

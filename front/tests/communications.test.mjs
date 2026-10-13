@@ -165,16 +165,30 @@ test("the all filter can order every conversation strictly by latest activity", 
 
 test("a reaction does not create an unanswered customer message", () => {
   const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body: "[reaction]" })], { human_takeover_active: true });
-  assert.equal(conversationAttention(c).key, "up_to_date");
+  assert.equal(conversationAttention(c).key, "waiting_client");
 });
 
-test("thanks, emoji and sticker replies close an exchange after our message", () => {
-  for (const body of ["Gracias", "Muchas gracias 🙏", "Perfecto, gracias", "Saludos", "Saludos cordiales", "🙏⚽", "[sticker]"]) {
+test("thanks close an exchange after our message", () => {
+  for (const body of ["Gracias", "Muchas gracias 🙏", "Perfecto, gracias", "Saludos", "Saludos cordiales"]) {
     const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
     const attention = conversationAttention(c);
     assert.equal(attention.key, "up_to_date", body);
     assert.equal(attention.label, "Conversación cerrada", body);
   }
+});
+
+test("emoji and stickers keep the statistics waiting for the client", () => {
+  for (const body of ["😊", "🙏⚽", "[sticker]", "[reaction]"]) {
+    const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
+    assert.equal(conversationAttention(c).key, "waiting_client", body);
+    assert.equal(matchesAttention(c, "waiting_client"), true, body);
+    assert.equal(matchesAttention(c, "needs_reply"), false, body);
+  }
+});
+
+test("an emoji does not dismiss an earlier unanswered real question", () => {
+  const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body: "¿Cuál es el horario?" }), msg(3, "inbound", "unknown", "12", { body: "😊" })], { human_takeover_active: true });
+  assert.equal(conversationAttention(c).key, "needs_reply");
 });
 
 test("a thank-you containing a real request still requires a response", () => {

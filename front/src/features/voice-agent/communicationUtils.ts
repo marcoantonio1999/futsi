@@ -59,8 +59,11 @@ export function mondayKey(value = new Date()) {
   return localDateKey(date);
 }
 export function shiftWeek(key: string, weeks: number) {
+  return shiftDays(key, weeks * 7);
+}
+export function shiftDays(key: string, days: number) {
   const date = new Date(key + "T12:00:00");
-  date.setDate(date.getDate() + weeks * 7);
+  date.setDate(date.getDate() + days);
   return localDateKey(date);
 }
 
@@ -130,13 +133,21 @@ export function conversationAttention(c: WhatsAppConversation): ConversationAtte
   const closingAcknowledgement = latestEvent?.direction === "inbound"
     && isClosingAcknowledgement(latestEvent.body)
     && nonRevokedMessages.some(message => message.direction === "outbound" && message.id !== latestEvent.id);
+  const nonTextAcknowledgement = latestEvent?.direction === "inbound"
+    && (/^\[(?:sticker|reaction)\]$/i.test(latestEvent.body.trim()) || (latestEvent.body.trim() !== "" && normalizedAcknowledgement(latestEvent.body) === ""));
+  const previousMeaningful = nonRevokedMessages.filter(message => message.id !== latestEvent?.id
+    && !(message.direction === "inbound" && isClosingAcknowledgement(message.body))).at(-1);
 
   const reviewed = c.attention_resolution?.message_id === last?.id && !!last
     && Date.parse(c.attention_resolution?.resolved_at ?? "") >= Math.max(lastAt, humanAt);
   if (reviewed) return c.follow_up_required
     ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "none", detail: "El equipo indicó que no hace falta responder. El seguimiento sigue marcado." }
     : { key: "up_to_date", tone: "green", label: "Atendido", since: null, turn: "none", detail: "El equipo revisó este intercambio e indicó que no requiere respuesta." };
-  if (closingAcknowledgement) return c.follow_up_required
+  if (nonTextAcknowledgement && previousMeaningful?.direction === "outbound" && !c.follow_up_required) return {
+    key: "waiting_client", tone: "blue", label: "Esperando al cliente", since: previousMeaningful.created_at, turn: "client",
+    detail: "El equipo respondió. El emoji, sticker o reacción del cliente no genera una nueva solicitud de respuesta.",
+  };
+  if (closingAcknowledgement && (!nonTextAcknowledgement || previousMeaningful?.direction === "outbound")) return c.follow_up_required
     ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "none", detail: "El contacto cerró el intercambio con un agradecimiento o una reacción. El seguimiento marcado por el equipo se conserva." }
     : { key: "up_to_date", tone: "green", label: "Conversación cerrada", since: null, turn: "none", detail: "El contacto respondió sólo con un agradecimiento, emoji, sticker o reacción después de nuestro mensaje; no requiere otra respuesta." };
   if (needsHuman || (turn === "team" && !c.bot_response_pending)) return {

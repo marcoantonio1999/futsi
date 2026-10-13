@@ -193,6 +193,7 @@ export type WhatsAppResponseStatsSummary = {
 };
 
 export type WhatsAppWeeklyStats = {
+  period_days?: number;
   week_start: string;
   week_end: string;
   generated_at: string;

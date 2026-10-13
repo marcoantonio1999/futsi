@@ -9,28 +9,22 @@ export type WeeklyMessageTrendRow = {
   attended: number;
 };
 
-function weekKey(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
-  return date.toISOString().slice(0, 10);
-}
+const mexicoDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' });
 
-function weekLabel(key: string) {
+function weekLabel(key: string, days = 7) {
   const start = new Date(`${key}T00:00:00Z`);
   const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 6);
+  end.setUTCDate(end.getUTCDate() + days - 1);
   const formatter = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", timeZone: "UTC" });
   return `${formatter.format(start).replace(" de ", " ")}–${formatter.format(end).replace(" de ", " ")}`;
 }
 
-function recentWeekKeys(end: Date, count: number) {
+function recentWeekKeys(end: Date, count: number, days = 7) {
   const currentMonday = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
-  currentMonday.setUTCDate(currentMonday.getUTCDate() - ((currentMonday.getUTCDay() + 6) % 7));
+  if (days === 7) currentMonday.setUTCDate(currentMonday.getUTCDate() - ((currentMonday.getUTCDay() + 6) % 7));
   return Array.from({ length: count }, (_, index) => {
     const date = new Date(currentMonday);
-    date.setUTCDate(date.getUTCDate() - (count - index - 1) * 7);
+    date.setUTCDate(date.getUTCDate() - (count - index - 1) * days);
     return date.toISOString().slice(0, 10);
   });
 }
@@ -39,11 +33,12 @@ export function buildWeeklyMessageTrend(
   conversations: WhatsAppConversation[],
   end = new Date(),
   weekCount = 6,
+  periodDays = 7,
 ): WeeklyMessageTrendRow[] {
-  const keys = recentWeekKeys(end, weekCount);
+  const keys = recentWeekKeys(end, weekCount, periodDays);
   const rows = new Map(keys.map(week => [week, {
     week,
-    label: weekLabel(week),
+    label: weekLabel(week, periodDays),
     received: 0,
     replied: 0,
     waiting: 0,
@@ -57,7 +52,10 @@ export function buildWeeklyMessageTrend(
     let laterOutbound = false;
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
-      const row = rows.get(weekKey(message.created_at));
+      const stamp = Date.parse(message.created_at);
+      const day = Number.isFinite(stamp) ? mexicoDate.format(new Date(stamp)) : '';
+      const offset = Math.floor((Date.parse(day + 'T00:00:00Z') - Date.parse(keys[0] + 'T00:00:00Z')) / 86400000 / periodDays);
+      const row = rows.get(keys[offset]);
       if (message.direction === "outbound") {
         laterOutbound = true;
         if (row) row.replied += 1;

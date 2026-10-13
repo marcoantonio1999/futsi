@@ -32,10 +32,30 @@ test("builds six chronological weeks and keeps the four measures in one dataset"
 test("a later reply attends earlier inbound messages even when it arrives in another week", () => {
   const rows = buildWeeklyMessageTrend([{ messages: [
     message(1, "inbound", "2026-05-31T23:58:00Z"),
-    message(2, "outbound", "2026-06-01T00:03:00Z"),
+    message(2, "outbound", "2026-06-01T06:03:00Z"),
   ] }], new Date("2026-06-18T12:00:00Z"));
   assert.deepEqual(rows.at(-4), { week: "2026-05-25", label: "25 may–31 may", received: 1, replied: 0, waiting: 0, attended: 1 });
   assert.deepEqual(rows.at(-3), { week: "2026-06-01", label: "1 jun–7 jun", received: 0, replied: 1, waiting: 0, attended: 0 });
+});
+
+test("groups three-day periods without rounding to Monday", () => {
+  const rows = buildWeeklyMessageTrend([{ messages: [
+    message(1, 'inbound', '2026-10-07T18:00:00Z'),
+    message(2, 'inbound', '2026-10-08T18:00:00Z'),
+    message(3, 'inbound', '2026-10-10T18:00:00Z'),
+    message(4, 'inbound', '2026-10-11T18:00:00Z'),
+  ] }], new Date('2026-10-08T12:00:00Z'), 2, 3);
+  assert.deepEqual(rows.map(row => row.week), ['2026-10-05','2026-10-08']);
+  assert.deepEqual(rows.map(row => row.received), [1,2]);
+  assert.equal(rows[1].label, '8 oct–10 oct');
+});
+
+test("uses Mexican midnight for two-day period boundaries", () => {
+  const rows = buildWeeklyMessageTrend([{ messages: [
+    message(1,'inbound','2026-10-08T05:59:00Z'),
+    message(2,'inbound','2026-10-08T06:00:00Z'),
+  ] }],new Date('2026-10-08T12:00:00Z'),2,2);
+  assert.deepEqual(rows.map(row => row.received), [1,1]);
 });
 
 test("ignores revoked messages and data outside the displayed period", () => {
