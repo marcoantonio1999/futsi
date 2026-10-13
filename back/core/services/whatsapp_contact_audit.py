@@ -44,13 +44,20 @@ def contact_audit(addresses):
             "datasets": [{"key": key, "total": count} for key, count in sorted(datasets.items())]}
 
 
+def _normalized_directory_phone(phone):
+    digits = re.sub(r'\D', '', phone or '')
+    if digits.startswith('521') and len(digits) == 13:
+        return '52' + digits[-10:]
+    if len(digits) == 10:
+        return '52' + digits
+    return digits
+
+
 def period_contact_audit(conversations, start, end):
     """Historical classifications for contacts active in the authorized window."""
     pairs = set()
     for address, phone in conversations.filter(messages__created_at__gte=start, messages__created_at__lt=end).order_by().values_list('to_address', 'contact_phone').distinct():
-        digits = re.sub(r'\D', '', phone or '')
-        if digits.startswith('521') and len(digits) == 13:
-            digits = '52' + digits[-10:]
+        digits = _normalized_directory_phone(phone)
         if digits:
             pairs.add((_directory_phone_id(address) or address, digits))
     categories = Counter(dict(prospect=0, current_client=0, ambiguous=0, unclassified=0, other=0))
@@ -64,9 +71,7 @@ def period_contact_audit(conversations, start, end):
                 JOIN whatsapp_contact_datasets d ON d.id=r.dataset_id WHERE d.phone_number_id IN ({','.join(['%s'] * len(ids))})
                 ORDER BY r.updated_at,r.id""",ids)
             for dataset, phone_id, phone, relationship in cursor.fetchall():
-                digits = re.sub(r'\D','',phone or '')
-                if digits.startswith('521') and len(digits)==13:
-                    digits = '52'+digits[-10:]
+                digits = _normalized_directory_phone(phone)
                 pair=(phone_id,digits)
                 if pair in pairs:
                     classified[pair]=(dataset,relationship)

@@ -41,7 +41,7 @@ def test_contact_period_normalizes_and_counts_only_active_pairs(phone_id, db):
     chats=MagicMock()
     chats.filter.return_value.order_by.return_value.values_list.return_value.distinct.return_value=[('meta:123','+5215500000001'),('meta:123','+525500000001'),('meta:123','+525500000002')]
     db.introspection.table_names.return_value=['whatsapp_contact_datasets','whatsapp_contact_records']
-    db.cursor.return_value.__enter__.return_value.fetchall.return_value=[('test','123','+525500000001','Prospecto'),('test','123','+525500000009','Alumno confirmado')]
+    db.cursor.return_value.__enter__.return_value.fetchall.return_value=[('test','123','5500000001','Prospecto'),('test','123','5500000009','Alumno confirmado')]
     result=period_contact_audit(chats,NOW-timedelta(days=3),NOW)
     assert result['total']==2
     assert result['categories']['prospect']==1
