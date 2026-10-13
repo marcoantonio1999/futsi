@@ -16,6 +16,7 @@ import { AdminShellMobileMenu } from "./AdminShellMobileMenu";
 import type { AdminShellProps } from "./AdminShellProps";
 import { AdminShellSidebar } from "./AdminShellSidebar";
 import type { TournamentSection } from "../../features/tournaments";
+import { createNavigationHistory } from "../../hooks/navigationHistory";
 import {
   academyDefaultTab,
   academyData,
@@ -176,6 +177,35 @@ export function AdminShell({
   useEffect(() => {
     try { localStorage.setItem("futsi_sidebar_expanded", String(sidebarExpanded)); } catch { /* Storage may be unavailable. */ }
   }, [sidebarExpanded]);
+
+  const navigationScreen = { activeTab, businessScope, communicationsSection, tournamentSection, studentsSection, coachesSection, guardiansSection, billingSection, attendanceSubsection, studentToEdit, guardianToEdit };
+  const navigationHistory = useRef<ReturnType<typeof createNavigationHistory<typeof navigationScreen>> | null>(null);
+  useEffect(() => {
+    const navigation = createNavigationHistory(window, `${isSoccerWa ? "soccerwa" : "futsi"}:${user.id}`, navigationScreen, screen => {
+      setActiveTab(screen.activeTab); setBusinessScope(screen.businessScope);
+      setCommunicationsSection(screen.communicationsSection); setTournamentSection(screen.tournamentSection);
+      setStudentsSection(screen.studentsSection); setCoachesSection(screen.coachesSection);
+      setGuardiansSection(screen.guardiansSection); setBillingSection(screen.billingSection);
+      setAttendanceSubsection(screen.attendanceSubsection); setStudentToEdit(screen.studentToEdit); setGuardianToEdit(screen.guardianToEdit);
+      setCommunicationsMenuExpanded(true); setTournamentsMenuExpanded(true);
+      setStudentsMenuExpanded(true); setCoachesMenuExpanded(true); setGuardiansMenuExpanded(true);
+      setMobileMenuOpen(false);
+    }, screen => {
+      const subsection = screen.activeTab === "communications" ? screen.communicationsSection
+        : screen.activeTab === "tournaments" ? screen.tournamentSection
+        : screen.activeTab === "students" ? screen.studentsSection
+        : screen.activeTab === "coaches" ? screen.coachesSection
+        : screen.activeTab === "guardians" ? screen.guardiansSection
+        : screen.activeTab === "billing" ? screen.billingSection
+        : screen.activeTab === "attendance" ? screen.attendanceSubsection : "overview";
+      return `#/app/${screen.businessScope}/${screen.activeTab}/${subsection}`;
+    });
+    navigationHistory.current = navigation;
+    return () => { navigation.dispose(); navigationHistory.current = null; };
+  }, [user.id]);
+  useEffect(() => {
+    navigationHistory.current?.update(navigationScreen);
+  }, [activeTab, businessScope, communicationsSection, tournamentSection, studentsSection, coachesSection, guardiansSection, billingSection, attendanceSubsection, studentToEdit, guardianToEdit]);
 
   function refreshActiveSection() {
     void onLoadSection(effectiveActiveTab, { force: true });
