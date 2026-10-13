@@ -2,16 +2,18 @@ import type { AppData } from "../../types";
 import { CheckCheck, Clock3, Flag, MessageCircle } from "lucide-react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { conversationAttention, type AttentionFilter } from "./communicationUtils";
-import { buildWeeklyMessageTrend } from "./communicationsSummaryModel";
+import { buildWeeklyMessageTrend, buildRangeMessageTrend } from "./communicationsSummaryModel";
+import { auditPeriods, type AuditRange } from "./auditPeriods";
 import type { VoiceDashboardSection } from "./model";
 
-export function CommunicationsSummary({ data, canReview, onNavigate, onOpenInbox }: {
+export function CommunicationsSummary({ data, canReview, onNavigate, onOpenInbox, range }: {
   data: AppData; canReview: boolean; onNavigate: (section: VoiceDashboardSection) => void;
   onOpenInbox: (filter: AttentionFilter) => void;
+  range?: AuditRange;
 }) {
   const contacts = data.whatsappConversations;
   const count = (key: AttentionFilter) => contacts.filter(c => conversationAttention(c).key === key).length;
-  const weeklyTrend = buildWeeklyMessageTrend(contacts);
+  const weeklyTrend = range ? buildRangeMessageTrend(contacts, range) : buildWeeklyMessageTrend(contacts);
   const pendingCalls = data.voiceCalls.filter(c => c.review_outcome === "pending").length;
   return <div className="comm-summary">
     <div className="comm-metrics comm-attention-metrics" aria-label="Estado actual de las conversaciones">
@@ -21,8 +23,8 @@ export function CommunicationsSummary({ data, canReview, onNavigate, onOpenInbox
       <button className="comm-metric attention-green" onClick={() => onOpenInbox("up_to_date")}><span><CheckCheck size={18} /> Sin pendientes</span><strong>{count("up_to_date")}</strong></button>
     </div>
     <section className="comm-panel comm-weekly-chart">
-      <header className="comm-section-heading"><div><h3>Mensajes por semana</h3></div></header>
-      <div className="comm-chart-area" role="img" aria-label="Gráfica semanal de mensajes recibidos, respuestas enviadas, mensajes esperando respuesta y mensajes atendidos">
+      <header className="comm-section-heading"><div><h3>{range ? `Mensajes · ${auditPeriods.find(item => item.key === range)!.label}` : 'Mensajes por semana'}</h3></div></header>
+      <div className="comm-chart-area" role="img" aria-label="Gráfica del periodo de mensajes recibidos, respuestas enviadas, mensajes esperando respuesta y mensajes atendidos">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={weeklyTrend} margin={{ top: 12, right: 20, bottom: 8, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--comm-line)" />

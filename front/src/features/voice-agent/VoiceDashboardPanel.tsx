@@ -25,6 +25,7 @@ import { CommunicationScopePicker } from "./CommunicationScopePicker";
 import { ChatExportPanel } from "./ChatExportPanel";
 import { type VoiceDashboardProps, type VoiceDashboardSection } from "./model";
 import { CourtCommunicationsOnlyContext, isCourtCommunicationsSection } from "./CommunicationsAccess";
+import { auditPeriods, type AuditRange } from './auditPeriods';
 
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
@@ -88,6 +89,7 @@ export function VoiceDashboardPanel({
   }, [communicationsData, user.primary_site, user.role]);
   const [selectedSite, setSelectedSite] = useState(user.role === "site_coordinator" ? String(user.primary_site ?? "unassigned") : "all");
   const [selectedAddress, setSelectedAddress] = useState("all");
+  const [auditRange, setAuditRange] = useState<AuditRange>('week');
   const [statisticsArea, setStatisticsArea] = useState<'courts' | 'veronica'>('courts');
   const [channels, setChannels] = useState<CommunicationChannel[]>([]);
   const [channelError, setChannelError] = useState("");
@@ -252,7 +254,8 @@ export function VoiceDashboardPanel({
       {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} showChannelDetails={canReviewCalls} />}
       {section === "template-builder" && <WhatsAppTemplateBuilder token={token} channels={templateChannels} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
-      {auditPage && (statisticsArea === 'courts' || !canReviewCalls) && <CommunicationsSummary data={voiceData} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
+      {auditPage && <div className="comm-period-buttons" role="group" aria-label="Periodo de auditoría">{auditPeriods.map(period => <button key={period.key} type="button" aria-pressed={auditRange===period.key} onClick={() => setAuditRange(period.key)}>{period.label}</button>)}</div>}
+      {auditPage && (statisticsArea === 'courts' || !canReviewCalls) && <CommunicationsSummary data={voiceData} range={auditRange} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} />}
 
       {section === "bookings" ? (
         <TrialBookingsPanel
@@ -296,7 +299,7 @@ export function VoiceDashboardPanel({
       ) : null}
 
       {auditPage && (canReviewCalls || courtCommunicationsOnly) ? (
-        <WhatsAppWeeklyStatsPanel key={statisticsArea} scopeQuery={statisticsArea === 'veronica' && canReviewCalls ? '' : query} value={courtCommunicationsOnly || statisticsArea === 'veronica' ? null : voiceData.whatsappWeeklyStats} endpoint={statisticsArea === 'veronica' && canReviewCalls ? '/veronica/weekly-stats/' : '/whatsapp-conversations/weekly-stats/'} showClassifications={statisticsArea !== 'veronica'} token={token} onOpenConversation={statisticsArea === 'veronica' ? () => onSelectSection('veronica') : openConversation} />
+        <WhatsAppWeeklyStatsPanel key={`${statisticsArea}:${auditRange}`} range={auditRange} scopeQuery={statisticsArea === 'veronica' && canReviewCalls ? '' : query} value={courtCommunicationsOnly || statisticsArea === 'veronica' ? null : voiceData.whatsappWeeklyStats} endpoint={statisticsArea === 'veronica' && canReviewCalls ? '/veronica/weekly-stats/' : '/whatsapp-conversations/weekly-stats/'} showClassifications={statisticsArea !== 'veronica'} token={token} onOpenConversation={statisticsArea === 'veronica' ? () => onSelectSection('veronica') : openConversation} />
       ) : null}
 
       {section === "chat-export" && canReviewCalls ? (

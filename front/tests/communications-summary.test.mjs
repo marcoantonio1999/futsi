@@ -1,6 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildWeeklyMessageTrend } from "../src/features/voice-agent/communicationsSummaryModel.ts";
+import { buildWeeklyMessageTrend, buildRangeMessageTrend } from "../src/features/voice-agent/communicationsSummaryModel.ts";
+import { auditPeriods } from "../src/features/voice-agent/auditPeriods.ts";
+
+test('four rolling presets filter exact boundaries and retain hourly/day buckets', () => {
+  const end=new Date('2026-10-13T00:00:00Z');
+  assert.deepEqual(auditPeriods.map(row=>row.days),[7,3,1,30]);
+  for (const {key,days} of auditPeriods) {
+    const start=end.getTime()-days*86400000;
+    const rows=buildRangeMessageTrend([{messages:[
+      message(1,'inbound',new Date(start-1).toISOString()),
+      message(2,'inbound',new Date(start).toISOString()),
+      message(3,'outbound',new Date(end.getTime()-1).toISOString()),
+      message(4,'inbound',end.toISOString()),
+      message(5,'inbound',new Date(start+1).toISOString(),'revoked'),
+    ]}],key,end);
+    assert.equal(rows.length,key==='day'?24:days);
+    assert.equal(rows.reduce((sum,row)=>sum+row.received,0),1);
+    assert.equal(rows.reduce((sum,row)=>sum+row.replied,0),1);
+    assert.equal(rows.reduce((sum,row)=>sum+row.attended,0),1);
+  }
+});
 
 const message = (id, direction, created_at, event_type = "message") => ({ id, direction, created_at, event_type });
 const conversations = [{

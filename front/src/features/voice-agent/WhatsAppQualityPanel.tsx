@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, Search } from "lucide-react";
 import { apiRequest } from "../../api";
 import { inputClass, secondaryButtonClass } from "./model";
+import type { AuditRange } from "./auditPeriods";
 
 const criteria = { courtesy: "Cortesía", seller: "Capacidad vendedora", commercial_initiative: "Proactividad", follow_up: "Seguimiento", useful_response: "Respuesta útil" };
 type Criterion = keyof typeof criteria;
@@ -16,7 +17,7 @@ const score = (value: number | null | undefined) => value == null ? "—" : `${v
 const label = (value: unknown) => typeof value === "string" ? value.replaceAll("_", " ") : "—";
 const statusLabels: Record<string, string> = { failed: "Pendiente por error", running: "En análisis", pending: "Pendiente", skipped: "Revisión requerida" };
 
-export function WhatsAppQualityPanel({ token, scopeQuery, week, onOpenConversation }: { token: string; scopeQuery: string; week: string; onOpenConversation: (id: number) => void }) {
+export function WhatsAppQualityPanel({ token, scopeQuery, week, range, onOpenConversation }: { token: string; scopeQuery: string; week: string; range?: AuditRange; onOpenConversation: (id: number) => void }) {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
   const [offset, setOffset] = useState(0);
@@ -29,13 +30,13 @@ export function WhatsAppQualityPanel({ token, scopeQuery, week, onOpenConversati
   const [evidenceError, setEvidenceError] = useState("");
   const dialog = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const query = `${scopeQuery}&week_start=${week}${segment ? `&segment=${segment}` : ""}`;
+  const query = `${scopeQuery}&${range ? `range=${range}` : `week_start=${week}`}${segment ? `&segment=${segment}` : ""}`;
   useEffect(() => {
     const update = () => setRefresh(value => value + 1);
     window.addEventListener("futsi:refresh-attention", update);
     return () => window.removeEventListener("futsi:refresh-attention", update);
   }, []);
-  useEffect(() => { setOffset(0); setReport(null); setOpen(false); setSelected(null); }, [week, scopeQuery]);
+  useEffect(() => { setOffset(0); setReport(null); setOpen(false); setSelected(null); }, [week, scopeQuery, range]);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -71,7 +72,7 @@ export function WhatsAppQualityPanel({ token, scopeQuery, week, onOpenConversati
   }, [open]);
   const keys = Object.keys(criteria) as Criterion[];
   return <section className="comm-panel">
-    <header className="comm-section-heading"><div><h3>Calidad de atención y venta</h3><p>{report?.analyzed_until ? `Corte ${new Date(report.analyzed_until).toLocaleString("es-MX")}` : "Auditoría semanal"}{report?.provisional ? " · Semana en curso" : ""}</p></div>
+    <header className="comm-section-heading"><div><h3>Calidad de atención y venta</h3><p>{range ? "Auditorías con corte en este periodo · " : ""}{report?.analyzed_until ? `Corte ${new Date(report.analyzed_until).toLocaleString("es-MX")}` : range ? "Sin corte disponible" : "Auditoría semanal"}{!range && report?.provisional ? " · Semana en curso" : ""}</p></div>
       <button ref={trigger} type="button" className={secondaryButtonClass} disabled={!report?.total} onClick={() => setOpen(true)}><Search size={16} /> Ver evidencia</button></header>
     <div className="comm-stats-body"><label>Tipo de contacto <select className={inputClass} value={segment} onChange={event => { setSegment(event.target.value); setOffset(0); setSelected(null); setReport(null); }}><option value="">Todos</option><option value="prospecto">Prospectos</option><option value="cliente_actual">Clientes actuales</option><option value="sin_interes_visible">Sin interés comercial</option><option value="no_evaluable">No evaluables</option></select></label></div>
     {error ? <p className="comm-error comm-stats-body" role="alert">{error}</p> : !report ? <p className="comm-stats-body" role="status">Consultando auditoría…</p> : !report.total ? <p className="comm-empty">Sin auditoría para este periodo o filtro.</p> : <>
