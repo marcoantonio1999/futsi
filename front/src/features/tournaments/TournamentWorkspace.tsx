@@ -9,6 +9,7 @@ import { TournamentDialog } from "./TournamentDialog";
 import { CreateTeamDialog, CreateTeamPage, EnrollmentDialog, ScheduleMatchDialog } from "./TournamentManagementDialogs";
 import { TournamentRoster } from "./TournamentRoster";
 import { TournamentMatches } from "./TournamentMatches";
+import { ReuseTeamsDialog } from "./ReuseTeamsDialog";
 import "../../components/views/sports.css";
 import "./tournaments.css";
 import { AcademyDeleteDialog } from "../../components/views/studentDeleteDialog";
@@ -17,6 +18,7 @@ import "../../components/views/students.css";
 export type TournamentSection = "overview" | "create" | "detail" | "teams" | "team-create" | "registrations" | "schedule";
 type Props = {
   token: string;
+  onTeamsReused?: () => Promise<void>;
   onDeleteTeam?: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   onViewTeamRoster?: (team: Team) => void;
   onDeleteTournament: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
@@ -43,9 +45,11 @@ export function TournamentsPanel(props: Props) {
   const [deletingTournament, setDeletingTournament] = useState<Tournament | null>(null);
   const [deletingTeam, setDeletingTeam] = useState<Team | null>(null);
   const [notice, setNotice] = useState("");
+  const [reuseOpen, setReuseOpen] = useState(false);
+  const [reusedTeams, setReusedTeams] = useState<Team[]>([]);
   const [rosterTeam, setRosterTeam] = useState("");
   const scoped = useMemo(() => {
-    if (!readOnly) return data;
+    if (!readOnly) return { ...data, teams: [...data.teams, ...reusedTeams.filter(team => !data.teams.some(row => row.id === team.id))] };
     const studentIds = new Set(data.students.map(row => row.id));
     const teamIds = new Set<number>();
     const ids = new Set<number>();
@@ -65,7 +69,7 @@ export function TournamentsPanel(props: Props) {
       matches: data.matches.filter(row => ids.has(row.tournament) && (!teamIds.size || teamIds.has(row.home_team) || teamIds.has(row.away_team))),
       studentTournamentRegistrations: registrations,
     };
-  }, [data, readOnly]);
+  }, [data, readOnly, reusedTeams]);
   const selected = scoped.tournaments.find(row => row.id === (props.selectedTournamentId ?? selectedId)) || scoped.tournaments.find(row => row.is_active) || scoped.tournaments[0];
   const teams = scoped.teams.filter(row => row.tournament === selected?.id);
   const registrations = scoped.studentTournamentRegistrations.filter(row => row.tournament === selected?.id);
@@ -78,6 +82,11 @@ export function TournamentsPanel(props: Props) {
   const showRoster = (team = "") => { go("registrations"); setRosterTeam(team); };
   const toast = notice && <div className="tournament-toast" role="status"><CheckCircle2 size={19} /><span>{notice}</span><button aria-label="Cerrar aviso" onClick={() => setNotice("")}><X size={17} /></button></div>;
   return <div className="tournament-ui sports-panel" data-testid="tournament-workspace">{toast}
+    {section === "teams" && !readOnly && <div className="tournament-actions"><button type="button" className="tournament-button secondary" onClick={() => setReuseOpen(true)}><Plus size={16} />Agregar equipos existentes</button></div>}
+    {reuseOpen && !readOnly && <ReuseTeamsDialog token={props.token} targets={scoped.tournaments} sites={scoped.sites} onClose={() => setReuseOpen(false)} onAdded={(created, skipped) => {
+      setReusedTeams(previous => [...previous, ...created]); setNotice(`${created.length} equipo(s) agregados. ${skipped.length} repetido(s) omitidos.`);
+      void props.onTeamsReused?.().catch(() => setNotice("Equipos agregados. Pulsa Actualizar para recargar el catálogo."));
+    }} />}
     {section === "create" ? readOnly ? <p className="tournament-feedback warning">Esta cuenta solo puede consultar torneos.</p> : <TournamentCreatePage sites={data.sites} onBack={() => go("overview")} onCreate={props.onCreateTournament} onCreated={created => { setNotice(`Torneo creado correctamente: ${created.name}.`); openTournament(created.id); }} />
       : section === "overview" ? <TournamentDirectory data={scoped} adult={adult} readOnly={Boolean(readOnly)} onOpen={openTournament} onCreate={() => go("create")} onDelete={setDeletingTournament} setupOnly={setupOnly} deletableTournamentIds={props.deletableTournamentIds} />
       : section === "teams" && setupOnly ? <EnrollmentTeamsDirectory data={scoped} readOnly={Boolean(readOnly)} onViewRoster={props.onViewTeamRoster} onDelete={props.onDeleteTeam ? setDeletingTeam : undefined} />

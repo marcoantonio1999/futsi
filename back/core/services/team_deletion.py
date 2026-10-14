@@ -6,7 +6,7 @@ from django.db import connection, transaction
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError
 from core.models import Team, Player, StudentTournamentRegistration, Match, AttendanceSession, AttendanceRecord, Charge, Payment, Discount, AuditLog
-from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment
+from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerSanction
 
 SALT = "futsi.team-deletion.v1"
 
@@ -66,7 +66,8 @@ def plan(team, *, lock=False):
         or Payment.objects.filter(team=team).exists()
         or Discount.objects.filter(team=team).exists()
         or PlayerEnrollmentInvitation.objects.filter(team_record=team).exists()
-        or PlayerEnrollment.objects.filter(team_record=team).exists()):
+        or PlayerEnrollment.objects.filter(team_record=team).exists()
+        or PlayerSanction.objects.filter(team=team).exists()):
         raise ValidationError('Este equipo tiene partidos, movimientos o enlaces de inscripción. No se elimina para conservar ese historial; primero revisa sus registros.')
     scheduled_records = [(row._meta.label, [(field.attname, getattr(row, field.attname)) for field in row._meta.fields]) for row in matches + sessions]
     fingerprint = sha256(repr((team.pk, team.name, team.updated_at, players, registrations, scheduled_records,

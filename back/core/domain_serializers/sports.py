@@ -3,6 +3,8 @@ from .attendance import attendance_window_label, can_mark_session, match_team_id
 from .money import charge_balance
 from core.services.match_sessions import ensure_match_attendance_sessions
 from core.services.team_capacity import capacity_guard, team_occupancy
+from core.services.player_blacklist import assert_player_id_not_blacklisted
+from core.services.player_sanctions import assert_player_change_allowed
 from django.db import transaction
 
 class TournamentSerializer(serializers.ModelSerializer):
@@ -140,7 +142,10 @@ class PlayerSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         team = validated_data.get("team", instance.team)
+        if team != instance.team or not validated_data.get("is_active", instance.is_active):
+            assert_player_change_allowed(instance.pk)
         if team and validated_data.get("is_active", instance.is_active) and (team.pk != instance.team_id or not instance.is_active):
+            assert_player_id_not_blacklisted(instance.pk)
             with capacity_guard(team, "player", instance.pk):
                 return super().update(instance, validated_data)
         return super().update(instance, validated_data)
@@ -160,6 +165,7 @@ class PlayerAttendanceRecordSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context.get("request")
         player = validated_data["player"]
+        assert_player_id_not_blacklisted(player.pk)
         session = validated_data["session"]
         if not can_mark_session(session):
             raise serializers.ValidationError(

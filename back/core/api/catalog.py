@@ -377,6 +377,16 @@ class StudentTournamentRegistrationViewSet(viewsets.ModelViewSet):
 class PlayerViewSet(viewsets.ModelViewSet):
     queryset = Player.objects.select_related("team", "team__tournament", "team__tournament__site").all()
     serializer_class = PlayerSerializer
+    def perform_destroy(self, instance):
+        from core.services.player_sanctions import assert_player_change_allowed
+        # Preserve the sanction rather than letting a deletion erase eligibility.
+        with transaction.atomic():
+            Tournament.objects.select_for_update().get(pk=instance.team.tournament_id)
+            Team.objects.select_for_update().get(pk=instance.team_id)
+            Player.objects.select_for_update().get(pk=instance.pk)
+            assert_player_change_allowed(instance.pk)
+            instance.delete()
+
     permission_classes = [IsOperationsCashierCoachOrGuardianRole]
     list_only_fields = (
         "id",

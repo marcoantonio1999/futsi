@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer } from "lucide-react";
+import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer, Menu, X } from "lucide-react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
+import { validateEnrollmentName } from "./enrollmentName";
+import { PrintableDelegate } from "./PrintableDelegate";
+import { SanctionBadge, type SanctionSummary } from "./SanctionBadge";
+import { WithdrawalPlayerCard, type WithdrawalPlayer } from "./WithdrawalPlayerCard";
+import { WithdrawalHistory } from "./WithdrawalHistory";
+import { NewSanction } from "./NewSanction";
+import { DisciplinaryRecords } from "./DisciplinaryRecords";
 import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
@@ -23,7 +30,7 @@ type Document = { id: number; kind: string };
 type Enrollment = {
   id: number; name: string; birth_date: string; team: string; tournament: string; team_id: number | null; tournament_id: number | null;
   phone: string; phone_secondary: string; guardian_name: string; signed_at: string;
-  terms_text: string[]; documents: Document[]; is_delegate?: boolean;
+  terms_text: string[]; documents: Document[]; is_delegate?: boolean; sanctions?: SanctionSummary[];
 };
 type Defaults = { team: string; tournament: string; terms: string[]; is_delegate?: boolean; delegate_name?: string; delegate_phone?: string };
 type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: Pick<Team, "id" | "name" | "tournament" | "is_active">[]; deletable_tournament_ids?: number[] };
@@ -207,6 +214,9 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
       setError(`Revisa ${invalid?.closest("label")?.textContent?.trim().toLocaleLowerCase() || "los campos obligatorios"}.`);
       invalid?.scrollIntoView({ block: "center" }); invalid?.focus(); return;
     }
+    const nameForm = new FormData(formElement);
+    const nameError = validateEnrollmentName(["given_names", "paternal_surname", "maternal_surname"].map(field => String(nameForm.get(field) || "")));
+    if (nameError) { setError(nameError); return; }
     const missing = required.filter(item => !files[item]);
     if (missing.length) { setError("Falta: " + missing.map(item => item === "player_photo" ? "selfie del jugador" : labels[item] || item).join(", ") + "."); return; }
     if (["player_photo", ...documentKinds].some(item => (files[item]?.size || 0) > ENROLLMENT_FILE_MAX_BYTES)) {
@@ -255,7 +265,10 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
               <div className="enrollment-wizard-player">
                 <Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} />
                 <div className="player-fields">
-                  <label className="full">{defaults.is_delegate ? "Nombre del delegado" : "Nombre"}<input name="name" required maxLength={160} autoComplete="name" defaultValue={defaults.delegate_name || ""} readOnly={Boolean(defaults.delegate_name)} disabled={step !== 2} /></label>
+                  <label className="full">Nombre(s)<input name="given_names" required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></label>
+                  <label>Apellido paterno<input name="paternal_surname" required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></label>
+                  <label>Apellido materno<input name="maternal_surname" required maxLength={80} disabled={step !== 2} /></label>
+                  {defaults.delegate_name && <p className="full">Primero debe inscribirse el delegado: {defaults.delegate_name}. Escribe sus nombres y apellidos completos en los campos anteriores.</p>}
                   <label>Equipo<input readOnly value={defaults.team} /></label>
                   <label>Torneo<input readOnly value={defaults.tournament} /></label>
                   <label>Fecha de nacimiento<input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></label>
@@ -304,8 +317,14 @@ function PrivateImage({ document, token, alt, onReady }: { document?: Document; 
 }
 
 export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
-  const [details, setDetails] = useState<{team: string; tournament: string; players: {id: number; name: string; is_delegate: boolean}[]} | null>(null);
-  const [selected, setSelected] = useState(""), [accepted, setAccepted] = useState(false);
+  const [details, setDetails] = useState<{team: string; tournament: string; players: WithdrawalPlayer[]} | null>(null);
+  const [selected, setSelected] = useState<number[]>([]), [accepted, setAccepted] = useState(false);
+  const selectedPlayers = details?.players.filter(player => selected.includes(player.id)) || [];
+  function togglePlayer(id: number) {
+    if (details?.players.find(player => player.id === id)?.can_withdraw === false) return;
+    setSelected(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id].sort((a, b) => a - b));
+    setAccepted(false); setSignature(null);
+  }
   const [signature, setSignature] = useState<Blob | null>(null);
   const [error, setError] = useState(""), [busy, setBusy] = useState(false), [done, setDone] = useState(false);
   const saving = useRef(false);
@@ -320,26 +339,28 @@ export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
   }, [endpoint]);
   async function submit(event: React.FormEvent) {
     event.preventDefault(); if (saving.current) return;
-    if (!selected || !accepted || !signature) { setError("Selecciona un integrante, confirma la baja y firma."); return; }
+    if (!selected.length || !accepted || !signature) { setError("Selecciona uno o más integrantes, confirma las bajas y firma."); return; }
     saving.current = true; setBusy(true); setError("");
     try {
-      const data = new FormData(); data.append("enrollment_id", selected); data.append("accepted", "true"); data.append("withdrawal_signature", signature, "firma-baja.png");
+      const data = new FormData(); selected.forEach(id => data.append("enrollment_ids", String(id))); data.append("accepted", "true"); data.append("withdrawal_signature", signature, "firma-baja.png");
       const response = await fetch(endpoint, {method: "POST", body: data}); const body = await response.json();
       if (!response.ok) throw new Error(body.detail || "No se pudo guardar la baja."); setDone(true);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar la baja."); }
     finally { saving.current = false; setBusy(false); }
   }
   return <main className="enrollment-page"><section className="registration-sheet">
-    <h1>Dar de baja</h1>{done ? <p role="status">Baja firmada y registrada. Se conserva la ficha del jugador.</p> : <>
+    <h1>Dar de baja</h1>{done ? <p role="status">{selected.length} baja(s) firmada(s) y registrada(s). Se conservan las fichas de los jugadores.</p> : <>
       {details && <form onSubmit={submit}><p>{details.team} · {details.tournament}</p><fieldset disabled={busy}>
-        <label>Integrante<select required value={selected} onChange={event => {setSelected(event.target.value); setAccepted(false); setSignature(null);}}><option value="">Selecciona un integrante</option>{details.players.map(player => <option key={player.id} value={player.id}>{player.name}{player.is_delegate ? " · Delegado" : ""}</option>)}</select></label>
-        {selected && <><label className="consent"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />Confirmo la baja de {details.players.find(player => String(player.id) === selected)?.name} de este equipo.</label><Signature key={selected} label="Firma de baja" onChange={setSignature} /></>}
-        <button className="primary" disabled={!selected || !accepted || !signature || busy}>{busy ? "Guardando baja…" : "Firmar y confirmar baja"}</button>
+        <legend>Selecciona uno o más integrantes</legend><p>Los jugadores con sanciones pendientes no pueden darse de baja hasta cumplir su período.</p>
+        <div className="withdrawal-player-list">{details.players.map(player => <WithdrawalPlayerCard key={player.id} player={player} endpoint={endpoint} selected={selected.includes(player.id)} onChange={() => togglePlayer(player.id)} />)}</div>
+        {!details.players.length && <p>No hay integrantes activos para dar de baja.</p>}
+        {!!selected.length && <><p>{selected.length} integrante(s) seleccionado(s):</p><ul>{selectedPlayers.map(player => <li key={player.id}>{player.name}</li>)}</ul><label className="consent"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />Confirmo la baja de todos los integrantes seleccionados de este equipo. Mi firma aplica a todas estas bajas.</label><Signature key={selected.join(",")} label="Firma de las bajas seleccionadas" onChange={setSignature} /></>}
+        <button className="primary" disabled={!selected.length || !accepted || !signature || busy}>{busy ? "Guardando bajas…" : `Firmar y confirmar ${selected.length || ""} baja(s)`}</button>
       </fieldset></form>}{!details && !error && <p role="status">Cargando integrantes…</p>}{error && <p className="error" role="alert">{error}</p>}
     </>}</section></main>;
 }
 
-function TeamRosterPage({ team, tournament, token, onBack, autoPrint = false, alignment = false }: { team: Team; tournament?: Tournament; token: string; onBack: () => void; autoPrint?: boolean; alignment?: boolean }) {
+export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = false, alignment = false }: { team: Team; tournament?: Tournament; token: string; onBack: () => void; autoPrint?: boolean; alignment?: boolean }) {
   const [players, setPlayers] = useState<Enrollment[]>([]);
   const [changingDelegate, setChangingDelegate] = useState(false);
   const [delegateMessage, setDelegateMessage] = useState("");
@@ -395,9 +416,10 @@ function TeamRosterPage({ team, tournament, token, onBack, autoPrint = false, al
       {alignment && <h1 className="alignment-title">HOJA DE ALINEACIÓN</h1>}
       <div className="match-paper-header"><div><strong>{team.name}</strong>{alignment && <small>EQUIPO</small>}<b>{tournament?.name || players[0]?.tournament || ""}</b>{alignment && <small>CATEGORÍA</small>}</div><div><strong>{formattedDate || "\u00a0"}</strong>{alignment && <small>FECHA</small>}<b>{time || "\u00a0"}</b>{alignment && <small>HORARIO</small>}</div></div>
       {!alignment && <p className="match-round">{round || "\u00a0"}</p>}
+      <PrintableDelegate name={players.find(row => row.is_delegate)?.name} />
       <div className="match-paper-columns">{[0, 1].map(column => <div key={column} className="match-paper-column">{Array.from({ length: slots / 2 }, (_, index) => {
         const row = pagePlayers[column * (slots / 2) + index];
-        return <article className="match-player-box" key={index}>{alignment ? <><div className="alignment-number"><span>Número</span></div><div className="alignment-fields"><div><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong></div><div><small>Firma</small></div></div></> : <><div className="match-photo">{row && <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={row.name} onReady={ok => { const id = row.documents.find(doc => doc.kind === "player_photo")?.id; if (id) setImageResults(previous => previous[id] === ok ? previous : { ...previous, [id]: ok }); }} />}</div><div className="match-player-data"><strong>{row?.name || "\u00a0"}</strong><div /></div></>}</article>;
+        return <article className={`match-player-box${row?.sanctions?.length ? " is-sanctioned" : ""}`} key={index}>{alignment ? <><div className="alignment-number"><span>Número</span></div><div className="alignment-fields"><div><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong></div><div>{row?.sanctions?.length ? <SanctionBadge sanctions={row.sanctions} /> : <small>Firma</small>}</div></div></> : <><div className="match-photo">{row && <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={row.name} onReady={ok => { const id = row.documents.find(doc => doc.kind === "player_photo")?.id; if (id) setImageResults(previous => previous[id] === ok ? previous : { ...previous, [id]: ok }); }} />}</div><div className="match-player-data"><strong>{row?.name || "\u00a0"}</strong><div><SanctionBadge sanctions={row?.sanctions} /></div></div></>}</article>;
       })}</div>)}</div>
       {alignment && <footer className="alignment-signatures"><div><span>FIRMA DEL CAPITÁN</span></div><div><span>FIRMA DEL ÁRBITRO</span></div><div className="alignment-count"><span>Nº DE JUGADORES</span></div></footer>}
     </section>)}</div>}
@@ -407,6 +429,34 @@ function TeamRosterPage({ team, tournament, token, onBack, autoPrint = false, al
 export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   token: string; onLogout: () => void; restricted?: boolean;
 }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileViewport, setMobileViewport] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuWasOpen = useRef(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+    const update = () => { setMobileViewport(media.matches); if (!media.matches) setMobileMenuOpen(false); };
+    update(); media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!mobileMenuOpen) { if (menuWasOpen.current) menuButtonRef.current?.focus(); menuWasOpen.current = false; return; }
+    menuWasOpen.current = true;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    sidebarRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setMobileMenuOpen(false); }
+      if (event.key !== "Tab") return;
+      const items = Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled)") || []);
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", onKey); };
+  }, [mobileMenuOpen]);
   const [search, setSearch] = useState(""), [team, setTeam] = useState(""), [tournament, setTournament] = useState("");
   const [link, setLink] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -414,7 +464,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
   const [inviteTournament, setInviteTournament] = useState(""), [inviteTeam, setInviteTeam] = useState("");
   const [tournamentSection, setTournamentSection] = useState<TournamentSection | null>(null);
-  const [enrollmentSection, setEnrollmentSection] = useState<"send" | "history" | "tools" | "withdraw">("history");
+  const [enrollmentSection, setEnrollmentSection] = useState<"send" | "history" | "tools" | "withdraw" | "withdraw-history" | "sanction-new" | "commission" | "blacklist">("history");
   const [rosterTeam, setRosterTeam] = useState<Team | null>(null);
   const [printRoster, setPrintRoster] = useState(false);
   const [alignmentSheet, setAlignmentSheet] = useState(false);
@@ -488,16 +538,25 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     setPrintRoster(print); setRosterTeam(item as Team);
   }
   return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" || (tournamentSection === null && enrollmentSection === "history") ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}`}>
-    <aside className="enrollment-admin-sidebar no-print">
+    {mobileMenuOpen && <button type="button" className="enrollment-menu-backdrop no-print" aria-label="Cerrar menú de inscripciones" onClick={() => setMobileMenuOpen(false)} />}
+    <aside ref={sidebarRef} id="enrollment-sections-menu" className={`enrollment-admin-sidebar no-print${mobileMenuOpen ? " is-open" : ""}`} role={mobileViewport && mobileMenuOpen ? "dialog" : undefined} aria-modal={mobileViewport && mobileMenuOpen ? true : undefined} aria-label="Secciones de inscripciones" aria-hidden={mobileViewport && !mobileMenuOpen ? true : undefined}>
+      <button type="button" className="enrollment-menu-close" aria-label="Cerrar secciones" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button>
       <h2>Inscripciones BPower</h2><p>Administración de inscripciones</p>
-      <nav aria-label="Administración de inscripciones" onClickCapture={() => { setRosterTeam(null); setPrintRoster(false); }}>
+      <nav aria-label="Administración de inscripciones" onClickCapture={() => { setRosterTeam(null); setPrintRoster(false); setMobileMenuOpen(false); }}>
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Inscripciones</div>
         <div className="enrollment-sidebar-submenu">
           <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Enviar enlace</button>
           <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Sábana</button>
           <button aria-current={tournamentSection === null && enrollmentSection === "tools" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("tools"); setTournament(""); setTeam(""); setError(""); setMessage(""); }}><Printer size={16} aria-hidden="true" />Herramientas</button>
-          <button aria-current={tournamentSection === null && enrollmentSection === "withdraw" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw"); setLink(""); setError(""); setMessage(""); }}><LogOut size={16} aria-hidden="true" />Dar de baja</button>
         </div>
+        <div className="enrollment-sidebar-heading"><LogOut size={18} aria-hidden="true" />Bajas</div>
+        <div className="enrollment-sidebar-submenu">
+          <button aria-current={tournamentSection === null && enrollmentSection === "withdraw" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw"); setLink(""); setError(""); setMessage(""); }}><UserPlus size={16} aria-hidden="true" />Nueva baja</button>
+          <button aria-current={tournamentSection === null && enrollmentSection === "withdraw-history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw-history"); setError(""); setMessage(""); }}><ListChecks size={16} aria-hidden="true" />Histórico de bajas</button>
+        </div>
+        <div className="enrollment-sidebar-heading"><ClipboardList size={18} />Sanciones</div>
+        <div className="enrollment-sidebar-submenu"><button aria-current={tournamentSection === null && enrollmentSection === "sanction-new" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("sanction-new"); setError(""); setMessage(""); }}>Nueva sanción</button></div>
+        <div className="enrollment-sidebar-submenu">{([['commission','Comisión disciplinaria'],['blacklist','Lista negra']] as const).map(([section,label])=><button key={section} aria-current={tournamentSection===null&&enrollmentSection===section?'page':undefined} onClick={()=>{setTournamentSection(null);setEnrollmentSection(section);setError('');setMessage('')}}>{label}</button>)}</div>
         <div className="enrollment-sidebar-heading"><Trophy size={18} />Torneos</div>
         <div className="enrollment-sidebar-submenu">
           <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}><ListChecks size={16} aria-hidden="true" />Torneos activos</button>
@@ -508,8 +567,8 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print"><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Enviar enlace" : enrollmentSection === "tools" ? "Herramientas" : enrollmentSection === "withdraw" ? "Dar de baja" : "Sábana"}</h1><div>
-        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { setPrintRoster(false); if (rosterTeam) setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
+      <header className="operator-header enrollment-admin-header no-print"><button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></button><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Enviar enlace" : enrollmentSection === "tools" ? "Herramientas" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : "Sábana"}</h1><div>
+        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { setPrintRoster(false); setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
         <button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
@@ -517,6 +576,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
       {rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { setRosterTeam(null); setPrintRoster(false); }} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
+          onTeamsReused={async () => { await loadCatalog(); }}
           deletableTournamentIds={catalog.deletable_tournament_ids || []}
           deletionCollectionPath="player-enrollments/tournaments"
           section={tournamentSection} onSelectSection={setTournamentSection}
@@ -531,9 +591,9 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
           onDeleteTeam={deleteTeam} onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </section> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
+      </section> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <section className="operator-controls no-print">
-        <h2>{enrollmentSection === "withdraw" ? "Dar de baja" : "Enviar enlace"}</h2>
+        <h2>{enrollmentSection === "withdraw" ? "Nueva baja" : "Enviar enlace"}</h2>
         <form onSubmit={invite} className="control-grid">
           <label>Torneo<select required value={inviteTournament} disabled={catalogBusy || busy}
             onChange={event => chooseTournament(event.target.value)}><option value="">Selecciona un torneo</option>

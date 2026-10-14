@@ -14,7 +14,7 @@ from core.models import (
     FaceStationEvent, FaceStationUnknownLink, FaceStationDailyPresence, FaceStationDailyReport,
     Charge, Payment, Discount, Invoice, HistoricalImportRow, AuditLog,
 )
-from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
+from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument, PlayerSanction
 from .enrollment_storage import BUCKET as ENROLLMENT_BUCKET
 from .supabase_storage import storage_uri
 from .student_deletion import collect_owned_files, cleanup_files
@@ -40,6 +40,7 @@ def deletion_plan(tournament, *, lock=False):
         return [row.pk for row in rows]
 
     teams = add(Team, "Equipos", Q(tournament=tournament))
+    add(PlayerSanction, "Sanciones de jugadores", Q(team_id__in=teams))
     invitations = add(PlayerEnrollmentInvitation, "Enlaces de inscripción", Q(team_record_id__in=teams))
     enrollments = add(PlayerEnrollment, "Inscripciones y firmas de jugadores", Q(team_record_id__in=teams) | Q(invitation_id__in=invitations))
     documents = add(PlayerEnrollmentDocument, "Documentos de inscripción", Q(enrollment_id__in=enrollments))
@@ -115,7 +116,7 @@ def permanently_delete(tournament, actor, payload):
         reports = list(FaceStationDailyReport.objects.select_for_update().filter(pk__in=report_ids).order_by("pk"))
         preserve_clip_evidence(plan['preserved_video_clips'], 'tournament_deletion_evidence',
                                {'tournament_id': tournament.pk, 'tournament_name': tournament.name})
-        order = [HistoricalImportRow, PlayerEnrollmentDocument, PlayerEnrollment, PlayerEnrollmentInvitation,
+        order = [HistoricalImportRow, PlayerSanction, PlayerEnrollmentDocument, PlayerEnrollment, PlayerEnrollmentInvitation,
                  Invoice, Discount, Payment, Charge, StudentTournamentRegistration,
                  AttendanceRecord, PlayerAttendanceRecord, FaceRecognitionAttempt, FaceStationEvent,
                  FaceStationUnknownLink, FaceStationDailyPresence, AttendanceSession, Match, Round, Team, Tournament]

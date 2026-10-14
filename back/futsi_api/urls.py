@@ -2,7 +2,10 @@ from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView, VeronicaWeeklyStatsView
 from core.api.bulk import BulkView
-from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
+from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
+from core.api.team_reuse import TeamReuseView
+from core.api.sanctions import PlayerSanctionView
+from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, BlacklistRevokeView
 from core.api.enrollment_delegate import EnrollmentDelegateView
 
 from core.api.automatic_attendance import (
@@ -83,6 +86,12 @@ urlpatterns = [
     path("api/player-enrollments/documents/<int:pk>/", EnrollmentDocumentView.as_view()),
     path("api/player-enrollments/public/<str:token>/", PublicEnrollmentView.as_view()),
     path("api/player-enrollments/withdrawal/<str:token>/", PublicWithdrawalView.as_view()),
+    path("api/player-enrollments/reuse-teams/", TeamReuseView.as_view()),
+    path("api/player-enrollments/sanctions/", PlayerSanctionView.as_view()),
+    path("api/player-enrollments/disciplinary/", DisciplinaryHistoryView.as_view()),
+    path("api/player-enrollments/blacklist/", BlacklistView.as_view()),
+    path("api/player-enrollments/blacklist/<int:pk>/revoke/", BlacklistRevokeView.as_view()),
+    path("api/player-enrollments/withdrawal/<str:token>/photos/<int:pk>/", PublicWithdrawalPhotoView.as_view()),
     path("api/veronica/bulk/<str:operation>/", BulkView.as_view(), {"kind": "veronica"}),
     path("api/whatsapp-bulk/<str:operation>/", BulkView.as_view(), {"kind": "academy"}),
     path("api/veronica/weekly-stats/", VeronicaWeeklyStatsView.as_view()),

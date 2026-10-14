@@ -45,6 +45,10 @@ test("Teams subsection defaults to all tournaments and keeps creation in its own
   assert.match(html, /Equipo ficticio/);
   assert.doesNotMatch(html, /CONTACTO_PRIVADO|Partidos|Dashboard|Alumnos inscritos/);
 });
+test("existing-team import is available in both enrollment and normal tournament teams", () => {
+  assert.match(render("teams"), /Agregar equipos existentes/);
+  assert.match(render("teams", false), /Agregar equipos existentes/);
+});
 
 test("Teams default includes teams belonging to different tournaments", () => {
   const second = { ...tournament, id: 91, name: "Segundo torneo" };

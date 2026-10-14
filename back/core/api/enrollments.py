@@ -2,6 +2,7 @@ from datetime import timedelta
 from hashlib import sha256
 from io import BytesIO
 import logging
+import unicodedata
 from uuid import uuid4
 
 from PIL import Image, ImageStat, UnidentifiedImageError
@@ -22,6 +23,8 @@ from core.enrollment_terms import TERMS_VERSION, TERMS
 from core.services import enrollment_storage
 from core.services.enrollment_images import PHOTO_MAX_BYTES, compress_document_photo
 from core.services.team_capacity import assert_capacity, capacity_guard
+from core.services.player_blacklist import assert_not_blacklisted
+from core.services.player_sanctions import enrollment_sanctions, assert_withdrawal_allowed, assert_no_pending_sanction
 
 logger = logging.getLogger(__name__)
 ENROLLMENT_FILE_MAX_BYTES = 20_000_000
@@ -63,8 +66,17 @@ def is_minor(birth_date):
     return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day)) < 18
 
 
+def completes_delegate_name(full_name, delegate_name):
+    # Team creation historically allowed abbreviated names. Let the same
+    # delegate add missing names/surnames without guessing their components.
+    remaining = iter(full_name.casefold().split())
+    return all(any(word == candidate for candidate in remaining) for word in delegate_name.casefold().split())
+
+
 class EnrollmentInput(serializers.Serializer):
-    name = serializers.CharField(max_length=160)
+    given_names = serializers.CharField(max_length=80, label="Nombre(s)")
+    paternal_surname = serializers.CharField(max_length=80, label="Apellido paterno")
+    maternal_surname = serializers.CharField(max_length=80, label="Apellido materno")
     birth_date = serializers.DateField()
     identity_type = serializers.ChoiceField(choices=["ine", "passport", "military_card", "minor"])
     phone = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
@@ -74,6 +86,18 @@ class EnrollmentInput(serializers.Serializer):
     document_checklist = serializers.ListField(child=serializers.ChoiceField(choices=["credential", "waiver", "other", "birth_certificate", "curp", "guardian_ine"]), required=False, default=list)
     accepted_terms = serializers.BooleanField()
     def validate(self, data):
+        parts = []
+        for field in ("given_names", "paternal_surname", "maternal_surname"):
+            value = " ".join(data.pop(field).split())
+            if not any(char.isalpha() for char in value) or any(
+                not (char.isalpha() or char in " '-’." or unicodedata.category(char).startswith('M'))
+                for char in value
+            ):
+                raise ValidationError({field: "Escribe el nombre o apellido, sin números ni símbolos."})
+            parts.append(value)
+        data["name"] = " ".join(parts)
+        if len(data["name"]) > 160:
+            raise ValidationError("El nombre completo puede tener hasta 160 caracteres.")
         if data["birth_date"] > timezone.localdate() or data["birth_date"].year < timezone.localdate().year - 110:
             raise ValidationError("Revisa la fecha de nacimiento.")
         if not data.pop("accepted_terms"):
@@ -143,6 +167,8 @@ class PublicEnrollmentView(APIView):
         serializer = EnrollmentInput(data=request.data)
         serializer.is_valid(raise_exception=True)
         fields = serializer.validated_data
+        assert_not_blacklisted(fields['name'], fields['birth_date'])
+        assert_no_pending_sanction(fields['name'], fields['birth_date'])
         kinds = ["player_photo", "player_signature"]
         if is_minor(fields["birth_date"]):
             kinds.extend(["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back", "guardian_signature"])
@@ -193,8 +219,10 @@ class PublicEnrollmentView(APIView):
             fields.update(team=invitation.team, tournament=invitation.tournament, team_record=invitation.team_record)
             checklist = fields.pop("document_checklist", [])
             with capacity_guard(invitation.team_record, "enrollment") as team:
+                fields['identity_key'] = assert_not_blacklisted(fields['name'], fields['birth_date'], locked=True)
+                assert_no_pending_sanction(fields['name'], fields['birth_date'])
                 first = not PlayerEnrollment.objects.filter(team_record=team).exists()
-                if first and team.representative_name and fields['name'].strip().casefold() != team.representative_name.strip().casefold():
+                if first and team.representative_name and not completes_delegate_name(fields['name'], team.representative_name):
                     raise ValidationError('Primero debe inscribirse el delegado del equipo.')
                 fields['is_delegate'] = first
                 row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, terms_text=TERMS, document_checklist=checklist, **fields)
@@ -217,8 +245,32 @@ class EnrollmentAdminView(APIView):
         except (ValueError, TypeError):
             raise ValidationError("Página inválida.")
         rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).select_related('team_record__tournament').prefetch_related("documents")
+        withdrawal_history = request.query_params.get('withdrawn_only') == 'true'
+        withdrawal_filters = None
+        if withdrawal_history:
+            rows = rows.filter(withdrawn_at__isnull=False).order_by('-withdrawn_at', '-pk')
+            withdrawal_filters = {
+                'tournaments': list(rows.order_by().values('tournament', 'team_record__tournament_id').distinct()),
+                'teams': list(rows.order_by().values('team', 'team_record_id', 'team_record__tournament_id').distinct()),
+            }
+            date_field = serializers.DateField()
+            dates = {}
+            for key in ('date_from', 'date_to'):
+                value = request.query_params.get(key)
+                if value:
+                    dates[key] = date_field.run_validation(value)
+            if dates.get('date_from') and dates.get('date_to') and dates['date_from'] > dates['date_to']:
+                raise ValidationError('La fecha inicial no puede ser posterior a la final.')
+            if 'date_from' in dates:
+                rows = rows.filter(withdrawn_at__date__gte=dates['date_from'])
+            if 'date_to' in dates:
+                rows = rows.filter(withdrawn_at__date__lte=dates['date_to'])
         if request.query_params.get('active_only') == 'true':
             rows = rows.filter(withdrawn_at__isnull=True).order_by('-is_delegate', 'signed_at', 'id')
+            from core.enrollment_models import PlayerBlacklistEntry
+            from django.db.models import Q
+            exclusions=PlayerBlacklistEntry.objects.filter(is_active=True)
+            rows = rows.exclude(Q(identity_key__in=exclusions.values('identity_key')) | Q(pk__in=exclusions.filter(source_sanction__enrollment_id__isnull=False).values('source_sanction__enrollment_id')))
         for field in ("team", "tournament"):
             if request.query_params.get(field):
                 rows = rows.filter(**{field: request.query_params[field][:140]})
@@ -236,10 +288,16 @@ class EnrollmentAdminView(APIView):
         rows = rows.prefetch_related(None).prefetch_related(Prefetch("documents", queryset=PlayerEnrollmentDocument.objects.defer("content")))
         count = rows.count()
         result = []
-        for row in rows[(page - 1) * 25:page * 25]:
+        page_rows = list(rows[(page - 1) * 25:page * 25])
+        sanctions = enrollment_sanctions(page_rows)
+        for row in page_rows:
             result.append({"id": row.pk, "name": row.name, "birth_date": row.birth_date, "team": row.team, "team_id": row.team_record_id, "tournament": row.tournament, "tournament_id": row.team_record.tournament_id if row.team_record_id else None, "identity_type": row.identity_type, "terms_text": row.terms_text, "phone": row.phone, "phone_secondary": row.phone_secondary, "guardian_name": row.guardian_name, "payment_reference": row.payment_reference, "document_checklist": row.document_checklist, "signed_at": row.signed_at, "terms_version": row.terms_version, "status": "Inscrito", "documents": [{"id": doc.pk, "kind": doc.kind, "sha256": doc.sha256} for doc in row.documents.all()]})
             result[-1].update(is_delegate=row.is_delegate, withdrawn_at=row.withdrawn_at, status='Baja' if row.withdrawn_at else 'Inscrito')
-        response = Response({"results": result, "count": count, "page": page})
+            result[-1]['sanctions'] = sanctions[row.pk]
+        body = {"results": result, "count": count, "page": page}
+        if withdrawal_history:
+            body['withdrawal_filters'] = withdrawal_filters
+        response = Response(body)
         response["Cache-Control"] = "no-store"
         return response
 
@@ -283,21 +341,45 @@ class PublicWithdrawalView(APIView):
 
     def get(self, request, token):
         invitation = self.invitation(token)
+        from django.db.models import Exists, OuterRef
+        photos = PlayerEnrollmentDocument.objects.filter(enrollment_id=OuterRef('pk'), kind='player_photo')
+        rows = list(PlayerEnrollment.objects.filter(team_record=invitation.team_record, withdrawn_at__isnull=True).annotate(has_photo=Exists(photos)).order_by('signed_at', 'id'))
+        sanctions = enrollment_sanctions(rows)
         response = Response({'team': invitation.team, 'tournament': invitation.tournament,
-            'players': list(PlayerEnrollment.objects.filter(team_record=invitation.team_record, withdrawn_at__isnull=True).order_by('signed_at', 'id').values('id', 'name', 'is_delegate'))})
+            'players': [{'id': row.pk, 'name': row.name, 'is_delegate': row.is_delegate, 'has_photo': row.has_photo,
+                         'sanctions': sanctions[row.pk], 'can_withdraw': not sanctions[row.pk]} for row in rows]})
         response['Cache-Control'] = 'no-store'
         return response
 
     def post(self, request, token):
         class Input(serializers.Serializer):
-            enrollment_id = serializers.IntegerField(min_value=1)
+            enrollment_id = serializers.IntegerField(min_value=1, required=False)
+            enrollment_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), min_length=1, max_length=100, required=False)
             accepted = serializers.BooleanField()
+            def validate(self, data):
+                if 'enrollment_id' in data and 'enrollment_ids' in data:
+                    raise ValidationError('Envía una sola lista de integrantes.')
+                ids = data.get('enrollment_ids', [data['enrollment_id']] if 'enrollment_id' in data else [])
+                if not ids or len(ids) != len(set(ids)):
+                    raise ValidationError('Selecciona integrantes sin repetirlos.')
+                data['enrollment_ids'] = ids
+                return data
         serializer = Input(data=request.data)
         serializer.is_valid(raise_exception=True)
         if not serializer.validated_data['accepted']:
             raise ValidationError('Confirma la baja antes de firmar.')
         invitation = self.invitation(token)
-        get_object_or_404(PlayerEnrollment, pk=serializer.validated_data['enrollment_id'], team_record=invitation.team_record, withdrawn_at__isnull=True)
+        ids = serializer.validated_data['enrollment_ids']
+        def selected_rows(team, locked=False):
+            rows = PlayerEnrollment.objects.filter(pk__in=ids, team_record=team, withdrawn_at__isnull=True).order_by('pk')
+            if locked:
+                rows = rows.select_for_update()
+            rows = list(rows)
+            if len(rows) != len(ids):
+                raise Http404('Uno de los integrantes no pertenece al equipo o ya fue dado de baja.')
+            assert_withdrawal_allowed(rows)
+            return rows
+        selected_rows(invitation.team_record)
         content, mime = validated_file(request.FILES.get('withdrawal_signature'), 'withdrawal_signature')
         path = f'bajas/{invitation.pk}/{uuid4().hex}/firma.png'
         try:
@@ -311,13 +393,19 @@ class PublicWithdrawalView(APIView):
                 team = Team.objects.select_for_update().get(pk=invitation.team_record_id)
                 if not team.is_active or not team.tournament.is_active:
                     raise ValidationError('El equipo o torneo ya no está disponible.')
-                row = get_object_or_404(PlayerEnrollment.objects.select_for_update(), pk=serializer.validated_data['enrollment_id'], team_record=team, withdrawn_at__isnull=True)
-                row.withdrawn_at = timezone.now()
-                row.save(update_fields=['withdrawn_at'])
-                PlayerEnrollmentDocument.objects.create(enrollment=row, kind='withdrawal_signature', storage_path=path, content=b'', content_type=mime, sha256=sha256(content).hexdigest())
-                locked.used_at = row.withdrawn_at
+                rows = selected_rows(team, locked=True)
+                withdrawn_at = timezone.now()
+                for row in rows:
+                    row.withdrawn_at = withdrawn_at
+                    row.save(update_fields=['withdrawn_at'])
+                PlayerEnrollmentDocument.objects.bulk_create([
+                    PlayerEnrollmentDocument(enrollment=row, kind='withdrawal_signature', storage_path=path, content=b'', content_type=mime, sha256=sha256(content).hexdigest())
+                    for row in rows
+                ])
+                locked.used_at = withdrawn_at
                 locked.save(update_fields=['used_at'])
-            return Response({'completed': True, 'name': row.name, 'withdrawn_at': row.withdrawn_at})
+            return Response({'completed': True, 'name': rows[0].name if len(rows) == 1 else None,
+                'players': [{'id': row.pk, 'name': row.name} for row in rows], 'count': len(rows), 'withdrawn_at': withdrawn_at})
         except Exception as exc:
             try:
                 enrollment_storage.delete_document(path)
@@ -327,6 +415,34 @@ class PublicWithdrawalView(APIView):
                 raise
             logger.exception('WITHDRAWAL_SAVE_FAILED')
             return Response({'detail': 'No se pudo guardar la baja. Intenta nuevamente.'}, status=503)
+
+
+class WithdrawalPhotoThrottle(EnrollmentThrottle):
+    scope = 'player_withdrawal_photo'
+    rate = '120/hour'
+
+
+class PublicWithdrawalPhotoView(PublicWithdrawalView):
+    http_method_names = ['get', 'head', 'options']
+    throttle_classes = [WithdrawalPhotoThrottle]
+
+    def get(self, request, token, pk):
+        invitation = self.invitation(token)
+        doc = get_object_or_404(PlayerEnrollmentDocument, enrollment_id=pk,
+            enrollment__team_record=invitation.team_record, enrollment__withdrawn_at__isnull=True,
+            kind='player_photo', content_type__in=['image/png', 'image/jpeg'])
+        try:
+            content = enrollment_storage.read_document(doc.storage_path) if doc.storage_path else bytes(doc.content)
+            if sha256(content).hexdigest() != doc.sha256:
+                raise RuntimeError('Integridad del archivo incorrecta.')
+        except Exception:
+            logger.exception('WITHDRAWAL_PHOTO_READ_FAILED document_id=%s', doc.pk)
+            return Response({'detail': 'Foto no disponible.'}, status=503)
+        response = HttpResponse(content, content_type=doc.content_type)
+        response['Cache-Control'] = 'private, no-store'
+        response['X-Content-Type-Options'] = 'nosniff'
+        response['Referrer-Policy'] = 'no-referrer'
+        return response
 
 
 class EnrollmentCatalogView(APIView):

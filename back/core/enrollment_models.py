@@ -25,6 +25,7 @@ class PlayerEnrollmentInvitation(models.Model):
 class PlayerEnrollment(models.Model):
     invitation = models.OneToOneField(PlayerEnrollmentInvitation, on_delete=models.PROTECT)
     name = models.CharField(max_length=160)
+    identity_key = models.CharField(max_length=64, blank=True, default='', db_index=True)
     birth_date = models.DateField()
     team = models.CharField(max_length=140)
     team_record = models.ForeignKey('core.Team', null=True, blank=True, on_delete=models.PROTECT, related_name='signed_player_enrollments')
@@ -42,6 +43,14 @@ class PlayerEnrollment(models.Model):
     signed_at = models.DateTimeField(auto_now_add=True)
     withdrawn_at = models.DateTimeField(null=True, blank=True)
     is_delegate = models.BooleanField(default=False)
+    def save(self, *args, **kwargs):
+        from core.services.player_blacklist import identity_key
+        key = identity_key(self.name, self.birth_date)
+        if self.identity_key != key:
+            self.identity_key = key
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'identity_key'}
+        return super().save(*args, **kwargs)
     class Meta:
         db_table = "player_enrollments"
         ordering = ["-signed_at", "-id"]
@@ -57,3 +66,56 @@ class PlayerEnrollmentDocument(models.Model):
     class Meta:
         db_table = "player_enrollment_documents"
         constraints = [models.UniqueConstraint(fields=["enrollment", "kind"], name="uq_enrollment_document_kind")]
+
+
+class PlayerSanction(models.Model):
+    team = models.ForeignKey('core.Team', on_delete=models.CASCADE, related_name='sanctions')
+    enrollment = models.ForeignKey(PlayerEnrollment, null=True, blank=True, on_delete=models.CASCADE, related_name='sanctions')
+    player = models.ForeignKey('core.Player', null=True, blank=True, on_delete=models.CASCADE, related_name='sanctions')
+    player_name = models.CharField(max_length=160)
+    offense_code = models.CharField(max_length=12)
+    offense_label = models.CharField(max_length=200)
+    recommended_duration = models.CharField(max_length=240)
+    reason = models.TextField(max_length=2000)
+    incident_on = models.DateField()
+    starts_on = models.DateField()
+    ends_on = models.DateField(null=True, blank=True)
+    duration_unit = models.CharField(max_length=12)
+    duration_value = models.PositiveIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='applied_player_sanctions')
+    created_at = models.DateTimeField(auto_now_add=True)
+    request_id = models.UUIDField(unique=True)
+
+    class Meta:
+        db_table = 'player_sanctions'
+        ordering = ['-created_at', '-pk']
+        indexes = [models.Index(fields=['team', 'starts_on'], name='ix_sanction_team_start')]
+        constraints = [
+            models.CheckConstraint(condition=(models.Q(enrollment__isnull=False, player__isnull=True) | models.Q(enrollment__isnull=True, player__isnull=False)), name='ck_sanction_one_player'),
+            models.CheckConstraint(condition=(models.Q(ends_on__isnull=True) | models.Q(ends_on__gte=models.F('starts_on'))), name='ck_sanction_valid_dates'),
+        ]
+
+
+class PlayerBlacklistEntry(models.Model):
+    source_sanction = models.ForeignKey(PlayerSanction, null=True, blank=True, on_delete=models.SET_NULL, related_name='blacklist_entries')
+    source_player = models.ForeignKey('core.Player', null=True, blank=True, on_delete=models.SET_NULL, related_name='blacklist_entries')
+    player_name = models.CharField(max_length=160)
+    birth_date = models.DateField()
+    identity_key = models.CharField(max_length=64, db_index=True)
+    origin_site = models.CharField(max_length=160)
+    origin_tournament = models.CharField(max_length=140)
+    origin_team = models.CharField(max_length=140)
+    offense_label = models.CharField(max_length=200)
+    reason = models.TextField(max_length=2000)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_blacklist_entries')
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='revoked_blacklist_entries')
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revocation_reason = models.TextField(blank=True, default='', max_length=2000)
+    request_id = models.UUIDField(unique=True)
+
+    class Meta:
+        db_table = 'player_blacklist_entries'
+        ordering = ['-created_at','-pk']
+        constraints = [models.UniqueConstraint(fields=['identity_key'], condition=models.Q(is_active=True), name='uq_active_blacklist_identity')]

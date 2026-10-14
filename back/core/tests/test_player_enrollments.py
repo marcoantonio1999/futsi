@@ -42,8 +42,168 @@ class PlayerEnrollmentTests(TestCase):
     def new_invitation(self):
         return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name)
 
+    def test_full_name_requires_each_component_before_upload(self):
+        for field in ('given_names', 'paternal_surname', 'maternal_surname'):
+            for value in (None, '', '   ', '123', '---', 'Pérez123'):
+                with self.subTest(field=field, value=value):
+                    from django.core.cache import cache
+                    cache.clear()
+                    data = self.payload()
+                    if value is None:
+                        data.pop(field)
+                    else:
+                        data[field] = value
+                    data['name'] = 'Nombre antiguo no puede sustituir los campos'
+                    self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
+        self.upload_storage.assert_not_called()
+        self.assertFalse(PlayerEnrollment.objects.exists())
+
+    def test_full_name_composes_and_normalizes_names_and_compound_surnames(self):
+        self.team.representative_name = ''; self.team.save()
+        data = self.payload()
+        data.update(given_names=' José  Luis ', paternal_surname='De la Cruz', maternal_surname='Orduña')
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 201)
+        self.assertEqual(PlayerEnrollment.objects.get().name, 'José Luis De la Cruz Orduña')
+
+    def test_full_name_rejects_combined_length_over_160(self):
+        data = self.payload()
+        data.update(given_names='a' * 80, paternal_surname='b' * 80, maternal_surname='c')
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
+        self.upload_storage.assert_not_called()
+
+    def test_delegate_can_complete_previously_abbreviated_name(self):
+        self.team.representative_name = 'José Orduña'; self.team.save()
+        data = self.payload()
+        data.update(given_names='José Luis', paternal_surname='Orduña', maternal_surname='Pérez')
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 201)
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.representative_name, 'José Luis Orduña Pérez')
+        self.assertTrue(PlayerEnrollment.objects.get().is_delegate)
+
     def new_withdrawal(self):
         return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name, purpose='withdraw')
+
+    def enroll_two(self):
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
+        invitation = self.new_invitation()
+        data = self.payload(); data['given_names'] = 'Segundo jugador'
+        self.assertEqual(self.client.post(f'/api/player-enrollments/public/{invitation.token}/', data, format='multipart').status_code, 201)
+        return list(PlayerEnrollment.objects.order_by('pk'))
+
+    def test_withdrawal_history_filters_all_dates_and_protects_signature(self):
+        rows = self.enroll_two(); link = self.new_withdrawal()
+        response = self.client.post(f'/api/player-enrollments/withdrawal/{link.token}/', {'enrollment_ids': [row.pk for row in rows], 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart')
+        self.assertEqual(response.status_code, 200)
+        self.client.force_authenticate(self.emilio)
+        url = '/api/player-enrollments/?withdrawn_only=true'
+        listing = self.client.get(url).json()
+        self.assertEqual(listing['count'], 2)
+        self.assertTrue(all(row['status'] == 'Baja' for row in listing['results']))
+        self.assertEqual(listing['withdrawal_filters']['teams'][0]['team'], self.team.name)
+        self.assertEqual(self.client.get(url + '&search=Segundo').json()['count'], 1)
+        self.assertEqual(self.client.get(url + '&team=NoExiste').json()['count'], 0)
+        self.assertEqual(self.client.get(url + '&tournament_id=' + str(self.tournament.pk)).json()['count'], 2)
+        today = str(timezone.localdate())
+        self.assertEqual(self.client.get(url + f'&date_from={today}&date_to={today}').json()['count'], 2)
+        self.assertEqual(self.client.get(url + '&date_to=2000-01-01').json()['count'], 0)
+        self.assertEqual(self.client.get(url + '&date_from=bad').status_code, 400)
+        self.assertEqual(self.client.get(url + '&date_from=2026-12-01&date_to=2026-01-01').status_code, 400)
+        document = PlayerEnrollmentDocument.objects.filter(kind='withdrawal_signature').first()
+        signature_url = f'/api/player-enrollments/documents/{document.pk}/'
+        self.assertEqual(self.client.get(signature_url).status_code, 200)
+        self.client.force_authenticate(self.other)
+        self.assertEqual(self.client.get(url).json()['count'], 0)
+        self.assertEqual(self.client.get(signature_url).status_code, 404)
+        self.client.force_authenticate(None)
+        self.assertIn(self.client.get(url).status_code, (401, 403))
+        self.assertIn(self.client.get(signature_url).status_code, (401, 403))
+
+    def test_withdrawal_history_includes_inactive_teams_and_older_pages(self):
+        for number in range(27):
+            PlayerEnrollment.objects.create(invitation=self.new_invitation(), team_record=self.team,
+                name=f'Baja {number}', team=self.team.name, tournament=self.tournament.name,
+                birth_date=date(1990, 1, 1), phone='5512345678', terms_version='test',
+                withdrawn_at=timezone.now() - timedelta(days=400))
+        self.team.is_active = False; self.team.save()
+        self.tournament.is_active = False; self.tournament.save()
+        self.client.force_authenticate(self.emilio)
+        url = '/api/player-enrollments/?withdrawn_only=true'
+        first = self.client.get(url).json(); second = self.client.get(url + '&page=2').json()
+        self.assertEqual(first['count'], 27)
+        self.assertEqual(len(first['results']), 25); self.assertEqual(len(second['results']), 2)
+        self.assertTrue(set(row['id'] for row in first['results']).isdisjoint(row['id'] for row in second['results']))
+        self.assertEqual(first['withdrawal_filters']['tournaments'][0]['tournament'], self.tournament.name)
+
+    def test_batch_withdrawal_signs_every_selected_member_and_consumes_link_once(self):
+        rows = self.enroll_two()
+        link = self.new_withdrawal(); url = f'/api/player-enrollments/withdrawal/{link.token}/'
+        self.upload_storage.reset_mock()
+        response = self.client.post(url, {'enrollment_ids': [row.pk for row in rows], 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(set(row['id'] for row in response.data['players']), {row.pk for row in rows})
+        self.assertEqual(PlayerEnrollment.objects.filter(withdrawn_at__isnull=False).count(), 2)
+        documents = PlayerEnrollmentDocument.objects.filter(kind='withdrawal_signature')
+        self.assertEqual(documents.count(), 2)
+        self.assertEqual(len(set(documents.values_list('storage_path', flat=True))), 1)
+        self.upload_storage.assert_called_once()
+        link.refresh_from_db(); self.assertIsNotNone(link.used_at)
+        self.assertEqual(self.client.get(url).status_code, 400)
+        self.assertEqual(self.client.get(url + f'photos/{rows[0].pk}/').status_code, 400)
+
+    def test_batch_invalid_or_duplicate_selection_never_partially_withdraws(self):
+        rows = self.enroll_two()
+        link = self.new_withdrawal(); url = f'/api/player-enrollments/withdrawal/{link.token}/'
+        other = Team.objects.create(tournament=self.tournament, name='Equipo externo')
+        rows[1].team_record = other; rows[1].save()
+        self.upload_storage.reset_mock()
+        for ids, status in [([], 400), ([rows[0].pk, rows[0].pk], 400), ([rows[0].pk, rows[1].pk], 404), ([rows[0].pk, 999999], 404)]:
+            response = self.client.post(url, {'enrollment_ids': ids, 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart')
+            self.assertEqual(response.status_code, status, response.data)
+        self.assertFalse(PlayerEnrollment.objects.filter(withdrawn_at__isnull=False).exists())
+        link.refresh_from_db(); self.assertIsNone(link.used_at)
+        self.upload_storage.assert_not_called()
+
+    def test_batch_storage_failure_keeps_all_players_active(self):
+        rows = self.enroll_two(); link = self.new_withdrawal()
+        self.upload_storage.side_effect = RuntimeError('storage unavailable')
+        response = self.client.post(f'/api/player-enrollments/withdrawal/{link.token}/', {'enrollment_ids': [row.pk for row in rows], 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart')
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(PlayerEnrollment.objects.filter(withdrawn_at__isnull=False).exists())
+        self.assertFalse(PlayerEnrollmentDocument.objects.filter(kind='withdrawal_signature').exists())
+        link.refresh_from_db(); self.assertIsNone(link.used_at)
+
+    def test_batch_database_failure_rolls_back_every_withdrawal_and_cleans_signature(self):
+        rows = self.enroll_two(); link = self.new_withdrawal()
+        previous_paths = set(self.storage)
+        with patch.object(PlayerEnrollmentDocument.objects, 'bulk_create', side_effect=RuntimeError('database unavailable')):
+            response = self.client.post(f'/api/player-enrollments/withdrawal/{link.token}/', {'enrollment_ids': [row.pk for row in rows], 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart')
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(PlayerEnrollment.objects.filter(withdrawn_at__isnull=False).exists())
+        self.assertFalse(PlayerEnrollmentDocument.objects.filter(kind='withdrawal_signature').exists())
+        self.assertEqual(set(self.storage), previous_paths)
+        link.refresh_from_db(); self.assertIsNone(link.used_at)
+
+    def test_withdrawal_photos_are_scoped_private_and_do_not_expose_documents(self):
+        rows = self.enroll_two(); link = self.new_withdrawal()
+        url = f'/api/player-enrollments/withdrawal/{link.token}/'
+        listing = self.client.get(url).json()
+        self.assertTrue(all(player['has_photo'] for player in listing['players']))
+        self.assertNotIn('storage_path', str(listing)); self.assertNotIn('documents', str(listing))
+        photo = PlayerEnrollmentDocument.objects.get(enrollment=rows[0], kind='player_photo')
+        response = self.client.get(url + f'photos/{rows[0].pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, self.storage[photo.storage_path])
+        self.assertIn('no-store', response['Cache-Control'])
+        self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+        self.assertEqual(self.client.get(url + f'photos/{photo.pk + 9999}/').status_code, 404)
+        # Even a known enrollment ID from another team grants no access.
+        other = Team.objects.create(tournament=self.tournament, name='Otro equipo')
+        rows[1].team_record = other; rows[1].save()
+        self.assertEqual(self.client.get(url + f'photos/{rows[1].pk}/').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/withdrawal/{self.invitation.token}/photos/{rows[0].pk}/').status_code, 404)
+        link.expires_at = timezone.now() - timedelta(seconds=1); link.save()
+        self.assertEqual(self.client.get(url + f'photos/{rows[0].pk}/').status_code, 400)
 
     def test_signed_withdrawal_keeps_record_frees_slot_and_link_is_single_use(self):
         from core.models import Player
@@ -85,14 +245,14 @@ class PlayerEnrollmentTests(TestCase):
 
     def test_link_purposes_cannot_be_swapped_and_delegate_is_first(self):
         self.assertEqual(self.client.get(self.url).json()['delegate_name'], 'Jugador de prueba')
-        data = self.payload(); data['name'] = 'Otro jugador'
+        data = self.payload(); data['given_names'] = 'Otra persona'
         self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
         self.assertEqual(PlayerEnrollment.objects.count(), 0)
         link = self.new_withdrawal()
         self.assertEqual(self.client.get(f'/api/player-enrollments/public/{link.token}/').status_code, 404)
         self.assertEqual(self.client.get(f'/api/player-enrollments/withdrawal/{self.invitation.token}/').status_code, 404)
         self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
-        invitation = self.new_invitation(); data = self.payload(); data['name'] = 'Segundo jugador'
+        invitation = self.new_invitation(); data = self.payload(); data['given_names'] = 'Segundo jugador'
         self.assertEqual(self.client.post(f'/api/player-enrollments/public/{invitation.token}/', data, format='multipart').status_code, 201)
         self.assertEqual(PlayerEnrollment.objects.filter(is_delegate=True).count(), 1)
 
@@ -469,7 +629,7 @@ class PlayerEnrollmentTests(TestCase):
                 cursor.execute('DROP TABLE video_clips')
 
     def payload(self, minor=False, tutor=True, blank=False):
-        data = {"name": "Jugador de prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
+        data = {"given_names": "Jugador", "paternal_surname": "de", "maternal_surname": "prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
         if minor:
             data.update({kind: image_file(kind + ".png") for kind in ("minor_credential", "curp", "guardian_ine_front", "guardian_ine_back")})
         else:
@@ -669,7 +829,7 @@ class PlayerEnrollmentTests(TestCase):
 
     def test_emergency_phone_is_optional_but_validated_when_present(self):
         from core.api.enrollments import EnrollmentInput
-        base = {'name': 'Jugador', 'birth_date': '1990-01-01',
+        base = {'given_names': 'Jugador', 'paternal_surname': 'de', 'maternal_surname': 'prueba', 'birth_date': '1990-01-01',
                 'identity_type': 'ine', 'phone': '5512345678', 'accepted_terms': True}
         for extra in ({}, {'phone_secondary': ''}, {'phone_secondary': '5587654321'}):
             with self.subTest(extra=extra):

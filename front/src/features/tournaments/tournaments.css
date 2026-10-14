@@ -131,3 +131,10 @@
 .tournament-team-delete-button:focus-visible { outline:3px solid #fda4af; outline-offset:3px; }
 @media(max-width:750px) { .tournament-directory-grid,.tournament-team-grid { grid-template-columns:1fr; } .tournament-directory-filters,.tournament-roster-filters,.tournament-match-filters { grid-template-columns:1fr; padding:16px; gap:12px; } .tournament-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .tournament-page-heading h2 { font-size:23px; } .tournament-context-select { min-width:0; width:100%; } .tournament-section-heading,.tournament-team-grid { padding:18px; } }
 @media(max-width:480px) { .tournament-form-grid { grid-template-columns:1fr; gap:14px; } .tournament-dialog-body,.tournament-form-section { padding:18px; } .tournament-dialog>header { padding:18px; } .tournament-dialog footer { padding:14px 18px; } .tournament-dialog footer .tournament-button { flex:1; } .tournament-toast { right:16px; bottom:16px; } .tournament-directory-card { padding:20px; } .tournament-directory-card footer { flex-wrap:wrap; } .tournament-tabs { gap:2px; } .tournament-tabs button { padding:9px; font-size:12px; } }
+.reuse-team-list{display:grid;gap:8px;max-height:40dvh;overflow-y:auto;overscroll-behavior:contain;margin:12px 0}
+.reuse-team-option{display:flex!important;align-items:center;gap:12px;min-height:52px;padding:12px;border:1px solid #d3ded7;border-radius:8px;cursor:pointer}
+.reuse-team-option input[type=checkbox]{width:22px;height:22px;flex-shrink:0;accent-color:#327557}
+.reuse-team-option strong,.reuse-team-option small{display:block;overflow-wrap:anywhere}
+.reuse-team-option small{font-size:12px;color:#6b7280;margin-top:4px}
+.reuse-team-pagination{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+@media(max-width:600px){.reuse-team-option{padding:10px}.reuse-team-pagination button{min-height:44px}.tournament-dialog label>input:not([type=checkbox]),.tournament-dialog label>select{font-size:16px;min-height:44px;width:100%;box-sizing:border-box}.tournament-dialog{max-width:calc(100vw - 24px)}}

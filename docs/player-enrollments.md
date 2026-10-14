@@ -1,5 +1,111 @@
 # Inscripciones de jugadores
 
+## Sanciones
+
+### Comisión disciplinaria y lista negra
+
+Comisión disciplinaria consolida las sanciones autorizadas y permite filtrar por
+jugador, sede, torneo, equipo, estado y fecha de registro. Se pagina en servidor
+(25 filas) y se consulta al entrar, cambiar filtros o actualizar manualmente;
+no agrega cron ni consultas periódicas. Administración ve todas las sedes;
+coordinadores consultan las sanciones de su sede.
+
+Lista negra contiene decisiones explícitas de exclusión permanente de todas las
+sedes. Solo administración/Emilio puede incluir y retirar entradas; requiere
+confirmar identidad, nombre completo, nacimiento y motivo. Una recomendación del
+tabulador o una sanción «sin término» no crea una exclusión global automáticamente.
+La coincidencia para nuevas inscripciones es exacta por nombre completo y fecha
+de nacimiento, normalizando acentos, mayúsculas y espacios, como pidió el usuario.
+No se usan coincidencias difusas ni únicamente el nombre.
+
+La comprobación ocurre antes de subir documentos y nuevamente dentro de la
+transacción final, serializada por identidad en PostgreSQL. El mensaje público
+no revela los motivos disciplinarios. Las hojas activas de Inscripciones excluyen
+las identidades bloqueadas y la inscripción de origen; las fichas no se borran ni
+se consideran una baja firmada. También se impide reasignar/reactivar y pasar
+asistencia a un `Player` de plantilla vinculado explícitamente a una exclusión.
+Los cupos históricos no se liberan automáticamente: la baja sigue siendo un
+proceso independiente. Las altas manuales antiguas de `Player`, que no capturan
+fecha de nacimiento, no permiten comparar nuevas identidades por nacimiento;
+las nuevas inscripciones por enlace sí incluyen ese dato.
+
+La exclusión global conserva instantáneas del origen y sobrevive a la eliminación
+del torneo, equipo y sanción original. Retirarla conserva actor, fecha y motivo de
+retiro. La migración 0066 agrega la tabla privada con RLS y restricciones, y un
+índice de identidad en inscripciones con inicialización histórica por lotes.
+Las migraciones Django 0065/0066 forman parte de la publicación de Inscripciones del 2026-10-14 en la base empresarial BpowerAcademy.
+
+«Sanciones / Nueva sanción» permite elegir torneo, equipo y un integrante activo
+de la inscripción por enlace o de la plantilla existente. El tabulador entregado
+por el usuario incluye 8 grupos y sus incidentes específicos. Los periodos son
+orientativos: nunca se usan para imponer un mínimo, máximo o baja automática.
+El coordinador captura días, semanas, meses, años, fecha final o periodo sin
+término, con fecha del incidente, inicio y explicación obligatoria. El último
+día del periodo es inclusivo; meses/años usan el calendario, no 30/365 días fijos.
+Se guardan nombre del jugador, motivo y recomendación como evidencia histórica,
+el periodo efectivo, fecha de captura y usuario que decidió. La creación se
+protege con UUID para no repetir una sanción por reintentos.
+
+Pueden registrar administradores, dirección, desarrollo, Emilio y coordinadores
+de sede (solo su cancha). No se concede acceso a cajeros o entrenadores por su
+rol. Las sanciones se guardan en una tabla privada con RLS y sin permisos de
+Data API para `anon` o `authenticated`. La migración Django 0065 está preparada;
+se aplica mediante las migraciones de la API. No hay cron ni IA.
+Registrar una sanción no borra inscripciones/documentos, no reasigna delegado,
+no cambia partidos/pagos y no bloquea automáticamente la hoja de alineación.
+La eliminación definitiva de un torneo muestra las sanciones en el detalle y
+las elimina junto con su historial, conforme a la política ya existente.
+
+## Reutilizar equipos en otro torneo
+
+En Torneos / Equipos, «Agregar equipos existentes» permite elegir el destino,
+filtrar por torneo de origen o nombre y seleccionar varios equipos (incluidos
+torneos terminados). Se crean registros independientes con nombre y contacto del
+delegado; no se mueven los originales ni se copian integrantes, inscripciones,
+documentos, firmas, pagos, partidos o accesos `representative_user`. Cada torneo
+requiere nuevas inscripciones y firmas. El lote es atómico y los nombres ya
+existentes en destino se omiten sin sobrescribirlos. Dos fuentes seleccionadas
+con el mismo nombre deben resolverse eligiendo solo una. No se crea un torneo
+nuevo automáticamente ni se programa una tarea periódica.
+
+## Baja múltiple por enlace
+
+En administración, Bajas tiene dos subsecciones: Nueva baja para generar enlaces
+y Histórico de bajas para consultar registros existentes. El histórico no tiene
+límite de antigüedad predeterminado y pagina 25 filas en servidor, con filtros
+automáticos por nombre, torneo, equipo y rango inclusivo de fechas. Los catálogos
+de filtros provienen de las bajas autorizadas e incluyen equipos/torneos inactivos.
+El detalle muestra fecha, jugador, equipo, torneo y la firma de baja a través del
+endpoint autenticado de documentos, cargada solo al abrir el diálogo. Una firma
+antigua no demuestra por sí sola el nombre de quien firmó: ese dato no se inventa.
+
+El enlace de baja muestra los integrantes activos del equipo con su selfie y
+casillas de selección. Puede confirmarse la baja de uno o varios integrantes con
+una firma común y aceptación explícita del listado. Cambiar la selección limpia
+la aceptación y la firma. La API recibe `enrollment_ids` repetidos en multipart
+(o una lista en JSON); conserva `enrollment_id` para clientes anteriores.
+La operación es atómica: todas las bajas y sus evidencias se guardan, o ninguna.
+Cada jugador conserva una referencia a la firma común; el enlace se consume una
+sola vez. No se borran las fichas ni se reasigna automáticamente al delegado.
+
+Las fotos se sirven por `withdrawal/<token>/photos/<enrollment_id>/` únicamente
+para selfies de integrantes activos del mismo equipo y enlaces de baja vigentes.
+No se exponen rutas de Storage, claves, identificaciones ni firmas. El bucket
+sigue privado y las respuestas llevan `no-store`. Una foto antigua no recuperable
+se muestra como «Foto no disponible»; no se inventan ni recuperan fotos por este cambio.
+
+## Nombre completo obligatorio
+
+Las nuevas inscripciones públicas requieren tres campos separados: `given_names`
+(nombre o nombres), `paternal_surname` (apellido paterno) y `maternal_surname`
+(apellido materno). Pantalla y API rechazan campos vacíos, espacios, números o
+símbolos; se permiten acentos y apellidos compuestos. El servidor compone y guarda
+`name` en ese orden, con espacios normalizados y máximo 160 caracteres. Enviar
+únicamente el antiguo campo `name` no satisface el requisito. No se dividen ni
+modifican automáticamente los nombres de inscripciones históricas. Los nombres
+abreviados del delegado en el equipo pueden completarse al inscribirse, manteniendo
+las palabras del nombre previamente capturado en su orden original.
+
 En Futsi, el botón **Inscripciones** de Administración abre el historial y permite crear un enlace por jugador. La cuenta independiente `emilio` entra directamente a esa pantalla, sin sede, correo ni acceso a otras áreas.
 
 Cada enlace dura 30 días y admite una única inscripción. Antes de generarlo se elige un torneo existente y uno de sus equipos. El equipo se vincula al mismo registro `Team` de Administración, y el servidor verifica que pertenezca al torneo seleccionado. Las subsecciones Torneos activos, Crear torneo y Equipos montan el mismo `TournamentsPanel` / `TournamentWorkspace` que Administración. La creación de equipos se realiza desde Equipos del torneo, mediante su acción existente Crear equipo. No se montan formularios de creación separados en Inscripciones ni se crean catálogos paralelos. La cuenta de Emilio usa el modo limitado `setupOnly`, sin acceso a alumnos, finanzas, partidos, contactos privados de representantes ni eliminación de torneos.
@@ -38,3 +144,11 @@ El acceso es `https://futsi.bpoweracademy.mx/#/admin/inscripciones`, dentro del
 frontend existente de Render, con la misma API y base de datos de Futsi. La
 sección muestra el nombre Inscripciones BPower. No requiere otro servicio,
 subdominio ni cambios de DNS. Los permisos y documentos privados se conservan.
+
+## Sanciones y bajas
+
+Las sanciones pendientes, incluidas las programadas y las sin término, bloquean la baja y los cambios de equipo de jugadores identificados. La fecha final es inclusiva: la baja vuelve a permitirse al día siguiente si no hay otra sanción pendiente. Una selección múltiple con un sancionado se rechaza íntegramente antes de subir la firma y se vuelve a validar dentro de la transacción; si la sanción aparece durante la subida, se limpia el archivo sin registrar bajas ni consumir el enlace.
+
+Las nuevas inscripciones por enlace comprueban también nombre completo normalizado y fecha de nacimiento contra las sanciones de inscripciones anteriores, sin importar la sede o el equipo. Los jugadores del módulo legado sin fecha de nacimiento se protegen por su ID para baja y cambio de equipo, no por homónimos.
+
+Los sancionados siguen visibles en la plantilla, sábana y alineación, con marca textual SANCIONADO y fecha final o Sin término. Las sanciones programadas muestran la fecha de inicio. Las marcas se imprimen también en blanco y negro y desaparecen al vencer todas las sanciones. No se crea ningún cron: la vigencia se calcula al consultar.
