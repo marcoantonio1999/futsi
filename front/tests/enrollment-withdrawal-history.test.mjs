@@ -29,3 +29,15 @@ test("history is a separate subsection and requests only withdrawals with server
   assert.match(source, /showModal\(\)/);
   assert.doesNotMatch(source, /setInterval/);
 });
+
+test("withdrawal table has independent styles outside the tournament directory layout", () => {
+  const source = readFileSync(new URL("../src/features/enrollments/WithdrawalHistory.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/features/enrollments/enrollmentAdmin.css", import.meta.url), "utf8");
+  assert.match(source, /className="withdrawal-history-table"/);
+  assert.match(source, /className="withdrawal-history-scroll" role="region"/);
+  assert.match(source, /<th scope="row">\{row.name\}/);
+  assert.match(source, /<time dateTime=\{row.withdrawn_at\}/);
+  assert.match(css, /\.withdrawal-history-table th,\.withdrawal-history-table td\{padding:16px 18px/);
+  assert.match(css, /\.withdrawal-history-scroll\{[^}]*overflow-x:auto/);
+  assert.match(css, /\.withdrawal-history \.withdrawal-history-filters\{grid-template-columns:minmax\(0,1fr\)/);
+});
