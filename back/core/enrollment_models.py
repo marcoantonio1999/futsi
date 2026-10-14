@@ -97,6 +97,11 @@ class PlayerSanction(models.Model):
 
 
 class PlayerBlacklistEntry(models.Model):
+    photo_storage_path = models.CharField(max_length=500, blank=True, default='', db_index=True)
+    photo_content_type = models.CharField(max_length=40, blank=True, default='')
+    photo_sha256 = models.CharField(max_length=64, blank=True, default='')
+    photo_content = models.BinaryField(default=bytes, editable=False)
+    photo_legacy_file = models.CharField(max_length=500, blank=True, default='')
     source_sanction = models.ForeignKey(PlayerSanction, null=True, blank=True, on_delete=models.SET_NULL, related_name='blacklist_entries')
     source_player = models.ForeignKey('core.Player', null=True, blank=True, on_delete=models.SET_NULL, related_name='blacklist_entries')
     player_name = models.CharField(max_length=160)

@@ -21,3 +21,12 @@ test('global exclusions require confirmed identity and reason, never an automati
   assert.match(source,/Confirmo que verifiqué la identidad/);assert.match(source,/minLength=\{10\}/);
   assert.doesNotMatch(source,/setInterval/);
 });
+
+test('commission and blacklist show private photos in the table and detail, loaded only on visibility',()=>{
+  const source=readFileSync('src/features/enrollments/DisciplinaryRecords.tsx','utf8');
+  assert.match(source,/<th>Foto<\/th>/);assert.match(source,/\{photo\(row\)\}/);assert.match(source,/\{photo\(detail,true\)\}/);
+  const photo=readFileSync('src/features/enrollments/DisciplinaryPhoto.tsx','utf8');
+  assert.match(photo,/Authorization:'Token '\+token/);assert.match(photo,/IntersectionObserver/);
+  assert.match(photo,/URL.revokeObjectURL/);assert.match(photo,/Foto no disponible/);assert.match(photo,/Sin foto/);
+  assert.doesNotMatch(photo,/setInterval|supabase.co|service_role/);
+});

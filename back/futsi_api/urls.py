@@ -5,7 +5,7 @@ from core.api.bulk import BulkView
 from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
 from core.api.team_reuse import TeamReuseView
 from core.api.sanctions import PlayerSanctionView
-from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, BlacklistRevokeView
+from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, BlacklistRevokeView, DisciplinaryPhotoView, BlacklistPhotoView
 from core.api.enrollment_delegate import EnrollmentDelegateView
 
 from core.api.automatic_attendance import (
@@ -89,7 +89,9 @@ urlpatterns = [
     path("api/player-enrollments/reuse-teams/", TeamReuseView.as_view()),
     path("api/player-enrollments/sanctions/", PlayerSanctionView.as_view()),
     path("api/player-enrollments/disciplinary/", DisciplinaryHistoryView.as_view()),
+    path("api/player-enrollments/disciplinary/<int:pk>/photo/", DisciplinaryPhotoView.as_view()),
     path("api/player-enrollments/blacklist/", BlacklistView.as_view()),
+    path("api/player-enrollments/blacklist/<int:pk>/photo/", BlacklistPhotoView.as_view()),
     path("api/player-enrollments/blacklist/<int:pk>/revoke/", BlacklistRevokeView.as_view()),
     path("api/player-enrollments/withdrawal/<str:token>/photos/<int:pk>/", PublicWithdrawalPhotoView.as_view()),
     path("api/veronica/bulk/<str:operation>/", BulkView.as_view(), {"kind": "veronica"}),

@@ -14,7 +14,7 @@ from core.models import (
     FaceStationEvent, FaceStationUnknownLink, FaceStationDailyPresence, FaceStationDailyReport,
     Charge, Payment, Discount, Invoice, HistoricalImportRow, AuditLog,
 )
-from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument, PlayerSanction
+from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument, PlayerSanction, PlayerBlacklistEntry
 from .enrollment_storage import BUCKET as ENROLLMENT_BUCKET
 from .supabase_storage import storage_uri
 from .student_deletion import collect_owned_files, cleanup_files
@@ -73,6 +73,7 @@ def deletion_plan(tournament, *, lock=False):
     # Keep paths in the audit for durable retries, never delete shared objects.
     paths = {row.storage_path for row in by_model[PlayerEnrollmentDocument] if row.storage_path}
     shared = set(PlayerEnrollmentDocument.objects.exclude(pk__in=documents).filter(storage_path__in=paths).values_list('storage_path', flat=True))
+    shared.update(PlayerBlacklistEntry.objects.filter(photo_storage_path__in=paths).values_list('photo_storage_path',flat=True))
     files.extend({'kind': 'supabase', 'uri': storage_uri(ENROLLMENT_BUCKET, path)} for path in sorted(paths - shared))
     fingerprint = hashlib.sha256(json.dumps({
         "records": [[group["model"]._meta.label, [[row.pk, {field.attname: getattr(row, field.attname) for field in row._meta.fields if field.name != 'content'}] for row in group["rows"]]] for group in groups],

@@ -2,6 +2,14 @@
 
 ## Sanciones
 
+### Fotos en comisión y lista negra
+
+Ambas tablas y sus detalles incluyen la foto del jugador mediante un endpoint autenticado. Las sanciones respetan el alcance de sede; las fotos de exclusiones globales son visibles para los mismos usuarios autorizados a consultar la lista negra. Solo se usa la selfie de inscripción o el archivo de foto del jugador: nunca identificaciones, firmas ni URLs remotas arbitrarias.
+
+Las listas transmiten únicamente disponibilidad, no binarios ni rutas de Storage. Las miniaturas son JPEG de hasta 192 px, se cargan al entrar en pantalla y mantienen una caché limitada en el servidor para fotos inmutables. Las fotos ausentes o antiguas inaccesibles muestran un marcador y no impiden consultar el registro. No hay cron ni polling.
+
+La migración 0067 agrega metadatos privados de conservación a lista negra y recupera referencias de registros existentes sin descargar archivos. Al incluir una exclusión se guarda una referencia independiente a la foto; si el documento antiguo estaba en binario, se conserva ese contenido privado. La eliminación del torneo y sus reintentos de limpieza respetan esas referencias, incluso si la exclusión fue retirada. Esto no recupera las imágenes del proyecto anterior.
+
 ### Comisión disciplinaria y lista negra
 
 Comisión disciplinaria consolida las sanciones autorizadas y permite filtrar por

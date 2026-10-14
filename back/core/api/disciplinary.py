@@ -1,7 +1,8 @@
 from uuid import uuid4
 import unicodedata
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Prefetch
+from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers
@@ -12,12 +13,14 @@ from core.models import PlayerSanction, PlayerBlacklistEntry
 from core.api.sanctions import SanctionPermission
 from core.api.enrollments import enrollment_staff
 from core.services.player_blacklist import identity_key, lock_identity
+from core.enrollment_models import PlayerEnrollmentDocument
+from core.services.disciplinary_photos import snapshot_photo, document_thumbnail, stored_thumbnail, thumbnail, legacy_thumbnail
 
 def can_manage_blacklist(user):
     return user.role in {'admin','owner','dev'} or (user.username.casefold()=='emilio' and enrollment_staff(user))
 
 def scoped_sanctions(user):
-    rows=PlayerSanction.objects.select_related('team__tournament__site','created_by','enrollment')
+    rows=PlayerSanction.objects.select_related('team__tournament__site','created_by','enrollment','player').prefetch_related(Prefetch('enrollment__documents',queryset=PlayerEnrollmentDocument.objects.filter(kind='player_photo').defer('content'),to_attr='disciplinary_photos'))
     if user.role=='site_coordinator': rows=rows.filter(team__tournament__site_id=user.primary_site_id)
     return rows
 
@@ -30,7 +33,7 @@ class DisciplinaryHistoryView(APIView):
     blacklist=False
 
     def get(self,request):
-        rows=PlayerBlacklistEntry.objects.select_related('created_by','revoked_by') if self.blacklist else scoped_sanctions(request.user)
+        rows=PlayerBlacklistEntry.objects.select_related('created_by','revoked_by').defer('photo_content') if self.blacklist else scoped_sanctions(request.user)
         mappings={'site':'origin_site','tournament':'origin_tournament','team':'origin_team'} if self.blacklist else {'site':'team__tournament__site__name','tournament':'team__tournament__name','team':'team__name'}
         filters={key:list(rows.order_by().values_list(field,flat=True).distinct()) for key,field in mappings.items()}
         for key,field in mappings.items():
@@ -57,6 +60,7 @@ class DisciplinaryHistoryView(APIView):
         count=rows.count(); result=[]
         for row in rows.order_by('-created_at','-pk')[(page-1)*25:page*25]:
             common={'id':row.pk,'player_name':row.player_name,'offense':row.offense_label,'reason':row.reason,'created_at':row.created_at,'applied_by':row.created_by.username}
+            common['has_photo']=bool(row.photo_storage_path or row.photo_sha256 or row.photo_legacy_file) if self.blacklist else bool((row.enrollment_id and row.enrollment.disciplinary_photos) or (row.player_id and row.player.photo))
             if self.blacklist:common.update(site=row.origin_site,tournament=row.origin_tournament,team=row.origin_team,birth_date=row.birth_date,status='active' if row.is_active else 'revoked',revoked_at=row.revoked_at,revoked_by=row.revoked_by.username if row.revoked_by else None,revocation_reason=row.revocation_reason)
             else:common.update(site=row.team.tournament.site.name,tournament=row.team.tournament.name,team=row.team.name,birth_date=row.enrollment.birth_date if row.enrollment_id else None,status=status_of(row),starts_on=row.starts_on,ends_on=row.ends_on,recommendation=row.recommended_duration)
             result.append(common)
@@ -95,7 +99,7 @@ class BlacklistView(DisciplinaryHistoryView):
             row=PlayerBlacklistEntry.objects.create(source_sanction=source,source_player=source.player,
                 player_name=name,birth_date=data['birth_date'],identity_key=key,origin_site=source.team.tournament.site.name,
                 origin_tournament=source.team.tournament.name,origin_team=source.team.name,offense_label=source.offense_label,
-                reason=data['reason'],created_by=request.user,request_id=data['request_id'])
+                reason=data['reason'],created_by=request.user,request_id=data['request_id'],**snapshot_photo(source))
         return Response({'id':row.pk,'created':True},status=201)
 
 class BlacklistRevokeView(APIView):
@@ -112,3 +116,37 @@ class BlacklistRevokeView(APIView):
             row.is_active=False;row.revoked_at=timezone.now();row.revoked_by=request.user;row.revocation_reason=reason
             row.save(update_fields=['is_active','revoked_at','revoked_by','revocation_reason'])
         return Response({'completed':True})
+
+
+class DisciplinaryPhotoView(APIView):
+    permission_classes=[SanctionPermission]
+    blacklist=False
+    def get(self,request,pk):
+        if self.blacklist:
+            row=get_object_or_404(PlayerBlacklistEntry,pk=pk)
+            if not(row.photo_storage_path or row.photo_sha256 or row.photo_legacy_file):raise Http404()
+        else:
+            row=get_object_or_404(scoped_sanctions(request.user),pk=pk)
+            document=row.enrollment.disciplinary_photos[0] if row.enrollment_id and row.enrollment.disciplinary_photos else None
+            if not document and not(row.player_id and row.player.photo):raise Http404()
+        try:
+            if self.blacklist:
+                if row.photo_storage_path:content=stored_thumbnail(row.photo_storage_path,row.photo_sha256)
+                elif row.photo_sha256:
+                    from hashlib import sha256
+                    original=bytes(row.photo_content)
+                    if sha256(original).hexdigest()!=row.photo_sha256:raise ValueError('Foto inválida.')
+                    content=thumbnail(original)
+                else:content=legacy_thumbnail(row.photo_legacy_file)
+            else:content=document_thumbnail(document) if document else legacy_thumbnail(row.player.photo.name)
+        except Exception:
+            return Response({'detail':'Foto no disponible.'},status=503)
+        response=HttpResponse(content,content_type='image/jpeg')
+        response['Cache-Control']='private, no-store'
+        response['X-Content-Type-Options']='nosniff'
+        response['Referrer-Policy']='no-referrer'
+        return response
+
+
+class BlacklistPhotoView(DisciplinaryPhotoView):
+    blacklist=True

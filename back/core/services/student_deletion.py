@@ -129,6 +129,11 @@ def cleanup_files(audit):
                 parsed = parse_storage_uri(item["uri"])
                 if not parsed:
                     raise ValueError("La referencia de Storage no es válida.")
+                if parsed[0] == 'player-enrollment-private':
+                    Blacklist = apps.get_model('core', 'PlayerBlacklistEntry')
+                    if Blacklist.objects.filter(photo_storage_path=parsed[1]).exists():
+                        # Retried cleanup plans must also preserve global exclusion evidence.
+                        continue
                 delete_private_file(*parsed)
             else:
                 model = apps.get_model(item["model"])
