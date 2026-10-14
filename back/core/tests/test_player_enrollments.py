@@ -598,24 +598,21 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 410)
         self.assertEqual(self.client.get("/api/player-enrollments/public/unknown/").status_code, 404)
 
-    def test_new_enrollment_links_expire_after_24_hours(self):
+    def test_new_enrollment_links_preserve_30_day_validity(self):
         self.client.force_authenticate(self.emilio)
         response = self.client.post('/api/player-enrollments/', {'team_id': self.team.pk, 'tournament_id': self.tournament.pk}, format='json')
         self.assertEqual(response.status_code, 201)
         invitation = PlayerEnrollmentInvitation.objects.get(token=response.data['token'])
-        self.assertAlmostEqual((invitation.expires_at - invitation.created_at).total_seconds(), 86400, delta=2)
+        self.assertAlmostEqual((invitation.expires_at - invitation.created_at).total_seconds(), 30 * 86400, delta=2)
 
-    def test_legacy_links_are_capped_at_24_hours_and_do_not_upload(self):
+    def test_legacy_links_keep_their_original_expiration(self):
         PlayerEnrollmentInvitation.objects.filter(pk=self.invitation.pk).update(
             created_at=timezone.now() - timedelta(hours=25), expires_at=timezone.now() + timedelta(days=30))
-        self.assertEqual(self.client.get(self.url).status_code, 410)
-        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 410)
-        self.upload_storage.assert_not_called()
-        self.assertFalse(PlayerEnrollment.objects.exists())
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
 
-    def test_link_expires_at_exact_24_hour_boundary(self):
-        deadline = self.invitation.created_at + timedelta(hours=24)
-        PlayerEnrollmentInvitation.objects.filter(pk=self.invitation.pk).update(expires_at=deadline + timedelta(days=30))
+    def test_link_expires_at_exact_declared_deadline(self):
+        deadline = self.invitation.expires_at
         with patch('core.api.enrollments.timezone.now', return_value=deadline - timedelta(seconds=1)):
             self.assertEqual(self.client.get(self.url).status_code, 200)
         with patch('core.api.enrollments.timezone.now', return_value=deadline):

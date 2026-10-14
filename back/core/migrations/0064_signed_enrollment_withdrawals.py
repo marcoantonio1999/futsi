@@ -3,6 +3,19 @@
 from django.db import migrations, models
 
 
+def set_existing_delegates(apps, schema_editor):
+    Enrollment = apps.get_model('core', 'PlayerEnrollment')
+    Team = apps.get_model('core', 'Team')
+    database = schema_editor.connection.alias
+    seen = set()
+    for row in Enrollment.objects.using(database).filter(team_record_id__isnull=False).order_by('signed_at', 'id').iterator():
+        if row.team_record_id in seen:
+            continue
+        seen.add(row.team_record_id)
+        Enrollment.objects.using(database).filter(pk=row.pk).update(is_delegate=True)
+        Team.objects.using(database).filter(pk=row.team_record_id).update(representative_name=row.name, representative_phone=row.phone)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -30,4 +43,5 @@ class Migration(migrations.Migration):
             name='used_at',
             field=models.DateTimeField(blank=True, null=True),
         ),
+        migrations.RunPython(set_existing_delegates, migrations.RunPython.noop),
     ]

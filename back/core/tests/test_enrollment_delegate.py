@@ -79,3 +79,19 @@ class EnrollmentDelegateTests(TestCase):
         self.team.is_active = False; self.team.save()
         self.assertEqual(self.client.post(self.url, {'enrollment_id': self.next.pk}, format='json').status_code, 400)
         self.previous.refresh_from_db(); self.assertTrue(self.previous.is_delegate)
+
+    def test_existing_first_enrollment_becomes_delegate_without_losing_documents(self):
+        from importlib import import_module
+        from types import SimpleNamespace
+        from django.apps import apps
+        self.previous.is_delegate = False
+        self.previous.save(update_fields=['is_delegate'])
+        document = PlayerEnrollmentDocument.objects.create(enrollment=self.previous, kind='player_signature', content=b'kept', content_type='image/png', sha256='a' * 64)
+        migration = import_module('core.migrations.0064_signed_enrollment_withdrawals')
+        migration.set_existing_delegates(apps, SimpleNamespace(connection=SimpleNamespace(alias='default')))
+        self.previous.refresh_from_db(); self.next.refresh_from_db(); self.team.refresh_from_db()
+        self.assertTrue(self.previous.is_delegate)
+        self.assertFalse(self.next.is_delegate)
+        self.assertEqual(self.team.representative_name, self.previous.name)
+        self.assertEqual(PlayerEnrollment.objects.count(), 2)
+        self.assertEqual(PlayerEnrollmentDocument.objects.get(pk=document.pk).content, b'kept')
