@@ -2,13 +2,27 @@ from .common import *
 from .attendance import attendance_window_label, can_mark_session, match_team_ids
 from .money import charge_balance
 from core.services.match_sessions import ensure_match_attendance_sessions
+from core.services.team_capacity import capacity_guard, team_occupancy
+from django.db import transaction
 
 class TournamentSerializer(serializers.ModelSerializer):
     site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id"))
+    football_format = serializers.ChoiceField(choices=["fut6", "fut7", "fut8"], required=True)
+    max_players_per_team = serializers.IntegerField(read_only=True, allow_null=True)
 
     class Meta:
         model = Tournament
         fields = "__all__"
+
+    def update(self, instance, validated_data):
+        with transaction.atomic():
+            instance = Tournament.objects.select_for_update().get(pk=instance.pk)
+            modality = validated_data.get("football_format", instance.football_format)
+            limit = {"fut6": 12, "fut7": 14, "fut8": 16}.get(modality)
+            if modality != instance.football_format and limit:
+                if any(team_occupancy(pk) > limit for pk in instance.teams.values_list("pk", flat=True)):
+                    raise serializers.ValidationError({"football_format": f"Hay equipos con más de {limit} inscritos. Revisa sus plantillas antes de cambiar la modalidad."})
+            return super().update(instance, validated_data)
 
 
 class TeamSerializer(serializers.ModelSerializer):
@@ -93,7 +107,18 @@ class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):
             validated_data["billing_type"] = validated_data["tournament"].billing_type
         if not validated_data.get("full_amount") and validated_data.get("weekly_amount") and validated_data.get("tournament"):
             validated_data["full_amount"] = validated_data["weekly_amount"] * (validated_data["tournament"].expected_weeks or 12)
+        if validated_data.get("team") and validated_data.get("status", "registered") == "registered":
+            with capacity_guard(validated_data["team"], "student"):
+                return super().create(validated_data)
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        team = validated_data.get("team", instance.team)
+        active = validated_data.get("status", instance.status) == "registered"
+        if team and active and (team.pk != instance.team_id or instance.status != "registered"):
+            with capacity_guard(team, "student", instance.pk):
+                return super().update(instance, validated_data)
+        return super().update(instance, validated_data)
 
 
 class PlayerSerializer(serializers.ModelSerializer):
@@ -106,6 +131,19 @@ class PlayerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Player
         fields = "__all__"
+
+    def create(self, validated_data):
+        if validated_data.get("team") and validated_data.get("is_active", True):
+            with capacity_guard(validated_data["team"], "player"):
+                return super().create(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        team = validated_data.get("team", instance.team)
+        if team and validated_data.get("is_active", instance.is_active) and (team.pk != instance.team_id or not instance.is_active):
+            with capacity_guard(team, "player", instance.pk):
+                return super().update(instance, validated_data)
+        return super().update(instance, validated_data)
 
 
 class PlayerAttendanceRecordSerializer(serializers.ModelSerializer):

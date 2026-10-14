@@ -34,13 +34,171 @@ class PlayerEnrollmentTests(TestCase):
         self.other = User.objects.create_user(username="other", role="collaborator", section_permissions=["player_enrollments_only"])
         self.site = Site.objects.create(name='Colegio Franco', code='prueba')
         self.tournament = Tournament.objects.create(site=self.site, name='Torneo', billing_type='weekly_match')
-        self.team = Team.objects.create(tournament=self.tournament, name='Equipo', representative_name='Responsable de prueba', representative_phone='5512345678')
+        self.team = Team.objects.create(tournament=self.tournament, name='Equipo', representative_name='Jugador de prueba', representative_phone='5512345678')
         self.invitation = self.new_invitation()
         self.url = f"/api/player-enrollments/public/{self.invitation.token}/"
         self.client = APIClient()
 
     def new_invitation(self):
         return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name)
+
+    def new_withdrawal(self):
+        return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name, purpose='withdraw')
+
+    def test_signed_withdrawal_keeps_record_frees_slot_and_link_is_single_use(self):
+        from core.models import Player
+        from core.services.team_capacity import team_occupancy
+        self.tournament.football_format = 'fut6'; self.tournament.save()
+        Player.objects.bulk_create([Player(team=self.team, full_name=f'Jugador {n}') for n in range(11)])
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
+        row = PlayerEnrollment.objects.get()
+        self.assertTrue(row.is_delegate)
+        link = self.new_withdrawal(); url = f'/api/player-enrollments/withdrawal/{link.token}/'
+        listing = self.client.get(url).json()
+        self.assertEqual([p['id'] for p in listing['players']], [row.pk])
+        self.assertNotIn('phone', str(listing))
+        self.assertEqual(team_occupancy(self.team.pk), 12)
+        response = self.client.post(url, {'enrollment_id': row.pk, 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart')
+        self.assertEqual(response.status_code, 200)
+        row.refresh_from_db(); self.assertIsNotNone(row.withdrawn_at)
+        self.assertEqual(team_occupancy(self.team.pk), 11)
+        self.assertTrue(PlayerEnrollmentDocument.objects.filter(enrollment=row, kind='withdrawal_signature', storage_path__startswith='bajas/').exists())
+        self.assertEqual(self.client.get(url).status_code, 400)
+        self.assertEqual(self.client.post(url, {'enrollment_id': row.pk, 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart').status_code, 400)
+        self.client.force_authenticate(self.emilio)
+        self.assertEqual(self.client.get('/api/player-enrollments/?active_only=true').json()['count'], 0)
+        self.assertEqual(self.client.get('/api/player-enrollments/').json()['results'][0]['status'], 'Baja')
+
+    def test_withdrawal_rejects_other_teams_blank_signatures_and_storage_errors(self):
+        self.client.post(self.url, self.payload(), format='multipart')
+        row = PlayerEnrollment.objects.get()
+        link = self.new_withdrawal(); url = f'/api/player-enrollments/withdrawal/{link.token}/'
+        other = Team.objects.create(tournament=self.tournament, name='Otro equipo')
+        link.team_record = other; link.save()
+        self.assertEqual(self.client.post(url, {'enrollment_id': row.pk, 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart').status_code, 404)
+        link.team_record = self.team; link.save()
+        self.assertEqual(self.client.post(url, {'enrollment_id': row.pk, 'accepted': 'true', 'withdrawal_signature': image_file('baja.png', blank=True)}, format='multipart').status_code, 400)
+        self.upload_storage.side_effect = RuntimeError('storage unavailable')
+        self.assertEqual(self.client.post(url, {'enrollment_id': row.pk, 'accepted': 'true', 'withdrawal_signature': image_file('baja.png')}, format='multipart').status_code, 503)
+        row.refresh_from_db(); link.refresh_from_db()
+        self.assertIsNone(row.withdrawn_at); self.assertIsNone(link.used_at)
+
+    def test_link_purposes_cannot_be_swapped_and_delegate_is_first(self):
+        self.assertEqual(self.client.get(self.url).json()['delegate_name'], 'Jugador de prueba')
+        data = self.payload(); data['name'] = 'Otro jugador'
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
+        self.assertEqual(PlayerEnrollment.objects.count(), 0)
+        link = self.new_withdrawal()
+        self.assertEqual(self.client.get(f'/api/player-enrollments/public/{link.token}/').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/withdrawal/{self.invitation.token}/').status_code, 404)
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
+        invitation = self.new_invitation(); data = self.payload(); data['name'] = 'Segundo jugador'
+        self.assertEqual(self.client.post(f'/api/player-enrollments/public/{invitation.token}/', data, format='multipart').status_code, 201)
+        self.assertEqual(PlayerEnrollment.objects.filter(is_delegate=True).count(), 1)
+
+    def test_roster_limits_for_each_modality(self):
+        from core.domain_serializers.sports import PlayerSerializer
+        from core.models import Player
+        for modality, limit in [('fut6', 12), ('fut7', 14), ('fut8', 16)]:
+            with self.subTest(modality=modality):
+                Player.objects.all().delete()
+                self.tournament.football_format = modality
+                self.tournament.save()
+                for number in range(limit):
+                    serializer = PlayerSerializer(data={'team': self.team.pk, 'full_name': f'Jugador {number}'})
+                    serializer.is_valid(raise_exception=True)
+                    serializer.save()
+                serializer = PlayerSerializer(data={'team': self.team.pk, 'full_name': 'Sin cupo'})
+                serializer.is_valid(raise_exception=True)
+                with self.assertRaises(ValidationError):
+                    serializer.save()
+                self.assertEqual(Player.objects.filter(team=self.team).count(), limit)
+                player = Player.objects.first()
+                serializer = PlayerSerializer(player, data={'full_name': 'Nombre corregido'}, partial=True)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                player.is_active = False
+                player.save()
+                serializer = PlayerSerializer(data={'team': self.team.pk, 'full_name': 'Nuevo inscrito'})
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                serializer = PlayerSerializer(player, data={'is_active': True}, partial=True)
+                serializer.is_valid(raise_exception=True)
+                with self.assertRaises(ValidationError):
+                    serializer.save()
+
+    def test_full_team_blocks_public_submission_and_new_links(self):
+        from core.models import Player
+        self.tournament.football_format = 'fut6'
+        self.tournament.save()
+        Player.objects.bulk_create([Player(team=self.team, full_name=f'Jugador {n}') for n in range(12)])
+        self.assertEqual(self.client.get(self.url).status_code, 400)
+        response = self.client.post(self.url, self.payload(), format='multipart')
+        self.assertEqual(response.status_code, 400)
+        self.upload_storage.assert_not_called()
+        self.client.force_authenticate(self.emilio)
+        self.assertEqual(self.client.post('/api/player-enrollments/', {'tournament_id': self.tournament.pk, 'team_id': self.team.pk}, format='json').status_code, 400)
+        self.assertEqual(PlayerEnrollment.objects.count(), 0)
+
+    def test_last_slot_and_upload_race_are_checked_again_before_commit(self):
+        from core.models import Player
+        self.tournament.football_format = 'fut6'
+        self.tournament.save()
+        Player.objects.bulk_create([Player(team=self.team, full_name=f'Jugador {n}') for n in range(11)])
+        original_upload = self.upload_storage.side_effect
+        def fill_last_slot(path, content, mime):
+            original_upload(path, content, mime)
+            if Player.objects.filter(team=self.team).count() == 11:
+                Player.objects.create(team=self.team, full_name='Último lugar')
+        self.upload_storage.side_effect = fill_last_slot
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 400)
+        self.assertEqual(self.storage, {})
+        self.assertEqual(PlayerEnrollment.objects.count(), 0)
+        self.upload_storage.side_effect = original_upload
+        Player.objects.filter(full_name='Último lugar').delete()
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
+        next_invitation = self.new_invitation()
+        self.assertEqual(self.client.get(f'/api/player-enrollments/public/{next_invitation.token}/').status_code, 400)
+
+    def test_modality_required_and_cannot_reduce_below_existing_roster(self):
+        from core.domain_serializers.sports import TournamentSerializer
+        from core.models import Player
+        data = {'site': self.site.pk, 'name': 'Nuevo', 'billing_type': 'weekly_match'}
+        serializer = TournamentSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('football_format', serializer.errors)
+        self.tournament.football_format = 'fut8'
+        self.tournament.save()
+        Player.objects.bulk_create([Player(team=self.team, full_name=f'Jugador {n}') for n in range(13)])
+        serializer = TournamentSerializer(self.tournament, data={'football_format': 'fut6'}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        with self.assertRaises(ValidationError):
+            serializer.save()
+        self.tournament.refresh_from_db()
+        self.assertEqual(self.tournament.football_format, 'fut8')
+
+    def test_academy_and_player_registrations_share_capacity_without_deleting_people(self):
+        from core.tests.factories import make_student
+        from core.domain_serializers.sports import StudentTournamentRegistrationSerializer
+        from core.models import Player, Student, StudentTournamentRegistration
+        self.tournament.football_format = 'fut6'
+        self.tournament.save()
+        Player.objects.bulk_create([Player(team=self.team, full_name=f'Jugador {n}') for n in range(11)])
+        student = make_student(site=self.site)
+        serializer = StudentTournamentRegistrationSerializer(data={'tournament': self.tournament.pk, 'team': self.team.pk, 'student': student.pk})
+        serializer.is_valid(raise_exception=True)
+        row = serializer.save()
+        another = make_student(site=self.site)
+        serializer = StudentTournamentRegistrationSerializer(data={'tournament': self.tournament.pk, 'team': self.team.pk, 'student': another.pk})
+        serializer.is_valid(raise_exception=True)
+        with self.assertRaises(ValidationError):
+            serializer.save()
+        withdrawal = StudentTournamentRegistrationSerializer(row, data={'status': 'withdrawn'}, partial=True)
+        withdrawal.is_valid(raise_exception=True)
+        withdrawal.save()
+        serializer.save()
+        self.assertTrue(Student.objects.filter(pk=student.pk).exists())
+        self.assertEqual(StudentTournamentRegistration.objects.filter(team=self.team, status='registered').count(), 1)
 
     def test_emilio_administers_tournaments_in_all_active_sites(self):
         outside = Site.objects.create(name='Otra cancha', code='otra')
@@ -51,9 +209,10 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual({row['id'] for row in catalog['sites']}, {self.site.pk, outside.pk})
         self.assertIn(tournament.pk, [row['id'] for row in catalog['tournaments']])
         self.assertIn(tournament.pk, catalog['deletable_tournament_ids'])
-        self.assertEqual(self.client.post('/api/player-enrollments/catalog/', {'kind':'tournament','name':'Permitido','site':outside.pk,'billing_type':'weekly_match'}, format='json').status_code,201)
+        self.assertEqual(self.client.post('/api/player-enrollments/catalog/', {'kind':'tournament','name':'Permitido','site':outside.pk,'billing_type':'weekly_match','football_format':'fut7'}, format='json').status_code,201)
         url = f'/api/player-enrollments/tournaments/{tournament.pk}/'
-        self.assertEqual(self.client.get(url+'deletion-preview/').status_code,200)
+        preview = self.client.get(url+'deletion-preview/')
+        self.assertEqual(preview.status_code,200)
         self.assertEqual(self.client.delete(url, {}, format='json').status_code,400)
         self.assertTrue(Tournament.objects.filter(pk=tournament.pk).exists())
         self.assertEqual(self.client.post('/api/player-enrollments/', {'tournament_id':tournament.pk,'team_id':team.pk}, format='json').status_code,201)
@@ -439,6 +598,37 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 410)
         self.assertEqual(self.client.get("/api/player-enrollments/public/unknown/").status_code, 404)
 
+    def test_new_enrollment_links_expire_after_24_hours(self):
+        self.client.force_authenticate(self.emilio)
+        response = self.client.post('/api/player-enrollments/', {'team_id': self.team.pk, 'tournament_id': self.tournament.pk}, format='json')
+        self.assertEqual(response.status_code, 201)
+        invitation = PlayerEnrollmentInvitation.objects.get(token=response.data['token'])
+        self.assertAlmostEqual((invitation.expires_at - invitation.created_at).total_seconds(), 86400, delta=2)
+
+    def test_legacy_links_are_capped_at_24_hours_and_do_not_upload(self):
+        PlayerEnrollmentInvitation.objects.filter(pk=self.invitation.pk).update(
+            created_at=timezone.now() - timedelta(hours=25), expires_at=timezone.now() + timedelta(days=30))
+        self.assertEqual(self.client.get(self.url).status_code, 410)
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 410)
+        self.upload_storage.assert_not_called()
+        self.assertFalse(PlayerEnrollment.objects.exists())
+
+    def test_link_expires_at_exact_24_hour_boundary(self):
+        deadline = self.invitation.created_at + timedelta(hours=24)
+        PlayerEnrollmentInvitation.objects.filter(pk=self.invitation.pk).update(expires_at=deadline + timedelta(days=30))
+        with patch('core.api.enrollments.timezone.now', return_value=deadline - timedelta(seconds=1)):
+            self.assertEqual(self.client.get(self.url).status_code, 200)
+        with patch('core.api.enrollments.timezone.now', return_value=deadline):
+            self.assertEqual(self.client.get(self.url).status_code, 410)
+
+    def test_withdrawal_link_validity_is_unchanged(self):
+        self.client.post(self.url, self.payload(), format='multipart')
+        self.client.force_authenticate(self.emilio)
+        response = self.client.post('/api/player-enrollments/', {'team_id': self.team.pk, 'tournament_id': self.tournament.pk, 'purpose': 'withdraw'}, format='json')
+        self.assertEqual(response.status_code, 201)
+        invitation = PlayerEnrollmentInvitation.objects.get(token=response.data['token'])
+        self.assertAlmostEqual((invitation.expires_at - invitation.created_at).total_seconds(), 7 * 86400, delta=2)
+
     def test_private_history_and_documents(self):
         self.client.post(self.url, self.payload(), format="multipart")
         doc = PlayerEnrollmentDocument.objects.first()
@@ -508,7 +698,7 @@ class PlayerEnrollmentTests(TestCase):
     def test_catalog_reuses_existing_models_and_keeps_other_areas_private(self):
         self.assertEqual(self.client.get('/api/player-enrollments/catalog/').status_code,401)
         self.client.force_authenticate(self.emilio)
-        response=self.client.post('/api/player-enrollments/catalog/',{'kind':'tournament','site':self.site.pk,'name':'Copa compartida','billing_type':'weekly_match','is_active':True},format='json')
+        response=self.client.post('/api/player-enrollments/catalog/',{'kind':'tournament','site':self.site.pk,'name':'Copa compartida','billing_type':'weekly_match','football_format':'fut7','is_active':True},format='json')
         self.assertEqual(response.status_code,201)
         tournament=Tournament.objects.get(name='Copa compartida')
         response=self.client.post('/api/player-enrollments/catalog/',{'kind':'team','tournament':tournament.pk,'name':'Halcones','representative_name':'Responsable','representative_phone':'5512345678','is_active':True},format='json')

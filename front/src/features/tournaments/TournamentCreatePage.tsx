@@ -13,7 +13,7 @@ export function TournamentCreatePage({ sites, onBack, onCreate, onCreated }: { s
     const form = new FormData(event.currentTarget);
     saving.current = true; setBusy(true); setError("");
     try {
-      const created = await onCreate({ name: String(form.get("name")).trim(), site: Number(form.get("site")), starts_on: form.get("starts_on"), expected_weeks: Number(form.get("expected_weeks")), billing_type: "weekly_match", is_active: true }) as Tournament;
+      const created = await onCreate({ name: String(form.get("name")).trim(), site: Number(form.get("site")), football_format: form.get("football_format"), starts_on: form.get("starts_on"), expected_weeks: Number(form.get("expected_weeks")), billing_type: "weekly_match", is_active: true }) as Tournament;
       onCreated(created);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo crear el torneo."); }
     finally { saving.current = false; setBusy(false); }
@@ -34,6 +34,12 @@ export function TournamentCreatePage({ sites, onBack, onCreate, onCreated }: { s
             {sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
           </SelectInput>
           <TextInput label="Fecha de inicio" name="starts_on" type="date" defaultValue={today()} required />
+          <SelectInput label="Modalidad" name="football_format" required defaultValue="">
+            <option value="" disabled>Selecciona modalidad</option>
+            <option value="fut6">Fut 6 · 12 jugadores por equipo</option>
+            <option value="fut7">Fut 7 · 14 jugadores por equipo</option>
+            <option value="fut8">Fut 8 · 16 jugadores por equipo</option>
+          </SelectInput>
           <TextInput label="Duración prevista (semanas)" name="expected_weeks" type="number" min={1} step={1} defaultValue={12} required />
         </div>
         {error && <p className="tournament-feedback error" role="alert">{error}</p>}

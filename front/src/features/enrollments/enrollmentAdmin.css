@@ -77,6 +77,14 @@
 .enrollment-wizard-identity-fields input,.enrollment-wizard-identity-fields select{min-height:46px;box-sizing:border-box}
 @media(max-width:600px){.enrollment-wizard-identity-fields{grid-template-columns:1fr;gap:4px}}
 .enrollment-team-roster-view{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:16px}
+.enrollment-sabana-directory{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:16px}
+.enrollment-sabana-directory .operator-controls{flex-shrink:0;margin:0;border-radius:12px;padding:20px}
+.enrollment-sabana-filters{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.enrollment-sabana-count{margin:0;color:#66746b;font-size:14px}
+.enrollment-sabana-table{min-width:800px}
+.enrollment-sabana-table th[scope=row]{position:static;background:white;color:#242b27;white-space:normal}
+.enrollment-sabana-action{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-height:40px;padding:8px 12px!important;border-radius:8px!important}
+@media(max-width:700px){.enrollment-sabana-filters{grid-template-columns:1fr;gap:12px}.enrollment-sabana-directory{gap:12px}.enrollment-sabana-directory .operator-controls{padding:12px}}
 .enrollment-team-roster-view .operator-controls{margin:0;border-radius:12px;flex-shrink:0}
 .enrollment-team-roster-scroll{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain}
 .enrollment-team-roster-scroll .roster-sheet{max-width:800px;margin:0 auto}
@@ -87,5 +95,42 @@
 .enrollment-roster-card strong{font-size:14px;overflow-wrap:anywhere}
 .enrollment-roster-card span{align-self:flex-end;font-size:11px}
 .enrollment-roster-empty{padding:20px;text-align:center}
+.enrollment-page .signature-box canvas{display:block;height:280px;border:2px solid #b5c0c9;border-radius:10px;background:#fff}
+.enrollment-wizard-signatures{grid-template-columns:1fr}
+@media(max-width:600px){.enrollment-page .signature-box{padding:8px 0}.enrollment-page .signature-box canvas{height:300px}}
+.enrollment-team-roster-scroll .match-paper{width:190mm;max-width:none;box-sizing:border-box;min-height:267mm;padding:8mm;background:#fff;color:#151515;border:0;margin:0 auto 20px;font-family:Arial,sans-serif}
+.match-paper-header{display:grid;grid-template-columns:1fr 42mm;border:1px solid #555;text-align:center;font-size:15px;margin-bottom:3mm}
+.match-paper-header>div+div{border-left:1px solid #555}
+.match-paper-header strong,.match-paper-header b{display:block;padding:3mm 2mm;line-height:1.2;overflow-wrap:anywhere}
+.match-paper-header b{border-top:1px solid #555}
+.photo-paper .match-paper-header>div:first-child>strong{color:#45ad56;font-size:21px;text-transform:uppercase}
+.match-round{text-align:center;color:#45ad56;font-weight:700;margin:0 0 4mm;min-height:5mm}
+.match-paper-columns{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
+.match-paper-column{display:flex;flex-direction:column;gap:2mm}
+.match-player-box{display:grid;grid-template-columns:23mm 1fr;height:24mm;border:1px solid #555;break-inside:avoid;overflow:hidden}
+.match-photo{border-right:1px solid #555;overflow:hidden}
+.match-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.match-photo .photo-placeholder{font-size:9px;min-height:0;height:100%}
+.match-player-data{display:grid;grid-template-rows:1fr 1fr;min-width:0;text-align:center}
+.match-player-data strong{font-size:12px;line-height:1.1;display:flex;align-items:center;justify-content:center;padding:1mm;overflow-wrap:anywhere}
+.match-player-data>div{border-top:1px solid #555}
+.alignment-paper{color:#26578b!important}
+.alignment-title{text-align:right;color:#26578b;font-size:24px!important;margin:0 0 5mm!important;font-weight:800}
+.alignment-paper .match-paper-header{border-radius:5mm;overflow:hidden;border-color:#7b9ab7;margin-bottom:6mm}
+.alignment-paper .match-paper-header small{display:block;background:#d2e5f5;font-size:9px;font-weight:bold;padding:1mm}
+.alignment-paper .match-paper-header strong,.alignment-paper .match-paper-header b{padding:2mm;border:0}
+.alignment-paper .match-player-box{border-color:#7b9ab7;border-radius:4mm;grid-template-columns:20mm 1fr;height:21mm}
+.alignment-number{position:relative;border-right:1px solid #7b9ab7}
+.alignment-number span{position:absolute;bottom:1mm;left:0;right:0;text-align:center;font-size:10px;font-weight:bold}
+.alignment-fields{display:grid;grid-template-rows:1fr 1fr;min-width:0}
+.alignment-fields>div{position:relative;text-align:center;min-height:0}
+.alignment-fields>div+div{border-top:1px solid #7b9ab7}
+.alignment-fields small{display:block;font-size:9px;font-weight:bold;line-height:1;padding-top:1mm}
+.alignment-fields strong{display:block;font-size:11px;line-height:1.05;overflow-wrap:anywhere;padding:1mm}
+.match-paper .alignment-signatures{display:grid;grid-template-columns:1fr 1fr 22mm;gap:5mm;border:0;padding:0;margin-top:8mm}
+.alignment-signatures>div{height:20mm;border:1px solid #7b9ab7;border-radius:4mm;position:relative;text-align:center;overflow:hidden}
+.alignment-signatures span{position:absolute;bottom:0;left:0;right:0;border-top:1px solid #7b9ab7;padding:2mm 0;font-weight:bold;font-size:10px}
+.alignment-signatures .alignment-count span{font-size:6px}
+@media print{.enrollment-team-roster-scroll .match-paper{width:190mm;min-height:0;height:267mm;padding:6mm 4mm;margin:0;border:0;break-after:page;print-color-adjust:exact;-webkit-print-color-adjust:exact}.enrollment-team-roster-scroll .match-paper:last-child{break-after:auto}.match-paper-columns{gap:8mm}.match-paper .match-player-box{height:24mm}.match-paper.alignment-paper .match-player-box{height:21mm}}
 @media print{.enrollment-roster-layout,.enrollment-roster-layout .operator-page,.enrollment-roster-layout .enrollment-team-roster-view,.enrollment-roster-layout .enrollment-team-roster-scroll{display:block!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important}.enrollment-team-roster-scroll .roster-sheet{max-width:none;margin:0}.enrollment-roster-card{grid-template-columns:70px minmax(0,1fr);min-height:96px}.enrollment-roster-card img{width:70px;height:96px}.enrollment-roster-card strong{font-size:12px}.enrollment-roster-card>div{padding:8px}}
 @media(max-width:600px){.public-enrollment-wizard{padding:10px}.enrollment-wizard-header,.enrollment-wizard-content{padding:16px}.enrollment-wizard-header h1{font-size:21px}.enrollment-wizard-uploads,.enrollment-wizard-player,.enrollment-wizard-signatures{grid-template-columns:1fr}.enrollment-wizard-actions{padding:14px 16px}}

@@ -20,8 +20,8 @@ const data = { ...emptyData, sites: [{ id: 9, name: "Sede ficticia" }], tourname
   teams: [{ id: 82, tournament: 81, name: "Equipo ficticio", is_active: true, representative_name: "CONTACTO_PRIVADO", representative_phone: "CONTACTO_PRIVADO" }] };
 const noop = () => {};
 const unavailable = async () => { throw new Error("Not allowed in fixture"); };
-function render(section, setupOnly = true, deletableTournamentIds = []) {
-  return renderToStaticMarkup(React.createElement(TournamentsPanel, { data, token: "local-test-only", scope: "adult", setupOnly, section, deletableTournamentIds,
+function render(section, setupOnly = true, deletableTournamentIds = [], fixtureData = data) {
+  return renderToStaticMarkup(React.createElement(TournamentsPanel, { data: fixtureData, token: "local-test-only", scope: "adult", setupOnly, section, deletableTournamentIds,
     onSelectSection: noop, onCreateTournament: unavailable, onCreateTeam: unavailable, onDeleteTournament: unavailable,
     onRegisterStudent: unavailable, onUpdateRegistration: unavailable, onCreateMatch: unavailable, onUpdateMatch: unavailable }));
 }
@@ -38,12 +38,21 @@ test("Create subsection renders Futsi's existing tournament page", () => {
   assert.match(html, /Sede ficticia/);
   assert.doesNotMatch(html, /Categoría/);
 });
-test("Teams subsection lists real catalog teams and keeps the existing Create team action", () => {
+test("Teams subsection defaults to all tournaments and keeps creation in its own section", () => {
   const html = render("teams");
-  assert.match(html, /Equipos del torneo/);
-  assert.match(html, /Crear equipo/);
+  assert.match(html, /<option value="" selected="">Todos los torneos/);
+  assert.doesNotMatch(html, /Crear equipo/);
   assert.match(html, /Equipo ficticio/);
   assert.doesNotMatch(html, /CONTACTO_PRIVADO|Partidos|Dashboard|Alumnos inscritos/);
+});
+
+test("Teams default includes teams belonging to different tournaments", () => {
+  const second = { ...tournament, id: 91, name: "Segundo torneo" };
+  const html = render("teams", true, [], { ...data, tournaments: [...data.tournaments, second], teams: [...data.teams, { ...data.teams[0], id: 92, tournament: 91, name: "Segundo equipo" }] });
+  assert.match(html, /Equipo ficticio/);
+  assert.match(html, /Segundo equipo/);
+  assert.match(html, /2 equipos encontrados/);
+  assert.match(html, /Lista de equipos/);
 });
 test("Restricted setup directory does not expose deletion or fictitious counts", () => {
   const html = render("overview");

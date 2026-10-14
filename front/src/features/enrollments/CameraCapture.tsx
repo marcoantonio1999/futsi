@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { sampleLighting, type LightingResult } from './photoLighting';
+import { LightingIndicator } from './LightingIndicator';
 
 export function CameraCapture({ selfie, onCapture, onClose }: {
   selfie: boolean; onCapture: (file: File) => void; onClose: () => void;
@@ -7,7 +9,26 @@ export function CameraCapture({ selfie, onCapture, onClose }: {
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [lighting, setLighting] = useState<LightingResult | null>(null);
+  const [lightingUnavailable, setLightingUnavailable] = useState(false);
   const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!ready || error) return;
+    const canvas = document.createElement('canvas');
+    function check() {
+      const source = video.current;
+      if (document.hidden || !source?.videoWidth || source.readyState < 2) return;
+      try {
+        const result = sampleLighting(source, source.videoWidth, source.videoHeight, canvas);
+        // Keep the live-region quiet unless the light status actually changes.
+        setLighting(previous => previous?.sufficient === result.sufficient ? previous : result);
+        setLightingUnavailable(false);
+      } catch { setLightingUnavailable(true); }
+    }
+    check();
+    const interval = window.setInterval(check, 500);
+    return () => window.clearInterval(interval);
+  }, [ready, error]);
   useEffect(() => {
     let stopped = false;
     let stream: MediaStream | undefined;
@@ -57,7 +78,9 @@ export function CameraCapture({ selfie, onCapture, onClose }: {
   }}>
     <section className="enrollment-camera-dialog" role="dialog" aria-modal="true" aria-label="Tomar foto">
       <header><h2>Tomar foto</h2><button ref={closeButton} type="button" onClick={onClose} aria-label="Cerrar cámara">✕</button></header>
+      {selfie && <p className="camera-face-notice">Por favor, retira lentes, gorra, cubrebocas y cualquier objeto que tape tu cara. Mantén el rostro completo visible.</p>}
       <video ref={video} autoPlay muted playsInline onLoadedData={() => setReady(true)} />
+      {!error && <LightingIndicator result={lightingUnavailable ? null : lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} />}
       {error && <p className="error" role="alert">{error}</p>}
       <footer><button type="button" onClick={onClose}>Cancelar</button>
         <button type="button" className="primary" disabled={!ready || !!error || capturing} onClick={capture}>Tomar foto</button></footer>

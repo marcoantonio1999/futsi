@@ -7,6 +7,8 @@ export type Tournament = {
   starts_on: string | null;
   expected_weeks: number | null;
   is_active: boolean;
+  football_format?: "" | "fut6" | "fut7" | "fut8";
+  max_players_per_team?: number | null;
 };
 
 export type Team = {

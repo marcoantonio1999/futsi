@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView, VeronicaWeeklyStatsView
 from core.api.bulk import BulkView
-from core.api.enrollments import PublicEnrollmentView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
+from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
+from core.api.enrollment_delegate import EnrollmentDelegateView
 
 from core.api.automatic_attendance import (
     AutomaticAttendanceCancelJobView,
@@ -74,12 +75,14 @@ urlpatterns = [
     path("api/player-enrollments/", EnrollmentAdminView.as_view()),
     path("api/player-enrollments/catalog/", EnrollmentCatalogView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/deletion-preview/", EnrollmentTeamDeletionView.as_view()),
+    path("api/player-enrollments/teams/<int:pk>/delegate/", EnrollmentDelegateView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/", EnrollmentTeamDeletionView.as_view()),
     path("api/player-enrollments/tournaments/deletion-cleanup/", EnrollmentTournamentDeletionView.as_view()),
     path("api/player-enrollments/tournaments/<int:pk>/deletion-preview/", EnrollmentTournamentDeletionView.as_view()),
     path("api/player-enrollments/tournaments/<int:pk>/", EnrollmentTournamentDeletionView.as_view()),
     path("api/player-enrollments/documents/<int:pk>/", EnrollmentDocumentView.as_view()),
     path("api/player-enrollments/public/<str:token>/", PublicEnrollmentView.as_view()),
+    path("api/player-enrollments/withdrawal/<str:token>/", PublicWithdrawalView.as_view()),
     path("api/veronica/bulk/<str:operation>/", BulkView.as_view(), {"kind": "veronica"}),
     path("api/whatsapp-bulk/<str:operation>/", BulkView.as_view(), {"kind": "academy"}),
     path("api/veronica/weekly-stats/", VeronicaWeeklyStatsView.as_view()),

@@ -27,6 +27,12 @@ export function TournamentForms({ isCoachView, data, onSubmitTournament }: Tourn
               {data.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
             </SelectInput>
             <TextInput label="Nombre" name="name" placeholder="Liguilla Sub-12 Junio" required />
+            <SelectInput label="Modalidad" name="football_format" required defaultValue="">
+              <option value="" disabled>Selecciona modalidad</option>
+              <option value="fut6">Fut 6 · 12 jugadores por equipo</option>
+              <option value="fut7">Fut 7 · 14 jugadores por equipo</option>
+              <option value="fut8">Fut 8 · 16 jugadores por equipo</option>
+            </SelectInput>
             <SelectInput label="Cobro" name="billing_type" defaultValue="weekly_match">
               <option value="weekly_match">Pago semanal</option>
               <option value="full_tournament">Torneo completo</option>

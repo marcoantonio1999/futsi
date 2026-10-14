@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus } from "lucide-react";
+import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer } from "lucide-react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
@@ -8,6 +8,9 @@ import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
 import { CameraCapture } from "./CameraCapture";
 import { compressEnrollmentPhoto } from "./compressEnrollmentPhoto";
+import { ChangeDelegate } from "./ChangeDelegate";
+import { sampleLighting, type LightingResult } from './photoLighting';
+import { LightingIndicator } from './LightingIndicator';
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
@@ -20,9 +23,9 @@ type Document = { id: number; kind: string };
 type Enrollment = {
   id: number; name: string; birth_date: string; team: string; tournament: string; team_id: number | null; tournament_id: number | null;
   phone: string; phone_secondary: string; guardian_name: string; signed_at: string;
-  terms_text: string[]; documents: Document[];
+  terms_text: string[]; documents: Document[]; is_delegate?: boolean;
 };
-type Defaults = { team: string; tournament: string; terms: string[] };
+type Defaults = { team: string; tournament: string; terms: string[]; is_delegate?: boolean; delegate_name?: string; delegate_phone?: string };
 type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: Pick<Team, "id" | "name" | "tournament" | "is_active">[]; deletable_tournament_ids?: number[] };
 
 export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: User) => void }) {
@@ -60,11 +63,11 @@ function Signature({ label, onChange }: { label: string; onChange: (blob: Blob |
   const previous = useRef<[number, number] | null>(null);
   function point(event: React.PointerEvent<HTMLCanvasElement>): [number, number] {
     const bounds = event.currentTarget.getBoundingClientRect();
-    return [(event.clientX - bounds.left) * 600 / bounds.width, (event.clientY - bounds.top) * 180 / bounds.height];
+    return [(event.clientX - bounds.left) * 900 / bounds.width, (event.clientY - bounds.top) * 360 / bounds.height];
   }
   return <section className="signature-box">
     <p>{label}</p>
-    <canvas ref={canvas} width={600} height={180} aria-label={label}
+    <canvas ref={canvas} width={900} height={360} aria-label={label}
       onPointerDown={event => {
         event.currentTarget.setPointerCapture(event.pointerId);
         drawing.current = true; previous.current = point(event);
@@ -82,7 +85,7 @@ function Signature({ label, onChange }: { label: string; onChange: (blob: Blob |
       onPointerCancel={() => { drawing.current = false; canvas.current?.toBlob(onChange, "image/png"); }}
     />
     <button type="button" className="quiet" onClick={() => {
-      canvas.current?.getContext("2d")?.clearRect(0, 0, 600, 180); onChange(null);
+      canvas.current?.getContext("2d")?.clearRect(0, 0, 900, 360); onChange(null);
     }}>Borrar firma</button>
   </section>;
 }
@@ -93,12 +96,15 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
   const upload = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [name, setName] = useState(""), [preview, setPreview] = useState("");
+  const [lighting, setLighting] = useState<LightingResult | null>(null);
+  const [lightingUnavailable, setLightingUnavailable] = useState(false);
   const previewRef = useRef("");
   const selection = useRef(0);
   const [processing, setProcessing] = useState(false), [uploadError, setUploadError] = useState("");
   useEffect(() => () => { selection.current++; if (previewRef.current) URL.revokeObjectURL(previewRef.current); onProcessing?.(false); }, []);
   async function select(file: File | null) {
     const version = ++selection.current;
+    setLighting(null); setLightingUnavailable(false);
     if (previewRef.current) URL.revokeObjectURL(previewRef.current);
     previewRef.current = ""; setPreview(""); setName(""); setUploadError(""); onChange(null);
     setProcessing(true); onProcessing?.(true);
@@ -114,7 +120,14 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
   return <section className={"upload-box " + (photo ? "player-photo" : "")}>
     <p>{label}</p>
     {photo && <small>Sin lentes, gorras u objetos que tapen la cara.</small>}
-    {preview && <img src={preview} alt={label + " adjunta"} />}
+    {preview && <img key={preview} src={preview} alt={label + " adjunta"} onLoad={event => {
+      if (previewRef.current !== preview) return;
+      try {
+        const source = event.currentTarget;
+        setLighting(sampleLighting(source, source.naturalWidth, source.naturalHeight, document.createElement('canvas')));
+      } catch { setLightingUnavailable(true); }
+    }} onError={() => { if (previewRef.current === preview) setLightingUnavailable(true); }} />}
+    {preview && <LightingIndicator result={lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} />}
     <div className="upload-actions">
       <button type="button" onClick={() => upload.current?.click()}>Adjuntar</button>
       <button type="button" onClick={() => setCameraOpen(true)}>Tomar foto</button>
@@ -242,11 +255,11 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
               <div className="enrollment-wizard-player">
                 <Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} />
                 <div className="player-fields">
-                  <label className="full">Nombre<input name="name" required maxLength={160} autoComplete="name" disabled={step !== 2} /></label>
+                  <label className="full">{defaults.is_delegate ? "Nombre del delegado" : "Nombre"}<input name="name" required maxLength={160} autoComplete="name" defaultValue={defaults.delegate_name || ""} readOnly={Boolean(defaults.delegate_name)} disabled={step !== 2} /></label>
                   <label>Equipo<input readOnly value={defaults.team} /></label>
                   <label>Torneo<input readOnly value={defaults.tournament} /></label>
                   <label>Fecha de nacimiento<input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></label>
-                  <label>Teléfono de contacto<input name="phone" required type="tel" maxLength={30} disabled={step !== 2} /></label>
+                  <label>Teléfono de contacto<input name="phone" required type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></label>
                   <label>Teléfono de emergencia (opcional)<input name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></label>
                   {minor && <label className="full">Nombre del padre o tutor<input name="guardian_name" required maxLength={160} disabled={step !== 2} /></label>}
                 </div>
@@ -269,8 +282,11 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   </main>;
 }
 
-function PrivateImage({ document, token, alt }: { document?: Document; token: string; alt: string }) {
+function PrivateImage({ document, token, alt, onReady }: { document?: Document; token: string; alt: string; onReady?: (ok: boolean) => void }) {
   const [url, setUrl] = useState("");
+  const [failed, setFailed] = useState(false);
+  const ready = useRef(onReady);
+  ready.current = onReady;
   useEffect(() => {
     if (!document) return;
     let active = true, objectUrl = "";
@@ -278,19 +294,68 @@ function PrivateImage({ document, token, alt }: { document?: Document; token: st
     fetch(API_URL + "/player-enrollments/documents/" + document.id + "/", {
       headers: { Authorization: "Token " + token }, signal: controller.signal,
     }).then(async response => {
-      if (!response.ok || !response.headers.get("Content-Type")?.startsWith("image/")) return;
+      if (!response.ok || !response.headers.get("Content-Type")?.startsWith("image/")) throw new Error("Imagen no disponible");
       objectUrl = URL.createObjectURL(await response.blob());
       if (active) setUrl(objectUrl); else URL.revokeObjectURL(objectUrl);
-    }).catch(() => undefined);
+    }).catch(() => { if (active) { setFailed(true); ready.current?.(false); } });
     return () => { active = false; controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [document?.id, token]);
-  return url ? <img src={url} alt={alt} /> : <span className="photo-placeholder">{document ? "Cargando imagen…" : "Sin foto"}</span>;
+  return url ? <img src={url} alt={alt} onLoad={() => ready.current?.(true)} onError={() => ready.current?.(false)} /> : <span className="photo-placeholder">{failed ? "Imagen no disponible" : document ? "Cargando imagen…" : "Sin foto"}</span>;
 }
 
-function TeamRosterPage({ team, tournament, token, onBack }: { team: Team; tournament?: Tournament; token: string; onBack: () => void }) {
+export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
+  const [details, setDetails] = useState<{team: string; tournament: string; players: {id: number; name: string; is_delegate: boolean}[]} | null>(null);
+  const [selected, setSelected] = useState(""), [accepted, setAccepted] = useState(false);
+  const [signature, setSignature] = useState<Blob | null>(null);
+  const [error, setError] = useState(""), [busy, setBusy] = useState(false), [done, setDone] = useState(false);
+  const saving = useRef(false);
+  const endpoint = API_URL + "/player-enrollments/withdrawal/" + encodeURIComponent(invitation) + "/";
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(endpoint, {signal: controller.signal}).then(async response => {
+      const body = await response.json(); if (!response.ok) throw new Error(body.detail || "No se pudo abrir el enlace de baja.");
+      setDetails(body);
+    }).catch(reason => { if (!controller.signal.aborted) setError(reason.message); });
+    return () => controller.abort();
+  }, [endpoint]);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); if (saving.current) return;
+    if (!selected || !accepted || !signature) { setError("Selecciona un integrante, confirma la baja y firma."); return; }
+    saving.current = true; setBusy(true); setError("");
+    try {
+      const data = new FormData(); data.append("enrollment_id", selected); data.append("accepted", "true"); data.append("withdrawal_signature", signature, "firma-baja.png");
+      const response = await fetch(endpoint, {method: "POST", body: data}); const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || "No se pudo guardar la baja."); setDone(true);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar la baja."); }
+    finally { saving.current = false; setBusy(false); }
+  }
+  return <main className="enrollment-page"><section className="registration-sheet">
+    <h1>Dar de baja</h1>{done ? <p role="status">Baja firmada y registrada. Se conserva la ficha del jugador.</p> : <>
+      {details && <form onSubmit={submit}><p>{details.team} · {details.tournament}</p><fieldset disabled={busy}>
+        <label>Integrante<select required value={selected} onChange={event => {setSelected(event.target.value); setAccepted(false); setSignature(null);}}><option value="">Selecciona un integrante</option>{details.players.map(player => <option key={player.id} value={player.id}>{player.name}{player.is_delegate ? " · Delegado" : ""}</option>)}</select></label>
+        {selected && <><label className="consent"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />Confirmo la baja de {details.players.find(player => String(player.id) === selected)?.name} de este equipo.</label><Signature key={selected} label="Firma de baja" onChange={setSignature} /></>}
+        <button className="primary" disabled={!selected || !accepted || !signature || busy}>{busy ? "Guardando baja…" : "Firmar y confirmar baja"}</button>
+      </fieldset></form>}{!details && !error && <p role="status">Cargando integrantes…</p>}{error && <p className="error" role="alert">{error}</p>}
+    </>}</section></main>;
+}
+
+function TeamRosterPage({ team, tournament, token, onBack, autoPrint = false, alignment = false }: { team: Team; tournament?: Tournament; token: string; onBack: () => void; autoPrint?: boolean; alignment?: boolean }) {
   const [players, setPlayers] = useState<Enrollment[]>([]);
+  const [changingDelegate, setChangingDelegate] = useState(false);
+  const [delegateMessage, setDelegateMessage] = useState("");
   const [busy, setBusy] = useState(true), [error, setError] = useState("");
   const [date, setDate] = useState(""), [round, setRound] = useState("");
+  const [time, setTime] = useState("");
+  const [imageResults, setImageResults] = useState<Record<number, boolean>>({});
+  const printed = useRef(false);
+  const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo"));
+  const photosReady = photos.every(doc => imageResults[doc.id] === true);
+  const photoFailed = Object.values(imageResults).includes(false);
+  useEffect(() => {
+    if (!autoPrint || printed.current || busy || error || !photosReady) return;
+    const frame = requestAnimationFrame(() => { printed.current = true; window.print(); });
+    return () => cancelAnimationFrame(frame);
+  }, [autoPrint, busy, error, photosReady]);
   useEffect(() => {
     const controller = new AbortController();
     async function loadRoster() {
@@ -298,7 +363,7 @@ function TeamRosterPage({ team, tournament, token, onBack }: { team: Team; tourn
         const all: Enrollment[] = [];
         let page = 1, count = 0;
         do {
-          const params = new URLSearchParams({ team_id: String(team.id), tournament_id: String(team.tournament), page: String(page) });
+          const params = new URLSearchParams({ team_id: String(team.id), tournament_id: String(team.tournament), page: String(page), active_only: "true" });
           const result = await apiRequest<{ results: Enrollment[]; count: number }>("/player-enrollments/?" + params, token, { signal: controller.signal });
           count = result.count;
           if (!result.results.length && all.length < count) throw new Error("No se pudo cargar la plantilla completa.");
@@ -310,34 +375,49 @@ function TeamRosterPage({ team, tournament, token, onBack }: { team: Team; tourn
     }
     void loadRoster(); return () => controller.abort();
   }, [team.id, team.tournament, token]);
+  const slots = tournament?.max_players_per_team || 16;
+  const pages = Array.from({ length: Math.max(1, Math.ceil(players.length / slots)) }, (_, page) => players.slice(page * slots, (page + 1) * slots));
+  const formattedDate = date ? date.split("-").reverse().join("/") : "";
   return <section className="enrollment-team-roster-view">
-    <div className="operator-controls no-print"><button type="button" onClick={onBack}>Volver a equipos</button>
-      <div className="control-grid"><label>Fecha<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><label>Jornada<input value={round} maxLength={30} onChange={event => setRound(event.target.value)} /></label><button type="button" disabled={busy || Boolean(error) || !players.length} onClick={() => window.print()}>Imprimir / guardar PDF</button></div>
+    <div className="operator-controls no-print"><div className="enrollment-delegate-toolbar"><div className="enrollment-delegate-actions"><button type="button" onClick={onBack}>Volver</button>
+      {!alignment && <button type="button" disabled={busy || Boolean(error) || !players.some(row => !row.is_delegate)} onClick={() => { setDelegateMessage(""); setChangingDelegate(true); }}>Cambiar delegado</button>}</div>
+      {!alignment && <p>Delegado: <strong>{players.find(row => row.is_delegate)?.name || "Sin delegado"}</strong></p>}</div>
+      <div className="control-grid"><label>Fecha<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><label>Horario<input type="time" value={time} onChange={event => setTime(event.target.value)} /></label>{!alignment && <label>Jornada<input value={round} maxLength={30} onChange={event => setRound(event.target.value)} /></label>}<button type="button" disabled={busy || Boolean(error) || !photosReady} onClick={() => window.print()}>Imprimir / guardar PDF</button></div>
     </div>
     {busy && <p role="status">Cargando plantilla…</p>}{error && <p className="error" role="alert">{error}</p>}
-    {!busy && !error && <div className="enrollment-team-roster-scroll"><section className="roster-sheet">
-      <div className="roster-header"><div><p><strong>Equipo:</strong> {team.name}</p><p><strong>Torneo:</strong> {tournament?.name || players[0]?.tournament || ""}</p></div><div><p><strong>Fecha:</strong> {date ? date.split("-").reverse().join("/") : ""}</p><p><strong>Jornada:</strong> {round}</p></div></div>
-      <div className="roster-grid">{players.map(row => <article className="enrollment-roster-card" key={row.id}><PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={row.name} /><div><strong>{row.name}</strong><span>{row.birth_date.split("-").reverse().join("/")}</span></div></article>)}</div>
-      {!players.length && <p className="enrollment-roster-empty">Este equipo aún no tiene jugadores inscritos.</p>}
-      <footer><p>La presente cédula ampara a los jugadores que cumplen con los requisitos para participar en partidos de temporada y liguilla.</p><p>Solo podrán ingresar a la cancha los jugadores y delegados del presente documento.</p><p>Equipo que ingrese jugador no registrado perderá automáticamente su partido.</p></footer>
-    </section></div>}
+    {delegateMessage && <p className="no-print" role="status">{delegateMessage}</p>}
+    {changingDelegate && <ChangeDelegate teamId={team.id} teamName={team.name} players={players} token={token} onClose={() => setChangingDelegate(false)} onChanged={id => {
+      setPlayers(previous => previous.map(row => ({ ...row, is_delegate: row.id === id })).sort((a, b) => Number(Boolean(b.is_delegate)) - Number(Boolean(a.is_delegate))));
+      setChangingDelegate(false); setDelegateMessage("Delegado actualizado.");
+    }} />}
+    {photoFailed && <p className="error no-print" role="alert">No se pudieron cargar las fotos. Actualiza antes de imprimir.</p>}
+    {!busy && !error && <div className="enrollment-team-roster-scroll">{pages.map((pagePlayers, page) => <section key={page} className={`roster-sheet match-paper ${alignment ? "alignment-paper" : "photo-paper"}`}>
+      {alignment && <h1 className="alignment-title">HOJA DE ALINEACIÓN</h1>}
+      <div className="match-paper-header"><div><strong>{team.name}</strong>{alignment && <small>EQUIPO</small>}<b>{tournament?.name || players[0]?.tournament || ""}</b>{alignment && <small>CATEGORÍA</small>}</div><div><strong>{formattedDate || "\u00a0"}</strong>{alignment && <small>FECHA</small>}<b>{time || "\u00a0"}</b>{alignment && <small>HORARIO</small>}</div></div>
+      {!alignment && <p className="match-round">{round || "\u00a0"}</p>}
+      <div className="match-paper-columns">{[0, 1].map(column => <div key={column} className="match-paper-column">{Array.from({ length: slots / 2 }, (_, index) => {
+        const row = pagePlayers[column * (slots / 2) + index];
+        return <article className="match-player-box" key={index}>{alignment ? <><div className="alignment-number"><span>Número</span></div><div className="alignment-fields"><div><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong></div><div><small>Firma</small></div></div></> : <><div className="match-photo">{row && <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={row.name} onReady={ok => { const id = row.documents.find(doc => doc.kind === "player_photo")?.id; if (id) setImageResults(previous => previous[id] === ok ? previous : { ...previous, [id]: ok }); }} />}</div><div className="match-player-data"><strong>{row?.name || "\u00a0"}</strong><div /></div></>}</article>;
+      })}</div>)}</div>
+      {alignment && <footer className="alignment-signatures"><div><span>FIRMA DEL CAPITÁN</span></div><div><span>FIRMA DEL ÁRBITRO</span></div><div className="alignment-count"><span>Nº DE JUGADORES</span></div></footer>}
+    </section>)}</div>}
   </section>;
 }
 
 export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   token: string; onLogout: () => void; restricted?: boolean;
 }) {
-  const [rows, setRows] = useState<Enrollment[]>([]), [page, setPage] = useState(1), [count, setCount] = useState(0);
   const [search, setSearch] = useState(""), [team, setTeam] = useState(""), [tournament, setTournament] = useState("");
-  const [date, setDate] = useState(""), [round, setRound] = useState("");
   const [link, setLink] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false), [selected, setSelected] = useState<Enrollment | null>(null);
+  const [busy, setBusy] = useState(false);
   const [catalog, setCatalog] = useState<EnrollmentCatalog>({ sites: [], tournaments: [], teams: [] });
   const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
   const [inviteTournament, setInviteTournament] = useState(""), [inviteTeam, setInviteTeam] = useState("");
   const [tournamentSection, setTournamentSection] = useState<TournamentSection | null>(null);
-  const [enrollmentSection, setEnrollmentSection] = useState<"send" | "history">("history");
+  const [enrollmentSection, setEnrollmentSection] = useState<"send" | "history" | "tools" | "withdraw">("history");
   const [rosterTeam, setRosterTeam] = useState<Team | null>(null);
+  const [printRoster, setPrintRoster] = useState(false);
+  const [alignmentSheet, setAlignmentSheet] = useState(false);
   const [rosterRevision, setRosterRevision] = useState(0);
   const invitationSaving = useRef(false);
   const selectedTournament = catalog.tournaments.find(item => String(item.id) === inviteTournament);
@@ -386,16 +466,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     await loadCatalog().catch(() => undefined);
     return created;
   }
-  async function load(next = page) {
-    setBusy(true); setError("");
-    try {
-      const params = new URLSearchParams({ page: String(next), search, team_id: team, tournament_id: tournament });
-      const result = await apiRequest<{ results: Enrollment[]; count: number }>("/player-enrollments/?" + params, token);
-      setRows(result.results); setCount(result.count); setPage(next);
-    } catch (err) { setError(err instanceof Error ? err.message : "No se pudo cargar el historial."); }
-    finally { setBusy(false); }
-  }
-  useEffect(() => { document.title = "Inscripciones BPower"; void load(1); void loadCatalog().catch(() => undefined); }, [token]);
+  useEffect(() => { document.title = "Inscripciones BPower"; void loadCatalog().catch(() => undefined); }, [token]);
   async function invite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (invitationSaving.current) return;
@@ -404,32 +475,28 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     }
     invitationSaving.current = true; setBusy(true); setError(""); setMessage(""); setLink("");
     try {
-      const data = { tournament_id: Number(inviteTournament), team_id: Number(inviteTeam) };
+      const data = { tournament_id: Number(inviteTournament), team_id: Number(inviteTeam), purpose: enrollmentSection === "withdraw" ? "withdraw" : "enroll" };
       const result = await apiRequest<{ token: string }>("/player-enrollments/", token, { method: "POST", body: JSON.stringify(data) });
-      setLink(window.location.origin + window.location.pathname + "#/inscripcion/" + result.token);
+      setLink(window.location.origin + window.location.pathname + (enrollmentSection === "withdraw" ? "#/baja/" : "#/inscripcion/") + result.token);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo crear el enlace."); }
     finally { invitationSaving.current = false; setBusy(false); }
   }
-  async function download(doc: Document, enrollment: number) {
-    try {
-      const response = await fetch(API_URL + "/player-enrollments/documents/" + doc.id + "/", { headers: { Authorization: "Token " + token } });
-      if (!response.ok) throw new Error("No se pudo descargar el documento.");
-      const blob = await response.blob(), url = URL.createObjectURL(blob), anchor = document.createElement("a");
-      anchor.href = url; anchor.download = "registro-" + enrollment + "-" + doc.kind +
-        (blob.type === "application/pdf" ? ".pdf" : blob.type === "image/png" ? ".png" : ".jpg");
-      anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err) { setError(err instanceof Error ? err.message : "No se pudo descargar."); }
+  const filteredTeams = catalog.teams.filter(item => (!tournament || String(item.tournament) === tournament)
+    && (!team || String(item.id) === team) && item.name.toLocaleLowerCase("es").includes(search.trim().toLocaleLowerCase("es")));
+  function openRoster(item: typeof catalog.teams[number], print = false, alignment = false) {
+    setAlignmentSheet(alignment);
+    setPrintRoster(print); setRosterTeam(item as Team);
   }
-  const groups = new Map<string, Enrollment[]>();
-  rows.forEach(row => { const key = row.team_id ? `team:${row.team_id}` : row.team + "\u0000" + row.tournament; groups.set(key, [...(groups.get(key) || []), row]); });
-  return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}`}>
+  return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" || (tournamentSection === null && enrollmentSection === "history") ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}`}>
     <aside className="enrollment-admin-sidebar no-print">
       <h2>Inscripciones BPower</h2><p>Administración de inscripciones</p>
-      <nav aria-label="Administración de inscripciones" onClickCapture={() => setRosterTeam(null)}>
+      <nav aria-label="Administración de inscripciones" onClickCapture={() => { setRosterTeam(null); setPrintRoster(false); }}>
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Inscripciones</div>
         <div className="enrollment-sidebar-submenu">
-          <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setSelected(null); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Enviar enlace</button>
-          <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Inscripciones</button>
+          <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Enviar enlace</button>
+          <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Sábana</button>
+          <button aria-current={tournamentSection === null && enrollmentSection === "tools" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("tools"); setTournament(""); setTeam(""); setError(""); setMessage(""); }}><Printer size={16} aria-hidden="true" />Herramientas</button>
+          <button aria-current={tournamentSection === null && enrollmentSection === "withdraw" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw"); setLink(""); setError(""); setMessage(""); }}><LogOut size={16} aria-hidden="true" />Dar de baja</button>
         </div>
         <div className="enrollment-sidebar-heading"><Trophy size={18} />Torneos</div>
         <div className="enrollment-sidebar-submenu">
@@ -441,14 +508,14 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print"><h1>{rosterTeam ? "Plantilla" : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Enviar enlace" : "Inscripciones"}</h1><div>
-        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { if (rosterTeam) setRosterRevision(value => value + 1); void load(page); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
+      <header className="operator-header enrollment-admin-header no-print"><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Enviar enlace" : enrollmentSection === "tools" ? "Herramientas" : enrollmentSection === "withdraw" ? "Dar de baja" : "Sábana"}</h1><div>
+        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { setPrintRoster(false); if (rosterTeam) setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
         <button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
       {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
-      {rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} onBack={() => setRosterTeam(null)} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
+      {rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { setRosterTeam(null); setPrintRoster(false); }} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           deletableTournamentIds={catalog.deletable_tournament_ids || []}
           deletionCollectionPath="player-enrollments/tournaments"
@@ -462,13 +529,13 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
             return created;
           }}
           onDeleteTeam={deleteTeam} onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
-          onViewTeamRoster={setRosterTeam}
+          onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </section> : enrollmentSection === "send" ?
+      </section> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <section className="operator-controls no-print">
-        <h2>Enviar enlace</h2>
+        <h2>{enrollmentSection === "withdraw" ? "Dar de baja" : "Enviar enlace"}</h2>
         <form onSubmit={invite} className="control-grid">
-          <label>Torneo para la inscripción<select required value={inviteTournament} disabled={catalogBusy || busy}
+          <label>Torneo<select required value={inviteTournament} disabled={catalogBusy || busy}
             onChange={event => chooseTournament(event.target.value)}><option value="">Selecciona un torneo</option>
             {catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name} · {catalog.sites.find(site => site.id === item.site)?.name}</option>)}</select></label>
           <label>Equipo del torneo<select required value={inviteTeam} disabled={catalogBusy || busy || !inviteTournament}
@@ -478,74 +545,52 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
         </form>
         {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» del menú izquierdo.</p>}
         {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos.</p>}
-        {link && <div className="share-link"><input readOnly value={link} aria-label="Enlace de inscripción" /><div>
+        {link && <div className="share-link"><input readOnly value={link} aria-label={enrollmentSection === "withdraw" ? "Enlace de baja" : "Enlace de inscripción"} /><div>
           <button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</button>
-          <a href={"https://wa.me/?text=" + encodeURIComponent("Hola, completa y firma tu inscripción aquí: " + link)} target="_blank" rel="noreferrer">Compartir por WhatsApp</a>
+          <a href={"https://wa.me/?text=" + encodeURIComponent((enrollmentSection === "withdraw" ? "Completa y firma la baja del equipo aquí: " : "Hola, completa y firma tu inscripción aquí: ") + link)} target="_blank" rel="noreferrer">Compartir por WhatsApp</a>
           <a href={link} target="_blank" rel="noreferrer">Ver formulario</a>
         </div></div>}
-      </section> : <>
-      <section className="operator-controls no-print">
-        <h2>Historial · {count} inscritos</h2>
-        <form onSubmit={event => { event.preventDefault(); void load(1); }} className="control-grid">
-          <label>Nombre<input value={search} onChange={event => setSearch(event.target.value)} /></label>
-          <label>Torneo del historial<select value={tournament} onChange={event => { setTournament(event.target.value); setTeam(""); }}><option value="">Todos</option>
-            {catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Equipo del historial<select value={team} onChange={event => setTeam(event.target.value)}><option value="">Todos</option>
-            {catalog.teams.filter(item => !tournament || String(item.tournament) === tournament).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <button disabled={busy}>Buscar / actualizar</button>
-        </form>
-        <div className="control-grid">
-          <label>Fecha de la cédula<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
-          <label>Jornada<input value={round} onChange={event => setRound(event.target.value)} maxLength={30} /></label>
-          <button type="button" onClick={() => window.print()}>Imprimir / guardar PDF</button>
+      </section> : enrollmentSection === "tools" ? <section className="operator-controls no-print">
+        <h2>Hoja de alineación</h2>
+        <div className="control-grid enrollment-sabana-filters">
+          <label>Torneo<select value={tournament} disabled={catalogBusy} onChange={event => { setTournament(event.target.value); setTeam(""); }}>
+            <option value="">Selecciona un torneo</option>{catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select></label>
+          <label>Equipo<select value={team} disabled={catalogBusy || !tournament} onChange={event => setTeam(event.target.value)}>
+            <option value="">Selecciona un equipo</option>{catalog.teams.filter(item => String(item.tournament) === tournament).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select></label>
         </div>
-      </section>
-      {selected ? <section className="registration-sheet signed-sheet">
-        <button className="no-print" onClick={() => setSelected(null)}>Volver a cédula</button>
-        <div className="sheet-top">
-          <section className="documentation-frame"><h2>Documentación presentada</h2>
-            {selected.documents.filter(doc => !["player_photo", "player_signature", "guardian_signature"].includes(doc.kind)).map(doc =>
-              <div key={doc.id}><p>{labels[doc.kind] || doc.kind}</p><PrivateImage document={doc} token={token} alt={labels[doc.kind]} />
-                <button className="no-print" onClick={() => void download(doc, selected.id)}>Descargar documento</button></div>)}
-          </section>
-          <section className="player-frame">
-            <div className="photo-and-signatures">
-              <PrivateImage document={selected.documents.find(doc => doc.kind === "player_photo")} token={token} alt={selected.name} />
-              <div>{["player_signature", ...(selected.guardian_name ? ["guardian_signature"] : [])].map(kind =>
-                <div key={kind}><p>{labels[kind]}</p><PrivateImage document={selected.documents.find(doc => doc.kind === kind)} token={token} alt={labels[kind]} /></div>)}</div>
-            </div>
-            <div className="player-fields"><p className="full">NOMBRE<br /><strong>{selected.name}</strong></p>
-              <p>EQUIPO<br />{selected.team}</p><p>TORNEO<br />{selected.tournament}</p>
-              <p>TELÉFONO DE CONTACTO<br />{selected.phone}</p><p>TELÉFONO DE EMERGENCIA<br />{selected.phone_secondary}</p>
-              <p>NACIMIENTO<br />{selected.birth_date}</p><p>FIRMADO<br />{new Date(selected.signed_at).toLocaleString("es-MX")}</p>
-            </div>
-          </section>
-        </div>
-        <Terms items={selected.terms_text || []} guardian={selected.guardian_name} player={selected.name} />
-      </section> : <>
-        {busy && <p className="no-print">Cargando…</p>}
-        {!busy && !rows.length && <p>Todavía no hay inscripciones firmadas para esta búsqueda.</p>}
-        {Array.from(groups.entries()).map(([key, group]) => <section className="roster-sheet" key={key}>
-          <div className="roster-header">
-            <div><p><strong>Equipo:</strong> {group[0].team}</p><p><strong>Torneo:</strong> {group[0].tournament || "Sin torneo"}</p></div>
-            <div><p><strong>Fecha:</strong> {date}</p><p><strong>Jornada:</strong> {round}</p></div>
+        <div className="tournament-actions"><button type="button" disabled={catalogBusy || !team} onClick={() => { const selected = catalog.teams.find(item => String(item.id) === team && String(item.tournament) === tournament); if (selected) openRoster(selected, false, true); }}>Ver hoja de alineación</button></div>
+      </section> : <section className="enrollment-sabana-directory">
+        <section className="operator-controls no-print">
+          <div className="control-grid enrollment-sabana-filters">
+            <label>Torneo<select value={tournament} disabled={catalogBusy} onChange={event => { setTournament(event.target.value); setTeam(""); }}>
+              <option value="">Todos los torneos</option>{catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select></label>
+            <label>Equipo<select value={team} disabled={catalogBusy} onChange={event => setTeam(event.target.value)}>
+              <option value="">Todos los equipos</option>{catalog.teams.filter(item => !tournament || String(item.tournament) === tournament).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select></label>
+            <label>Buscar equipo<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
           </div>
-          <div className="roster-grid">{group.map(row => <button className="roster-player" key={row.id} onClick={() => setSelected(row)}>
-            <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={row.name} />
-            <div><strong>{row.name}</strong><span>{row.birth_date.split("-").reverse().join("/")}</span></div>
-          </button>)}</div>
-          <footer>
-            <p>La presente cédula ampara a los jugadores que cumplen con los requisitos para participar en partidos de temporada y liguilla.</p>
-            <p>Solo podrán ingresar a la cancha los jugadores y delegados del presente documento.</p>
-            <p>Equipo que ingrese jugador no registrado perderá automáticamente su partido.</p>
-          </footer>
-        </section>)}
-        <div className="pagination no-print"><button disabled={busy || page <= 1} onClick={() => void load(page - 1)}>Anterior</button>
-          <span>Página {page} · {rows.length} jugadores en esta página</span>
-          <button disabled={busy || page * 25 >= count} onClick={() => void load(page + 1)}>Siguiente</button>
+        </section>
+        <p className="enrollment-sabana-count" role="status">{catalogBusy ? "Cargando equipos…" : `${filteredTeams.length} equipos`}</p>
+        <div className="tournament-directory-scroll" tabIndex={0} role="region" aria-label="Equipos y sábanas">
+          <table className="tournament-directory-table enrollment-sabana-table">
+            <thead><tr><th scope="col">Equipo</th><th scope="col">Torneo</th><th scope="col">Sede</th><th scope="col">Estado</th><th scope="col">Detalle</th><th scope="col">Imprimir / PDF</th></tr></thead>
+            <tbody>{!catalogBusy && filteredTeams.map(item => {
+              const tournamentRow = catalog.tournaments.find(row => row.id === item.tournament);
+              return <tr key={item.id}><th scope="row">{item.name}</th><td>{tournamentRow?.name || "Sin torneo"}</td>
+                <td>{catalog.sites.find(site => site.id === tournamentRow?.site)?.name || "—"}</td>
+                <td>{item.is_active ? "Activo" : "Inactivo"}</td>
+                <td><button type="button" className="enrollment-sabana-action" aria-label={`Ver sábana de ${item.name}`} onClick={() => openRoster(item)}><Eye size={16} aria-hidden="true" />Ver sábana</button></td>
+                <td><button type="button" className="enrollment-sabana-action" aria-label={`Imprimir o guardar PDF de ${item.name}`} onClick={() => openRoster(item, true)}><Printer size={16} aria-hidden="true" />Imprimir / PDF</button></td>
+              </tr>;
+            })}
+            {!catalogBusy && !filteredTeams.length && <tr><td colSpan={6} className="tournament-directory-empty">No hay equipos con estos filtros.</td></tr>}
+            </tbody>
+          </table>
         </div>
-      </>}
-      </>}
+      </section>}
     </div>
   </main>;
 }

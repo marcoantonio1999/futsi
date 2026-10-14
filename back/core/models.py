@@ -213,6 +213,12 @@ class Tournament(TimestampedModel):
     starts_on = models.DateField(null=True, blank=True)
     expected_weeks = models.PositiveSmallIntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    # Empty only for legacy tournaments whose modality has not been specified.
+    football_format = models.CharField(max_length=4, choices=[("fut6", "Fut 6"), ("fut7", "Fut 7"), ("fut8", "Fut 8")], blank=True, default="")
+
+    @property
+    def max_players_per_team(self):
+        return {"fut6": 12, "fut7": 14, "fut8": 16}.get(self.football_format)
 
     class Meta:
         db_table = "tournaments"

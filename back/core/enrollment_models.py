@@ -16,6 +16,8 @@ class PlayerEnrollmentInvitation(models.Model):
     tournament = models.CharField(max_length=140, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
+    purpose = models.CharField(max_length=12, default='enroll', choices=[('enroll', 'Inscripción'), ('withdraw', 'Baja')])
+    used_at = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = "player_enrollment_invitations"
 
@@ -38,6 +40,8 @@ class PlayerEnrollment(models.Model):
     terms_version = models.CharField(max_length=80)
     terms_text = models.JSONField(default=list)
     signed_at = models.DateTimeField(auto_now_add=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    is_delegate = models.BooleanField(default=False)
     class Meta:
         db_table = "player_enrollments"
         ordering = ["-signed_at", "-id"]

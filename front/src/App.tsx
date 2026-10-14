@@ -15,12 +15,16 @@ const AccountingPortal = lazy(() => import("./components/views/accounting").then
 const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults").then((module) => ({ default: module.AdultLeagueDashboardPanel })));
 const AdminShell = lazy(() => import("./components/layout/AdminShell").then((module) => ({ default: module.AdminShell })));
 const PublicPlayerEnrollment = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerEnrollment })));
+const PublicPlayerWithdrawal = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerWithdrawal })));
 const EnrollmentDashboard = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentDashboard })));
 const EnrollmentLogin = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentLogin })));
 
 export default function App() {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => { const update = () => setHash(window.location.hash); window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update); }, []);
+  if (!isSoccerWa && hash.startsWith("#/baja/")) {
+    return <Suspense fallback={<main>Cargando baja…</main>}><PublicPlayerWithdrawal invitation={hash.slice("#/baja/".length)} /></Suspense>;
+  }
   if (!isSoccerWa && hash.startsWith("#/inscripcion/")) {
     return <Suspense fallback={<main className="min-h-screen bg-white p-8">Cargando registro…</main>}><PublicPlayerEnrollment invitation={hash.slice("#/inscripcion/".length)} /></Suspense>;
   }

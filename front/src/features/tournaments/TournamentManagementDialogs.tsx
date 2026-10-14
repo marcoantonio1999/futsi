@@ -11,7 +11,7 @@ function teamPayload(form: FormData, tournament: Tournament, adult: boolean) {
 function CreateTeamFields({ adult }: { adult: boolean }) {
   return <>
     <TextInput label="Nombre del equipo" name="name" required maxLength={140} placeholder="Ej. Halcones Sub-12" />
-    {adult ? <><TextInput label="Representante del equipo (opcional)" name="representative_name" maxLength={160} /><TextInput label="Teléfono (opcional)" type="tel" name="representative_phone" maxLength={30} /><p className="tournament-info">Para equipos de niños o academia puedes dejar estos datos vacíos.</p></> : <p className="tournament-info">Una vez creado, podrás agregar alumnos desde el botón «Inscribir alumnos» del equipo.</p>}
+    {adult ? <><TextInput label="Delegado del equipo (opcional)" name="representative_name" maxLength={160} /><TextInput label="Teléfono (opcional)" type="tel" name="representative_phone" maxLength={30} /><p className="tournament-info">Para equipos de niños o academia puedes dejar estos datos vacíos.</p></> : <p className="tournament-info">Una vez creado, podrás agregar alumnos desde el botón «Inscribir alumnos» del equipo.</p>}
   </>;
 }
 

@@ -21,9 +21,14 @@ from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 from core.enrollment_terms import TERMS_VERSION, TERMS
 from core.services import enrollment_storage
 from core.services.enrollment_images import PHOTO_MAX_BYTES, compress_document_photo
+from core.services.team_capacity import assert_capacity, capacity_guard
 
 logger = logging.getLogger(__name__)
 ENROLLMENT_FILE_MAX_BYTES = 20_000_000
+
+
+def enrollment_invitation_expired(invitation):
+    return timezone.now() >= invitation.expires_at
 
 
 def enrollment_sites(user):
@@ -123,14 +128,16 @@ class PublicEnrollmentView(APIView):
     authentication_classes = []
     throttle_classes = [EnrollmentThrottle]
     def get(self, request, token):
-        invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_related('team_record__tournament'), token=token)
-        if invitation.expires_at < timezone.now():
+        invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_related('team_record__tournament'), token=token, purpose='enroll')
+        if enrollment_invitation_expired(invitation):
             return Response({"detail": "El enlace venció. Pide a Emilio uno nuevo."}, status=410)
         if PlayerEnrollment.objects.filter(invitation=invitation).exists():
             return Response({"completed": True})
         if not invitation.team_record_id:
             return Response({"detail": "Este enlace necesita un equipo y torneo registrados. Pide un enlace nuevo."}, status=410)
-        return Response({"team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "terms_version": TERMS_VERSION, "terms": TERMS})
+        assert_capacity(invitation.team_record)
+        first = not PlayerEnrollment.objects.filter(team_record=invitation.team_record).exists()
+        return Response({"team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "max_players_per_team": invitation.team_record.tournament.max_players_per_team, "is_delegate": first, "delegate_name": invitation.team_record.representative_name if first else '', "delegate_phone": invitation.team_record.representative_phone if first else '', "terms_version": TERMS_VERSION, "terms": TERMS})
 
     def post(self, request, token):
         serializer = EnrollmentInput(data=request.data)
@@ -145,11 +152,13 @@ class PublicEnrollmentView(APIView):
             kinds.append("identity_document")
         files = [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
         # Reject invalid invitations before transferring any private files.
-        invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token)
-        if invitation.expires_at < timezone.now():
+        invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token, purpose='enroll')
+        if enrollment_invitation_expired(invitation):
             return Response({"detail": "El enlace venció. Pide uno nuevo."}, status=410)
         if PlayerEnrollment.objects.filter(invitation=invitation).exists():
             return Response({"detail": "Esta inscripción ya fue recibida.", "completed": True}, status=409)
+        if invitation.team_record_id:
+            assert_capacity(invitation.team_record)
         paths = []
         documents = []
         batch = uuid4().hex
@@ -174,8 +183,8 @@ class PublicEnrollmentView(APIView):
 
     def save_enrollment(self, request, token, fields, documents):
         with transaction.atomic():
-            invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_for_update(of=('self',)).select_related('team_record__tournament'), token=token)
-            if invitation.expires_at < timezone.now():
+            invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_for_update(of=('self',)).select_related('team_record__tournament'), token=token, purpose='enroll')
+            if enrollment_invitation_expired(invitation):
                 raise ValidationError("El enlace venció. Pide uno nuevo.")
             if PlayerEnrollment.objects.filter(invitation=invitation).exists():
                 raise ValidationError("Esta inscripción ya fue recibida.")
@@ -183,11 +192,20 @@ class PublicEnrollmentView(APIView):
                 raise ValidationError('El equipo o torneo del enlace ya no está disponible. Solicita un enlace nuevo.')
             fields.update(team=invitation.team, tournament=invitation.tournament, team_record=invitation.team_record)
             checklist = fields.pop("document_checklist", [])
-            row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, terms_text=TERMS, document_checklist=checklist, **fields)
-            PlayerEnrollmentDocument.objects.bulk_create([
-                PlayerEnrollmentDocument(enrollment=row, **document)
-                for document in documents
-            ])
+            with capacity_guard(invitation.team_record, "enrollment") as team:
+                first = not PlayerEnrollment.objects.filter(team_record=team).exists()
+                if first and team.representative_name and fields['name'].strip().casefold() != team.representative_name.strip().casefold():
+                    raise ValidationError('Primero debe inscribirse el delegado del equipo.')
+                fields['is_delegate'] = first
+                row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, terms_text=TERMS, document_checklist=checklist, **fields)
+                if first:
+                    team.representative_name = row.name
+                    team.representative_phone = row.phone
+                    team.save(update_fields=['representative_name', 'representative_phone'])
+                PlayerEnrollmentDocument.objects.bulk_create([
+                    PlayerEnrollmentDocument(enrollment=row, **document)
+                    for document in documents
+                ])
         return Response({"completed": True, "folio": row.pk}, status=201)
 
 
@@ -199,6 +217,8 @@ class EnrollmentAdminView(APIView):
         except (ValueError, TypeError):
             raise ValidationError("Página inválida.")
         rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).select_related('team_record__tournament').prefetch_related("documents")
+        if request.query_params.get('active_only') == 'true':
+            rows = rows.filter(withdrawn_at__isnull=True).order_by('-is_delegate', 'signed_at', 'id')
         for field in ("team", "tournament"):
             if request.query_params.get(field):
                 rows = rows.filter(**{field: request.query_params[field][:140]})
@@ -218,12 +238,14 @@ class EnrollmentAdminView(APIView):
         result = []
         for row in rows[(page - 1) * 25:page * 25]:
             result.append({"id": row.pk, "name": row.name, "birth_date": row.birth_date, "team": row.team, "team_id": row.team_record_id, "tournament": row.tournament, "tournament_id": row.team_record.tournament_id if row.team_record_id else None, "identity_type": row.identity_type, "terms_text": row.terms_text, "phone": row.phone, "phone_secondary": row.phone_secondary, "guardian_name": row.guardian_name, "payment_reference": row.payment_reference, "document_checklist": row.document_checklist, "signed_at": row.signed_at, "terms_version": row.terms_version, "status": "Inscrito", "documents": [{"id": doc.pk, "kind": doc.kind, "sha256": doc.sha256} for doc in row.documents.all()]})
+            result[-1].update(is_delegate=row.is_delegate, withdrawn_at=row.withdrawn_at, status='Baja' if row.withdrawn_at else 'Inscrito')
         response = Response({"results": result, "count": count, "page": page})
         response["Cache-Control"] = "no-store"
         return response
 
     def post(self, request):
         class InvitationInput(serializers.Serializer):
+            purpose = serializers.ChoiceField(choices=['enroll', 'withdraw'], default='enroll')
             tournament_id = serializers.PrimaryKeyRelatedField(queryset=Tournament.objects.filter(is_active=True, site__is_active=True))
             team_id = serializers.PrimaryKeyRelatedField(queryset=Team.objects.filter(is_active=True).select_related('tournament'))
             def validate(self, data):
@@ -236,8 +258,75 @@ class EnrollmentAdminView(APIView):
         tournament = serializer.validated_data['tournament_id']
         if not enrollment_sites(request.user).filter(pk=tournament.site_id).exists():
             raise PermissionDenied('La sede no está disponible para inscripciones.')
-        row = PlayerEnrollmentInvitation.objects.create(created_by=request.user, expires_at=timezone.now() + timedelta(days=30), team_record=team, team=team.name, tournament=tournament.name)
+        purpose = serializer.validated_data['purpose']
+        if purpose == 'enroll':
+            assert_capacity(team)
+        elif not PlayerEnrollment.objects.filter(team_record=team, withdrawn_at__isnull=True).exists():
+            raise ValidationError('Este equipo no tiene integrantes inscritos para dar de baja.')
+        validity = timedelta(days=7) if purpose == 'withdraw' else timedelta(days=30)
+        row = PlayerEnrollmentInvitation.objects.create(created_by=request.user, expires_at=timezone.now() + validity, team_record=team, team=team.name, tournament=tournament.name, purpose=purpose)
         return Response({"token": row.token, "expires_at": row.expires_at}, status=201)
+
+
+class PublicWithdrawalView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_classes = [EnrollmentThrottle]
+
+    def invitation(self, token):
+        invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_related('team_record__tournament'), token=token, purpose='withdraw')
+        if invitation.used_at or invitation.expires_at < timezone.now():
+            raise ValidationError('Este enlace de baja ya fue utilizado o venció.')
+        if not invitation.team_record_id or not invitation.team_record.is_active or not invitation.team_record.tournament.is_active:
+            raise ValidationError('El equipo o torneo ya no está disponible.')
+        return invitation
+
+    def get(self, request, token):
+        invitation = self.invitation(token)
+        response = Response({'team': invitation.team, 'tournament': invitation.tournament,
+            'players': list(PlayerEnrollment.objects.filter(team_record=invitation.team_record, withdrawn_at__isnull=True).order_by('signed_at', 'id').values('id', 'name', 'is_delegate'))})
+        response['Cache-Control'] = 'no-store'
+        return response
+
+    def post(self, request, token):
+        class Input(serializers.Serializer):
+            enrollment_id = serializers.IntegerField(min_value=1)
+            accepted = serializers.BooleanField()
+        serializer = Input(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data['accepted']:
+            raise ValidationError('Confirma la baja antes de firmar.')
+        invitation = self.invitation(token)
+        get_object_or_404(PlayerEnrollment, pk=serializer.validated_data['enrollment_id'], team_record=invitation.team_record, withdrawn_at__isnull=True)
+        content, mime = validated_file(request.FILES.get('withdrawal_signature'), 'withdrawal_signature')
+        path = f'bajas/{invitation.pk}/{uuid4().hex}/firma.png'
+        try:
+            enrollment_storage.upload_document(path, content, mime)
+            with transaction.atomic():
+                # Same lock order as admissions: invitation, tournament, then team.
+                locked = PlayerEnrollmentInvitation.objects.select_for_update().get(pk=invitation.pk)
+                if locked.used_at or locked.expires_at < timezone.now():
+                    raise ValidationError('Este enlace de baja ya fue utilizado o venció.')
+                Tournament.objects.select_for_update().get(pk=invitation.team_record.tournament_id)
+                team = Team.objects.select_for_update().get(pk=invitation.team_record_id)
+                if not team.is_active or not team.tournament.is_active:
+                    raise ValidationError('El equipo o torneo ya no está disponible.')
+                row = get_object_or_404(PlayerEnrollment.objects.select_for_update(), pk=serializer.validated_data['enrollment_id'], team_record=team, withdrawn_at__isnull=True)
+                row.withdrawn_at = timezone.now()
+                row.save(update_fields=['withdrawn_at'])
+                PlayerEnrollmentDocument.objects.create(enrollment=row, kind='withdrawal_signature', storage_path=path, content=b'', content_type=mime, sha256=sha256(content).hexdigest())
+                locked.used_at = row.withdrawn_at
+                locked.save(update_fields=['used_at'])
+            return Response({'completed': True, 'name': row.name, 'withdrawn_at': row.withdrawn_at})
+        except Exception as exc:
+            try:
+                enrollment_storage.delete_document(path)
+            except Exception:
+                logger.exception('WITHDRAWAL_STORAGE_CLEANUP_FAILED')
+            if isinstance(exc, (APIException, Http404)):
+                raise
+            logger.exception('WITHDRAWAL_SAVE_FAILED')
+            return Response({'detail': 'No se pudo guardar la baja. Intenta nuevamente.'}, status=503)
 
 
 class EnrollmentCatalogView(APIView):
@@ -253,7 +342,7 @@ class EnrollmentCatalogView(APIView):
                          'teams': list(teams.values('id','name','tournament','is_active'))})
     def post(self, request):
         kind = request.data.get('kind')
-        allowed = {'tournament': {'site','name','billing_type','starts_on','expected_weeks','is_active'},
+        allowed = {'tournament': {'site','name','billing_type','starts_on','expected_weeks','is_active','football_format'},
                    'team': {'tournament','name','representative_name','representative_phone','representative_email','is_active'}}
         if kind not in allowed:
             raise ValidationError('Elige crear un equipo o un torneo.')

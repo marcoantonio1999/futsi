@@ -39,7 +39,7 @@ export function TournamentTeamsSection({
             <TextInput label="Equipo" name="name" placeholder={isAdultScope ? "Real Roma" : "Sub-12 A"} required />
             {isAdultScope && (
               <>
-                <TextInput label="Representante" name="representative_name" placeholder="Nombre del responsable" required />
+                <TextInput label="Delegado" name="representative_name" placeholder="Nombre del delegado" required />
                 <TextInput label="Telefono" name="representative_phone" placeholder="55..." required />
               </>
             )}
@@ -64,7 +64,7 @@ export function TournamentTeamsSection({
             <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500">
               <tr>
                 <th className="px-4 py-3 font-semibold">Equipo</th>
-                {isAdultScope && <th className="px-4 py-3 font-semibold">Representante</th>}
+                {isAdultScope && <th className="px-4 py-3 font-semibold">Delegado</th>}
                 {isAdultScope && <th className="px-4 py-3 font-semibold">Contacto</th>}
                 <th className="px-4 py-3 font-semibold">Estado</th>
               </tr>
@@ -73,7 +73,7 @@ export function TournamentTeamsSection({
               {tournamentTeams.map((team) => (
                 <tr key={team.id} className="border-t border-zinc-100">
                   <td className="px-4 py-3 font-medium text-zinc-950">{team.name}</td>
-                  {isAdultScope && <td className="px-4 py-3 text-zinc-700">{team.representative_name || "Sin representante"}</td>}
+                  {isAdultScope && <td className="px-4 py-3 text-zinc-700">{team.representative_name || "Sin delegado"}</td>}
                   {isAdultScope && (
                     <td className="px-4 py-3 text-zinc-700">
                       {team.representative_phone || "Sin telefono"}

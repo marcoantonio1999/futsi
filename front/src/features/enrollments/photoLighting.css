@@ -1,0 +1,6 @@
+.photo-lighting{display:flex;align-items:center;gap:10px;padding:12px 14px;margin:12px 0;border:1px solid;border-radius:10px;font-size:14px;line-height:1.4}
+.photo-lighting svg{flex-shrink:0}
+.photo-lighting.is-good{background:#edf9f1;border-color:#99d7ae;color:#216139}
+.photo-lighting.is-dark{background:#fff8e7;border-color:#e9c564;color:#795407}
+.photo-lighting.is-checking{background:#f6f7f8;border-color:#d5d9dd;color:#58616b}
+.enrollment-camera-dialog .camera-face-notice{margin:16px 0 0;padding:12px 14px;border:1px solid #e9c564;border-radius:10px;background:#fff8e7;color:#795407;font-size:14px;line-height:1.5}

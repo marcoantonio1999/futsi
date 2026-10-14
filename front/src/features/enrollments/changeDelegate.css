@@ -1,0 +1,15 @@
+.change-delegate-dialog{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 40px);padding:0;border:1px solid #e1e4e7;border-radius:20px;overflow:auto;color:#202825;background:#fff;box-shadow:0 20px 70px #0003}
+.change-delegate-dialog::backdrop{background:#0008}
+.change-delegate-dialog header,.change-delegate-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px}
+.change-delegate-dialog header{border-bottom:1px solid #e1e4e7}
+.change-delegate-dialog h2,.change-delegate-dialog p{margin:0}
+.change-delegate-dialog header p{margin-top:8px;color:#6b7280}
+.change-delegate-dialog header button{display:flex;padding:12px}
+.change-delegate-body{display:grid;gap:24px;padding:24px}
+.change-delegate-body label{display:grid;gap:10px}
+.change-delegate-body select{width:100%;min-height:48px;padding:10px;border:1px solid #d1d5db;border-radius:8px;background:#fff}
+.change-delegate-dialog footer{border-top:1px solid #e1e4e7;justify-content:flex-end}
+.change-delegate-dialog button{min-height:44px}
+.enrollment-delegate-toolbar{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:16px;margin-bottom:20px}
+.enrollment-delegate-actions{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
+.enrollment-delegate-toolbar p{margin:0;color:#52635a}
