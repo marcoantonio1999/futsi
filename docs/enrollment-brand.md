@@ -1,0 +1,7 @@
+# Logo de Inscripciones BPower
+
+Símbolo original creado con la herramienta integrada de generación de imágenes, no mediante API/CLI. PNG transparente guardado en `front/src/features/enrollments/assets/inscripciones-bpower-logo.png`, importado por Vite para una URL versionada por contenido. El nombre se renderiza como texto accesible, sin depender de letras dibujadas en la imagen. Se usa en inicio de sesión, menú administrativo y enlaces públicos de inscripción y baja; no reemplaza la identidad de Futsi/Soccer WA ni modifica las hojas imprimibles aprobadas.
+
+## Prompt final utilizado
+
+Use case: logo-brand. Create a finished original app logo symbol for Inscripciones BPower, a football team/player enrollment and discipline management app. Standalone icon only, no words or letters. Elegant flat vector-like geometric mark combining a simplified football with a bold registration checkmark and subtle rounded document/shield silhouette, one coherent recognizable silhouette, not a collage. Dark forest green and medium emerald green inspired by an existing green football administration app, a small restrained warm gold accent if needed. Crisp edges, strong contrast, meaningful negative space, premium friendly sports-tech identity. Square composition with the mark filling most of the canvas, generous but not excessive safe padding, legible at 48px. Actual transparent background. No mockup, no gradients, no 3D, no shadows, no decorative background, no watermark. Output a single polished usable logo icon.

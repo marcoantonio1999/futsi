@@ -5,6 +5,7 @@ import "./enrollments.css";
 import "./enrollmentAdmin.css";
 import { validateEnrollmentName } from "./enrollmentName";
 import { PrintableDelegate } from "./PrintableDelegate";
+import { EnrollmentBrand } from "./EnrollmentBrand";
 import { SanctionBadge, type SanctionSummary } from "./SanctionBadge";
 import { WithdrawalPlayerCard, type WithdrawalPlayer } from "./WithdrawalPlayerCard";
 import { WithdrawalHistory } from "./WithdrawalHistory";
@@ -50,7 +51,7 @@ export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: Us
     finally { setBusy(false); }
   }
   return <main className="enrollment-page"><form className="registration-sheet" style={{ maxWidth: 440, marginTop: 60 }} onSubmit={submit}>
-    <h1>Inscripciones BPower</h1>{error && <p role="alert" className="error">{error}</p>}
+    <h1 className="enrollment-login-brand"><EnrollmentBrand /></h1>{error && <p role="alert" className="error">{error}</p>}
     <label>Usuario<input name="username" autoComplete="username" required /></label>
     <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>
     <button className="primary" disabled={busy}>{busy ? "Entrando…" : "Entrar"}</button>
@@ -240,6 +241,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
     He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
   </label>;
   return <main className="enrollment-page public-enrollment-wizard">
+    <div className="enrollment-public-brand no-print"><EnrollmentBrand /></div>
     {done ? <section className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></section> :
       <form className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate>
         <header className="enrollment-wizard-header"><span>Paso {step + 1} de 3</span><h1>{["Aviso y aceptación", "Fecha e identificación", "Selfie y datos del jugador"][step]}</h1></header>
@@ -349,6 +351,7 @@ export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
     finally { saving.current = false; setBusy(false); }
   }
   return <main className="enrollment-page"><section className="registration-sheet">
+    <div className="enrollment-public-brand"><EnrollmentBrand /></div>
     <h1>Dar de baja</h1>{done ? <p role="status">{selected.length} baja(s) firmada(s) y registrada(s). Se conservan las fichas de los jugadores.</p> : <>
       {details && <form onSubmit={submit}><p>{details.team} · {details.tournament}</p><fieldset disabled={busy}>
         <legend>Selecciona uno o más integrantes</legend><p>Los jugadores con sanciones pendientes no pueden darse de baja hasta cumplir su período.</p>
@@ -541,7 +544,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     {mobileMenuOpen && <button type="button" className="enrollment-menu-backdrop no-print" aria-label="Cerrar menú de inscripciones" onClick={() => setMobileMenuOpen(false)} />}
     <aside ref={sidebarRef} id="enrollment-sections-menu" className={`enrollment-admin-sidebar no-print${mobileMenuOpen ? " is-open" : ""}`} role={mobileViewport && mobileMenuOpen ? "dialog" : undefined} aria-modal={mobileViewport && mobileMenuOpen ? true : undefined} aria-label="Secciones de inscripciones" aria-hidden={mobileViewport && !mobileMenuOpen ? true : undefined}>
       <button type="button" className="enrollment-menu-close" aria-label="Cerrar secciones" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button>
-      <h2>Inscripciones BPower</h2><p>Administración de inscripciones</p>
+      <h2 className="enrollment-sidebar-brand"><EnrollmentBrand /></h2><p>Administración de inscripciones</p>
       <nav aria-label="Administración de inscripciones" onClickCapture={() => { setRosterTeam(null); setPrintRoster(false); setMobileMenuOpen(false); }}>
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Inscripciones</div>
         <div className="enrollment-sidebar-submenu">
