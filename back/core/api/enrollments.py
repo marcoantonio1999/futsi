@@ -20,6 +20,7 @@ from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
 from core.services import enrollment_storage
+from core.services.enrollment_images import PHOTO_MAX_BYTES, compress_document_photo
 
 logger = logging.getLogger(__name__)
 ENROLLMENT_FILE_MAX_BYTES = 20_000_000
@@ -110,6 +111,8 @@ def validated_file(upload, kind):
                 image.thumbnail((400, 500))
                 output = BytesIO(); image.save(output, "JPEG", quality=85)
                 return output.getvalue(), "image/jpeg"
+            if "signature" not in kind and len(content) > PHOTO_MAX_BYTES:
+                return compress_document_photo(content), "image/jpeg"
             return content, "image/png" if image.format == "PNG" else "image/jpeg"
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise ValidationError("El archivo no es una imagen válida. Usa JPG, PNG o PDF para el INE.")

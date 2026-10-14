@@ -7,6 +7,7 @@ import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
 import { CameraCapture } from "./CameraCapture";
+import { compressEnrollmentPhoto } from "./compressEnrollmentPhoto";
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
@@ -86,18 +87,29 @@ function Signature({ label, onChange }: { label: string; onChange: (blob: Blob |
   </section>;
 }
 
-function Upload({ label, photo = false, onChange }: {
-  label: string; photo?: boolean; onChange: (file: File | null) => void;
+function Upload({ label, photo = false, onChange, onProcessing }: {
+  label: string; photo?: boolean; onChange: (file: File | null) => void; onProcessing?: (busy: boolean) => void;
 }) {
   const upload = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [name, setName] = useState(""), [preview, setPreview] = useState("");
   const previewRef = useRef("");
-  useEffect(() => () => { if (previewRef.current) URL.revokeObjectURL(previewRef.current); }, []);
-  function select(file: File | null) {
+  const selection = useRef(0);
+  const [processing, setProcessing] = useState(false), [uploadError, setUploadError] = useState("");
+  useEffect(() => () => { selection.current++; if (previewRef.current) URL.revokeObjectURL(previewRef.current); onProcessing?.(false); }, []);
+  async function select(file: File | null) {
+    const version = ++selection.current;
     if (previewRef.current) URL.revokeObjectURL(previewRef.current);
-    const url = file?.type.startsWith("image/") ? URL.createObjectURL(file) : "";
-    previewRef.current = url; setPreview(url); setName(file?.name || ""); onChange(file);
+    previewRef.current = ""; setPreview(""); setName(""); setUploadError(""); onChange(null);
+    setProcessing(true); onProcessing?.(true);
+    try {
+      const prepared = file ? await compressEnrollmentPhoto(file) : null;
+      if (version !== selection.current) return;
+      const url = prepared?.type.startsWith("image/") ? URL.createObjectURL(prepared) : "";
+      previewRef.current = url; setPreview(url);
+      setName(prepared ? `${prepared.name} · ${(prepared.size / 1_000_000).toFixed(2)} MB${prepared !== file ? " · comprimida" : ""}` : ""); onChange(prepared);
+    } catch (reason) { if (version === selection.current) setUploadError(reason instanceof Error ? reason.message : "No se pudo procesar la foto."); }
+    finally { if (version === selection.current) { setProcessing(false); onProcessing?.(false); } }
   }
   return <section className={"upload-box " + (photo ? "player-photo" : "")}>
     <p>{label}</p>
@@ -111,7 +123,9 @@ function Upload({ label, photo = false, onChange }: {
       onChange={event => select(event.target.files?.[0] || null)} />
     {cameraOpen && <CameraCapture selfie={photo} onClose={() => setCameraOpen(false)}
       onCapture={file => { select(file); setCameraOpen(false); }} />}
-    <small>{name || (photo ? "JPG o PNG · máximo 20 MB" : "JPG, PNG o PDF · máximo 20 MB")}</small>
+    {processing && <small role="status">Comprimiendo foto…</small>}
+    {uploadError && <p className="error" role="alert">{uploadError}</p>}
+    <small>{name || (photo ? "JPG o PNG · compresión automática a máximo 3 MB" : "Fotos: compresión automática a máximo 3 MB · PDF: máximo 20 MB")}</small>
   </section>;
 }
 
@@ -130,6 +144,9 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   const [identity, setIdentity] = useState("ine");
   const [defaults, setDefaults] = useState<Defaults | null>(null);
   const [files, setFiles] = useState<Record<string, Blob | null>>({});
+  const [processingFiles, setProcessingFiles] = useState<Record<string, boolean>>({});
+  const processingPhoto = Object.values(processingFiles).some(Boolean);
+  function processing(kind: string, value: boolean) { setProcessingFiles(current => ({ ...current, [kind]: value })); }
   const [error, setError] = useState(""), [done, setDone] = useState(false), [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const content = useRef<HTMLDivElement>(null);
@@ -154,6 +171,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   function navigate(next: number) { setError(""); setStep(next); if (content.current) content.current.scrollTop = 0; }
   function next() {
     setError("");
+    if (processingPhoto) { setError("Espera a que termine de comprimirse la foto."); return; }
     if (step === 0) { if (accepted) navigate(1); return; }
     if (!birthDate || birthDate > maxDate || Number(birthDate.slice(0, 4)) < today.getFullYear() - 110) {
       setError("Revisa la fecha de nacimiento."); return;
@@ -165,6 +183,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step !== 2 || !accepted || saving.current) return;
+    if (processingPhoto) { setError("Espera a que termine de comprimirse la foto."); return; }
     setError("");
     const formElement = event.currentTarget;
     if (!birthDate || birthDate > maxDate || Number(birthDate.slice(0, 4)) < today.getFullYear() - 110) {
@@ -217,11 +236,11 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
               </div>
               <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
                 <Upload key={item + kind} label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
-                  onChange={file => attach(item, file)} />)}</div>
+                  onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} />)}</div>
             </section>
             <section hidden={step !== 2}>
               <div className="enrollment-wizard-player">
-                <Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} />
+                <Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} />
                 <div className="player-fields">
                   <label className="full">Nombre<input name="name" required maxLength={160} autoComplete="name" disabled={step !== 2} /></label>
                   <label>Equipo<input readOnly value={defaults.team} /></label>
@@ -242,8 +261,8 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
         {error && <p className="error" role="alert">{error}</p>}
         {defaults && <footer className="enrollment-wizard-actions">
           {step > 0 && <button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</button>}
-          {step < 2 ? <button type="button" className="primary" disabled={step === 0 && !accepted} onClick={next}>{step === 0 ? "Aceptar y continuar" : "Siguiente"}</button>
-            : <button className="primary" disabled={busy}>{busy ? "Guardando…" : "Confirmar inscripción"}</button>}
+          {step < 2 ? <button type="button" className="primary" disabled={processingPhoto || (step === 0 && !accepted)} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</button>
+            : <button className="primary" disabled={busy || processingPhoto}>{processingPhoto ? "Procesando foto…" : busy ? "Guardando…" : "Confirmar inscripción"}</button>}
         </footer>}
         </div>
       </form>}
