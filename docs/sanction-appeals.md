@@ -1,6 +1,6 @@
 # Apelaciones y cumplimiento de sanciones
 
-Comisión disciplinaria es la primera subsección de Sanciones. El personal autorizado registra una apelación por sanción, motivos y foto de la carta escrita por el jugador. En móvil, Tomar foto abre la cámara del sistema; Adjuntar permite seleccionar una imagen. La carta se comprime a máximo 3 MB y se guarda en el bucket privado existente, sin URLs públicas, cron ni consultas periódicas. Solo se descarga al pulsar Ver foto de la carta.
+Comisión disciplinaria es la primera subsección de Sanciones. El personal autorizado registra una apelación por sanción, motivos y foto de la carta escrita por el jugador. Tomar foto abre la cámara en vivo dentro del mismo diálogo, con permiso del navegador y preferencia por cámara trasera; Adjuntar permite seleccionar una imagen. Se conserva el texto al abrir/cerrar/capturar y se detiene la cámara al salir. El envío se deshabilita mientras está abierta o comprimiendo. La carta se comprime a máximo 3 MB y se guarda en el bucket privado existente, sin URLs públicas, cron ni consultas periódicas. Solo se descarga al pulsar Ver foto de la carta.
 
 Solo administración (incluido Emilio) acepta/rechaza apelaciones y registra folios. Se conservan autor, fecha y motivos de ambas decisiones. No se puede sustituir una carta ni sobrescribir decisiones/folios ya registrados. Aceptar una apelación no cambia el periodo ni elimina la sanción.
 

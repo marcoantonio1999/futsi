@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { sampleLighting, type LightingResult } from './photoLighting';
 import { LightingIndicator } from './LightingIndicator';
 
-export function CameraCapture({ selfie, onCapture, onClose }: {
-  selfie: boolean; onCapture: (file: File) => void; onClose: () => void;
+export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: {
+  selfie: boolean; onCapture: (file: File) => void; onClose: () => void; embedded?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState("");
@@ -67,8 +67,8 @@ export function CameraCapture({ selfie, onCapture, onClose }: {
       else { setError("No se pudo tomar la foto. Intenta de nuevo."); setCapturing(false); }
     }, "image/jpeg", 0.9);
   }
-  return <div className="enrollment-camera-overlay" onKeyDown={event => {
-    if (event.key === "Escape") { event.preventDefault(); onClose(); }
+  return <div className={embedded ? "enrollment-camera-inline" : "enrollment-camera-overlay"} onKeyDown={event => {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
     if (event.key === "Tab") {
       const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
       const first = buttons[0], last = buttons[buttons.length - 1];
@@ -76,7 +76,7 @@ export function CameraCapture({ selfie, onCapture, onClose }: {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }
   }}>
-    <section className="enrollment-camera-dialog" role="dialog" aria-modal="true" aria-label="Tomar foto">
+    <section className="enrollment-camera-dialog" role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label="Tomar foto">
       <header><h2>Tomar foto</h2><button ref={closeButton} type="button" onClick={onClose} aria-label="Cerrar cámara">✕</button></header>
       {selfie && <p className="camera-face-notice">Por favor, retira lentes, gorra, cubrebocas y cualquier objeto que tape tu cara. Mantén el rostro completo visible.</p>}
       <video ref={video} autoPlay muted playsInline onLoadedData={() => setReady(true)} />

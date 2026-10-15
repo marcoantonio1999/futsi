@@ -267,6 +267,10 @@
 @media print{.enrollment-roster-layout,.enrollment-roster-layout .operator-page,.enrollment-roster-layout .enrollment-team-roster-view,.enrollment-roster-layout .enrollment-team-roster-scroll{display:block!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important}.enrollment-team-roster-scroll .roster-sheet{max-width:none;margin:0}.enrollment-roster-card{grid-template-columns:70px minmax(0,1fr);min-height:96px}.enrollment-roster-card img{width:70px;height:96px}.enrollment-roster-card strong{font-size:12px}.enrollment-roster-card>div{padding:8px}}
 @media(max-width:600px){.public-enrollment-wizard{padding:10px}.enrollment-wizard-header,.enrollment-wizard-content{padding:16px}.enrollment-wizard-header h1{font-size:21px}.enrollment-wizard-uploads,.enrollment-wizard-player,.enrollment-wizard-signatures{grid-template-columns:1fr}.enrollment-wizard-actions{padding:14px 16px}}
 .sanction-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.enrollment-camera-inline{min-width:0;width:100%}
+.enrollment-camera-inline .enrollment-camera-dialog{width:100%;max-height:none;padding:0;box-shadow:none;border-radius:0}
+.enrollment-camera-inline .enrollment-camera-dialog video{max-height:min(32dvh,280px)}
+.enrollment-camera-inline .enrollment-camera-dialog footer{flex-wrap:wrap}
 .sanction-actions button { min-height:44px; white-space:normal; }
 .sanction-appeal-letter { display:block; width:100%; max-width:650px; height:auto; object-fit:contain; margin:12px auto; }
 .sanction-appeal-details { min-width:0; overflow-wrap:anywhere; }
