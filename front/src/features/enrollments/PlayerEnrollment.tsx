@@ -11,6 +11,8 @@ import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
 import { WhatsAppIcon } from "./WhatsAppIcon";
 import { EnrollmentDatePicker } from "./EnrollmentDatePicker";
+import { EnrollmentNavigation, useEnrollmentNavigation, useEnrollmentViewState, useEnrollmentScrollReady } from './EnrollmentNavigation';
+import type { EnrollmentSection } from './enrollmentHistory';
 import { SanctionBadge, type SanctionSummary } from "./SanctionBadge";
 import { WithdrawalPlayerCard, type WithdrawalPlayer } from "./WithdrawalPlayerCard";
 import { WithdrawalHistory } from "./WithdrawalHistory";
@@ -414,8 +416,9 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
   const [changingDelegate, setChangingDelegate] = useState(false);
   const [delegateMessage, setDelegateMessage] = useState("");
   const [busy, setBusy] = useState(true), [error, setError] = useState("");
-  const [date, setDate] = useState(""), [round, setRound] = useState("");
-  const [time, setTime] = useState("");
+  const [date, setDate] = useEnrollmentViewState(`paper.${team.id}.date`, ""), [round, setRound] = useEnrollmentViewState(`paper.${team.id}.round`, "");
+  const [time, setTime] = useEnrollmentViewState(`paper.${team.id}.time`, "");
+  useEnrollmentScrollReady(!busy);
   const [imageResults, setImageResults] = useState<Record<number, boolean>>({});
   const printed = useRef(false);
   const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo"));
@@ -475,9 +478,13 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
   </section>;
 }
 
-export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
-  token: string; onLogout: () => void; restricted?: boolean;
+export function EnrollmentDashboard(props: { token: string; onLogout: () => void; restricted?: boolean; userId?: number }) {
+  return <EnrollmentNavigation key={props.userId || 0} userId={props.userId || 0}><EnrollmentDashboardContent {...props} /></EnrollmentNavigation>;
+}
+function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
+  token: string; onLogout: () => void; restricted?: boolean; userId?: number;
 }) {
+  const navigation = useEnrollmentNavigation()!;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileViewport, setMobileViewport] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
@@ -506,17 +513,25 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
     document.addEventListener("keydown", onKey);
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", onKey); };
   }, [mobileMenuOpen]);
-  const [search, setSearch] = useState(""), [team, setTeam] = useState(""), [tournament, setTournament] = useState("");
+  const [search, setSearch] = useEnrollmentViewState('roster.search', ""), [team, setTeam] = useEnrollmentViewState('roster.team', ""), [tournament, setTournament] = useEnrollmentViewState('roster.tournament', "");
   const [link, setLink] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [catalog, setCatalog] = useState<EnrollmentCatalog>({ sites: [], tournaments: [], teams: [] });
   const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
-  const [inviteTournament, setInviteTournament] = useState(""), [inviteTeam, setInviteTeam] = useState("");
-  const [tournamentSection, setTournamentSection] = useState<TournamentSection | null>(null);
-  const [enrollmentSection, setEnrollmentSection] = useState<"send" | "history" | "tools" | "withdraw" | "withdraw-history" | "sanction-new" | "commission" | "blacklist">("history");
-  const [rosterTeam, setRosterTeam] = useState<Team | null>(null);
+  const [inviteTournament, setInviteTournament] = useEnrollmentViewState('invite.tournament', ""), [inviteTeam, setInviteTeam] = useEnrollmentViewState('invite.team', "");
+  const tournamentSection = navigation.screen.section.startsWith('tournament-') ? navigation.screen.section.slice('tournament-'.length) as TournamentSection : null;
+  const enrollmentSection = tournamentSection ? 'history' : navigation.screen.section;
+  function setTournamentSection(section: TournamentSection | null) {
+    if (section) navigation.navigate({ section: `tournament-${section}` as EnrollmentSection, roster: null, detail: null, alignment: false });
+  }
+  function setEnrollmentSection(section: EnrollmentSection) {
+    navigation.navigate({ section, roster: null, detail: null, alignment: false });
+  }
+  const rosterTeam = catalog.teams.find(row => row.id === navigation.screen.roster) as Team | undefined;
   const [printRoster, setPrintRoster] = useState(false);
-  const [alignmentSheet, setAlignmentSheet] = useState(false);
+  const alignmentSheet = navigation.screen.alignment;
+  useEnrollmentScrollReady(!catalogBusy);
+  useEffect(() => { setMobileMenuOpen(false); if (!navigation.screen.roster) setPrintRoster(false); setError(''); setMessage(''); }, [navigation.screen.section, navigation.screen.roster]);
   const [rosterRevision, setRosterRevision] = useState(0);
   const invitationSaving = useRef(false);
   const selectedTournament = catalog.tournaments.find(item => String(item.id) === inviteTournament);
@@ -583,15 +598,15 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
   const filteredTeams = catalog.teams.filter(item => (!tournament || String(item.tournament) === tournament)
     && (!team || String(item.id) === team) && item.name.toLocaleLowerCase("es").includes(search.trim().toLocaleLowerCase("es")));
   function openRoster(item: typeof catalog.teams[number], print = false, alignment = false) {
-    setAlignmentSheet(alignment);
-    setPrintRoster(print); setRosterTeam(item as Team);
+    navigation.navigate({ roster: item.id, alignment, detail: null });
+    setPrintRoster(print);
   }
   return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" || (tournamentSection === null && enrollmentSection === "history") ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}`}>
     {mobileMenuOpen && <button type="button" className="enrollment-menu-backdrop no-print" aria-label="Cerrar menú de inscripciones" onClick={() => setMobileMenuOpen(false)} />}
     <aside ref={sidebarRef} id="enrollment-sections-menu" className={`enrollment-admin-sidebar no-print${mobileMenuOpen ? " is-open" : ""}`} role={mobileViewport && mobileMenuOpen ? "dialog" : undefined} aria-modal={mobileViewport && mobileMenuOpen ? true : undefined} aria-label="Secciones de inscripciones" aria-hidden={mobileViewport && !mobileMenuOpen ? true : undefined}>
       <button type="button" className="enrollment-menu-close" aria-label="Cerrar secciones" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button>
       <h2 className="enrollment-sidebar-brand"><EnrollmentBrand /></h2><p>Administración de inscripciones</p>
-      <nav aria-label="Administración de inscripciones" onClickCapture={() => { setRosterTeam(null); setPrintRoster(false); setMobileMenuOpen(false); }}>
+      <nav aria-label="Administración de inscripciones" onClickCapture={() => { setPrintRoster(false); setMobileMenuOpen(false); }}>
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Inscripciones</div>
         <div className="enrollment-sidebar-submenu">
           <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Enviar enlace</button>
@@ -623,7 +638,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
       {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
-      {rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { setRosterTeam(null); setPrintRoster(false); }} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
+      {catalogBusy && navigation.screen.roster && !rosterTeam ? <p role="status">Cargando equipo…</p> : rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { navigation.back(); setPrintRoster(false); }} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           onTeamsReused={async () => { await loadCatalog(); }}
           deletableTournamentIds={catalog.deletable_tournament_ids || []}

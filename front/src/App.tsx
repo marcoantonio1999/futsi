@@ -6,6 +6,7 @@ import { AppSkeleton } from "./components/loading/AppSkeleton";
 import { ThemeToggle } from "./components/layout/ThemeToggle";
 import { useFutsiData } from "./hooks/useFutsiData";
 import { useThemeMode } from "./hooks/useThemeMode";
+import { isEnrollmentAdminHash } from './features/enrollments/enrollmentHistory';
 import type { AttendanceRecord, AttendanceSession, FaceRecognitionResponse } from "./types";
 
 const FutsiLanding = lazy(() => import("./components/landing/FutsiLanding").then((module) => ({ default: module.FutsiLanding })));
@@ -28,7 +29,7 @@ export default function App() {
   if (!isSoccerWa && hash.startsWith("#/inscripcion/")) {
     return <Suspense fallback={<main className="min-h-screen bg-white p-8">Cargando registro…</main>}><PublicPlayerEnrollment invitation={hash.slice("#/inscripcion/".length)} /></Suspense>;
   }
-  return <FutsiApplication enrollmentAdmin={hash === "#/admin/inscripciones"} />;
+  return <FutsiApplication enrollmentAdmin={isEnrollmentAdminHash(hash)} />;
 }
 
 function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
@@ -90,7 +91,7 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   const hasCustomSectionPermissions = Boolean(currentUser.section_permissions?.length);
   const enrollmentOnly = currentUser.section_permissions?.includes("player_enrollments_only") ?? false;
   if (!isSoccerWa && (enrollmentOnly || (enrollmentAdmin && ["admin", "owner", "dev"].includes(currentUser.role)))) {
-    return <Suspense fallback={<AppSkeleton />}><EnrollmentDashboard token={token} onLogout={logout} restricted={enrollmentOnly} /></Suspense>;
+    return <Suspense fallback={<AppSkeleton />}><EnrollmentDashboard userId={currentUser.id} token={token} onLogout={logout} restricted={enrollmentOnly} /></Suspense>;
   }
 
   if (isSoccerWa && !canUseSoccerWa(currentUser)) {

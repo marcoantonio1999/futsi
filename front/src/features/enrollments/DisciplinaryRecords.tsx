@@ -2,19 +2,21 @@ import {useEffect,useRef,useState} from 'react';
 import {apiRequest} from '../../api';
 import {TournamentDialog} from '../tournaments/TournamentDialog';
 import {DisciplinaryPhoto} from './DisciplinaryPhoto';
+import {useEnrollmentViewState, useEnrollmentDetail, useEnrollmentScrollReady} from './EnrollmentNavigation';
 type RecordRow={id:number;player_name:string;has_photo?:boolean;offense:string;reason:string;created_at:string;applied_by:string;site:string;tournament:string;team:string;birth_date:string|null;status:string;starts_on?:string;ends_on?:string|null;recommendation?:string;revoked_at?:string|null;revoked_by?:string|null;revocation_reason?:string};
 type Result={results:RecordRow[];count:number;filters:{site:string[];tournament:string[];team:string[]};can_manage_blacklist:boolean};
 const labels:Record<string,string>={active:'Vigente',expired:'Cumplida',scheduled:'Programada',indefinite:'Sin término',revoked:'Retirada'};
 const formatDate=(value?:string|null)=>value?new Date(value.includes('T')?value:value+'T12:00:00').toLocaleDateString('es-MX'):'Sin término';
 export function DisciplinaryRecords({token,mode,revision}:{token:string;mode:'commission'|'blacklist';revision:number}){
   const blacklist=mode==='blacklist',endpoint=blacklist?'/player-enrollments/blacklist/':'/player-enrollments/disciplinary/';
-  const [search,setSearch]=useState(''),[query,setQuery]=useState(''),[site,setSite]=useState(''),[tournament,setTournament]=useState(''),[team,setTeam]=useState(''),[status,setStatus]=useState('');
-  const [from,setFrom]=useState(''),[to,setTo]=useState(''),[page,setPage]=useState(1),[refresh,setRefresh]=useState(0);
+  const [search,setSearch]=useEnrollmentViewState(`${mode}.search`,''),[query,setQuery]=useEnrollmentViewState(`${mode}.query`,''),[site,setSite]=useEnrollmentViewState(`${mode}.site`,''),[tournament,setTournament]=useEnrollmentViewState(`${mode}.tournament`,''),[team,setTeam]=useEnrollmentViewState(`${mode}.team`,''),[status,setStatus]=useEnrollmentViewState(`${mode}.status`,'');
+  const [from,setFrom]=useEnrollmentViewState(`${mode}.from`,''),[to,setTo]=useEnrollmentViewState(`${mode}.to`,''),[page,setPage]=useEnrollmentViewState(`${mode}.page`,1),[refresh,setRefresh]=useState(0);
   const [result,setResult]=useState<Result>({results:[],count:0,filters:{site:[],tournament:[],team:[]},can_manage_blacklist:false});
   const [busy,setBusy]=useState(true),[error,setError]=useState(''),[message,setMessage]=useState('');
-  const [detail,setDetail]=useState<RecordRow|null>(null),[action,setAction]=useState<{type:'include'|'revoke';row:RecordRow}|null>(null);
+  const [detail,setDetail]=useEnrollmentDetail(result.results),[action,setAction]=useState<{type:'include'|'revoke';row:RecordRow}|null>(null);
+  useEnrollmentScrollReady(!busy);
   const dialog=useRef<HTMLDialogElement>(null),opener=useRef<HTMLButtonElement|null>(null),requestId=useRef(crypto.randomUUID());
-  useEffect(()=>{const timer=window.setTimeout(()=>{setQuery(search.trim());setPage(1)},350);return()=>window.clearTimeout(timer)},[search]);
+  useEffect(()=>{if(query===search.trim())return;const timer=window.setTimeout(()=>{setQuery(search.trim());setPage(1)},350);return()=>window.clearTimeout(timer)},[search]);
   useEffect(()=>{
     const controller=new AbortController(),params=new URLSearchParams({page:String(page)});
     for(const [key,value] of Object.entries({search:query,site,tournament,team,status,date_from:from,date_to:to}))if(value)params.set(key,value);

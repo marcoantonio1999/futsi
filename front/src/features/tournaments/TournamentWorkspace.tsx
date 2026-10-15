@@ -10,6 +10,7 @@ import { CreateTeamDialog, CreateTeamPage, EnrollmentDialog, ScheduleMatchDialog
 import { TournamentRoster } from "./TournamentRoster";
 import { TournamentMatches } from "./TournamentMatches";
 import { ReuseTeamsDialog } from "./ReuseTeamsDialog";
+import { useEnrollmentViewState } from '../enrollments/EnrollmentNavigation';
 import "../../components/views/sports.css";
 import "./tournaments.css";
 import { AcademyDeleteDialog } from "../../components/views/studentDeleteDialog";
@@ -121,7 +122,7 @@ export function TournamentsPanel(props: Props) {
 }
 
 function EnrollmentTeamsDirectory({ data, readOnly, onViewRoster, onDelete }: { data: AppData; readOnly: boolean; onViewRoster?: (team: Team) => void; onDelete?: (team: Team) => void }) {
-  const [tournamentId, setTournamentId] = useState("");
+  const [tournamentId, setTournamentId] = useEnrollmentViewState('teams.tournament', "");
   const teams = data.teams.filter(team => !tournamentId || String(team.tournament) === tournamentId);
   return <section className="tournament-team-list">
     <header className="tournament-page-heading"><div><p className="tournament-eyebrow">Torneos / Equipos</p><h2>Equipos</h2><p>{teams.length} equipos encontrados</p></div>
@@ -139,7 +140,7 @@ function EnrollmentTeamsDirectory({ data, readOnly, onViewRoster, onDelete }: { 
 }
 
 function TournamentDirectory({ data, adult, readOnly, onOpen, onCreate, onDelete, setupOnly = false, deletableTournamentIds }: { data: AppData; adult: boolean; readOnly: boolean; onOpen: (id: number) => void; onCreate: () => void; onDelete: (tournament: Tournament) => void; setupOnly?: boolean; deletableTournamentIds?: number[] }) {
-  const [query, setQuery] = useState(""); const [site, setSite] = useState(""); const [status, setStatus] = useState("active"); const [limit, setLimit] = useState(8);
+  const [query, setQuery] = useEnrollmentViewState('tournaments.query', ""); const [site, setSite] = useEnrollmentViewState('tournaments.site', ""); const [status, setStatus] = useEnrollmentViewState('tournaments.status', "active"); const [limit, setLimit] = useEnrollmentViewState('tournaments.limit', 8);
   const filtered = data.tournaments.filter(row => (!site || String(row.site) === site) && (!status || row.is_active === (status === "active")) && row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   if (setupOnly) return <div className="tournament-directory-list">
     <header className="tournament-page-heading"><div><p className="tournament-eyebrow">Gestión de torneos</p><h2>{status === "active" ? "Torneos activos" : status === "inactive" ? "Torneos inactivos" : "Todos los torneos"}</h2><p>Abre un torneo para gestionar sus equipos.</p></div></header>

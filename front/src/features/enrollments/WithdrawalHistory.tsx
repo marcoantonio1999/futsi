@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiRequest } from "../../api";
 import { Eye } from "lucide-react";
+import { useEnrollmentViewState, useEnrollmentDetail, useEnrollmentScrollReady } from './EnrollmentNavigation';
 
 export type WithdrawalRecord = {
   id: number; name: string; team: string; tournament: string; withdrawn_at: string;
@@ -16,20 +17,22 @@ const dateLabel = (value: string) => new Date(value).toLocaleString("es-MX");
 export function WithdrawalHistory({ token, revision, renderSignature }: {
   token: string; revision: number; renderSignature: (document: { id: number; kind: string }, name: string) => ReactNode;
 }) {
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
-  const [tournament, setTournament] = useState("");
-  const [team, setTeam] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useEnrollmentViewState('withdrawals.search', "");
+  const [query, setQuery] = useEnrollmentViewState('withdrawals.query', "");
+  const [tournament, setTournament] = useEnrollmentViewState('withdrawals.tournament', "");
+  const [team, setTeam] = useEnrollmentViewState('withdrawals.team', "");
+  const [from, setFrom] = useEnrollmentViewState('withdrawals.from', "");
+  const [to, setTo] = useEnrollmentViewState('withdrawals.to', "");
+  const [page, setPage] = useEnrollmentViewState('withdrawals.page', 1);
   const [result, setResult] = useState<Result>({ results: [], count: 0, withdrawal_filters: { tournaments: [], teams: [] } });
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
-  const [detail, setDetail] = useState<WithdrawalRecord | null>(null);
+  const [detail, setDetail] = useEnrollmentDetail(result.results);
+  useEnrollmentScrollReady(!busy);
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
+    if (query === search.trim()) return;
     const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(1); }, 350);
     return () => window.clearTimeout(timer);
   }, [search]);
