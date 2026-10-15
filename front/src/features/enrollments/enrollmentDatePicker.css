@@ -1,0 +1,39 @@
+.enrollment-date-field{flex:1;min-width:0;margin:10px 0;font-family:Arial,sans-serif}
+.enrollment-date-field>label{display:block;margin:0 0 5px;font-size:13px}
+.enrollment-page button.enrollment-date-trigger{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;min-height:46px;padding:10px 12px;box-sizing:border-box;border:1px solid #d3ddd6;border-radius:8px;background:#fff;color:#273e30;text-align:left;font-size:15px;line-height:1.4;cursor:pointer}
+.enrollment-date-trigger svg{flex-shrink:0;color:#64776b}
+.enrollment-date-trigger span{min-width:0;overflow-wrap:anywhere}
+.enrollment-date-trigger:hover{background:#f5f9f6!important}
+.enrollment-date-trigger:focus-visible,.enrollment-date-popup button:focus-visible,.enrollment-date-popup select:focus-visible{outline:3px solid #86bfa0;outline-offset:2px}
+.enrollment-date-positioner{z-index:1600;max-width:calc(100vw - 8px)}
+.enrollment-date-popup{display:flex;flex-direction:column;box-sizing:border-box;width:350px;max-width:min(calc(100vw - 8px),var(--available-width));max-height:min(600px,var(--available-height));overflow:hidden;padding:12px;border:1px solid #dce4df;border-radius:12px;background:#fff;color:#22372a;box-shadow:0 12px 36px #152d2526;font:14px/1.4 Arial,sans-serif}
+.enrollment-date-heading{display:flex;flex-shrink:0;align-items:center;justify-content:space-between;gap:4px;margin:0 0 6px}
+.enrollment-date-heading h2{font-size:15px;font-weight:600;margin:0}
+.enrollment-date-popup button{font:inherit;cursor:pointer;box-sizing:border-box}
+.enrollment-date-popup button.enrollment-date-close{display:grid;place-items:center;border:0;border-radius:6px;background:transparent;min-width:44px;min-height:44px;color:#53675a;padding:0}
+.enrollment-date-popup .rdp-root{--rdp-accent-color:#246343;--rdp-accent-background-color:#e4f2e9;--rdp-day-width:44px;--rdp-day-height:44px;--rdp-day_button-width:44px;--rdp-day_button-height:44px;--rdp-day_button-border-radius:7px;--rdp-nav_button-width:44px;--rdp-nav_button-height:44px;--rdp-selected-border:1px solid #246343;margin:0}
+.enrollment-date-popup>.rdp-root{min-height:0;overflow:auto;overscroll-behavior:contain}
+.enrollment-date-popup .rdp-months{display:block;max-width:none}
+.enrollment-date-popup .rdp-month{width:100%}
+.enrollment-date-popup .rdp-month_grid{width:100%;table-layout:fixed;border-collapse:collapse}
+.enrollment-date-popup .rdp-day_button{width:100%;height:44px;margin:0;border-radius:7px;display:grid;place-items:center;color:inherit}
+.enrollment-date-popup .rdp-day{width:auto;height:44px;text-align:center;padding:0;font-size:14px;font-weight:400}
+.enrollment-date-popup .rdp-day:not(.rdp-disabled):not(.rdp-selected) .rdp-day_button:hover{background:#eff5f1}
+.enrollment-date-popup .rdp-selected .rdp-day_button{background:#246343;color:#fff;font-weight:600}
+.enrollment-date-popup .rdp-range_middle .rdp-day_button{background:#e4f2e9;color:#214f36;border:0;border-radius:0}
+.enrollment-date-popup .rdp-weekday{height:32px;font-size:12px;color:#6a7d70;font-weight:500}
+.enrollment-date-popup .rdp-month_caption{height:48px;justify-content:center}
+.enrollment-date-popup .rdp-dropdowns{gap:6px;justify-content:center;max-width:calc(100% - 88px)}
+.enrollment-date-popup .rdp-dropdown_root{min-height:44px;display:flex;align-items:center;font-size:14px;font-weight:600}
+.enrollment-date-popup .rdp-dropdown{font:16px Arial,sans-serif;cursor:pointer}
+.enrollment-date-popup .rdp-button_previous,.enrollment-date-popup .rdp-button_next{border:1px solid #e1e7e3;border-radius:7px;color:#246343}
+.enrollment-date-popup .rdp-chevron{fill:#246343;width:18px;height:18px}
+.enrollment-date-popup .rdp-footer{padding:10px 4px 0;font-size:12px;color:#687b6e}
+.enrollment-date-range-footer{flex-shrink:0;border-top:1px solid #e5ebe7;margin-top:10px;padding-top:10px}
+.enrollment-date-range-footer p{font-size:13px;font-weight:600;margin:0 0 4px}
+.enrollment-date-range-footer small{display:block;color:#687b6e;font-size:12px;margin-bottom:12px}
+.enrollment-date-range-footer button{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;border:1px solid #246343;border-radius:7px;background:#246343;color:white;padding:10px}
+.enrollment-date-range-footer button:disabled{opacity:.5;cursor:default}
+.enrollment-date-range-actions{display:grid;grid-template-columns:1fr 1.7fr;gap:8px}
+.enrollment-date-range-footer button.enrollment-date-reset{background:white;color:#345541;border-color:#d3ddd6}
+@media(max-width:600px){.enrollment-page button.enrollment-date-trigger{font-size:16px}.enrollment-date-popup{padding:8px}.enrollment-date-popup .rdp-root{--rdp-day-width:40px;--rdp-day_button-width:40px}.enrollment-date-field{width:100%;flex-basis:100%}}

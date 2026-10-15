@@ -7,6 +7,7 @@ import { validateEnrollmentName } from "./enrollmentName";
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
 import { WhatsAppIcon } from "./WhatsAppIcon";
+import { EnrollmentDatePicker } from "./EnrollmentDatePicker";
 import { SanctionBadge, type SanctionSummary } from "./SanctionBadge";
 import { WithdrawalPlayerCard, type WithdrawalPlayer } from "./WithdrawalPlayerCard";
 import { WithdrawalHistory } from "./WithdrawalHistory";
@@ -255,7 +256,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
             </section>
             <section hidden={step !== 1}>
               <div className="enrollment-wizard-identity-fields">
-              <label>Fecha de nacimiento<input name="birth_date" type="date" required value={birthDate} max={maxDate} onChange={event => setBirthDate(event.target.value)} /></label>
+              <EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday value={birthDate} max={maxDate} onChange={setBirthDate} />
               {!minor && <label>Identificación<select value={identity} onChange={event => setIdentity(event.target.value)}>
                 <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option>
               </select></label>}
