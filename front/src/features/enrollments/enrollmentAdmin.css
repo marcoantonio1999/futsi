@@ -167,7 +167,12 @@
 .enrollment-sabana-action{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-height:40px;padding:8px 12px!important;border-radius:8px!important}
 @media(max-width:700px){.enrollment-sabana-filters{grid-template-columns:1fr;gap:12px}.enrollment-sabana-directory{gap:12px}.enrollment-sabana-directory .operator-controls{padding:12px}}
 .enrollment-team-roster-view .operator-controls{margin:0;border-radius:12px;flex-shrink:0}
-.enrollment-team-roster-scroll{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain}
+.enrollment-team-roster-scroll{min-height:0;flex:1;overflow:auto}
+@media screen{
+  /* Keep wide A4 sheets inside their horizontal viewport, but let vertical
+     wheel/touch gestures continue to the page when this box cannot scroll. */
+  .enrollment-team-roster-scroll{overscroll-behavior-x:contain;overscroll-behavior-y:auto;touch-action:auto}
+}
 .enrollment-team-roster-scroll .roster-sheet{max-width:800px;margin:0 auto}
 .enrollment-roster-card{display:grid;grid-template-columns:80px minmax(0,1fr);min-height:112px;border-right:1px solid #bbb;border-bottom:1px solid #bbb;break-inside:avoid}
 .enrollment-roster-card img{width:80px;height:112px;object-fit:cover}
