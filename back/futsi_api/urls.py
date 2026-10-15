@@ -8,6 +8,7 @@ from core.api.sanctions import PlayerSanctionView
 from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, BlacklistRevokeView, DisciplinaryPhotoView, BlacklistPhotoView
 from core.api.sanction_appeals import SanctionAppealView, SanctionDecisionView
 from core.api.enrollment_delegate import EnrollmentDelegateView
+from core.api.enrollment_players import EnrollmentPlayersView
 
 from core.api.automatic_attendance import (
     AutomaticAttendanceCancelJobView,
@@ -78,6 +79,7 @@ from futsi_api.health import (
 urlpatterns = [
     path("api/player-enrollments/", EnrollmentAdminView.as_view()),
     path("api/player-enrollments/catalog/", EnrollmentCatalogView.as_view()),
+    path("api/player-enrollments/players/", EnrollmentPlayersView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/deletion-preview/", EnrollmentTeamDeletionView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/delegate/", EnrollmentDelegateView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/", EnrollmentTeamDeletionView.as_view()),
