@@ -3,6 +3,7 @@ import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks,
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
+import "./enrollmentButtons.css";
 import { validateEnrollmentName } from "./enrollmentName";
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";

@@ -1,0 +1,125 @@
+/* shadcn/ui Button visual variants adapted to existing native buttons/links.
+   Keep handlers, refs, submit types and link semantics intact. Screen-only:
+   printable player cards and A4 documents must retain their existing layout.
+   Important appearance rules bridge the legacy module's more-specific styles;
+   layout, visibility and widths still belong to each screen. */
+@media screen {
+  .enrollment-page {
+    --enrollment-button-primary:#246343;
+    --enrollment-button-primary-hover:#1c5036;
+    --enrollment-button-ink:#26372d;
+    --enrollment-button-border:#dbe4de;
+    --enrollment-button-hover:#f0f5f2;
+    --enrollment-button-danger:#b42338;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
+  :is(button:not(:where(.enrollment-admin-sidebar *, .enrollment-menu-backdrop, .enrollment-menu-open, .enrollment-menu-close, .roster-player, .enrollment-roster-card)),.share-link a) {
+    display:inline-flex!important;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    box-sizing:border-box;
+    min-height:44px!important;
+    max-width:100%;
+    padding:10px 16px!important;
+    border:1px solid var(--enrollment-button-border,#dbe4de)!important;
+    border-radius:8px!important;
+    background:#fff!important;
+    color:var(--enrollment-button-ink,#26372d)!important;
+    box-shadow:0 1px 2px #1022180a;
+    font-family:inherit;
+    font-size:14px!important;
+    font-weight:500!important;
+    line-height:20px!important;
+    text-align:center;
+    text-decoration:none!important;
+    vertical-align:middle;
+    cursor:pointer;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+    transition:background-color .15s,border-color .15s,color .15s,box-shadow .15s;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
+  :is(button:not(:where(.enrollment-admin-sidebar *, .enrollment-menu-backdrop, .enrollment-menu-open, .enrollment-menu-close, .roster-player, .enrollment-roster-card)),.share-link a):not(:disabled):hover {
+    background:var(--enrollment-button-hover,#f0f5f2)!important;
+    border-color:#c3d2c8!important;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog) button.primary {
+    background:var(--enrollment-button-primary,#246343)!important;
+    color:#fff!important;
+    border-color:var(--enrollment-button-primary,#246343)!important;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog) button.primary:not(:disabled):hover {
+    background:var(--enrollment-button-primary-hover,#1c5036)!important;
+    border-color:var(--enrollment-button-primary-hover,#1c5036)!important;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
+  button:is(.danger,.destructive,.disciplinary-danger,.tournament-team-delete-button,.student-delete-confirm) {
+    background:var(--enrollment-button-danger,#b42338)!important;
+    color:#fff!important;
+    border-color:var(--enrollment-button-danger,#b42338)!important;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
+  button:is(.danger,.destructive,.disciplinary-danger,.tournament-team-delete-button,.student-delete-confirm):not(:disabled):hover {
+    background:#941b2e!important;
+    border-color:#941b2e!important;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog) button:is(.quiet,.tournament-text-button) {
+    background:transparent!important;
+    border-color:transparent!important;
+    box-shadow:none;
+    color:#246343!important;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
+  :is(button,a):focus-visible {
+    outline:3px solid #94c5a7;
+    outline-offset:3px;
+    box-shadow:0 0 0 2px white;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog) button:disabled {
+    opacity:.5!important;
+    cursor:not-allowed!important;
+    box-shadow:none;
+  }
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
+  button:not(:where(.enrollment-menu-backdrop,.roster-player,.enrollment-roster-card))>svg,
+  .enrollment-page .share-link a>svg {flex-shrink:0;width:18px;height:18px;pointer-events:none}
+  .enrollment-page .share-link a>.enrollment-whatsapp-icon{width:22px;height:22px}
+  .enrollment-page .enrollment-admin-sidebar nav button {
+    min-height:44px;
+    border-radius:8px;
+    font-size:14px;
+    font-weight:500;
+    line-height:20px;
+    transition:background-color .15s,color .15s;
+  }
+  .enrollment-page .enrollment-admin-sidebar nav button:not(:disabled):hover{background:#f0f5f2;color:#246343}
+  .enrollment-page .enrollment-admin-sidebar nav button[aria-current=page]{background:#e6f2ea;color:#1c5036;font-weight:600}
+  .enrollment-page :is(.enrollment-menu-open,.enrollment-menu-close),
+  :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog) button.tournament-icon-button {
+    width:44px;
+    min-width:44px;
+    min-height:44px;
+    padding:10px!important;
+    border-radius:8px!important;
+  }
+  .enrollment-page :is(.enrollment-menu-open,.enrollment-menu-close) {
+    border:1px solid #dbe4de!important;
+    background:white!important;
+    color:#4e6255!important;
+    box-shadow:0 1px 2px #1022180a;
+  }
+  .enrollment-page .share-link>div{align-items:center;gap:10px}
+  .enrollment-page .upload-actions{gap:10px}
+}
+@media screen and (max-width:600px){
+  .enrollment-page .enrollment-admin-header button{padding:10px!important;min-width:44px}
+  .enrollment-page .enrollment-wizard-actions{gap:10px}
+  .enrollment-page .enrollment-wizard-actions button{white-space:normal;min-width:0}
+  .enrollment-page .share-link>div{align-items:stretch}
+  .enrollment-page :is(.upload-actions,.enrollment-delegate-actions){flex-wrap:wrap}
+  .enrollment-page .upload-actions button{flex:1 1 auto;min-width:128px;white-space:nowrap}
+}
+@media (prefers-reduced-motion:reduce){
+  .enrollment-page button,.enrollment-page .share-link a{transition:none!important}
+}
