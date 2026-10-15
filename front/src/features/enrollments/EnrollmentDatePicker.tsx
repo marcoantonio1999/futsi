@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import { DayPicker, type DateRange } from 'react-day-picker';
 import { es } from 'react-day-picker/locale';
@@ -6,6 +6,18 @@ import { CalendarDays, Check, X } from 'lucide-react';
 import { calendarDateValue, displayCalendarDate, parseCalendarDate } from './enrollmentDates';
 import 'react-day-picker/style.css';
 import './enrollmentDatePicker.css';
+
+const nativeDateQuery = '(max-width: 767px), (pointer: coarse)';
+function useNativeDatePicker() {
+  const [native, setNative] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(nativeDateQuery).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(nativeDateQuery), update = () => setNative(media.matches);
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  return native;
+}
 
 // shadcn/ui Base Date Picker composition (Popover + React DayPicker), with scoped
 // BPower styles so the legacy enrollment form's input/button rules cannot leak in.
@@ -21,9 +33,15 @@ function CalendarPopover({ title, children }: { title: string; children: ReactNo
 type DateProps = { label: string; name: string; value: string; onChange: (value: string) => void; min?: string; max?: string; birthday?: boolean; required?: boolean; disabled?: boolean };
 export function EnrollmentDatePicker({ label, name, value, onChange, min, max, birthday = false, required = false, disabled = false }: DateProps) {
   const [open, setOpen] = useState(false), id = useId();
+  const native = useNativeDatePicker();
+  useEffect(() => { if (native) setOpen(false); }, [native]);
   const selected = parseCalendarDate(value), now = new Date();
   const earliest = parseCalendarDate(min) || new Date(birthday ? now.getFullYear() - 110 : now.getFullYear() - 20, 0, 1);
   const latest = parseCalendarDate(max) || new Date(now.getFullYear() + 30, 11, 31);
+  if (native) return <div className="enrollment-date-field enrollment-native-date"><label htmlFor={id}>{label}</label>
+    <input id={id} type="date" name={name} value={value} required={required} disabled={disabled} autoComplete={birthday ? 'bday' : undefined}
+      min={calendarDateValue(earliest)} max={calendarDateValue(latest)} onChange={event => onChange(event.target.value)} />
+  </div>;
   return <div className="enrollment-date-field"><label id={id}>{label}</label>
     <input type="hidden" name={name} value={value} disabled={disabled} />
     <Popover.Root open={open} onOpenChange={setOpen} modal="trap-focus">
@@ -41,7 +59,17 @@ export function EnrollmentDatePicker({ label, name, value, onChange, min, max, b
 
 export function EnrollmentDateRangePicker({ label, from, to, min, onChange }: { label: string; from: string; to: string; min?: string; onChange: (from: string, to: string) => void }) {
   const [open, setOpen] = useState(false), [draft, setDraft] = useState<DateRange | undefined>(), id = useId();
+  const native = useNativeDatePicker();
+  useEffect(() => { if (native) setOpen(false); }, [native]);
   const earliest = parseCalendarDate(min), now = new Date();
+  if (native) return <fieldset className="enrollment-date-field enrollment-native-range"><legend>{label}</legend>
+    <div className="enrollment-native-range-inputs"><div className="enrollment-native-date"><label htmlFor={id + '-from'}>Desde</label>
+      <input id={id + '-from'} name="starts_on" type="date" required value={from} min={min}
+        onChange={event => { const next = event.target.value; onChange(next, to && next && to < next ? '' : to); }} /></div>
+      <div className="enrollment-native-date"><label htmlFor={id + '-to'}>Hasta (último día)</label>
+        <input id={id + '-to'} name="ends_on" type="date" required value={to} min={from && (!min || from > min) ? from : min} onChange={event => onChange(from, event.target.value)} /></div>
+    </div><small>El último día también cuenta como sancionado.</small>
+  </fieldset>;
   const summary = from && to ? `${displayCalendarDate(from)} – ${displayCalendarDate(to)}` : 'Selecciona inicio y fin';
   return <div className="enrollment-date-field"><label id={id}>{label}</label>
     <input type="hidden" name="starts_on" value={from} /><input type="hidden" name="ends_on" value={to} />
