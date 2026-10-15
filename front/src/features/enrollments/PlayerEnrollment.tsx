@@ -6,6 +6,7 @@ import "./enrollmentAdmin.css";
 import { validateEnrollmentName } from "./enrollmentName";
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
+import { WhatsAppIcon } from "./WhatsAppIcon";
 import { SanctionBadge, type SanctionSummary } from "./SanctionBadge";
 import { WithdrawalPlayerCard, type WithdrawalPlayer } from "./WithdrawalPlayerCard";
 import { WithdrawalHistory } from "./WithdrawalHistory";
@@ -610,7 +611,7 @@ export function EnrollmentDashboard({ token, onLogout, restricted = false }: {
         {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos.</p>}
         {link && <div className="share-link"><input readOnly value={link} aria-label={enrollmentSection === "withdraw" ? "Enlace de baja" : "Enlace de inscripción"} /><div>
           <button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</button>
-          <a href={"https://wa.me/?text=" + encodeURIComponent((enrollmentSection === "withdraw" ? "Completa y firma la baja del equipo aquí: " : "Hola, completa y firma tu inscripción aquí: ") + link)} target="_blank" rel="noreferrer">Compartir por WhatsApp</a>
+          <a className="enrollment-whatsapp-share" href={"https://wa.me/?text=" + encodeURIComponent((enrollmentSection === "withdraw" ? "Completa y firma la baja del equipo aquí: " : "Hola, completa y firma tu inscripción aquí: ") + link)} target="_blank" rel="noreferrer"><WhatsAppIcon /><span>Compartir por WhatsApp</span></a>
           <a href={link} target="_blank" rel="noreferrer">Ver formulario</a>
         </div></div>}
       </section> : enrollmentSection === "tools" ? <section className="operator-controls no-print">

@@ -14,6 +14,8 @@
 .registration-sheet>.enrollment-public-brand{margin-bottom:20px}
 @media(max-width:1023px){.enrollment-admin-sidebar h2.enrollment-sidebar-brand{padding-right:35px}.enrollment-sidebar-brand .enrollment-brand{gap:8px}.enrollment-sidebar-brand .enrollment-brand img{width:46px;height:46px}.enrollment-sidebar-brand .enrollment-brand-name{font-size:15px}.enrollment-sidebar-brand .enrollment-brand-name strong{font-size:23px}}
 .enrollment-admin-sidebar nav{display:grid;gap:8px}
+.enrollment-page .share-link a.enrollment-whatsapp-share{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;max-width:100%;box-sizing:border-box}
+.enrollment-whatsapp-icon{display:block;flex:0 0 22px;color:#128c4b}
 .withdrawal-history{min-width:0;border-radius:12px!important;padding:24px!important}
 .withdrawal-history-heading{margin-bottom:20px}
 .withdrawal-history-heading h2{font-size:20px;font-weight:750;margin:0 0 8px;color:#202d26}
