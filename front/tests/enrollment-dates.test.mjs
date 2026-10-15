@@ -19,6 +19,7 @@ test('birth picker and sanction range use the shadcn Base composition with Spani
   assert.match(picker, /mode="range" locale=\{es\}/);
   assert.match(picker, /modal="trap-focus"/);
   assert.match(picker, /Popover.Close/);
+  assert.match(picker, /sticky collisionAvoidance=\{\{side:'shift',align:'shift'\}\}/);
   assert.match(picker, /\(max-width: 767px\), \(pointer: coarse\)/);
   assert.match(picker, /media.removeEventListener\('change', update\)/);
   assert.match(picker, /type="date" name=\{name\} value=\{value\} required=\{required\}/);
