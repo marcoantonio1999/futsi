@@ -4,6 +4,7 @@ import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
 import "./enrollmentButtons.css";
+import "./enrollmentSelects.css";
 import { validateEnrollmentName } from "./enrollmentName";
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";

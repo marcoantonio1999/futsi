@@ -16,3 +16,9 @@ Referencia: https://ui.shadcn.com/docs/components/base/button
 Se excluyen tarjetas de jugadores, el fondo atenuado del menú y las reglas que muestran u ocultan la hamburguesa y el panel lateral. La impresión A4 conserva sus estilos previos. Los enlaces siguen siendo enlaces: no se les asigna un rol de botón ni se cambia su destino.
 
 Validación: 320 y 390 px y escritorio, acciones de formulario y modal con datos ficticios, estados disabled, foco, colores y exclusión de las reglas bajo emulación de impresión. Pruebas de Inscripciones, TypeScript y build.
+
+## Selectores
+
+`enrollmentSelects.css` aplica el aspecto Native Select de shadcn/ui a formularios, filtros y diálogos del mismo módulo: bordes de 8 px, flecha decorativa, foco y estado deshabilitado. Conserva los elementos `<select>`, opciones, grupos, validación, eventos y FormData; en celular las opciones siguen siendo nativas del navegador/SO. Referencia: https://ui.shadcn.com/docs/components/base/native-select
+
+Altura mínima 44 px (46 px en móvil), fuente 16 px en móvil para evitar zoom automático de iOS, nombres largos con elipsis sin desbordar. Se excluyen las listas múltiples y los desplegables internos del calendario. Las reglas son solo de pantalla, incluyen colores forzados y movimiento reducido, y no se aplican a Futsi/Soccer WA fuera de Inscripciones.
