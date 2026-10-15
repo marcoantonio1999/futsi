@@ -71,14 +71,18 @@ class EnrollmentPlayersTests(TestCase):
         body = self.client.get(URL).json()
         self.assertEqual([p['name'] for p in body['results']], ['Visible'])
         self.client.force_authenticate(self.emilio)
-        self.assertEqual(self.client.get(URL).json()['count'], 3)
+        self.assertEqual(self.client.get(URL).json()['count'], 2)
+        self.assertEqual(self.client.get(URL, {'source': 'legacy'}).json()['count'], 1)
 
     def test_legacy_without_birth_is_separate_and_has_no_sensitive_fields(self):
         self.enroll()
         Player.objects.create(team=self.team, full_name='José Pérez López', phone='5512345678')
         body = self.client.get(URL).json()
         self.assertEqual(body['totals']['legacy'], 1)
-        self.assertEqual(body['count'], 2)
+        self.assertEqual(body['count'], 1)
+        legacy = self.client.get(URL, {'source': 'legacy'}).json()
+        self.assertEqual(legacy['count'], 1)
+        self.assertTrue(legacy['results'][0]['legacy'])
         for row in body['results']:
             self.assertNotIn('phone', row)
             self.assertNotIn('documents', row)
@@ -105,6 +109,7 @@ class EnrollmentPlayersTests(TestCase):
         self.assertEqual(len(last['results']), 2)
         self.assertEqual(self.client.get(URL, {'page': 'bad'}).status_code, 400)
         self.assertEqual(self.client.get(URL, {'status': 'bad'}).status_code, 400)
+        self.assertEqual(self.client.get(URL, {'source': 'bad'}).status_code, 400)
 
     def test_endpoint_is_private_and_read_only(self):
         self.assertEqual(self.client.post(URL, {}).status_code, 405)

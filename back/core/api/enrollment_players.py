@@ -28,6 +28,9 @@ class EnrollmentPlayersView(APIView):
         state = params.get('status', '')
         if state not in ('', 'active', 'inactive'):
             raise ValidationError('Estado inválido.')
+        source = params.get('source', 'enrollments')
+        if source not in ('enrollments', 'legacy'):
+            raise ValidationError('Origen inválido.')
         # Only scalar directory fields, never documents, signatures or binaries.
         rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).order_by('signed_at', 'id').values(
             'id', 'name', 'birth_date', 'team', 'tournament', 'team_record_id',
@@ -81,10 +84,12 @@ class EnrollmentPlayersView(APIView):
         players = list(people.values())
         for player in players:
             player['is_active'] = any(item['is_active'] for item in player['participations'])
+        legacy_count = sum(p['legacy'] for p in players)
+        players = [p for p in players if p['legacy'] == (source == 'legacy')]
         totals = {'total': len(players), 'active': sum(p['is_active'] for p in players),
                   'inactive': sum(not p['is_active'] for p in players),
                   'participations': sum(len(p['participations']) for p in players),
-                  'legacy': sum(p['legacy'] for p in players)}
+                  'legacy': legacy_count}
         options = {'sites': {}, 'tournaments': {}, 'teams': {}}
         for player in players:
             for item in player['participations']:
