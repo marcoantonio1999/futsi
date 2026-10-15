@@ -30,3 +30,8 @@ test('commission and blacklist show private photos in the table and detail, load
   assert.match(photo,/URL.revokeObjectURL/);assert.match(photo,/Foto no disponible/);assert.match(photo,/Sin foto/);
   assert.doesNotMatch(photo,/setInterval|supabase.co|service_role/);
 });
+
+test('range filter keeps enough width beside the existing flex filters',()=>{
+  const css=readFileSync('src/features/enrollments/enrollmentAdmin.css','utf8');
+  assert.match(css,/\.disciplinary-records \.control-grid>\.enrollment-date-field\{flex:2 1 280px;min-width:min\(100%,280px\)/);
+});
