@@ -292,6 +292,9 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
         <div ref={content} className="enrollment-wizard-content">
           {!defaults ? <p>{error ? "Solicita otro enlace si este ya no está disponible." : "Cargando…"}</p> : <>
             <section hidden={step !== 0}>
+              <EnrollmentField name="accepted_terms_top" error={fieldErrors.accepted_terms}><label className={`consent enrollment-consent-card${accepted ? ' is-accepted' : ''}`}><input type="checkbox" aria-invalid={!!fieldErrors.accepted_terms} aria-describedby={fieldErrors.accepted_terms ? 'enrollment-error-accepted_terms_top' : undefined} checked={accepted} onChange={event => { setAccepted(event.target.checked); if (event.target.checked) clearIssue('accepted_terms'); }} />
+                He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
+              </label></EnrollmentField>
               <Terms items={defaults.terms} />
               {consent}
             </section>
