@@ -80,7 +80,7 @@ export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: 
       <header><h2>Tomar foto</h2><button ref={closeButton} type="button" onClick={onClose} aria-label="Cerrar cámara">✕</button></header>
       {selfie && <p className="camera-face-notice">Por favor, retira lentes, gorra, cubrebocas y cualquier objeto que tape tu cara. Mantén el rostro completo visible.</p>}
       <video ref={video} autoPlay muted playsInline onLoadedData={() => setReady(true)} />
-      {!error && <LightingIndicator result={lightingUnavailable ? null : lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} />}
+      {!error && (ready ? <LightingIndicator result={lightingUnavailable ? null : lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} /> : <p role="status">Esperando acceso a la cámara. Si el navegador solicita permiso, elige Permitir.</p>)}
       {error && <p className="error" role="alert">{error}</p>}
       <footer><button type="button" onClick={onClose}>Cancelar</button>
         <button type="button" className="primary" disabled={!ready || !!error || capturing} onClick={capture}>Tomar foto</button></footer>
