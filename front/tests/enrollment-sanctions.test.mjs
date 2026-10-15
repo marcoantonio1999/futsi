@@ -13,7 +13,7 @@ new Function('require','module','exports',bundle.outputFiles[0].text)(name=>name
 test('sanction form separates recommendations from freely chosen coordinator duration',()=>{
   const html=renderToStaticMarkup(React.createElement(loaded.exports.NewSanction,{token:'fixture',catalog:{sites:[],teams:[],tournaments:[]}}));
   for(const label of ['Nueva sanción','Jugador','Fecha del incidente','Duración elegida','Días','Semanas','Meses','Años','Elegir periodo (inicio y fin)','Periodo de sanción','Sin fecha de término','Descripción del incidente'])assert.ok(html.includes(label));
-  assert.match(html,/no está obligado a usar el rango recomendado/);
+  assert.doesNotMatch(html,/El tabulador es orientativo|no está obligado a usar el rango recomendado/);
   assert.match(html,/No ejecuta una baja/);
 });
 test('new sanctions uses shared mobile navigation and prevents repeated submissions',()=>{

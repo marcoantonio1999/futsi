@@ -26,7 +26,6 @@ export function NewSanction({token,catalog}:{token:string;catalog:Catalog}) {
   },[token,team]);
   const selected=data.catalog.find(row=>row.code===offense);
   return <section className="operator-controls new-sanction"><h2>Nueva sanción</h2>
-    <p>El tabulador es orientativo. El coordinador decide la duración; no está obligado a usar el rango recomendado.</p>
     {result&&<div role="status" className="sanction-result"><strong>Sanción #{result.id} registrada para {result.player_name}</strong><p>{result.offense}</p><p>Desde {result.starts_on} hasta {result.ends_on||'sin fecha de término'} · Aplicada por {result.applied_by}</p></div>}
     <form onChange={()=>{requestId.current=crypto.randomUUID();setResult(null)}} onSubmit={async event=>{
       event.preventDefault();if(saving.current||loading)return;setError('');
