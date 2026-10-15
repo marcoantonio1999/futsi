@@ -5,13 +5,13 @@ import {readFileSync} from 'node:fs';
 import {build} from 'esbuild';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-const bundle=await build({stdin:{contents:'export { DisciplinaryRecords } from "./src/features/enrollments/DisciplinaryRecords";',resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',define:{'import.meta.env':'{}'}});
+const bundle=await build({stdin:{contents:'export { DisciplinaryRecords } from "./src/features/enrollments/DisciplinaryRecords";',resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',loader:{'.css':'empty'},define:{'import.meta.env':'{}'}});
 globalThis.window={location:{hostname:'localhost',origin:'http://localhost',protocol:'http:'}};
-const loaded={exports:{}};new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url),loaded,loaded.exports);
+const loaded={exports:{}};const requireModule=createRequire(import.meta.url);new Function('require','module','exports',bundle.outputFiles[0].text)(name=>name.endsWith('.css')?{}:requireModule(name),loaded,loaded.exports);
 test('commission and blacklist render independent sections with all filters',()=>{
   for(const mode of ['commission','blacklist']){
     const html=renderToStaticMarkup(React.createElement(loaded.exports.DisciplinaryRecords,{token:'fixture',mode,revision:0}));
-    for(const text of ['Jugador','Sede','Torneo','Equipo','Estado','Desde','Hasta'])assert.ok(html.includes(text));
+    for(const text of ['Jugador','Sede','Torneo','Equipo','Estado','Rango de fechas'])assert.ok(html.includes(text));
     assert.ok(html.includes(mode==='commission'?'Comisión disciplinaria':'Lista negra'));
   }
 });

@@ -22,12 +22,13 @@ test('birth picker and sanction range use the shadcn Base composition with Spani
   assert.match(picker, /\(max-width: 767px\), \(pointer: coarse\)/);
   assert.match(picker, /media.removeEventListener\('change', update\)/);
   assert.match(picker, /type="date" name=\{name\} value=\{value\} required=\{required\}/);
-  assert.match(picker, /name="starts_on" type="date" required value=\{from\}/);
-  assert.match(picker, /name="ends_on" type="date" required value=\{to\}/);
+  assert.match(picker, /name=\{fromName\} type="date" required=\{required\} value=\{from\}/);
+  assert.match(picker, /name=\{toName\} type="date" required=\{required\} value=\{to\}/);
   assert.match(picker, /to < next \? '' : to/);
   assert.match(picker, /className="enrollment-date-reset" onClick=\{\(\) => setDraft\(undefined\)\}/);
-  assert.match(picker, /name="starts_on" value=\{from\}/);
-  assert.match(picker, /name="ends_on" value=\{to\}/);
+  assert.match(picker, /name=\{fromName\} value=\{from\}/);
+  assert.match(picker, /name=\{toName\} value=\{to\}/);
+  assert.match(picker, /required = true, fromName = 'starts_on', toName = 'ends_on'/);
   assert.match(picker, /El último día también cuenta como sancionado/);
   assert.match(sanction, /useState\('dates'\)/);
   assert.match(sanction, /starts<incident/);

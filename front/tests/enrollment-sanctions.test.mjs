@@ -39,3 +39,20 @@ test('mobile renders native date controls without duplicate hidden values or cus
     assert.doesNotMatch(range,/enrollment-date-trigger|type="hidden"/);
   }finally{delete window.matchMedia}
 });
+
+test('disciplinary range filter uses one desktop trigger and optional native mobile dates',()=>{
+  const props={label:'Rango de fechas',from:'2026-10-01',to:'2026-10-15',required:false,fromName:'date_from',toName:'date_to',hint:'Filtrar por fecha de registro; incluye ambos días.',onChange:()=>{}};
+  const desktop=renderToStaticMarkup(React.createElement(loaded.exports.EnrollmentDateRangePicker,props));
+  assert.match(desktop,/enrollment-date-trigger/);assert.doesNotMatch(desktop,/type="date"/);
+  assert.match(desktop,/01 oct 2026/);assert.match(desktop,/15 oct 2026/);
+  window.matchMedia=()=>({matches:true});
+  try{
+    const mobile=renderToStaticMarkup(React.createElement(loaded.exports.EnrollmentDateRangePicker,props));
+    assert.equal((mobile.match(/type="date"/g)||[]).length,2);
+    assert.match(mobile,/name="date_from"/);assert.match(mobile,/name="date_to"/);
+    assert.match(mobile,/Limpiar filtro/);assert.doesNotMatch(mobile,/required=""|sancionado/);
+  }finally{delete window.matchMedia}
+  const source=readFileSync('src/features/enrollments/DisciplinaryRecords.tsx','utf8');
+  assert.match(source,/<EnrollmentDateRangePicker label="Rango de fechas"/);
+  assert.doesNotMatch(source,/<label>Desde<input|<label>Hasta<input/);
+});
