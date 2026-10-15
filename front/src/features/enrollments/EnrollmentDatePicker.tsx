@@ -30,8 +30,8 @@ function CalendarPopover({ title, children }: { title: string; children: ReactNo
   </Popover.Positioner></Popover.Portal>;
 }
 
-type DateProps = { label: string; name: string; value: string; onChange: (value: string) => void; min?: string; max?: string; birthday?: boolean; required?: boolean; disabled?: boolean };
-export function EnrollmentDatePicker({ label, name, value, onChange, min, max, birthday = false, required = false, disabled = false }: DateProps) {
+type DateProps = { label: string; name: string; value: string; onChange: (value: string) => void; min?: string; max?: string; birthday?: boolean; required?: boolean; disabled?: boolean; invalid?: boolean; describedBy?: string };
+export function EnrollmentDatePicker({ label, name, value, onChange, min, max, birthday = false, required = false, disabled = false, invalid = false, describedBy }: DateProps) {
   const [open, setOpen] = useState(false), id = useId();
   const native = useNativeDatePicker();
   useEffect(() => { if (native) setOpen(false); }, [native]);
@@ -39,13 +39,13 @@ export function EnrollmentDatePicker({ label, name, value, onChange, min, max, b
   const earliest = parseCalendarDate(min) || new Date(birthday ? now.getFullYear() - 110 : now.getFullYear() - 20, 0, 1);
   const latest = parseCalendarDate(max) || new Date(now.getFullYear() + 30, 11, 31);
   if (native) return <div className="enrollment-date-field enrollment-native-date"><label htmlFor={id}>{label}</label>
-    <input id={id} type="date" name={name} value={value} required={required} disabled={disabled} autoComplete={birthday ? 'bday' : undefined}
+    <input id={id} type="date" name={name} value={value} required={required} disabled={disabled} aria-invalid={invalid} aria-describedby={describedBy} autoComplete={birthday ? 'bday' : undefined}
       min={calendarDateValue(earliest)} max={calendarDateValue(latest)} onChange={event => onChange(event.target.value)} />
   </div>;
   return <div className="enrollment-date-field"><label id={id}>{label}</label>
     <input type="hidden" name={name} value={value} disabled={disabled} />
     <Popover.Root open={open} onOpenChange={setOpen} modal="trap-focus">
-      <Popover.Trigger type="button" className="enrollment-date-trigger" aria-labelledby={id} aria-required={required} disabled={disabled}>
+      <Popover.Trigger type="button" className="enrollment-date-trigger" aria-labelledby={id} aria-required={required} aria-invalid={invalid} aria-describedby={describedBy} disabled={disabled}>
         <CalendarDays size={18} aria-hidden="true" /><span>{displayCalendarDate(value) || (birthday ? 'Selecciona tu fecha de nacimiento' : 'Selecciona una fecha')}</span>
       </Popover.Trigger>
       <CalendarPopover title={label}><DayPicker mode="single" locale={es} weekStartsOn={1} captionLayout="dropdown" navLayout="around" showOutsideDays

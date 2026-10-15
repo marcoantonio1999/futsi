@@ -1,0 +1,17 @@
+@media screen {
+  .enrollment-page.public-enrollment-wizard .enrollment-wizard-sheet .enrollment-invalid :is(input:not([type=hidden]), select, .enrollment-date-trigger),
+  .enrollment-page.public-enrollment-wizard .enrollment-wizard-sheet .enrollment-invalid :is(.upload-box, .signature-box, .enrollment-consent-card) {
+    border: 2px solid #b42338 !important;
+    background-color: #fff7f7 !important;
+  }
+  .public-enrollment-wizard .enrollment-invalid :is(input, select, button):focus-visible,
+  .public-enrollment-wizard .enrollment-invalid:focus-visible {
+    outline: 3px solid #f3b8c1; outline-offset: 3px;
+  }
+  .public-enrollment-wizard .enrollment-field-error {
+    display: block; color: #a31c30; font-size: 14px; font-weight: 600;
+    line-height: 1.5; margin: 6px 0 0; overflow-wrap: anywhere;
+  }
+  .public-enrollment-wizard .enrollment-validation-field { min-width: 0; scroll-margin-block: 16px; }
+  .public-enrollment-wizard .enrollment-validation-field > :is(.upload-box, .signature-box) { height: auto; }
+}

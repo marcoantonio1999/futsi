@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer, Menu, X } from "lucide-react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
 import "./enrollmentButtons.css";
 import "./enrollmentSelects.css";
-import { validateEnrollmentName } from "./enrollmentName";
+import "./enrollmentValidation.css";
+import { birthDateError, documentErrors, playerFieldErrors, type EnrollmentErrors } from './enrollmentValidation';
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
 import { WhatsAppIcon } from "./WhatsAppIcon";
@@ -72,6 +73,7 @@ export function under18(date: string, today = new Date()) {
 function Signature({ label, onChange }: { label: string; onChange: (blob: Blob | null) => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
+  const hasInk = useRef(false);
   const previous = useRef<[number, number] | null>(null);
   function point(event: React.PointerEvent<HTMLCanvasElement>): [number, number] {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -90,14 +92,15 @@ function Signature({ label, onChange }: { label: string; onChange: (blob: Blob |
         if (ctx) {
           ctx.strokeStyle = "#111"; ctx.lineWidth = 3; ctx.lineCap = "round";
           ctx.beginPath(); ctx.moveTo(...previous.current); ctx.lineTo(...next); ctx.stroke();
+          hasInk.current = true;
         }
         previous.current = next;
       }}
-      onPointerUp={() => { drawing.current = false; canvas.current?.toBlob(onChange, "image/png"); }}
-      onPointerCancel={() => { drawing.current = false; canvas.current?.toBlob(onChange, "image/png"); }}
+      onPointerUp={() => { drawing.current = false; if (hasInk.current) canvas.current?.toBlob(onChange, "image/png"); }}
+      onPointerCancel={() => { drawing.current = false; if (hasInk.current) canvas.current?.toBlob(onChange, "image/png"); }}
     />
     <button type="button" className="quiet" onClick={() => {
-      canvas.current?.getContext("2d")?.clearRect(0, 0, 900, 360); onChange(null);
+      hasInk.current = false; canvas.current?.getContext("2d")?.clearRect(0, 0, 900, 360); onChange(null);
     }}>Borrar firma</button>
   </section>;
 }
@@ -154,6 +157,12 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
   </section>;
 }
 
+function EnrollmentField({ name, error, children, full = false }: { name: string; error?: string; children: ReactNode; full?: boolean }) {
+  return <div data-enrollment-field={name} tabIndex={-1} role="group" aria-describedby={error ? `enrollment-error-${name}` : undefined} className={`enrollment-validation-field${error ? ' enrollment-invalid' : ''}${full ? ' full' : ''}`}>
+    {children}{error && <p id={`enrollment-error-${name}`} className="enrollment-field-error">{error}</p>}
+  </div>;
+}
+
 function Terms({ items, guardian, player }: { items: string[]; guardian?: string; player?: string }) {
   return <section className="commitments">
     <h2>Compromisos Generales</h2>
@@ -175,6 +184,20 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   const [error, setError] = useState(""), [done, setDone] = useState(false), [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const content = useRef<HTMLDivElement>(null);
+  const [fieldErrors, setFieldErrors] = useState<EnrollmentErrors>({});
+  const [focusIssue, setFocusIssue] = useState(0);
+  useEffect(() => {
+    if (!focusIssue) return;
+    const first = content.current?.querySelector<HTMLElement>('section:not([hidden]) .enrollment-invalid');
+    first?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    (first?.querySelector<HTMLElement>('input:not([hidden]):not([type=hidden]), button, canvas') || first)?.focus({ preventScroll: true });
+  }, [focusIssue, step]);
+  function showIssues(issues: EnrollmentErrors, targetStep = step) {
+    setFieldErrors(issues); setStep(targetStep);
+    setError('Completa o corrige los campos marcados en rojo.'); setFocusIssue(value => value + 1);
+  }
+  function clearIssue(name: string) { setFieldErrors(current => { const next = { ...current }; delete next[name]; return next; }); }
+  function accessibility(name: string) { return { 'aria-invalid': !!fieldErrors[name], 'aria-describedby': fieldErrors[name] ? `enrollment-error-${name}` : undefined }; }
   const today = new Date();
   const maxDate = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
   useEffect(() => {
@@ -188,45 +211,45 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
       }).catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
   }, [invitation]);
-  function attach(kind: string, file: Blob | null) { setFiles(current => ({ ...current, [kind]: file })); }
+  function attach(kind: string, file: Blob | null) {
+    setFiles(current => ({ ...current, [kind]: file }));
+    if (file && file.size <= ENROLLMENT_FILE_MAX_BYTES) clearIssue(kind);
+  }
   const kind = minor ? "minor" : identity;
   const documentKinds = minor ? ["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back"]
     : identity === "ine" ? ["ine_front", "ine_back"] : ["identity_document"];
   const required = ["player_photo", "player_signature", ...documentKinds, ...(minor ? ["guardian_signature"] : [])];
-  function navigate(next: number) { setError(""); setStep(next); if (content.current) content.current.scrollTop = 0; }
+  function navigate(next: number) { setError(""); setFieldErrors({}); setStep(next); if (content.current) content.current.scrollTop = 0; }
+  function identityErrors() {
+    const issues = documentErrors(documentKinds, files, labels);
+    const dateError = birthDateError(birthDate, maxDate);
+    return dateError ? { birth_date: dateError, ...issues } : issues;
+  }
   function next() {
     setError("");
     if (processingPhoto) { setError("Espera a que termine de comprimirse la foto."); return; }
-    if (step === 0) { if (accepted) navigate(1); return; }
-    if (!birthDate || birthDate > maxDate || Number(birthDate.slice(0, 4)) < today.getFullYear() - 110) {
-      setError("Revisa la fecha de nacimiento."); return;
-    }
-    if (documentKinds.some(item => !files[item])) { setError("Adjunta los documentos de identificación."); return; }
-    if (documentKinds.some(item => (files[item]?.size || 0) > ENROLLMENT_FILE_MAX_BYTES)) { setError("Cada foto o documento puede pesar hasta 20 MB."); return; }
+    if (step === 0) { if (accepted) navigate(1); else showIssues({ accepted_terms: 'Acepta los compromisos y el aviso de privacidad para continuar.' }); return; }
+    const issues = identityErrors();
+    if (Object.keys(issues).length) { showIssues(issues); return; }
     navigate(2);
   }
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (step !== 2 || !accepted || saving.current) return;
+    if (saving.current) return;
+    if (step !== 2) { next(); return; }
+    if (!accepted) { showIssues({ accepted_terms: 'Acepta los compromisos para continuar.' }, 0); return; }
     if (processingPhoto) { setError("Espera a que termine de comprimirse la foto."); return; }
     setError("");
     const formElement = event.currentTarget;
-    if (!birthDate || birthDate > maxDate || Number(birthDate.slice(0, 4)) < today.getFullYear() - 110) {
-      setStep(1); setError("Revisa la fecha de nacimiento."); return;
-    }
-    if (!formElement.checkValidity()) {
-      const invalid = formElement.querySelector<HTMLInputElement>("input:invalid");
-      setError(`Revisa ${invalid?.closest("label")?.textContent?.trim().toLocaleLowerCase() || "los campos obligatorios"}.`);
-      invalid?.scrollIntoView({ block: "center" }); invalid?.focus(); return;
-    }
+    const identityIssues = identityErrors();
+    if (Object.keys(identityIssues).length) { showIssues(identityIssues, 1); return; }
     const nameForm = new FormData(formElement);
-    const nameError = validateEnrollmentName(["given_names", "paternal_surname", "maternal_surname"].map(field => String(nameForm.get(field) || "")));
-    if (nameError) { setError(nameError); return; }
-    const missing = required.filter(item => !files[item]);
-    if (missing.length) { setError("Falta: " + missing.map(item => item === "player_photo" ? "selfie del jugador" : labels[item] || item).join(", ") + "."); return; }
-    if (["player_photo", ...documentKinds].some(item => (files[item]?.size || 0) > ENROLLMENT_FILE_MAX_BYTES)) {
-      setError("Cada foto o documento puede pesar hasta 20 MB."); return;
+    const issues = { ...documentErrors(['player_photo'], files, labels), ...playerFieldErrors(Object.fromEntries([...nameForm].map(([key, value]) => [key, String(value)])), minor) };
+    for (const signature of ['player_signature', ...(minor ? ['guardian_signature'] : [])]) {
+      if (!files[signature]) issues[signature] = `Falta ${labels[signature].toLocaleLowerCase()}.`;
     }
+    if (Object.keys(issues).length) { showIssues(issues); return; }
+    setFieldErrors({});
     saving.current = true; setBusy(true);
     try {
       const form = new FormData(formElement);
@@ -236,55 +259,71 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
       const response = await fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/",
         { method: "POST", body: form, signal: AbortSignal.timeout(180000) });
       const body = await response.json().catch(() => { throw new Error("El servidor no respondió correctamente. Intenta de nuevo."); });
-      if (!response.ok) throw new Error(body.detail || Object.values(body).flat().join(" ") || "No se pudo guardar. Intenta de nuevo.");
+      if (!response.ok) {
+        const fieldNames = ['birth_date', ...required, 'given_names', 'paternal_surname', 'maternal_surname', 'phone', 'phone_secondary', 'guardian_name', 'accepted_terms'];
+        const issues: EnrollmentErrors = {};
+        if (body && typeof body === 'object') for (const name of fieldNames) {
+          if (body[name]) issues[name] = Array.isArray(body[name]) ? body[name].join(' ') : String(body[name]);
+        }
+        if (body?.name) for (const name of ['given_names', 'paternal_surname', 'maternal_surname']) issues[name] = Array.isArray(body.name) ? body.name.join(' ') : String(body.name);
+        if (Object.keys(issues).length) {
+          showIssues(issues, issues.accepted_terms ? 0 : issues.birth_date || documentKinds.some(name => issues[name]) ? 1 : 2); return;
+        }
+        throw new Error(body.detail || Object.values(body).flat().join(" ") || "No se pudo guardar. Intenta de nuevo.");
+      }
       setDone(true);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo guardar."); }
     finally { saving.current = false; setBusy(false); }
   }
-  const consent = <label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />
+  const consent = <EnrollmentField name="accepted_terms" error={fieldErrors.accepted_terms}><label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><input type="checkbox" {...accessibility('accepted_terms')} checked={accepted} onChange={event => { setAccepted(event.target.checked); if (event.target.checked) clearIssue('accepted_terms'); }} />
     He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
-  </label>;
+  </label></EnrollmentField>;
   return <main className="enrollment-page public-enrollment-wizard">
     <div className="enrollment-public-brand no-print"><EnrollmentBrand /></div>
     {done ? <section className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></section> :
-      <form className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate>
+      <form className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate onChange={event => {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) || !fieldErrors[input.name]) return;
+        const values = Object.fromEntries([...new FormData(event.currentTarget)].map(([key, value]) => [key, String(value)]));
+        const updated = playerFieldErrors(values, minor);
+        setFieldErrors(current => Object.fromEntries(Object.entries(current).filter(([key]) => !['given_names', 'paternal_surname', 'maternal_surname', 'phone', 'guardian_name'].includes(key) || !!updated[key]).map(([key, message]) => [key, updated[key] || message])));
+      }}>
         <header className="enrollment-wizard-header"><span>Paso {step + 1} de 3</span><h1>{["Aviso y aceptación", "Fecha e identificación", "Selfie y datos del jugador"][step]}</h1></header>
         <div ref={content} className="enrollment-wizard-content">
           {!defaults ? <p>{error ? "Solicita otro enlace si este ya no está disponible." : "Cargando…"}</p> : <>
             <section hidden={step !== 0}>
-              {consent}
               <Terms items={defaults.terms} />
               {consent}
             </section>
             <section hidden={step !== 1}>
               <div className="enrollment-wizard-identity-fields">
-              <EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday value={birthDate} max={maxDate} onChange={setBirthDate} />
+              <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>
               {!minor && <label>Identificación<select value={identity} onChange={event => setIdentity(event.target.value)}>
                 <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option>
               </select></label>}
               </div>
               <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
-                <Upload key={item + kind} label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
-                  onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} />)}</div>
+                <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
+                  onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} /></EnrollmentField>)}</div>
             </section>
             <section hidden={step !== 2}>
               <div className="enrollment-wizard-player">
-                <Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} />
+                <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>
                 <div className="player-fields">
-                  <label className="full">Nombre(s)<input name="given_names" required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></label>
-                  <label>Apellido paterno<input name="paternal_surname" required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></label>
-                  <label>Apellido materno<input name="maternal_surname" required maxLength={80} disabled={step !== 2} /></label>
+                  <EnrollmentField name="given_names" full error={fieldErrors.given_names}><label>Nombre(s)<input {...accessibility('given_names')} name="given_names" required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></label></EnrollmentField>
+                  <EnrollmentField name="paternal_surname" error={fieldErrors.paternal_surname}><label>Apellido paterno<input {...accessibility('paternal_surname')} name="paternal_surname" required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></label></EnrollmentField>
+                  <EnrollmentField name="maternal_surname" error={fieldErrors.maternal_surname}><label>Apellido materno<input {...accessibility('maternal_surname')} name="maternal_surname" required maxLength={80} disabled={step !== 2} /></label></EnrollmentField>
                   {defaults.delegate_name && <p className="full">Primero debe inscribirse el delegado: {defaults.delegate_name}. Escribe sus nombres y apellidos completos en los campos anteriores.</p>}
                   <label>Equipo<input readOnly value={defaults.team} /></label>
                   <label>Torneo<input readOnly value={defaults.tournament} /></label>
                   <label>Fecha de nacimiento<input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></label>
-                  <label>Teléfono de contacto<input name="phone" required type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></label>
-                  <label>Teléfono de emergencia (opcional)<input name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></label>
-                  {minor && <label className="full">Nombre del padre o tutor<input name="guardian_name" required maxLength={160} disabled={step !== 2} /></label>}
+                  <EnrollmentField name="phone" error={fieldErrors.phone}><label>Teléfono de contacto<input {...accessibility('phone')} name="phone" required type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></label></EnrollmentField>
+                  <EnrollmentField name="phone_secondary" error={fieldErrors.phone_secondary}><label>Teléfono de emergencia (opcional)<input {...accessibility('phone_secondary')} name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></label></EnrollmentField>
+                  {minor && <EnrollmentField name="guardian_name" full error={fieldErrors.guardian_name}><label>Nombre del padre o tutor<input {...accessibility('guardian_name')} name="guardian_name" required maxLength={160} disabled={step !== 2} /></label></EnrollmentField>}
                 </div>
               </div>
-              <div className="enrollment-wizard-signatures"><Signature label="Firma del jugador" onChange={blob => attach("player_signature", blob)} />
-                {minor && <Signature label="Firma del tutor" onChange={blob => attach("guardian_signature", blob)} />}</div>
+              <div className="enrollment-wizard-signatures"><EnrollmentField name="player_signature" error={fieldErrors.player_signature}><Signature label="Firma del jugador" onChange={blob => attach("player_signature", blob)} /></EnrollmentField>
+                {minor && <EnrollmentField name="guardian_signature" error={fieldErrors.guardian_signature}><Signature label="Firma del tutor" onChange={blob => attach("guardian_signature", blob)} /></EnrollmentField>}</div>
               {minor && <p>El padre o tutor autoriza la participación del menor y acepta los compromisos anteriores.</p>}
             </section>
           </>}
@@ -293,7 +332,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
         {error && <p className="error" role="alert">{error}</p>}
         {defaults && <footer className="enrollment-wizard-actions">
           {step > 0 && <button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</button>}
-          {step < 2 ? <button type="button" className="primary" disabled={processingPhoto || (step === 0 && !accepted)} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</button>
+          {step < 2 ? <button type="button" className="primary" disabled={processingPhoto} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</button>
             : <button className="primary" disabled={busy || processingPhoto}>{processingPhoto ? "Procesando foto…" : busy ? "Guardando…" : "Confirmar inscripción"}</button>}
         </footer>}
         </div>
