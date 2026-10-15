@@ -8,7 +8,7 @@ from core.services.player_blacklist import identity_key
 
 def unfulfilled_sanctions():
     # Scheduled sanctions cannot be escaped before their start either.
-    return PlayerSanction.objects.filter(Q(ends_on__isnull=True) | Q(ends_on__gte=timezone.localdate()))
+    return PlayerSanction.objects.filter(Q(ends_on__isnull=True) | Q(ends_on__gte=timezone.localdate()) | Q(payment_required=True, payment_folio=''))
 
 
 def enrollment_sanctions(rows):
@@ -26,13 +26,13 @@ def enrollment_sanctions(rows):
         for row in rows:
             if sanction.enrollment_id == row.pk or (sanction.enrollment and sanction.enrollment.identity_key == row_keys[row.pk]):
                 result[row.pk].append({'id': sanction.pk, 'starts_on': sanction.starts_on,
-                    'ends_on': sanction.ends_on, 'status': 'scheduled' if sanction.starts_on > today else 'active'})
+                    'ends_on': sanction.ends_on, 'status': 'scheduled' if sanction.starts_on > today else 'awaiting_payment' if sanction.ends_on and sanction.ends_on < today else 'active'})
     return result
 
 
 def assert_withdrawal_allowed(rows):
     if any(enrollment_sanctions(rows).values()):
-        raise ValidationError({'detail': 'No se puede dar de baja a jugadores con una sanción pendiente de cumplir. Retira a los sancionados de la selección y espera a que termine su período.'})
+        raise ValidationError({'detail': 'No se puede dar de baja a jugadores con una sanción pendiente. Deben cumplir el período y registrar el folio de pago con administración.'})
 
 
 def assert_no_pending_sanction(name, birth_date):

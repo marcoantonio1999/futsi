@@ -72,6 +72,7 @@ def deletion_plan(tournament, *, lock=False):
     # Storage contents are removed after the database transaction commits.
     # Keep paths in the audit for durable retries, never delete shared objects.
     paths = {row.storage_path for row in by_model[PlayerEnrollmentDocument] if row.storage_path}
+    paths.update(row.appeal_letter_path for row in by_model[PlayerSanction] if row.appeal_letter_path)
     shared = set(PlayerEnrollmentDocument.objects.exclude(pk__in=documents).filter(storage_path__in=paths).values_list('storage_path', flat=True))
     shared.update(PlayerBlacklistEntry.objects.filter(photo_storage_path__in=paths).values_list('photo_storage_path',flat=True))
     files.extend({'kind': 'supabase', 'uri': storage_uri(ENROLLMENT_BUCKET, path)} for path in sorted(paths - shared))

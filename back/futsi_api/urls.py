@@ -6,6 +6,7 @@ from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, Pub
 from core.api.team_reuse import TeamReuseView
 from core.api.sanctions import PlayerSanctionView
 from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, BlacklistRevokeView, DisciplinaryPhotoView, BlacklistPhotoView
+from core.api.sanction_appeals import SanctionAppealView, SanctionDecisionView
 from core.api.enrollment_delegate import EnrollmentDelegateView
 
 from core.api.automatic_attendance import (
@@ -88,6 +89,8 @@ urlpatterns = [
     path("api/player-enrollments/withdrawal/<str:token>/", PublicWithdrawalView.as_view()),
     path("api/player-enrollments/reuse-teams/", TeamReuseView.as_view()),
     path("api/player-enrollments/sanctions/", PlayerSanctionView.as_view()),
+    path("api/player-enrollments/sanctions/<int:pk>/appeal/", SanctionAppealView.as_view()),
+    path("api/player-enrollments/sanctions/<int:pk>/decision/", SanctionDecisionView.as_view()),
     path("api/player-enrollments/disciplinary/", DisciplinaryHistoryView.as_view()),
     path("api/player-enrollments/disciplinary/<int:pk>/photo/", DisciplinaryPhotoView.as_view()),
     path("api/player-enrollments/blacklist/", BlacklistView.as_view()),

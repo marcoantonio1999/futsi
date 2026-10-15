@@ -69,6 +69,20 @@ class PlayerEnrollmentDocument(models.Model):
 
 
 class PlayerSanction(models.Model):
+    payment_required = models.BooleanField(default=True)
+    fine_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payment_folio = models.CharField(max_length=100, blank=True, default='')
+    payment_recorded_at = models.DateTimeField(null=True, blank=True)
+    payment_recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='sanction_payments')
+    appeal_status = models.CharField(max_length=12, default='none', choices=[('none','Sin apelación'),('pending','Pendiente'),('accepted','Aceptada'),('rejected','No aceptada')])
+    appeal_reason = models.TextField(max_length=4000, blank=True, default='')
+    appeal_letter_path = models.CharField(max_length=500, blank=True, default='')
+    appeal_letter_sha256 = models.CharField(max_length=64, blank=True, default='')
+    appeal_submitted_at = models.DateTimeField(null=True, blank=True)
+    appeal_submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='submitted_sanction_appeals')
+    appeal_decision_reason = models.TextField(max_length=2000, blank=True, default='')
+    appeal_decided_at = models.DateTimeField(null=True, blank=True)
+    appeal_decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='decided_sanction_appeals')
     team = models.ForeignKey('core.Team', on_delete=models.CASCADE, related_name='sanctions')
     enrollment = models.ForeignKey(PlayerEnrollment, null=True, blank=True, on_delete=models.CASCADE, related_name='sanctions')
     player = models.ForeignKey('core.Player', null=True, blank=True, on_delete=models.CASCADE, related_name='sanctions')

@@ -35,6 +35,7 @@ export function NewSanction({token,catalog}:{token:string;catalog:Catalog}) {
       if(!data.members.some(row=>`${row.type}:${row.id}`===member)){setError('Selecciona un jugador vigente del equipo.');return}
       const values=new FormData(event.currentTarget),[memberType,memberId]=member.split(':');
       const payload:Record<string,unknown>={team_id:Number(team),member_type:memberType,member_id:Number(memberId),offense_code:offense,reason:values.get('reason'),incident_on:values.get('incident_on'),starts_on:values.get('starts_on'),duration_unit:unit,request_id:requestId.current};
+      payload.fine_amount=values.get('fine_amount')||null;
       if(unit==='dates')payload.ends_on=values.get('ends_on');else if(unit!=='indefinite')payload.duration_value=Number(values.get('duration_value'));
       saving.current=true;setBusy(true);
       try{const body=await apiRequest<Result>('/player-enrollments/sanctions/',token,{method:'POST',body:JSON.stringify(payload)});setResult(body)}
@@ -51,7 +52,8 @@ export function NewSanction({token,catalog}:{token:string;catalog:Catalog}) {
     <div className="control-grid"><EnrollmentDatePicker label="Fecha del incidente" name="incident_on" required value={incident} max={today()} onChange={value=>{setIncident(value);if(starts<value){setStarts(value);setEnds('')}changedDate()}} /><label>Duración elegida<select value={unit} onChange={event=>setUnit(event.target.value)}><option value="dates">Elegir periodo (inicio y fin)</option><option value="days">Días</option><option value="weeks">Semanas</option><option value="months">Meses</option><option value="years">Años</option><option value="indefinite">Sin fecha de término / definitiva</option></select></label>
       {unit==='dates'?<EnrollmentDateRangePicker label="Periodo de sanción" from={starts} to={ends} min={incident} onChange={(from,to)=>{setStarts(from);setEnds(to);changedDate()}} />:<><EnrollmentDatePicker label="Inicio de la sanción" name="starts_on" required value={starts} min={incident} onChange={value=>{setStarts(value);changedDate()}} />{unit!=='indefinite'&&<label>Cantidad<input name="duration_value" type="number" min={1} max={10000} required defaultValue={1} /></label>}</>}
     </div><label>Descripción del incidente y decisión del coordinador<textarea name="reason" required minLength={3} maxLength={2000} rows={4} placeholder="Describe lo ocurrido y el motivo del periodo elegido." /></label>
-    <p>Registrar esta sanción conserva al jugador en su equipo. No ejecuta una baja ni altera partidos o cobros.</p>
+    <label>Sanción económica (MXN)<input name="fine_amount" type="number" min="0.01" max="99999999.99" step="0.01" placeholder="Importe acordado por administración" /></label>
+    <p>La sanción se cumple al terminar el periodo y registrar el folio de pago. No ejecuta una baja ni genera cobros automáticos. Si aún no se define el importe, quedará sin especificar.</p>
     {error&&<p role="alert" className="error">{error}</p>}<button type="submit" className="primary" disabled={busy||loading||!member||!offense}>{busy?'Guardando sanción…':'Registrar sanción'}</button></fieldset></form>
   </section>;
 }

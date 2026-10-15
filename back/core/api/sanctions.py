@@ -1,4 +1,5 @@
 import calendar
+from decimal import Decimal
 from datetime import timedelta
 from uuid import uuid4
 from django.db import transaction
@@ -46,6 +47,7 @@ class SanctionInput(serializers.Serializer):
     member_id = serializers.IntegerField(min_value=1)
     offense_code = serializers.ChoiceField(choices=list(BY_CODE))
     reason = serializers.CharField(min_length=3, max_length=2000)
+    fine_amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'), required=False, allow_null=True)
     incident_on = serializers.DateField()
     starts_on = serializers.DateField()
     duration_unit = serializers.ChoiceField(choices=['days','weeks','months','years','dates','indefinite'])

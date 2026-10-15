@@ -20,13 +20,13 @@ def can_manage_blacklist(user):
     return user.role in {'admin','owner','dev'} or (user.username.casefold()=='emilio' and enrollment_staff(user))
 
 def scoped_sanctions(user):
-    rows=PlayerSanction.objects.select_related('team__tournament__site','created_by','enrollment','player').prefetch_related(Prefetch('enrollment__documents',queryset=PlayerEnrollmentDocument.objects.filter(kind='player_photo').defer('content'),to_attr='disciplinary_photos'))
+    rows=PlayerSanction.objects.select_related('team__tournament__site','created_by','enrollment','player','appeal_submitted_by','appeal_decided_by','payment_recorded_by').prefetch_related(Prefetch('enrollment__documents',queryset=PlayerEnrollmentDocument.objects.filter(kind='player_photo').defer('content'),to_attr='disciplinary_photos'))
     if user.role=='site_coordinator': rows=rows.filter(team__tournament__site_id=user.primary_site_id)
     return rows
 
 def status_of(row):
     today=timezone.localdate()
-    return 'scheduled' if row.starts_on>today else 'indefinite' if row.ends_on is None else 'expired' if row.ends_on<today else 'active'
+    return 'scheduled' if row.starts_on>today else 'indefinite' if row.ends_on is None else ('awaiting_payment' if row.payment_required and not row.payment_folio else 'expired') if row.ends_on<today else 'active'
 
 class DisciplinaryHistoryView(APIView):
     permission_classes=[SanctionPermission]
@@ -52,7 +52,8 @@ class DisciplinaryHistoryView(APIView):
             elif status:raise ValidationError('Estado inválido.')
         else:
             if status=='active':rows=rows.filter(starts_on__lte=today).filter(Q(ends_on__isnull=True)|Q(ends_on__gte=today))
-            elif status=='expired':rows=rows.filter(ends_on__lt=today)
+            elif status=='expired':rows=rows.filter(ends_on__lt=today).exclude(payment_required=True,payment_folio='')
+            elif status=='awaiting_payment':rows=rows.filter(ends_on__lt=today,payment_required=True,payment_folio='')
             elif status=='scheduled':rows=rows.filter(starts_on__gt=today)
             elif status=='indefinite':rows=rows.filter(starts_on__lte=today,ends_on__isnull=True)
             elif status:raise ValidationError('Estado inválido.')
@@ -63,6 +64,13 @@ class DisciplinaryHistoryView(APIView):
             common['has_photo']=bool(row.photo_storage_path or row.photo_sha256 or row.photo_legacy_file) if self.blacklist else bool((row.enrollment_id and row.enrollment.disciplinary_photos) or (row.player_id and row.player.photo))
             if self.blacklist:common.update(site=row.origin_site,tournament=row.origin_tournament,team=row.origin_team,birth_date=row.birth_date,status='active' if row.is_active else 'revoked',revoked_at=row.revoked_at,revoked_by=row.revoked_by.username if row.revoked_by else None,revocation_reason=row.revocation_reason)
             else:common.update(site=row.team.tournament.site.name,tournament=row.team.tournament.name,team=row.team.name,birth_date=row.enrollment.birth_date if row.enrollment_id else None,status=status_of(row),starts_on=row.starts_on,ends_on=row.ends_on,recommendation=row.recommended_duration)
+            if not self.blacklist:
+                common.update(payment_required=row.payment_required,fine_amount=row.fine_amount,payment_folio=row.payment_folio,
+                    payment_recorded_at=row.payment_recorded_at,payment_recorded_by=row.payment_recorded_by.username if row.payment_recorded_by_id else None,
+                    appeal_status=row.appeal_status,appeal_reason=row.appeal_reason,has_appeal_letter=bool(row.appeal_letter_path),
+                    appeal_submitted_at=row.appeal_submitted_at,appeal_submitted_by=row.appeal_submitted_by.username if row.appeal_submitted_by_id else None,
+                    appeal_decision_reason=row.appeal_decision_reason,appeal_decided_at=row.appeal_decided_at,
+                    appeal_decided_by=row.appeal_decided_by.username if row.appeal_decided_by_id else None)
             result.append(common)
         response=Response({'results':result,'count':count,'filters':filters,'can_manage_blacklist':can_manage_blacklist(request.user)})
         response['Cache-Control']='no-store';return response

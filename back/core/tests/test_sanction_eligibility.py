@@ -35,6 +35,7 @@ class SanctionEligibilityTests(TestCase):
         invitation.refresh_from_db(); self.assertIsNone(invitation.used_at)
 
     def test_final_day_inclusive_and_expired_allows_withdrawal(self):
+        self.sanction.payment_required=False  # Legacy sanctions completed before payment policy.
         self.sanction.ends_on=timezone.localdate(); self.sanction.save()
         _, url = self.link()
         self.assertEqual(self.client.post(url,self.payload([self.enrollment.pk]),format='multipart').status_code,400)
@@ -70,6 +71,7 @@ class SanctionEligibilityTests(TestCase):
             self.assertEqual(self.client.post(url,data,format='multipart').status_code,400);upload.assert_not_called()
 
     def test_roster_keeps_sanctioned_player_and_excludes_expired_labels(self):
+        self.sanction.payment_required=False
         row=self.client.get('/api/player-enrollments/?active_only=true').json()['results'][0]
         self.assertEqual(row['id'],self.enrollment.pk);self.assertEqual(len(row['sanctions']),1)
         self.sanction.starts_on=timezone.localdate()-timedelta(days=3)

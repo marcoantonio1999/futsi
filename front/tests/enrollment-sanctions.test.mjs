@@ -18,7 +18,7 @@ test('sanction form separates recommendations from freely chosen coordinator dur
 });
 test('new sanctions uses shared mobile navigation and prevents repeated submissions',()=>{
   const dashboard=readFileSync(new URL('../src/features/enrollments/PlayerEnrollment.tsx',import.meta.url),'utf8');
-  assert.match(dashboard,/>Sanciones<\/div>/);assert.match(dashboard,/>Nueva sanción<\/button>/);
+  assert.match(dashboard,/>Sanciones<\/div>/);assert.match(dashboard,/\['commission','Comisión disciplinaria'\],\['sanction-new','Nueva sanción'\]/);
   const form=readFileSync(new URL('../src/features/enrollments/NewSanction.tsx',import.meta.url),'utf8');
   assert.match(form,/request_id:requestId.current/);assert.match(form,/saving.current\|\|loading/);
   assert.doesNotMatch(form,/setInterval/);
