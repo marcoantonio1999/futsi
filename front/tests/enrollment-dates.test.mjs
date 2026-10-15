@@ -28,4 +28,6 @@ test('birth picker and sanction range use the shadcn Base composition with Spani
   assert.match(sanction, /ends<starts/);
   assert.match(sanction, /changedDate\(\)/);
   assert.match(page, /EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday/);
+  const vite = readFileSync('vite.config.ts','utf8');
+  assert.doesNotMatch(vite, /id\.includes\("\/react\/"\)/);
 });

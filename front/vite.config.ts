@@ -24,7 +24,8 @@ export default defineConfig({
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("/three/")) return "vendor-three";
           if (id.includes("/recharts/") || id.includes("/d3-")) return "vendor-charts";
-          if (id.includes("/react/") || id.includes("/react-dom/") || id.includes("/scheduler/")) return "vendor-react";
+          // Match React itself, not scoped packages such as @base-ui/react.
+          if (/\/node_modules\/(?:react|react-dom|scheduler)\//.test(id)) return "vendor-react";
           if (id.includes("/leaflet/")) return "vendor-map";
           if (id.includes("/lucide-react/")) return "vendor-icons";
           return undefined;
