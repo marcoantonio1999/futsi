@@ -11,6 +11,7 @@ _CLOSING = re.compile(
     r"(?:muchas? |muchisimas? |mil |muchisisimas? )?gracia+s+"
     r"(?: (?:por (?:todo|la (?:informacion|info|ayuda|atencion|respuesta)|el (?:apoyo|dato)|confirmar|avisar)|a ti|a usted|a ustedes))?"
     r"|grax|grx|thanks|thank you|thx|te agradezco|le agradezco|se agradece|muy amable"
+    r"|a ustedes|a usted|a ti|igualmente|de nada|por nada|con gusto"
     r"|ok(?:ay)?|perfecto|listo|entendido|excelente|super|sale|va|de acuerdo|esta bien|muy bien|claro"
     r"|adio+s+|chao|chau|bye(?: bye)?|hasta luego|hasta pronto|hasta manana|nos vemos|cuidate|cuidese"
     r"|saludos(?: cordiales)?|(?:que (?:tengas|tenga|tengan|pases|pase|pasen) (?:un )?)?"

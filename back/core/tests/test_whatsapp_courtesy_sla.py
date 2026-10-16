@@ -52,6 +52,12 @@ class CourtesyResponseReportTests(TestCase):
         event.refresh_from_db(); self.assertTrue(event.human_attention_expected)
         self.assertEqual(WhatsAppHumanResponseEvent.objects.count(),1)
 
+    def test_production_courtesy_reply_does_not_open_manual_request(self):
+        self.message('A ustedes!!',30,routing='unclassified')
+        self.assertEqual(self.report()['summary']['unanswered'],0)
+        self.assertTrue(closing_acknowledgement('A ustedes!!'))
+        self.assertFalse(closing_acknowledgement('A ustedes, ¿ya quedó el registro?'))
+
     def test_old_courtesy_then_real_question_uses_actual_request_time(self):
         first = self.message('[sticker]',50)
         event = self.event(first)

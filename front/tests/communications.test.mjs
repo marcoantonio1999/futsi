@@ -168,6 +168,11 @@ test("a reaction does not create an unanswered customer message", () => {
   assert.equal(conversationAttention(c).key, "waiting_client");
 });
 
+test("production courtesy reply is not a missing human response", () => {
+  assert.equal(isClosingAcknowledgement("A ustedes!!"), true);
+  assert.equal(isClosingAcknowledgement("A ustedes, ¿ya quedó el registro?"), false);
+});
+
 test("farewell variants and thanks use the same whole-phrase SLA policy", () => {
   for (const body of ["Adiós", "Hasta luego", "Hasta mañana", "Nos vemos", "Bye bye", "Chao", "Mil gracias", "Graciasss", "Gracias y hasta luego", "Gracias, que tengas un buen día"]) {
     assert.equal(isClosingAcknowledgement(body), true, body);
