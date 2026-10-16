@@ -616,8 +616,9 @@ class PlayerEnrollmentTests(TestCase):
             starts_on=timezone.localdate(), created_by=self.emilio, duration_unit='indefinite', request_id=uuid4())
         self.client.force_authenticate(self.emilio)
         response = self.client.get(f'/api/player-enrollments/teams/{self.team.pk}/deletion-preview/')
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('sanciones', str(response.data))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['preserved_sanction_count'], 1)
+        self.assertEqual(PlayerSanction.objects.filter(team=self.team).count(), 1)
 
     def empty_team_match(self):
         from core.models import Match, AttendanceSession, Player

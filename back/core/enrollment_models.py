@@ -83,7 +83,11 @@ class PlayerSanction(models.Model):
     appeal_decision_reason = models.TextField(max_length=2000, blank=True, default='')
     appeal_decided_at = models.DateTimeField(null=True, blank=True)
     appeal_decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='decided_sanction_appeals')
-    team = models.ForeignKey('core.Team', on_delete=models.CASCADE, related_name='sanctions')
+    team = models.ForeignKey('core.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='sanctions')
+    origin_site_id = models.BigIntegerField(null=True, blank=True)
+    origin_site = models.CharField(max_length=160, blank=True, default='')
+    origin_tournament = models.CharField(max_length=140, blank=True, default='')
+    origin_team = models.CharField(max_length=140, blank=True, default='')
     enrollment = models.ForeignKey(PlayerEnrollment, null=True, blank=True, on_delete=models.CASCADE, related_name='sanctions')
     player = models.ForeignKey('core.Player', null=True, blank=True, on_delete=models.CASCADE, related_name='sanctions')
     player_name = models.CharField(max_length=160)
@@ -99,6 +103,16 @@ class PlayerSanction(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='applied_player_sanctions')
     created_at = models.DateTimeField(auto_now_add=True)
     request_id = models.UUIDField(unique=True)
+
+    def save(self, *args, **kwargs):
+        if self.team_id and not self.origin_team:
+            self.origin_site_id = self.team.tournament.site_id
+            self.origin_site = self.team.tournament.site.name
+            self.origin_tournament = self.team.tournament.name
+            self.origin_team = self.team.name
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'origin_site_id', 'origin_site', 'origin_tournament', 'origin_team'}
+        super().save(*args, **kwargs)
 
     class Meta:
         db_table = 'player_sanctions'

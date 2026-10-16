@@ -2,6 +2,7 @@ from uuid import uuid4
 import unicodedata
 from django.db import transaction
 from django.db.models import Q, Prefetch
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -21,8 +22,11 @@ def can_manage_blacklist(user):
 
 def scoped_sanctions(user):
     rows=PlayerSanction.objects.select_related('team__tournament__site','created_by','enrollment','player','appeal_submitted_by','appeal_decided_by','payment_recorded_by').prefetch_related(Prefetch('enrollment__documents',queryset=PlayerEnrollmentDocument.objects.filter(kind='player_photo').defer('content'),to_attr='disciplinary_photos'))
-    if user.role=='site_coordinator': rows=rows.filter(team__tournament__site_id=user.primary_site_id)
-    return rows
+    if user.role=='site_coordinator':
+        rows=rows.filter(Q(team__tournament__site_id=user.primary_site_id) | Q(team__isnull=True, origin_site_id=user.primary_site_id)) if user.primary_site_id else rows.none()
+    return rows.annotate(history_site=Coalesce('team__tournament__site__name','origin_site'),
+        history_tournament=Coalesce('team__tournament__name','origin_tournament'),
+        history_team=Coalesce('team__name','origin_team'))
 
 def status_of(row):
     today=timezone.localdate()
@@ -34,7 +38,7 @@ class DisciplinaryHistoryView(APIView):
 
     def get(self,request):
         rows=PlayerBlacklistEntry.objects.select_related('created_by','revoked_by').defer('photo_content') if self.blacklist else scoped_sanctions(request.user)
-        mappings={'site':'origin_site','tournament':'origin_tournament','team':'origin_team'} if self.blacklist else {'site':'team__tournament__site__name','tournament':'team__tournament__name','team':'team__name'}
+        mappings={'site':'origin_site','tournament':'origin_tournament','team':'origin_team'} if self.blacklist else {'site':'history_site','tournament':'history_tournament','team':'history_team'}
         filters={key:list(rows.order_by().values_list(field,flat=True).distinct()) for key,field in mappings.items()}
         for key,field in mappings.items():
             if request.query_params.get(key):rows=rows.filter(**{field:request.query_params[key][:160]})
@@ -63,7 +67,7 @@ class DisciplinaryHistoryView(APIView):
             common={'id':row.pk,'player_name':row.player_name,'offense':row.offense_label,'reason':row.reason,'created_at':row.created_at,'applied_by':row.created_by.username}
             common['has_photo']=bool(row.photo_storage_path or row.photo_sha256 or row.photo_legacy_file) if self.blacklist else bool((row.enrollment_id and row.enrollment.disciplinary_photos) or (row.player_id and row.player.photo))
             if self.blacklist:common.update(site=row.origin_site,tournament=row.origin_tournament,team=row.origin_team,birth_date=row.birth_date,status='active' if row.is_active else 'revoked',revoked_at=row.revoked_at,revoked_by=row.revoked_by.username if row.revoked_by else None,revocation_reason=row.revocation_reason)
-            else:common.update(site=row.team.tournament.site.name,tournament=row.team.tournament.name,team=row.team.name,birth_date=row.enrollment.birth_date if row.enrollment_id else None,status=status_of(row),starts_on=row.starts_on,ends_on=row.ends_on,recommendation=row.recommended_duration)
+            else:common.update(site=row.history_site,tournament=row.history_tournament,team=row.history_team,birth_date=row.enrollment.birth_date if row.enrollment_id else None,status=status_of(row),starts_on=row.starts_on,ends_on=row.ends_on,recommendation=row.recommended_duration)
             if not self.blacklist:
                 common.update(payment_required=row.payment_required,fine_amount=row.fine_amount,payment_folio=row.payment_folio,
                     payment_recorded_at=row.payment_recorded_at,payment_recorded_by=row.payment_recorded_by.username if row.payment_recorded_by_id else None,
@@ -105,8 +109,8 @@ class BlacklistView(DisciplinaryHistoryView):
                 return Response({'id':previous.pk,'created':False})
             if PlayerBlacklistEntry.objects.filter(identity_key=key,is_active=True).exists():raise ValidationError('Este jugador ya tiene una exclusión activa.')
             row=PlayerBlacklistEntry.objects.create(source_sanction=source,source_player=source.player,
-                player_name=name,birth_date=data['birth_date'],identity_key=key,origin_site=source.team.tournament.site.name,
-                origin_tournament=source.team.tournament.name,origin_team=source.team.name,offense_label=source.offense_label,
+                player_name=name,birth_date=data['birth_date'],identity_key=key,origin_site=source.history_site,
+                origin_tournament=source.history_tournament,origin_team=source.history_team,offense_label=source.offense_label,
                 reason=data['reason'],created_by=request.user,request_id=data['request_id'],**snapshot_photo(source))
         return Response({'id':row.pk,'created':True},status=201)
 

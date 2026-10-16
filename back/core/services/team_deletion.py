@@ -76,20 +76,18 @@ def plan(team, *, lock=False):
         or Payment.objects.filter(team=team).exists()
         or Discount.objects.filter(team=team).exists()):
         raise ValidationError('Este equipo tiene asistencias o movimientos económicos registrados. Revisa esos registros antes de eliminarlo.')
-    if PlayerSanction.objects.filter(team=team).exists():
-        raise ValidationError('Este equipo tiene sanciones registradas. No se elimina para conservar el expediente disciplinario y evitar que se evadan sanciones pendientes.')
-    from .player_sanctions import assert_withdrawal_allowed, unfulfilled_sanctions
-    assert_withdrawal_allowed(PlayerEnrollment.objects.filter(pk__in=[row['pk'] for row in enrollments]))
-    if unfulfilled_sanctions().filter(player_id__in=[pk for pk, _ in players]).exists():
-        raise ValidationError('No se puede retirar del equipo a jugadores con sanciones pendientes de período o pago.')
+    sanctions_query = PlayerSanction.objects.filter(team=team).order_by('pk')
+    if lock:
+        sanctions_query = sanctions_query.select_for_update()
+    sanctions = list(sanctions_query.values())
     scheduled_records = [(row._meta.label, [(field.attname, getattr(row, field.attname)) for field in row._meta.fields]) for row in matches + sessions]
     fingerprint = sha256(repr((team.pk, team.name, team.updated_at, players, registrations, scheduled_records,
-                              links, enrollments, json.dumps(clips, sort_keys=True, default=str))).encode()).hexdigest()
-    return players, registrations, fingerprint, matches, sessions, clips, links, enrollments
+                              links, enrollments, sanctions, json.dumps(clips, sort_keys=True, default=str))).encode()).hexdigest()
+    return players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions
 
 
 def preview(team, actor):
-    players, registrations, fingerprint, matches, sessions, clips, links, enrollments = plan(team)
+    players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions = plan(team)
     items = [{'label': 'Equipo', 'count': 1}]
     if matches:
         items.append({'label': 'Partidos programados sin resultados', 'count': len(matches)})
@@ -99,6 +97,7 @@ def preview(team, actor):
         'preserved_player_count': len(players), 'preserved_registration_count': len(registrations),
         'preserved_video_count': len(clips),
         'preserved_enrollment_count': len(enrollments), 'invalidated_link_count': len(links),
+        'preserved_sanction_count': len(sanctions),
         'confirmation_token': signing.dumps({'team': team.pk, 'actor': actor.pk, 'fingerprint': fingerprint}, salt=SALT)}
 
 
@@ -113,19 +112,23 @@ def permanently_delete(team, actor, payload):
             raise ValidationError('Escribe el nombre del equipo para confirmar.')
         list(Player.objects.select_for_update().filter(team=team))
         list(StudentTournamentRegistration.objects.select_for_update().filter(team=team))
-        players, registrations, fingerprint, matches, sessions, clips, links, enrollments = plan(team, lock=True)
+        players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions = plan(team, lock=True)
         if fingerprint != confirmation.get('fingerprint'):
             raise ValidationError('El equipo cambió. Actualiza el detalle antes de confirmar.')
         audit = AuditLog.objects.create(actor=actor, action='team_deleted', table_name='teams', record_id=str(team.pk),
             metadata={'site_id': team.tournament.site_id, 'team_name': team.name,
                       'tournament_id': team.tournament_id, 'tournament_name': team.tournament.name,
                       'preserved_enrollment_ids': [row['pk'] for row in enrollments],
+                      'preserved_sanction_ids': [row['id'] for row in sanctions],
                       'invalidated_invitation_ids': [row['pk'] for row in links],
                       'preserved_player_ids': [pk for pk, _ in players], 'preserved_registration_ids': [pk for pk, _ in registrations],
                       'deleted_scheduled_match_ids': [row.pk for row in matches], 'deleted_empty_session_ids': [row.pk for row in sessions],
                       'preserved_video_clip_ids': [str(row[0]) for row in clips]})
         preserve_clip_evidence(clips, 'team_deletion_evidence', {'team_id': team.pk, 'deletion_id': audit.pk})
-        Player.objects.filter(team=team).update(team=None)
+        PlayerSanction.objects.filter(team=team).update(team=None,
+            origin_site_id=team.tournament.site_id, origin_site=team.tournament.site.name,
+            origin_tournament=team.tournament.name, origin_team=team.name)
+        Player.objects.filter(team=team).update(team=None, is_active=False)
         StudentTournamentRegistration.objects.filter(team=team).update(team=None)
         PlayerEnrollment.objects.filter(team_record=team).update(team_record=None)
         now = timezone.now()
