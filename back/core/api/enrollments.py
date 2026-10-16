@@ -266,7 +266,8 @@ class EnrollmentAdminView(APIView):
             if 'date_to' in dates:
                 rows = rows.filter(withdrawn_at__date__lte=dates['date_to'])
         if request.query_params.get('active_only') == 'true':
-            rows = rows.filter(withdrawn_at__isnull=True).order_by('-is_delegate', 'signed_at', 'id')
+            rows = rows.filter(withdrawn_at__isnull=True, team_record__is_active=True,
+                               team_record__tournament__is_active=True).order_by('-is_delegate', 'signed_at', 'id')
             from core.enrollment_models import PlayerBlacklistEntry
             from django.db.models import Q
             exclusions=PlayerBlacklistEntry.objects.filter(is_active=True)

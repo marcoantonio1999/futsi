@@ -11,7 +11,7 @@ export function StudentDeleteDialog({ student, token, onClose, onDelete }: {
   return <AcademyDeleteDialog record={student} kind="student" token={token} onClose={onClose} onDelete={onDelete} />;
 }
 
-type DeletionPreview = Pick<StudentDeletionPreview, "full_name" | "items" | "file_count" | "confirmation_token"> & { students?: { id: number; full_name: string }[] };
+type DeletionPreview = Pick<StudentDeletionPreview, "full_name" | "items" | "file_count" | "confirmation_token"> & { students?: { id: number; full_name: string }[]; preserved_enrollment_count?: number; invalidated_link_count?: number };
 
 export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, collectionPath }: {
   record: { id: number; full_name: string; site_name?: string }; kind: "student" | "guardian" | "tournament" | "team"; token: string; onClose: () => void;
@@ -70,14 +70,14 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, co
       <div role="status">
         <h2 id="student-delete-title">{isTeam ? "Equipo eliminado correctamente" : isTournament ? "Torneo eliminado correctamente" : isGuardian ? "Tutor eliminado correctamente" : "Alumno eliminado correctamente"}</h2>
         <p className="student-delete-name">{record.full_name}</p>
-        <p id="student-delete-detail">{isTeam ? "Se eliminó el equipo. Las fichas y documentos de alumnos y jugadores se conservan para nuevas asignaciones." : isTournament ? "Se eliminó el torneo y sus datos asociados. Los alumnos y tutores siguen en la academia." : isGuardian ? "Se eliminaron su ficha, los alumnos a su cargo y los datos asociados." : "Se eliminaron su ficha y sus datos asociados."}</p>
+        <p id="student-delete-detail">{isTeam ? "Se eliminó el equipo. Las fichas y documentos se conservan en el histórico. Para inscribirse en otro equipo se debe completar y firmar una nueva inscripción." : isTournament ? "Se eliminó el torneo y sus datos asociados. Los alumnos y tutores siguen en la academia." : isGuardian ? "Se eliminaron su ficha, los alumnos a su cargo y los datos asociados." : "Se eliminaron su ficha y sus datos asociados."}</p>
       </div>
       <div className="student-actions"><button ref={successButton} type="button" className="student-button primary" onClick={onClose}>Entendido</button></div>
     </> : <>
     <div className="student-delete-symbol">{preview ? <AlertTriangle size={24} /> : <Trash2 size={24} />}</div>
     <h2 id="student-delete-title">{isTeam ? "Eliminar equipo" : cleanup ? `${isTournament ? "Torneo" : isGuardian ? "Tutor" : "Alumno"} eliminado; falta borrar ${cleanup.cleanup_pending === 1 ? "un archivo" : `${cleanup.cleanup_pending} archivos`}` : preview ? (isTournament ? "Eliminar torneo e historial" : isGuardian ? "Eliminar tutor, alumnos e historial" : "Eliminar alumno e historial") : isTournament ? "¿Eliminar este torneo?" : `¿Eliminar a este ${noun}?`}</h2>
     <p className="student-delete-name">{record.full_name}</p><p className="student-hint">{record.site_name}</p>
-    <p id="student-delete-detail">{isTeam ? "Se elimina el equipo y se retira la asignación de sus integrantes. También se eliminan los partidos solo programados y sus sesiones sin actividad que aparezcan en el resumen. No se borran personas ni documentos; los resultados, asistencias y movimientos registrados se protegen." : cleanup
+    <p id="student-delete-detail">{isTeam ? "Se elimina el equipo y se retira la asignación de sus integrantes. Sus enlaces dejan de funcionar. Las inscripciones y documentos se conservan en el histórico de Jugadores. Solo se borran los partidos programados y sesiones sin actividad del resumen; las sanciones, resultados, asistencias y movimientos registrados se protegen." : cleanup
       ? `La ficha y el historial ya se eliminaron correctamente. Solo queda pendiente la limpieza del almacenamiento; reintentar no vuelve a borrar el registro.`
       : preview
         ? "Esta eliminación es definitiva. También desaparecerán los siguientes registros y cambiarán los totales de cobranza, pagos y asistencias."
@@ -86,7 +86,8 @@ export function AcademyDeleteDialog({ record, kind, token, onClose, onDelete, co
     {preview && !cleanup && <>
       {isGuardian && Boolean(preview.students?.length) && <div className="student-error my-3"><strong>También se eliminarán estos alumnos:</strong><ul>{preview.students?.map(row => <li key={row.id}>{row.full_name}</li>)}</ul><p>Si deben seguir en la academia, cancela y asígnalos a otro tutor desde Editar alumno antes de borrar este tutor.</p></div>}
       <ul className="student-delete-inventory" aria-label="Datos que se eliminarán">{preview.items.map(item => <li key={item.label}><span>{item.label}</span><strong>{item.count}</strong></li>)}{preview.file_count > 0 && <li><span>Archivos propios en Futsi</span><strong>{preview.file_count}</strong></li>}</ul>
-      <p className="student-hint my-3">{isTournament ? "Se conservan las fichas de alumnos, sus tutores, la sede y los datos de otros torneos." : isGuardian ? "Se conservan las sedes, equipos y sesiones compartidas. La cuenta de acceso, si existe, se administra por separado en Usuarios." : "Se conservarán el tutor, sus otros alumnos y los recursos compartidos, como sedes, equipos y sesiones."}</p>
+      {isTeam && <p className="student-hint">Se conservan {preview.preserved_enrollment_count ?? 0} inscripciones con sus documentos. Se invalidan {preview.invalidated_link_count ?? 0} enlaces.</p>}
+      <p className="student-hint my-3">{isTeam ? "El torneo y las participaciones de los jugadores en otros equipos se conservan." : isTournament ? "Se conservan las fichas de alumnos, sus tutores, la sede y los datos de otros torneos." : isGuardian ? "Se conservan las sedes, equipos y sesiones compartidas. La cuenta de acceso, si existe, se administra por separado en Usuarios." : "Se conservarán el tutor, sus otros alumnos y los recursos compartidos, como sedes, equipos y sesiones."}</p>
       {requiresTypedName && <label className="student-delete-name-input">Escribe <strong>{preview.full_name}</strong> para confirmar<input autoComplete="off" spellCheck={false} value={name} disabled={busy} onChange={event => setName(event.target.value)} aria-label={`Nombre del ${noun} para confirmar eliminación definitiva`} /></label>}
     </>}
     {error && <p role="alert" className="student-error mt-3">{error}</p>}

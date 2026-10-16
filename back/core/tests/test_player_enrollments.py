@@ -520,15 +520,104 @@ class PlayerEnrollmentTests(TestCase):
         self.assertTrue(Tournament.objects.filter(pk=self.tournament.pk).exists())
         self.assertFalse(Team.objects.filter(pk=team.pk).exists())
 
-    def test_team_deletion_scope_and_signed_links_are_protected(self):
+    def test_team_deletion_scope_and_links_do_not_block(self):
         self.client.force_authenticate(self.emilio)
-        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{self.team.pk}/deletion-preview/').status_code, 400)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{self.team.pk}/deletion-preview/').status_code, 200)
         outside = Site.objects.create(name='Fuera de Franco')
         tournament = Tournament.objects.create(site=outside, name='Otro')
         team = Team.objects.create(tournament=tournament, name='Ajeno')
         self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 200)
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.get(f'/api/player-enrollments/teams/{team.pk}/deletion-preview/').status_code, 403)
+
+    def signed_team_fixture(self):
+        row = PlayerEnrollment.objects.create(invitation=self.invitation, team_record=self.team,
+            name='Jugador de prueba', birth_date='1990-01-01', team=self.team.name,
+            tournament=self.tournament.name, is_delegate=True)
+        doc = PlayerEnrollmentDocument.objects.create(enrollment=row, kind='player_photo',
+            content=b'private-image', storage_path='private/test.jpg', content_type='image/jpeg', sha256='hash')
+        return row, doc
+
+    def test_delete_signed_team_preserves_documents_and_other_memberships_and_expires_links(self):
+        from core.models import AuditLog
+        row, doc = self.signed_team_fixture()
+        withdrawal = self.new_withdrawal()
+        other_team = Team.objects.create(tournament=self.tournament, name='Otro equipo')
+        other_link = PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, team_record=other_team,
+            expires_at=timezone.now()+timedelta(days=1))
+        other = PlayerEnrollment.objects.create(invitation=other_link, team_record=other_team,
+            name=row.name, birth_date=row.birth_date, team=other_team.name, tournament=self.tournament.name)
+        self.client.force_authenticate(self.emilio)
+        url = f'/api/player-enrollments/teams/{self.team.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        self.assertEqual(preview['preserved_enrollment_count'], 1)
+        self.assertEqual(preview['invalidated_link_count'], 2)
+        self.assertEqual(preview['file_count'], 0)
+        payload = {'confirmation_token': preview['confirmation_token'], 'confirmation_name': self.team.name}
+        result = self.client.delete(url, payload, format='json')
+        self.assertEqual(result.status_code, 200, result.data)
+        self.assertFalse(Team.objects.filter(pk=self.team.pk).exists())
+        row.refresh_from_db(); doc.refresh_from_db(); other.refresh_from_db(); other_link.refresh_from_db()
+        self.assertIsNone(row.team_record_id)
+        self.assertIsNone(row.withdrawn_at)  # A team deletion is not a forged signed withdrawal.
+        self.assertEqual(row.team, self.team.name)
+        self.assertEqual(doc.content, b'private-image')
+        self.assertEqual(doc.storage_path, 'private/test.jpg')
+        self.assertEqual(other.team_record_id, other_team.pk)
+        self.assertGreater(other_link.expires_at, timezone.now())
+        for link in (self.invitation, withdrawal):
+            link.refresh_from_db()
+            self.assertIsNone(link.team_record_id)
+            self.assertLessEqual(link.expires_at, timezone.now())
+        self.delete_storage.assert_not_called()
+        active = self.client.get('/api/player-enrollments/?active_only=true').json()['results']
+        self.assertEqual([entry['id'] for entry in active], [other.pk])
+        people = self.client.get('/api/player-enrollments/players/').json()
+        self.assertEqual(people['totals']['total'], 1)
+        self.assertEqual(len(people['results'][0]['participations']), 2)
+        self.assertTrue(people['results'][0]['is_active'])
+        audit = AuditLog.objects.get(pk=result.json()['deletion_id'])
+        self.assertEqual(audit.metadata['preserved_enrollment_ids'], [row.pk])
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(self.url).status_code, 410)
+        self.assertEqual(self.client.get(f'/api/player-enrollments/withdrawal/{withdrawal.token}/').status_code, 400)
+
+    def test_new_signed_enrollment_invalidates_team_confirmation(self):
+        self.client.force_authenticate(self.emilio)
+        url = f'/api/player-enrollments/teams/{self.team.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        self.signed_team_fixture()
+        result = self.client.delete(url, {'confirmation_token': preview['confirmation_token'],
+            'confirmation_name': self.team.name}, format='json')
+        self.assertEqual(result.status_code, 400)
+        self.assertTrue(Team.objects.filter(pk=self.team.pk).exists())
+
+    def test_team_deletion_rolls_back_detached_enrollments_on_failure(self):
+        row, doc = self.signed_team_fixture()
+        self.client.force_authenticate(self.emilio)
+        url = f'/api/player-enrollments/teams/{self.team.pk}/'
+        preview = self.client.get(url+'deletion-preview/').json()
+        with patch.object(Team, 'delete', side_effect=RuntimeError('simulated deletion failure')):
+            response = self.client.delete(url, {'confirmation_token': preview['confirmation_token'],
+                'confirmation_name': self.team.name}, format='json')
+        self.assertEqual(response.status_code, 500)
+        row.refresh_from_db(); self.invitation.refresh_from_db()
+        self.assertEqual(row.team_record_id, self.team.pk)
+        self.assertEqual(self.invitation.team_record_id, self.team.pk)
+        self.assertGreater(self.invitation.expires_at, timezone.now())
+        self.assertTrue(PlayerEnrollmentDocument.objects.filter(pk=doc.pk).exists())
+
+    def test_team_deletion_keeps_disciplinary_protection(self):
+        from core.enrollment_models import PlayerSanction
+        from uuid import uuid4
+        row, _ = self.signed_team_fixture()
+        PlayerSanction.objects.create(team=self.team, enrollment=row, player_name=row.name,
+            offense_code='s01', offense_label='Incidente', reason='Prueba', incident_on=timezone.localdate(),
+            starts_on=timezone.localdate(), created_by=self.emilio, duration_unit='indefinite', request_id=uuid4())
+        self.client.force_authenticate(self.emilio)
+        response = self.client.get(f'/api/player-enrollments/teams/{self.team.pk}/deletion-preview/')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('sanciones', str(response.data))
 
     def empty_team_match(self):
         from core.models import Match, AttendanceSession, Player
