@@ -168,6 +168,17 @@ test("a reaction does not create an unanswered customer message", () => {
   assert.equal(conversationAttention(c).key, "waiting_client");
 });
 
+test("farewell variants and thanks use the same whole-phrase SLA policy", () => {
+  for (const body of ["Adiós", "Hasta luego", "Hasta mañana", "Nos vemos", "Bye bye", "Chao", "Mil gracias", "Graciasss", "Gracias y hasta luego", "Gracias, que tengas un buen día"]) {
+    assert.equal(isClosingAcknowledgement(body), true, body);
+    const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });
+    assert.equal(matchesAttention(c, "needs_reply"), false, body);
+  }
+  for (const body of ["Gracias mi hijo tiene 7 años", "Adiós me confirman la inscripción", "Buen día", "你好", "[audio]", "Gracias, ¿cuánto cuesta?"]) {
+    assert.equal(isClosingAcknowledgement(body), false, body);
+  }
+});
+
 test("thanks close an exchange after our message", () => {
   for (const body of ["Gracias", "Muchas gracias 🙏", "Perfecto, gracias", "Saludos", "Saludos cordiales"]) {
     const c = chat([msg(1, "outbound", "human_whatsapp", "10"), msg(2, "inbound", "unknown", "11", { body })], { human_takeover_active: true });

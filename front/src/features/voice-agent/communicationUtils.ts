@@ -86,18 +86,21 @@ export function lastMessage(conversation: WhatsAppConversation) {
   return orderedMessages(conversation).filter(m => m.event_type !== "revoked" && m.body.trim().toLowerCase() !== "[reaction]").at(-1);
 }
 
-const acknowledgementOnly = new Set([
-  "ok", "okay", "perfecto", "listo", "entendido", "excelente", "super", "sale", "va",
-  "de acuerdo", "esta bien", "muy bien", "claro", "saludos", "saludos cordiales",
-]);
-const acknowledgementRequest = /\b(?:pero|aunque|duda|pregunta|quisiera|quiero|necesito|puede|puedes|podria|podrias|mandar|enviar|decir|confirmar|informar|agendar|inscribir|registrar|cambiar|cancelar|cuando|donde|como|cual|cuanto|horario|precio|costo)\b/;
+// Same whole-phrase policy as core.whatsapp.attention in both servers.
+const closingPhrase = new RegExp("^(?:" + [
+  "(?:muchas? |muchisimas? |mil |muchisisimas? )?gracia+s+(?: (?:por (?:todo|la (?:informacion|info|ayuda|atencion|respuesta)|el (?:apoyo|dato)|confirmar|avisar)|a ti|a usted|a ustedes))?",
+  "grax|grx|thanks|thank you|thx|te agradezco|le agradezco|se agradece|muy amable",
+  "ok(?:ay)?|perfecto|listo|entendido|excelente|super|sale|va|de acuerdo|esta bien|muy bien|claro",
+  "adio+s+|chao|chau|bye(?: bye)?|hasta luego|hasta pronto|hasta manana|nos vemos|cuidate|cuidese",
+  "saludos(?: cordiales)?|(?:que (?:tengas|tenga|tengan|pases|pase|pasen) (?:un )?)?(?:buen dia|buena tarde|buena noche|bonito dia|lindo dia|excelente dia|buen fin de semana)",
+].join("|") + ")");
 
 function normalizedAcknowledgement(body: string) {
   return body.normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u200d\ufe0f]/gu, " ")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}_]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ");
 }
@@ -105,12 +108,18 @@ function normalizedAcknowledgement(body: string) {
 export function isClosingAcknowledgement(body: string) {
   const trimmed = body.trim();
   if (!trimmed) return false;
-  if (/^\[(?:sticker|reaction)\]$/i.test(trimmed)) return true;
-  const normalized = normalizedAcknowledgement(trimmed);
-  if (!normalized) return true;
-  if (acknowledgementOnly.has(normalized)) return true;
-  if (!normalized.includes("gracias") || trimmed.includes("?") || acknowledgementRequest.test(normalized)) return false;
-  return normalized.split(" ").length <= 12;
+  if (/^\[(?:sticker|reaction|revoke)\]$/i.test(trimmed)) return true;
+  if (/[?¿]/.test(trimmed)) return false;
+  if (!/[\p{L}\p{N}]/u.test(trimmed)) return true;
+  let normalized = normalizedAcknowledgement(trimmed);
+  if (["buen dia", "buena tarde", "buena noche", "bonito dia", "lindo dia", "excelente dia"].includes(normalized)) return false;
+  while (normalized) {
+    const match = closingPhrase.exec(normalized);
+    if (!match || (match[0].length < normalized.length && normalized[match[0].length] !== " ")) return false;
+    normalized = normalized.slice(match[0].length).trim();
+    if (normalized.startsWith("y ")) normalized = normalized.slice(2);
+  }
+  return true;
 }
 
 // Operational state comes from the current exchange, never from historical

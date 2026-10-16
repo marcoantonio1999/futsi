@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta
 from statistics import median
 from types import SimpleNamespace
+from copy import copy
 
 from django.conf import settings
 from django.db import models, transaction
@@ -51,6 +52,7 @@ from core.api.manual_message_transport import (
     send_text_for_channel,
 )
 from core.veronica_access import court_communications_allowed_channels, is_court_communications_only
+from core.whatsapp.attention import closing_acknowledgement
 
 
 TRIAL_DASHBOARD_ROLES = ADMIN_ROLES | {"site_coordinator"}
@@ -84,6 +86,45 @@ def _response_event_summary(events):
     }
 
 
+def _reportable_response_events(events, start_at, end_at):
+    """Correct old courtesy-started events on read, without rewriting history.
+
+    If a real request followed the courtesy, start its clock at that request.
+    A later courtesy never cancels a genuine unanswered question.
+    """
+    courtesy = [event for event in events if closing_acknowledgement(event.first_inbound_message.body)]
+    if not courtesy:
+        return events
+    messages = WhatsAppMessage.objects.filter(
+        conversation_id__in={event.conversation_id for event in courtesy}, direction='inbound',
+        created_at__gte=min(event.first_inbound_at for event in courtesy), created_at__lt=end_at,
+    ).order_by('conversation_id','created_at','id').values(
+        'id','conversation_id','created_at','body','contact_type','within_business_hours')
+    meaningful = {}
+    for message in messages.iterator():
+        if not closing_acknowledgement(message['body']):
+            meaningful.setdefault(message['conversation_id'], []).append(message)
+    corrected = []
+    courtesy_ids = {event.pk for event in courtesy}
+    for event in events:
+        if event.pk not in courtesy_ids:
+            corrected.append(event)
+            continue
+        request = next((message for message in meaningful.get(event.conversation_id, [])
+            if (message['created_at'],message['id']) > (event.first_inbound_at,event.first_inbound_message_id)
+            and (event.responded_at is None or message['created_at'] < event.responded_at)), None)
+        if request is None:
+            continue
+        event = copy(event)
+        event.first_inbound_at = request['created_at']
+        event.within_business_hours = request['within_business_hours']
+        event.contact_type = request['contact_type']
+        if event.responded_at:
+            event.response_seconds = max(0,int((event.responded_at-event.first_inbound_at).total_seconds()))
+        corrected.append(event)
+    return corrected
+
+
 def _manual_response_events(conversations, recorded_events, start_at, end_at):
     """Recover manual-only conversations that predate response-event tracking.
 
@@ -100,7 +141,7 @@ def _manual_response_events(conversations, recorded_events, start_at, end_at):
         .exclude(conversation_id__in=recorded_conversations)
         .exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$')
         .select_related("conversation", "conversation__booking", "sent_by")
-        .defer("body", "classification_evidence")
+        .defer("classification_evidence")
         .order_by("conversation_id", "created_at", "id")
     )
     recovered = []
@@ -139,6 +180,8 @@ def _manual_response_events(conversations, recorded_events, start_at, end_at):
             conversation_id = message.conversation_id
             pending = None
         if message.direction == WhatsAppMessageDirection.INBOUND:
+            if closing_acknowledgement(message.body):
+                continue
             if (
                 pending is None
                 and message.routing_decision == WhatsAppRoutingDecision.UNCLASSIFIED
@@ -924,14 +967,15 @@ class WhatsAppConversationViewSet(
                 first_inbound_at__gte=start_at,
                 first_inbound_at__lt=end_at,
             )
-            .exclude(first_inbound_message__body__iregex=r'^\s*\[(reaction|revoke)\]\s*$')
             .select_related(
                 "conversation",
                 "conversation__booking",
                 "responder_user",
+                "first_inbound_message",
             )
             .order_by("first_inbound_at", "id")
         )
+        events = _reportable_response_events(events, start_at, end_at)
         events.extend(_manual_response_events(conversations, events, start_at, end_at))
 
         responder_groups = {}

@@ -1,30 +1,14 @@
 """Read-only, site-scoped attention alerts; no messages or production writes."""
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
-import re
-import unicodedata
 
 from django.db import models
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from core.models import WhatsAppHumanResponseEvent, WhatsAppMessage
+from core.whatsapp.attention import closing_acknowledgement
 
 MEXICO = ZoneInfo("America/Mexico_City")
-
-
-def closing_acknowledgement(body):
-    # Same closing-exchange policy as communicationUtils.ts; a thank-you with
-    # a question still needs attention. Do not reopen chats for emoji/stickers.
-    body = str(body or "").strip()
-    if not body:
-        return False
-    if body.lower() in ("[sticker]", "[reaction]"):
-        return True
-    normalized = " ".join(re.sub(r"[^a-z0-9]+", " ", "".join(c for c in unicodedata.normalize("NFD", body).lower() if not unicodedata.combining(c))).split())
-    if not normalized or normalized in {"ok", "okay", "perfecto", "listo", "entendido", "excelente", "super", "sale", "va", "de acuerdo", "esta bien", "muy bien", "claro", "saludos", "saludos cordiales"}:
-        return True
-    requests = r"\b(?:pero|aunque|duda|pregunta|quisiera|quiero|necesito|puede|puedes|podria|podrias|mandar|enviar|decir|confirmar|informar|agendar|inscribir|registrar|cambiar|cancelar|cuando|donde|como|cual|cuanto|horario|precio|costo)\b"
-    return "gracias" in normalized and "?" not in body and not re.search(requests, normalized) and len(normalized.split()) <= 12
 
 
 def working_seconds(start, end):
@@ -46,7 +30,7 @@ def working_seconds(start, end):
 
 
 def attention_notifications(conversations, now=None):
-    from .trials import _manual_response_events
+    from .trials import _manual_response_events, _reportable_response_events
     now = now or timezone.now()
     local = now.astimezone(MEXICO)
     # Rolling seven days: old unanswered requests must not remain in the bell,
@@ -58,7 +42,8 @@ def attention_notifications(conversations, now=None):
     events = list(WhatsAppHumanResponseEvent.objects.filter(
         conversation__in=conversations, human_attention_expected=True,
         first_inbound_at__gte=start, first_inbound_at__lte=now,
-    ).select_related("conversation", "responder_user").order_by("first_inbound_at"))
+    ).select_related("conversation", "responder_user", "first_inbound_message").order_by("first_inbound_at"))
+    events = _reportable_response_events(events, start, now)
     events.extend(_manual_response_events(conversations, events, start, now))
     groups = {}
     for event in events:
