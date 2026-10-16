@@ -224,7 +224,7 @@ export function VoiceDashboardPanel({
   const sectionDetail = sectionDetails[section];
   const auditPage = section === "summary" || section === "weekly-stats" || section === "chat-quality";
   const sectionGroup = courtCommunicationsOnly ? "Mi cancha" : communicationGroups.find(group => group.items.some(item => item.key === (auditPage ? "summary" : section)))?.label;
-  const pageClass = auditPage ? "comm-audit-page" : section === "whatsapp" ? "comm-inbox-page" : "";
+  const pageClass = auditPage ? `comm-audit-page${section === "summary" ? " comm-audit-summary" : ""}` : section === "whatsapp" ? "comm-inbox-page" : "";
   const scopePanel = <CommunicationScopePicker
     sites={permittedData.sites}
     channels={channels}
@@ -259,7 +259,7 @@ export function VoiceDashboardPanel({
       {section === "template-builder" && <WhatsAppTemplateBuilder token={token} channels={templateChannels} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
       {auditPage && section !== "chat-quality" && <AuditPeriodPicker days={auditPeriodDays} start={auditStart} onDaysChange={setAuditPeriodDays} onStartChange={setAuditStart} />}
-      {section === "summary" && <><CommunicationsSummary data={voiceData} periodDays={auditPeriodDays} periodStart={auditStart} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} /><ContactClassificationPanel token={token} scopeQuery={query} /></>}
+      {section === "summary" && <><CommunicationsSummary data={voiceData} periodDays={auditPeriodDays} periodStart={auditStart} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} /><ContactClassificationPanel compact token={token} scopeQuery={query} /></>}
       {section === "chat-quality" && <><AuditPeriodPicker weeklyQuality days={7} start={qualityWeek} onStartChange={setQualityWeek} /><WhatsAppQualityPanel token={token} scopeQuery={query} week={qualityWeek} onOpenConversation={openConversation} /></>}
 
       {section === "bookings" ? (

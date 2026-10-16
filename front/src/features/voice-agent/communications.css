@@ -188,3 +188,64 @@
 .comm-period-buttons button { min-height: 44px; padding: 10px 18px; border: 1px solid var(--comm-line, #d8e0dc); border-radius: 10px; background: var(--comm-surface, #fff); color: var(--comm-text, #20352b); font-weight: 600; cursor: pointer; }
 .comm-period-buttons button[aria-pressed="true"] { background: #34694d; color: #fff; border-color: #34694d; }
 .comm-period-buttons button:focus-visible { outline: 3px solid #86b79a; outline-offset: 3px; }
+
+/* The audit summary is an overview: budget every row against the viewport.
+   The history/quality pages keep their own scrollable content. */
+@media (min-width: 1024px) {
+  .comm-audit-summary {
+    display:grid; grid-template-columns:minmax(150px,1fr) minmax(280px,560px);
+    grid-template-areas:"title scope" "content content";
+    grid-template-rows:auto minmax(0,1fr); gap:10px 16px;
+    height:calc(100dvh - 110px); min-height:0;
+  }
+  .comm-audit-summary>.comm-page-heading { grid-area:title; padding:0; align-self:center; }
+  .comm-audit-summary .comm-eyebrow { font-size:10px; line-height:1.2; }
+  .comm-audit-summary .comm-page-heading h2 { font-size:22px; line-height:1.2; margin:2px 0 0; }
+  .comm-audit-summary>.comm-audit-filter { grid-area:scope; width:100%; align-self:center; }
+  .comm-audit-summary .comm-scope-picker>summary { min-height:44px; padding:8px 12px; font-size:12px; }
+  .comm-audit-summary>.comm-audit-content {
+    grid-area:content; display:grid; grid-template-rows:auto minmax(0,1fr) auto;
+    gap:10px; overflow:visible; padding:0; scrollbar-gutter:auto;
+  }
+  .comm-audit-summary .comm-audit-period { gap:8px; margin:0; min-height:44px; font-size:12px; }
+  .comm-audit-summary .comm-week-picker { gap:8px; flex-wrap:wrap; }
+  .comm-audit-summary .comm-audit-period label { width:auto; gap:8px; }
+  .comm-audit-summary .comm-audit-period select,.comm-audit-summary .comm-audit-period input { min-height:44px; padding:6px 9px; font-size:12px; }
+  .comm-audit-summary .comm-audit-period button { min-height:44px; min-width:44px; }
+  .comm-audit-summary .comm-summary { min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); grid-auto-rows:auto; gap:10px; }
+  .comm-audit-summary .comm-attention-metrics { gap:10px; }
+  .comm-audit-summary .comm-attention-metrics .comm-metric { min-height:58px; display:flex; flex-direction:row; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; }
+  .comm-audit-summary .comm-metric>span { font-size:12px; line-height:1.25; gap:6px; }
+  .comm-audit-summary .comm-metric>strong { font-size:26px; line-height:1; }
+  .comm-audit-summary .comm-metric svg { width:17px; height:17px; flex-shrink:0; }
+  .comm-audit-summary .comm-weekly-chart { min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); }
+  .comm-audit-summary .comm-weekly-chart>.comm-section-heading { padding:10px 14px 2px; border:0; }
+  .comm-audit-summary .comm-weekly-chart h3 { font-size:14px; }
+  .comm-audit-summary .comm-chart-area { height:auto; min-height:0; padding:0 10px 6px; }
+  .comm-audit-summary .comm-review-call { padding:6px 12px; min-height:44px; }
+  .comm-classification-compact>.comm-section-heading { padding:0 12px; min-height:44px; border:0; }
+  .comm-classification-compact>.comm-section-heading h3 { font-size:13px; }
+  .comm-classification-compact>.comm-stats-body { padding:0 10px 8px; }
+  .comm-classification-compact .comm-classification-grid { grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
+  .comm-classification-compact .comm-classification-card { padding:7px 9px; gap:6px; flex-direction:row; align-items:center; justify-content:space-between; border-radius:8px; }
+  .comm-classification-compact .comm-classification-card span { font-size:11px; line-height:1.2; }
+  .comm-classification-compact .comm-classification-card strong { font-size:21px; }
+}
+.comm-classification-open { min-height:44px; padding:0 8px; }
+.comm-classification-modal .comm-template-modal-close { min-width:44px; min-height:44px; }
+.comm-classification-modal .comm-table { min-width:0; width:100%; }
+.comm-classification-modal .comm-table th,.comm-classification-modal .comm-table td { white-space:normal; overflow-wrap:anywhere; }
+.comm-classification-modal .comm-table th:last-child,.comm-classification-modal .comm-table td:last-child { white-space:nowrap; }
+@media (max-width:1023px) {
+  .comm-audit-summary { height:auto; min-height:0; overflow:visible; }
+  .comm-audit-summary>.comm-section-map { display:none; }
+  .comm-audit-summary>.comm-audit-content { overflow:visible; }
+  .comm-classification-compact .comm-section-heading { gap:8px; align-items:center; }
+  .comm-classification-compact .comm-section-heading h3 { font-size:14px; }
+  .comm-classification-compact .comm-classification-card { padding:12px; gap:5px; }
+  .comm-classification-compact .comm-classification-card span { font-size:12px; overflow-wrap:anywhere; }
+  .comm-audit-summary .comm-week-picker { flex-wrap:wrap; }
+  .comm-audit-summary .comm-week-picker label { width:auto; }
+  .comm-audit-summary .comm-audit-period input,.comm-audit-summary .comm-audit-period select { min-height:44px; max-width:100%; }
+  .comm-audit-summary .comm-audit-period button { min-height:44px; min-width:44px; }
+}
