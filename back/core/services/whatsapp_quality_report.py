@@ -1,5 +1,6 @@
 """Authorized reads of the private audit table owned by the WhatsApp service."""
 from collections import Counter
+import uuid
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -17,10 +18,16 @@ class QualityAudit(models.Model):
     channel = models.CharField(max_length=64)
     period_end = models.DateTimeField()
     rubric = models.CharField(max_length=32)
+    provider = models.CharField(max_length=16, default='luna')
     model = models.CharField(max_length=120)
     status = models.CharField(max_length=16)
     result = models.JSONField()
     usage = models.JSONField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    claim_id = models.UUIDField(default=uuid.uuid4)
+    lease_until = models.DateTimeField(null=True)
+    detail = models.CharField(max_length=120, blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         app_label = "core"

@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from django.db import connection
+from django.conf import settings
 from core.services.whatsapp_quality_report import QualityAudit
 from core.models import WhatsAppAutomationSettings, WhatsAppConversation, WhatsAppMessage
 from core.tests.factories import make_site
@@ -36,11 +37,17 @@ URL = "/api/whatsapp-conversations/quality-audit/?scope=all&week_start=2026-10-0
 
 @pytest.fixture(autouse=True)
 def private_table():
-    with connection.schema_editor() as editor:
-        editor.create_model(QualityAudit)
+    assert settings.FUTSI_ENV == 'test' and (connection.vendor == 'sqlite' or str(connection.settings_dict['NAME']).startswith('test_'))
+    created = QualityAudit._meta.db_table not in connection.introspection.table_names()
+    if created:
+        with connection.schema_editor() as editor:
+            editor.create_model(QualityAudit)
+    QualityAudit.objects.all().delete()
     yield
-    with connection.schema_editor() as editor:
-        editor.delete_model(QualityAudit)
+    QualityAudit.objects.all().delete()
+    if created:
+        with connection.schema_editor() as editor:
+            editor.delete_model(QualityAudit)
 
 
 def audited_chat(site, address):

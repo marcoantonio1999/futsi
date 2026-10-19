@@ -1,5 +1,6 @@
 from datetime import timedelta
 from django.db import connection
+from django.conf import settings
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -11,13 +12,19 @@ from core.services.whatsapp_attention_audit import message_version, ignored_requ
 @override_settings(ALLOWED_HOSTS=['testserver'], MIGRATION_MODULES={'core':None}, FUTSI_ENV='test')
 class AttentionAuditReadTests(TransactionTestCase):
     def setUp(self):
-        with connection.schema_editor() as editor: editor.create_model(QualityAudit)
+        assert settings.FUTSI_ENV == 'test' and (connection.vendor == 'sqlite' or str(connection.settings_dict['NAME']).startswith('test_'))
+        self.created_private_table = QualityAudit._meta.db_table not in connection.introspection.table_names()
+        if self.created_private_table:
+            with connection.schema_editor() as editor: editor.create_model(QualityAudit)
+        QualityAudit.objects.all().delete()
         self.client=APIClient(); self.client.force_authenticate(User.objects.create_user(username='closure-admin',role='admin'))
         self.now=timezone.now()
         self.chat=WhatsAppConversation.objects.create(to_address='meta:123456789',from_address='whatsapp:+525500000001',contact_phone='+525500000001')
 
     def tearDown(self):
-        with connection.schema_editor() as editor: editor.delete_model(QualityAudit)
+        QualityAudit.objects.all().delete()
+        if self.created_private_table:
+            with connection.schema_editor() as editor: editor.delete_model(QualityAudit)
 
     def message(self,text,minute=10,direction='inbound',source='unknown'):
         m=WhatsAppMessage.objects.create(conversation=self.chat,body=text,direction=direction,response_source=source,provider_sid=f'closure-{WhatsAppMessage.objects.count()}')
