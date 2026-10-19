@@ -25,6 +25,16 @@ const data: AppData = { ...emptyData, sites, whatsappConversations: conversation
   trialBookings: [1, 2].map(site => ({ id: site, site, site_name: sites[site - 1].name, responsible_name: "Prueba", responsible_phone: "+525511110000", child_first_name: `Alumno ${sites[site - 1].name}`, status: "scheduled", source: "manual", visits: [], created_at: now })) as AppData["trialBookings"],
   trialAvailabilityRules: [1, 2].map(site => ({ id: site, site, site_name: sites[site - 1].name, court: null, court_name: "", weekday: 1, starts_at: "17:00", ends_at: "18:00", slot_minutes: 60, capacity: 5, is_active: true })) as AppData["trialAvailabilityRules"],
 };
+// Saved weekly snapshots exercise existing counters without new UI or AI calls.
+if (new URLSearchParams(location.search).has('weekly-attention')) {
+  conversations.forEach((conversation,index) => {
+    const last=conversation.messages.at(-1)!;
+    last.direction='inbound'; last.response_source='unknown';
+    last.body=index%3===0 ? 'Sí, nos vemos' : index%3===1 ? 'Gracias, ¿cuál es el precio?' : 'Buen día';
+    conversation.attention_analysis={current_state:index%3===0 ? 'closed' : index%3===1 ? 'pending' : 'uncertain',last_message_id:last.id,analyzed_until:now};
+    conversation.attention_not_required_ids=index%3===0 ? [last.id] : [];
+  });
+}
 window.fetch = async (input, init) => {
   const url = new URL(String(input), location.origin);
   if (url.pathname.endsWith("/manual-whatsapp/")) {

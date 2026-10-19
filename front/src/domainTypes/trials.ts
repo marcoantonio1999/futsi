@@ -242,6 +242,8 @@ export type WhatsAppConversation = {
   channel_label?: string | null;
   manual_send_available?: boolean;
   attention_resolution?: { message_id: number; resolved_at: string } | null;
+  attention_analysis?: { current_state: 'closed' | 'pending' | 'waiting_client' | 'uncertain'; last_message_id: number; analyzed_until: string } | null;
+  attention_not_required_ids?: number[];
   id: number;
   kind: "menu" | "faq" | "trial_booking" | "payment_reminder" | string;
   contact_name?: string | null;

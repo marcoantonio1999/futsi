@@ -153,6 +153,20 @@ export function conversationAttention(c: WhatsAppConversation): ConversationAtte
   if (reviewed) return c.follow_up_required
     ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "none", detail: "El equipo indicó que no hace falta responder. El seguimiento sigue marcado." }
     : { key: "up_to_date", tone: "green", label: "Atendido", since: null, turn: "none", detail: "El equipo revisó este intercambio e indicó que no requiere respuesta." };
+  // Saved weekly evidence only. A new or edited message invalidates it on the
+  // server; rendering never invokes AI and never manufactures a human reply.
+  const analysis = c.attention_analysis;
+  if (analysis?.last_message_id === last?.id && analysis?.current_state === 'closed') return c.follow_up_required
+    ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "none", detail: "El análisis semanal identifica un cierre. El seguimiento del equipo se conserva." }
+    : { key: "up_to_date", tone: "green", label: "Conversación cerrada", since: null, turn: "none", detail: "El análisis semanal del intercambio identifica un cierre sin solicitud pendiente. No implica una respuesta humana no registrada." };
+  if (analysis?.last_message_id === last?.id && analysis?.current_state === 'pending') return {
+    key: "needs_reply", tone: "red", label: "Nos toca responder", since: inbound?.created_at ?? null, turn: "team",
+    detail: "El análisis semanal identifica una solicitud pendiente; una cortesía no la da por resuelta.",
+  };
+  if (analysis?.last_message_id === last?.id && analysis?.current_state === 'uncertain') return {
+    key: "follow_up", tone: "amber", label: "Por revisar", since: inbound?.created_at ?? null, turn,
+    detail: "El análisis semanal no pudo confirmar el cierre. La solicitud no se descarta ni se cuenta como respuesta humana.",
+  };
   if (nonTextAcknowledgement && previousMeaningful?.direction === "outbound" && !c.follow_up_required) return {
     key: "waiting_client", tone: "blue", label: "Esperando al cliente", since: previousMeaningful.created_at, turn: "client",
     detail: "El equipo respondió. El emoji, sticker o reacción del cliente no genera una nueva solicitud de respuesta.",

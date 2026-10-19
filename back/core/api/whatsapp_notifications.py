@@ -43,8 +43,10 @@ def attention_notifications(conversations, now=None):
         conversation__in=conversations, human_attention_expected=True,
         first_inbound_at__gte=start, first_inbound_at__lte=now,
     ).select_related("conversation", "responder_user", "first_inbound_message").order_by("first_inbound_at"))
-    events = _reportable_response_events(events, start, now)
-    events.extend(_manual_response_events(conversations, events, start, now))
+    from core.services.whatsapp_attention_audit import ignored_request_ids
+    ignored_ids = ignored_request_ids(conversations.values('pk'), start, now)
+    events = _reportable_response_events(events, start, now, ignored_ids)
+    events.extend(_manual_response_events(conversations, events, start, now, ignored_ids))
     groups = {}
     for event in events:
         if event.response_seconds is None:
@@ -68,7 +70,7 @@ def attention_notifications(conversations, now=None):
             body__iregex=r'^\s*\[(reaction|revoke)\]\s*$')
         last_out = meaningful.filter(direction="outbound").order_by("-created_at", "-id")
         latest = meaningful.order_by("-created_at", "-id")
-        inbound = meaningful.filter(direction="inbound").order_by("-created_at", "-id")
+        inbound = meaningful.filter(direction="inbound").exclude(pk__in=ignored_ids).order_by("-created_at", "-id")
         human = meaningful.filter(direction="outbound", response_source__in=("human_whatsapp", "human_dashboard")).order_by("-created_at", "-id")
         pending = conversations.annotate(
             alert_last_direction=models.Subquery(latest.values("direction")[:1]),
@@ -81,12 +83,12 @@ def attention_notifications(conversations, now=None):
             alert_human_at=models.Subquery(human.values("created_at")[:1]),
         ).filter(models.Q(alert_last_direction="inbound") | models.Q(alert_inbound_routing__in=("human_only", "automation_paused")) | models.Q(context__automation_paused_by_human=True))
         # Start at the first unanswered message, not at each follow-up from a customer.
-        first = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef("pk"), direction="inbound").exclude(
+        first = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef("pk"), direction="inbound").exclude(pk__in=ignored_ids).exclude(
             body__iregex=r'^\s*\[(reaction|revoke)\]\s*$').filter(created_at__gt=Coalesce(
                 models.OuterRef("alert_last_out"), models.Value(datetime(1970, 1, 1, tzinfo=MEXICO)),
                 output_field=models.DateTimeField(),
             )).order_by("created_at", "id")
-        first_human_wait = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef("pk"), direction="inbound").exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$').filter(created_at__gt=Coalesce(models.OuterRef("alert_human_at"), models.Value(datetime(1970, 1, 1, tzinfo=MEXICO)), output_field=models.DateTimeField())).order_by("created_at", "id")
+        first_human_wait = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef("pk"), direction="inbound").exclude(pk__in=ignored_ids).exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$').filter(created_at__gt=Coalesce(models.OuterRef("alert_human_at"), models.Value(datetime(1970, 1, 1, tzinfo=MEXICO)), output_field=models.DateTimeField())).order_by("created_at", "id")
         for chat in pending.annotate(alert_started_at=models.Subquery(first.values("created_at")[:1]), alert_human_started_at=models.Subquery(first_human_wait.values("created_at")[:1])).values(
             "id", "to_address", "contact_phone", "context", "channel_site_id", "channel_site_name", "channel_label", "alert_started_at", "alert_last_id", "alert_last_at", "alert_last_out", "alert_inbound_at", "alert_inbound_body", "alert_inbound_routing", "alert_human_at", "alert_human_started_at", "alert_last_direction",
         ).iterator():

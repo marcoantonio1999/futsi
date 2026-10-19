@@ -86,13 +86,14 @@ def _response_event_summary(events):
     }
 
 
-def _reportable_response_events(events, start_at, end_at):
+def _reportable_response_events(events, start_at, end_at, ignored_ids=None):
     """Correct old courtesy-started events on read, without rewriting history.
 
     If a real request followed the courtesy, start its clock at that request.
     A later courtesy never cancels a genuine unanswered question.
     """
-    courtesy = [event for event in events if closing_acknowledgement(event.first_inbound_message.body)]
+    ignored_ids = ignored_ids or set()
+    courtesy = [event for event in events if event.first_inbound_message_id in ignored_ids or closing_acknowledgement(event.first_inbound_message.body)]
     if not courtesy:
         return events
     messages = WhatsAppMessage.objects.filter(
@@ -102,7 +103,7 @@ def _reportable_response_events(events, start_at, end_at):
         'id','conversation_id','created_at','body','contact_type','within_business_hours')
     meaningful = {}
     for message in messages.iterator():
-        if not closing_acknowledgement(message['body']):
+        if message['id'] not in ignored_ids and not closing_acknowledgement(message['body']):
             meaningful.setdefault(message['conversation_id'], []).append(message)
     corrected = []
     courtesy_ids = {event.pk for event in courtesy}
@@ -125,13 +126,14 @@ def _reportable_response_events(events, start_at, end_at):
     return corrected
 
 
-def _manual_response_events(conversations, recorded_events, start_at, end_at):
+def _manual_response_events(conversations, recorded_events, start_at, end_at, ignored_ids=None):
     """Recover manual-only conversations that predate response-event tracking.
 
     Consecutive incoming messages are one request; the first human reply closes it.
     Conversations with recorded events are left to the event source of truth.
     """
     recorded_conversations = {event.conversation_id for event in recorded_events}
+    ignored_ids = ignored_ids or set()
     messages = (
         WhatsAppMessage.objects.filter(
             conversation__in=conversations,
@@ -180,7 +182,7 @@ def _manual_response_events(conversations, recorded_events, start_at, end_at):
             conversation_id = message.conversation_id
             pending = None
         if message.direction == WhatsAppMessageDirection.INBOUND:
-            if closing_acknowledgement(message.body):
+            if message.pk in ignored_ids or closing_acknowledgement(message.body):
                 continue
             if (
                 pending is None
@@ -491,7 +493,8 @@ class WhatsAppConversationViewSet(
             allowed_channels = court_communications_allowed_channels(user)
             if allowed_channels is not None:
                 queryset = queryset.filter(to_address__in=allowed_channels)
-        return queryset
+        from core.services.whatsapp_attention_audit import annotate_attention
+        return annotate_attention(queryset)
 
     @action(detail=False, methods=["get"], url_path="attention-notifications",
             permission_classes=[CanViewWhatsAppNotifications])
@@ -975,8 +978,10 @@ class WhatsAppConversationViewSet(
             )
             .order_by("first_inbound_at", "id")
         )
-        events = _reportable_response_events(events, start_at, end_at)
-        events.extend(_manual_response_events(conversations, events, start_at, end_at))
+        from core.services.whatsapp_attention_audit import ignored_request_ids
+        ignored_ids = ignored_request_ids(conversations.order_by().values('pk'), start_at, now)
+        events = _reportable_response_events(events, start_at, end_at, ignored_ids)
+        events.extend(_manual_response_events(conversations, events, start_at, end_at, ignored_ids))
 
         responder_groups = {}
         for event in events:

@@ -3,6 +3,21 @@ import assert from "node:assert/strict";
 import { buildWeeklyMessageTrend, buildRangeMessageTrend } from "../src/features/voice-agent/communicationsSummaryModel.ts";
 import { auditPeriods } from "../src/features/voice-agent/auditPeriods.ts";
 
+test('saved contextual closing is not waiting, but does not add an outgoing reply', () => {
+  const end=new Date('2026-10-19T23:00:00Z');
+  const c={attention_not_required_ids:[2],messages:[
+    {id:1,direction:'outbound',created_at:'2026-10-19T20:00:00Z'},
+    {id:2,direction:'inbound',body:'Sí, nos vemos',created_at:'2026-10-19T21:00:00Z'},
+    {id:3,direction:'inbound',body:'¿Cuál es el horario?',created_at:'2026-10-19T22:00:00Z'},
+  ]};
+  for(const rows of [buildRangeMessageTrend([c],'week',end),buildWeeklyMessageTrend([c],end)]) {
+    assert.equal(rows.reduce((sum,r)=>sum+r.received,0),2);
+    assert.equal(rows.reduce((sum,r)=>sum+r.replied,0),1);
+    assert.equal(rows.reduce((sum,r)=>sum+r.waiting,0),1);
+    assert.equal(rows.reduce((sum,r)=>sum+r.attended,0),1);
+  }
+});
+
 test('four rolling presets filter exact boundaries and retain hourly/day buckets', () => {
   const end=new Date('2026-10-13T00:00:00Z');
   assert.deepEqual(auditPeriods.map(row=>row.days),[7,3,1,30]);

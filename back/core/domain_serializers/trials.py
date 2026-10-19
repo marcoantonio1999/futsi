@@ -321,6 +321,8 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         return channel_can_send_text(instance.to_address)
 
     attention_resolution = serializers.SerializerMethodField()
+    attention_analysis = serializers.SerializerMethodField()
+    attention_not_required_ids = serializers.SerializerMethodField()
     kind = serializers.SerializerMethodField()
     contact_name = serializers.SerializerMethodField()
     human_takeover_active = serializers.SerializerMethodField()
@@ -362,6 +364,14 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
         if not isinstance(resolution, dict):
             return None
         return {"message_id": resolution.get("message_id"), "resolved_at": resolution.get("resolved_at")}
+
+    def get_attention_analysis(self, instance):
+        from core.services.whatsapp_attention_audit import current_attention
+        return current_attention(instance)
+
+    def get_attention_not_required_ids(self, instance):
+        from core.services.whatsapp_attention_audit import historical_non_request_ids
+        return historical_non_request_ids(instance)
 
     def get_follow_up_assigned_to_name(self, instance):
         assignee = instance.follow_up_assigned_to
@@ -465,6 +475,8 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
             "follow_up_notes",
             "follow_up_updated_at",
             "attention_resolution",
+            "attention_analysis",
+            "attention_not_required_ids",
             "human_takeover_active",
             "human_last_reply_at",
             "bot_response_pending",
@@ -492,6 +504,8 @@ class WhatsAppConversationSerializer(serializers.ModelSerializer):
             "follow_up_assigned_to_name",
             "follow_up_updated_at",
             "attention_resolution",
+            "attention_analysis",
+            "attention_not_required_ids",
             "human_takeover_active",
             "human_last_reply_at",
             "bot_response_pending",
