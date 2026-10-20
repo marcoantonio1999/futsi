@@ -1,6 +1,6 @@
 # Exámenes BPower
 
-Portal en el dominio y los servicios existentes de Futsi; no requiere otro sitio, subdominio, worker, cron ni proveedor de IA.
+Portal en el dominio y los servicios existentes de Futsi; no requiere otro sitio, subdominio, worker ni cron. Las abiertas usan OpenAI al solicitarlo administración.
 
 - Administración independiente: `https://futsi.bpoweracademy.mx/#/examenes`.
 - Menú integrado: Comunicaciones → RRHH → Exámenes (también para la cuenta restringida de Verónica).
@@ -34,7 +34,7 @@ El borrador y el token privado del intento se guardan en `sessionStorage` de la 
 - Migración Django `0070_recruitment_exams`: dos tablas nuevas, RLS habilitado y revocación de privilegios PUBLIC/anon/authenticated en PostgreSQL. No modifica registros previos.
 - Solicitudes públicas limitadas a 40/min/IP por el throttle local de DRF; no constituye protección distribuida contra abuso a gran escala.
 - Validación de correo, teléfono, consentimiento, preguntas/opciones y respuestas en servidor. No hay clave de respuestas en las preguntas públicas.
-- No se llama a IA ni se califica automáticamente; la evaluación de candidatos es humana. No se inventó una clave oficial del PDF.
+- La clave oficial del PDF debe proporcionarla Vero: nunca se inventan respuestas correctas. La IA califica conocimientos para revisión humana, no toma decisiones de contratación.
 - Las solicitudes ocurren al entrar/iniciar/entregar/actualizar. El reloj es local y no consulta la API periódicamente.
 
 ## Validación
@@ -48,3 +48,19 @@ El borrador y el token privado del intento se guardan en `sessionStorage` de la 
 `front/tests/exams.browser.mjs`: usa exclusivamente `127.0.0.1`, Django real y SQLite aislada, cuenta y participantes ficticios. Comprueba crear la plantilla de 40 preguntas, responder/recargar/enviar a 320/390/1440 px, ausencia de desbordamiento de página y ausencia de sondeo, tabla de Vero y detalle de las 40 respuestas. Nunca ejecutar contra producción.
 
 Se ejecutaron typecheck, build y migraciones completas en SQLite local. Un test preexistente de estadísticas de Verónica no puede usar SQLite porque `whatsapp_quality_audits` solo se crea en PostgreSQL; no es una prueba de este módulo y no se modificó para ocultar ese resultado.
+
+## Calificación (0072)
+
+Crear exige una respuesta correcta por pregunta: índice numérico de opción (base cero en API) o respuesta esperada y criterios en texto para abiertas. La interfaz permite escribirlas o cargar JSON con claves `1`, `2`, etc.; acepta letras A–Z para opción múltiple. Ejemplo: `{"1":"B","2":"Explicación esperada y criterios"}`. La clave publicada es inmutable; para cambiar criterios se crea otro examen.
+
+La clave se almacena en campos privados separados (`answer_key`, `grading_key`), nunca en preguntas públicas ni snapshot público. Se fija al iniciar el intento; la entrega no modifica respuestas previas. Exámenes anteriores sin clave permiten agregarla una sola vez, conservando datos/tiempos/respuestas; no reciben ceros ficticios.
+
+Exámenes solo de opción múltiple se califican al entregar, sin IA. Cada pregunta tiene el mismo peso y vale 0–10; nota final = promedio. Los mixtos/abiertos quedan pendientes. «Calificar todos los exámenes» procesa las entregas pendientes del examen seleccionado, una por solicitud y únicamente mientras continúa la acción iniciada por Vero. Guarda cada resultado con desglose, justificación, revisión requerida, modelo, consumo, fecha y autor.
+
+Luna `gpt-5.6-luna`, reasoning `low`, `store:false`, salida estructurada validada y límites de texto. Solo se envían preguntas abiertas, criterios y respuestas, no campos de nombre, correo, teléfono, PDF ni imágenes. Si la API principal no tiene clave local, utiliza su conexión HTTPS/Bearer existente con WhatsApp en `/api/internal/exam-grading/`; la clave de proveedor permanece en ese servidor. Puede cambiarse posteriormente configurando `OPENAI_API_KEY` en la API principal; nunca en frontend o Git.
+
+El claim `processing` se confirma en DB antes de consultar IA, sin mantener locks durante el HTTP. Doble clic/concurrencia no duplica una misma evaluación. Resultados, fallos y claims interrumpidos no vuelven automáticamente a pendientes: se requiere revisión administrativa. No hay cron, polling ni reintentos del proveedor. Tras fallo de una entrega la acción explícita puede continuar con las demás. Una interrupción incierta nunca se convierte en un cero ni se reintenta sola.
+
+`POST /api/recruitment-exams/test-grading/` es una prueba limitada a 6/h por usuario autorizado con texto ficticio fijo, sin crear participantes. No se llama al entrar a la página.
+
+Pruebas: `test_exam_grading.py` cubre clave obligatoria/privacidad, calificación determinista/idempotente, notas abiertas, claims, errores, permisos y legado. `front/tests/exam-grading.browser.mjs` usa API/DB locales, importa JSON y realiza tres pequeñas consultas reales autorizadas con candidatos ficticios, comprobando notas y 320/390/1440 px; nunca ejecutar contra producción.

@@ -20,6 +20,7 @@ try{
   assert(await q1.getByRole('button',{name:'Quitar opción A de pregunta 1',exact:true}).isDisabled());
   await q1.getByLabel('Enunciado',{exact:true}).fill('Primera con dos opciones');
   await q1.getByLabel('Opción A',{exact:true}).fill('Uno');await q1.getByLabel('Opción B',{exact:true}).fill('Dos');
+  await q1.getByLabel('Respuesta correcta (privada)',{exact:true}).selectOption('0');
   await page.getByRole('button',{name:'Agregar pregunta',exact:true}).click();
   const chooser=page.getByRole('group',{name:'Elegir tipo de pregunta',exact:true});
   assert(await chooser.isVisible());await fits(page);
@@ -28,6 +29,7 @@ try{
   const q2=page.locator('fieldset').nth(1);
   assert.equal(await q2.locator('input').count(),0);
   await q2.getByLabel('Enunciado',{exact:true}).fill('Explica tu propuesta');
+  await q2.getByLabel('Respuesta esperada y criterios (privados)',{exact:true}).fill('Propuesta clara y viable.');
   await page.getByRole('button',{name:'Agregar pregunta',exact:true}).click();
   await chooser.getByRole('button',{name:'Opción múltiple',exact:true}).click();
   const q3=page.locator('fieldset').nth(2);
@@ -37,9 +39,10 @@ try{
   await q3.getByRole('button',{name:'Quitar opción C de pregunta 3',exact:true}).click();
   assert.equal(await q3.locator('input').count(),5);
   for(let i=0;i<5;i++)await q3.getByLabel('Opción '+String.fromCharCode(65+i),{exact:true}).fill('Respuesta '+i);
-  await q3.getByRole('combobox').selectOption('open');
+  await q3.getByLabel('Tipo de respuesta',{exact:true}).selectOption('open');
   assert.equal(await q3.locator('input').count(),0);
-  await q3.getByRole('combobox').selectOption('choice');
+  await q3.getByLabel('Tipo de respuesta',{exact:true}).selectOption('choice');
+  await q3.getByLabel('Respuesta correcta (privada)',{exact:true}).selectOption('0');
   assert.equal(await q3.getByLabel('Opción E',{exact:true}).inputValue(),'Respuesta 4');
   await fits(page);await q3.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-variable-options-${width}.png`});
   const created=page.waitForResponse(r=>r.url().endsWith('/recruitment-exams/')&&r.request().method()==='POST');

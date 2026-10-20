@@ -62,6 +62,10 @@ def court_communications_route_allowed(path, method):
 
 
 def veronica_route_allowed(path, method):
+    if path == '/api/recruitment-exams/test-grading/':
+        return method == 'POST'
+    if re.fullmatch(r'/api/recruitment-exams/[1-9][0-9]*/grade/', path):
+        return method == 'POST'
     if re.fullmatch(r'/api/recruitment-exams/(?:template/|[1-9][0-9]*/)?', path):
         return method in {'GET', 'HEAD', 'POST'} and not (path.endswith('/template/') and method == 'POST')
     allowed = {

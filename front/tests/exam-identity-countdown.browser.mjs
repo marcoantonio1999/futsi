@@ -11,7 +11,8 @@ try{
   await admin.getByLabel('Usuario',{exact:true}).fill('exam_qa_vero');await admin.getByLabel('Contraseña',{exact:true}).fill('local-fictional-exam-test-2026');
   await admin.getByRole('button',{name:'Iniciar sesión',exact:true}).click();await admin.getByRole('button',{name:'Nuevo examen',exact:true}).click();
   await admin.getByLabel('Nombre del examen',{exact:true}).fill('QA Identidad y reloj '+width);
-  await admin.locator('fieldset').getByRole('combobox').selectOption('open');await admin.getByLabel('Enunciado',{exact:true}).fill('Explica tu propuesta.');
+  await admin.getByLabel('Tipo de respuesta',{exact:true}).selectOption('open');await admin.getByLabel('Enunciado',{exact:true}).fill('Explica tu propuesta.');
+  await admin.getByLabel('Respuesta esperada y criterios (privados)',{exact:true}).fill('Propuesta viable y clara.');
   const created=admin.waitForResponse(r=>r.url().endsWith('/recruitment-exams/')&&r.request().method()==='POST');
   await admin.getByRole('button',{name:'Crear y obtener enlace',exact:true}).click();const e=await (await created).json();
   const page=await context.newPage();await page.clock.install();await page.goto(base+'#/examen/'+e.public_token);

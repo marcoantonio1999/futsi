@@ -14,6 +14,7 @@ class RecruitmentExam(models.Model):
     instructions = models.TextField(blank=True)
     duration_minutes = models.PositiveSmallIntegerField(default=40)
     questions = models.JSONField(default=list)
+    answer_key = models.JSONField(default=dict, db_default={})  # Never serialized by public endpoints.
     public_token = models.CharField(max_length=64, unique=True, default=exam_token)
     accepting = models.BooleanField(default=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -35,6 +36,12 @@ class RecruitmentExamAttempt(models.Model):
     identity_phone = models.CharField(max_length=15, default='', db_default='', editable=False)
     snapshot = models.JSONField(default=dict)
     answers = models.JSONField(default=dict)
+    grading_key = models.JSONField(default=dict, db_default={})
+    grading_status = models.CharField(max_length=20, default='pending', db_default='pending')
+    grading = models.JSONField(default=dict, db_default={})
+    grading_started_at = models.DateTimeField(null=True, blank=True)
+    graded_at = models.DateTimeField(null=True, blank=True)
+    graded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='graded_recruitment_attempts')
     started_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
 

@@ -23,6 +23,7 @@ try {
  await admin.getByRole('button', {name:/Usar evaluación Business/}).click();
  await admin.getByLabel('Nombre del examen',{exact:true}).fill('QA · Business Operations 40 preguntas');
  assert.equal(await admin.locator('fieldset').count(),40);
+ for(const field of await admin.getByLabel('Respuesta correcta (privada)',{exact:true}).all()) await field.selectOption('0');
  await noOverflow(admin);
  await admin.screenshot({path:`${screenshots}/exam-editor-desktop.png`});
  const created = admin.waitForResponse(r=>r.url().endsWith('/recruitment-exams/') && r.request().method()==='POST');

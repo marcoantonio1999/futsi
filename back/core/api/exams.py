@@ -1,4 +1,4 @@
-"""On-demand exam portal. No AI calls, polling, or background jobs."""
+"""On-demand exams: automatic choice grading, explicitly requested AI grading."""
 import uuid
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -9,11 +9,12 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import BasePermission, AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 from core.models import RecruitmentExam, RecruitmentExamAttempt
 from core.veronica_access import is_veronica_only
 from core.exam_identity import exam_email, exam_phone
+from core.exam_grading import clean_key, choice_grades, finish_grade, grade_open, GradingError, MODEL
 
 
 class CanManageExams(BasePermission):
@@ -25,6 +26,25 @@ class CanManageExams(BasePermission):
 
 class ExamPublicThrottle(AnonRateThrottle):
     rate = '40/min'
+
+
+class ExamAITestThrottle(UserRateThrottle):
+    scope = 'exam_ai_test'
+    rate = '6/hour'
+
+
+class ExamGradingTestView(APIView):
+    permission_classes = [CanManageExams]
+    throttle_classes = [ExamAITestThrottle]
+
+    def post(self, request):
+        # Fixed fictional text only. Never grade actual applicants as a smoke test.
+        try:
+            grades, usage = grade_open([{'id': '1', 'kind': 'open', 'prompt': '¿Cuánto es dos más dos?'}],
+                {'1': 'Cuatro.'}, {'1': '4 o cuatro; debe sumar correctamente.'})
+        except GradingError as error:
+            return Response({'detail': str(error)}, status=503)
+        return Response({'model': MODEL, 'reasoning': 'low', 'fictional_test': True, 'grades': grades, 'usage': usage})
 
 
 def text(value, label, limit, required=True):
@@ -54,7 +74,8 @@ def exam_data(exam):
     return {'id': exam.id, 'title': exam.title, 'instructions': exam.instructions,
             'duration_minutes': exam.duration_minutes, 'questions': exam.questions,
             'accepting': exam.accepting, 'created_at': exam.created_at.isoformat(),
-            'public_token': exam.public_token, 'attempt_count': getattr(exam, 'attempt_count', 0)}
+            'public_token': exam.public_token, 'attempt_count': getattr(exam, 'attempt_count', 0),
+            'answer_key': exam.answer_key}
 
 
 def attempt_data(a, private=False):
@@ -63,7 +84,9 @@ def attempt_data(a, private=False):
               'elapsed_seconds': elapsed, 'over_time': elapsed > a.snapshot['duration_minutes'] * 60,
               'snapshot': a.snapshot, 'answers': a.answers}
     if private:
-        result.update(id=a.id, name=a.name, email=a.email, phone=a.phone)
+        result.update(id=a.id, name=a.name, email=a.email, phone=a.phone,
+                      grading_status=a.grading_status, grading=a.grading,
+                      graded_at=a.graded_at.isoformat() if a.graded_at else None)
     return result
 
 
@@ -84,11 +107,19 @@ class ExamAdminView(APIView):
         rows = RecruitmentExam.objects.annotate(attempt_count=Count('attempts'))[:200]
         return Response({'results': [exam_data(e) for e in rows]})
 
+    @transaction.atomic
     def post(self, request, pk=None):
         if not isinstance(request.data, dict):
             raise ValidationError({'detail': 'Formulario inválido.'})
         if pk is not None:
-            exam = get_object_or_404(RecruitmentExam, pk=pk)
+            exam = get_object_or_404(RecruitmentExam.objects.select_for_update(), pk=pk)
+            if 'answer_key' in request.data:
+                key = clean_key(exam.questions, request.data['answer_key'])
+                if exam.answer_key and exam.answer_key != key:
+                    raise ValidationError({'detail': 'La clave publicada es inmutable. Crea otro examen para cambiar los criterios.'})
+                exam.answer_key = key
+                exam.save(update_fields=['answer_key'])
+                return Response(exam_data(exam))
             if type(request.data.get('accepting')) is not bool:
                 raise ValidationError({'detail': 'Indica si se aceptan respuestas.'})
             exam.accepting = request.data['accepting']
@@ -100,10 +131,12 @@ class ExamAdminView(APIView):
         duration = data.get('duration_minutes', 40)
         if type(duration) is not int or not 1 <= duration <= 480:
             raise ValidationError({'detail': 'La duración debe ser de 1 a 480 minutos.'})
+        questions = clean_questions(data.get('questions'))
+        key = clean_key(questions, data.get('answer_key'))
         exam = RecruitmentExam.objects.create(
             title=text(data.get('title'), 'el nombre del examen', 180),
             instructions=text(data.get('instructions', ''), 'las instrucciones', 10000, False),
-            duration_minutes=duration, questions=clean_questions(data.get('questions')), created_by=request.user)
+            duration_minutes=duration, questions=questions, answer_key=key, created_by=request.user)
         return Response(exam_data(exam), status=201)
 
 
@@ -163,7 +196,7 @@ class PublicExamView(APIView):
             return Response({'detail': 'Ya se realizó este examen con este correo o teléfono. No es posible realizarlo dos veces.', 'code': 'exam_already_completed'}, status=409)
         if matching.exists():
             return Response({'detail': 'Este examen ya fue iniciado con este correo o teléfono. Continúa en la pestaña original; no es posible iniciar un segundo intento.', 'code': 'exam_already_started'}, status=409)
-        a = RecruitmentExamAttempt.objects.create(exam=e, start_key=start_key, name=name, email=email, phone=phone,
+        a = RecruitmentExamAttempt.objects.create(exam=e, start_key=start_key, name=name, email=email, phone=phone, grading_key=e.answer_key,
             snapshot={'title': e.title, 'instructions': e.instructions, 'duration_minutes': e.duration_minutes, 'questions': e.questions})
         return Response({'access_token': a.access_token, **attempt_data(a)}, status=201)
 
@@ -205,5 +238,50 @@ class ExamAttemptView(APIView):
                 cleaned[q['id']] = text(value, f'la pregunta {q["id"]}', 10000)
         a.answers = cleaned
         a.submitted_at = timezone.now()
-        a.save(update_fields=['answers', 'submitted_at'])
+        # Legacy exams retain their original answers. Missing keys never mean zero.
+        if a.grading_key and all(q['kind'] == 'choice' for q in questions):
+            finish_grade(a, choice_grades(questions, cleaned, a.grading_key))
+        a.save(update_fields=['answers', 'submitted_at', 'grading', 'grading_status', 'graded_at'])
         return Response(attempt_data(a))
+
+
+class ExamGradeView(APIView):
+    permission_classes = [CanManageExams]
+
+    def post(self, request, pk):
+        # One attempt per request bounds execution; UI continues only during an
+        # explicit user batch. Claim is committed BEFORE the paid HTTP call.
+        with transaction.atomic():
+            exam = get_object_or_404(RecruitmentExam.objects.select_for_update(), pk=pk)
+            if not exam.answer_key:
+                raise ValidationError({'detail': 'Primero guarda la clave de respuestas de este examen.'})
+            rows = exam.attempts.filter(submitted_at__isnull=False, grading_status='pending')
+            a = rows.select_for_update().order_by('id').first()
+            if not a:
+                return Response({'processed': False, 'remaining': 0,
+                    'errors': exam.attempts.filter(grading_status='error').count(),
+                    'processing': exam.attempts.filter(grading_status='processing').count()})
+            a.grading_key = clean_key(a.snapshot['questions'], a.grading_key or exam.answer_key)
+            a.grading_status = 'processing'
+            a.grading_started_at = timezone.now()
+            a.graded_by = request.user
+            a.save(update_fields=['grading_key', 'grading_status', 'grading_started_at', 'graded_by'])
+        try:
+            questions = a.snapshot['questions']
+            grades = choice_grades(questions, a.answers, a.grading_key)
+            has_open = any(q['kind'] == 'open' for q in questions)
+            usage = {}
+            if has_open:
+                open_grades, usage = grade_open(questions, a.answers, a.grading_key)
+                grades.update(open_grades)
+            finish_grade(a, grades, MODEL if has_open else 'deterministic', usage)
+        except GradingError as error:
+            a.grading_status = 'error'
+            a.grading = {'error': str(error)}
+        except Exception:
+            # Never persist/log provider responses, keys, candidate text, or PII.
+            a.grading_status = 'error'
+            a.grading = {'error': 'Error interno de calificación. Requiere revisión; no se reintentó.'}
+        a.save(update_fields=['grading_status', 'grading', 'graded_at'])
+        return Response({'processed': True, 'attempt_id': a.id, 'status': a.grading_status,
+            'remaining': exam.attempts.filter(submitted_at__isnull=False, grading_status='pending').count()})

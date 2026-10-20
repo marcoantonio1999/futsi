@@ -17,8 +17,9 @@ def isolated_exam_throttle_cache():
 
 
 def create_exam(client, questions=None):
+    questions = questions or [{'kind': 'choice', 'prompt': 'Selecciona una opción.', 'options': ['Primera', 'Segunda']}, {'kind': 'open', 'prompt': 'Explica tu propuesta.'}]
     r = client.post('/api/recruitment-exams/', {'title': 'Prueba de evaluación', 'duration_minutes': 40,
-        'questions': questions or [{'kind': 'choice', 'prompt': 'Selecciona una opción.', 'options': ['Primera', 'Segunda']}, {'kind': 'open', 'prompt': 'Explica tu propuesta.'}]}, format='json')
+        'questions': questions, 'answer_key': {str(i): 0 if q['kind'] == 'choice' else 'Criterios ficticios.' for i, q in enumerate(questions, 1)}}, format='json')
     assert r.status_code == 201, r.content
     return r.json()
 
