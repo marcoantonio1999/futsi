@@ -3,7 +3,7 @@ import uuid
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -13,6 +13,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from core.models import RecruitmentExam, RecruitmentExamAttempt
 from core.veronica_access import is_veronica_only
+from core.exam_identity import exam_email, exam_phone
 
 
 class CanManageExams(BasePermission):
@@ -150,8 +151,18 @@ class PublicExamView(APIView):
         except DjangoValidationError:
             raise ValidationError({'detail': 'Escribe un correo electrónico válido.'})
         phone = text(data.get('phone'), 'el teléfono', 30)
-        if not 8 <= sum(c.isdigit() for c in phone) <= 15 or data.get('consent') is not True:
+        if not 8 <= len(exam_phone(phone)) <= 15 or data.get('consent') is not True:
             raise ValidationError({'detail': 'Revisa tu teléfono y la autorización para guardar tus respuestas.'})
+        # The parent exam row remains locked throughout this transaction. Two
+        # simultaneous starts cannot both pass this check on PostgreSQL.
+        # Normalize a legacy row written by an older instance during rollout.
+        for legacy in e.attempts.filter(Q(identity_email='') | Q(identity_phone='')).only('id', 'email', 'phone'):
+            legacy.save(update_fields=['identity_email', 'identity_phone'])
+        matching = e.attempts.filter(Q(identity_email=exam_email(email)) | Q(identity_phone=exam_phone(phone)))
+        if matching.filter(submitted_at__isnull=False).exists():
+            return Response({'detail': 'Ya se realizó este examen con este correo o teléfono. No es posible realizarlo dos veces.', 'code': 'exam_already_completed'}, status=409)
+        if matching.exists():
+            return Response({'detail': 'Este examen ya fue iniciado con este correo o teléfono. Continúa en la pestaña original; no es posible iniciar un segundo intento.', 'code': 'exam_already_started'}, status=409)
         a = RecruitmentExamAttempt.objects.create(exam=e, start_key=start_key, name=name, email=email, phone=phone,
             snapshot={'title': e.title, 'instructions': e.instructions, 'duration_minutes': e.duration_minutes, 'questions': e.questions})
         return Response({'access_token': a.access_token, **attempt_data(a)}, status=201)

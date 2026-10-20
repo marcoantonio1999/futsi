@@ -38,7 +38,7 @@ try {
   await page.goto(base+'#/examen/'+exam.public_token);
   await page.getByLabel('Nombre completo',{exact:true}).fill(`Participante Ficticio ${width}`);
   await page.getByLabel('Correo electrónico',{exact:true}).fill(`qa-${width}@example.invalid`);
-  await page.getByLabel('Teléfono',{exact:true}).fill('5500000000');
+  await page.getByLabel('Teléfono',{exact:true}).fill('550000'+String(width).padStart(4,'0'));
   await page.getByRole('checkbox').check(); await noOverflow(page);
   await page.screenshot({path:`${screenshots}/exam-start-${width}.png`});
   await page.getByRole('button',{name:'Iniciar examen',exact:true}).click();

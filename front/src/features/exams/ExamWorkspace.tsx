@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Menu, X, Plus, FileText, ListChecks } from 'lucide-react';
 import './ExamWorkspace.css';
+import { examLogo } from './ExamBrand';
 
 export type ExamSection = 'list' | 'create' | 'evaluations';
 const sections = [
@@ -45,7 +46,7 @@ export function ExamWorkspace({ section, onNavigate, children }: { section: Exam
       {children}
     </div>
     <dialog className="exam-nav-drawer" ref={drawer} aria-label="Navegación de exámenes" onClose={() => setOpen(false)} onClick={e => { if (e.target === e.currentTarget) { const bounds = e.currentTarget.getBoundingClientRect(); if (e.clientX > bounds.right || e.clientX < bounds.left) close(); } }}>
-      <div className="exam-drawer-heading"><strong>Exámenes BPower</strong><button type="button" aria-label="Cerrar menú de exámenes" onClick={close}><X size={20} aria-hidden="true" /></button></div>{nav()}
+      <div className="exam-drawer-heading"><span className="exam-drawer-brand"><img src={examLogo} alt="" />Exámenes BPower</span><button type="button" aria-label="Cerrar menú de exámenes" onClick={close}><X size={20} aria-hidden="true" /></button></div>{nav()}
     </dialog>
   </div>;
 }

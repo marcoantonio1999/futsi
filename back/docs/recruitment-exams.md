@@ -15,6 +15,16 @@ El inicio y la entrega los fija el servidor. El tiempo incluye interrupciones; r
 
 Cada intento tiene una copia de las preguntas/instrucciones. Las respuestas enviadas son inmutables, y la confirmación es idempotente ante doble clic o una respuesta de red perdida. El identificador de inicio evita duplicar el intento al repetir manualmente una solicitud fallida. No hay reintentos automáticos.
 
+El reloj público muestra el tiempo restante en `mm:ss`, de la duración configurada a `00:00`, sin valores negativos. Recargar no reinicia el tiempo del servidor. Al llegar a cero se permite entregar y se conserva el tiempo real para revisión: no se agregó envío automático ni descarte automático.
+
+## Un intento por contacto y examen
+
+Se bloquea un nuevo inicio cuando coincide el correo **o** el teléfono dentro del mismo examen. Correo sin distinción de mayúsculas ni espacios exteriores; teléfono sin separadores y con equivalencia entre número mexicano local, +52 y prefijo móvil antiguo +521. No se eliminan puntos ni alias del correo. Esto detecta coincidencias de contacto, no verifica la identidad civil de una persona ni impide que use ambos datos distintos.
+
+Una entrega previa devuelve HTTP 409 `exam_already_completed`: «Ya se realizó este examen con este correo o teléfono. No es posible realizarlo dos veces». Un intento pendiente devuelve `exam_already_started` e indica continuar en la pestaña original. El mismo identificador privado de inicio permite recuperar el intento original sin crear uno nuevo ni reiniciar el tiempo. Los mismos datos sí pueden participar en un examen diferente.
+
+El bloqueo se comprueba en servidor con bloqueo transaccional de la fila del examen para serializar inicios simultáneos. Migración `0071_exam_identity_guard` agrega los campos normalizados e índices, sin eliminar intentos previos ni modificar correos, teléfonos, respuestas o tiempos originales. Los índices no son únicos porque debe conservarse cualquier duplicado histórico anterior a esta regla. La migración rellena las referencias existentes; una fila creada por una instancia anterior durante el despliegue se normaliza al siguiente intento de ese examen. Se conservan RLS y ausencia de permisos públicos.
+
 El borrador y el token privado del intento se guardan en `sessionStorage` de la pestaña del candidato, no en un servidor intermedio; al enviar se eliminan. El borrador no se considera entrega. Cerrar definitivamente la pestaña puede perder un intento sin entregar. Si el almacenamiento no está disponible aparece una advertencia.
 
 ## Seguridad y límites
@@ -29,7 +39,9 @@ El borrador y el token privado del intento se guardan en `sessionStorage` de la 
 
 ## Validación
 
-`back/core/tests/test_recruitment_exams.py`: 32 pruebas de permisos, datos, privacidad, inicio idempotente, cierre del enlace, respuestas incompletas, inmutabilidad, tiempo del servidor, opciones variables y permisos de migración en PostgreSQL/Supabase.
+`back/core/tests/test_recruitment_exams.py`: 41 pruebas de permisos, datos, privacidad, inicio idempotente, cierre del enlace, respuestas incompletas, inmutabilidad, tiempo del servidor, opciones variables, duplicados por correo/teléfono, migración y permisos en PostgreSQL/Supabase. La prueba concurrente se ejecuta únicamente en PostgreSQL (se omite en SQLite).
+
+`front/tests/exam-identity-countdown.browser.mjs`: verifica reloj 40:00 → 39:59 → 00:00, bloqueo de un segundo inicio y de una segunda entrega por correo o teléfono, logo y ausencia de desbordamiento en 320/390/1440 px. Usa datos ficticios y API local. `front/tests/exam-countdown.test.mjs` verifica los límites del reloj sin llamadas de red.
 
 `front/tests/exam-editor.browser.mjs`: creación y entrega local de un examen mixto con preguntas de 2 y 5 opciones y una pregunta abierta en 320/390/1440 px, elección de tipo y conservación de opciones al cambiar de tipo.
 

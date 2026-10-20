@@ -135,6 +135,77 @@ def test_invalid_choice_count(auth_client, count):
     assert r.status_code == 400
 
 
+@pytest.mark.parametrize('contact', [
+    {'email': 'PRUEBA@EXAMPLE.INVALID', 'phone': '5511111111'},
+    {'email': 'otro@example.invalid', 'phone': '55 0000-0000'},
+    {'email': 'otro@example.invalid', 'phone': '+52 (55) 0000-0000'},
+    {'email': 'otro@example.invalid', 'phone': '+52 1 55 0000 0000'},
+])
+def test_completed_exam_cannot_be_repeated_by_either_contact(auth_client, contact):
+    admin, _, _ = auth_client(); e = create_exam(admin); a = start(e).json()
+    c = APIClient(); c.credentials(HTTP_AUTHORIZATION='Exam ' + a['access_token'])
+    assert c.post('/api/public-exams/attempt/', {'answers': {'1': 0, '2': 'Texto'}}, format='json').status_code == 200
+    r = start(e, **contact)
+    assert r.status_code == 409 and r.json()['code'] == 'exam_already_completed'
+    assert 'No es posible realizarlo dos veces' in r.json()['detail']
+    assert 'access_token' not in r.json() and RecruitmentExamAttempt.objects.count() == 1
+
+
+def test_pending_exam_cannot_restart_but_original_resumes(auth_client):
+    admin, _, _ = auth_client(); e = create_exam(admin); key = str(uuid.uuid4()); a = start(e, start_key=key).json()
+    before = RecruitmentExamAttempt.objects.get().started_at
+    r = start(e)
+    assert r.status_code == 409 and r.json()['code'] == 'exam_already_started'
+    assert start(e, start_key=key).json()['access_token'] == a['access_token']
+    assert RecruitmentExamAttempt.objects.get().started_at == before
+
+
+def test_contact_can_take_a_different_exam(auth_client):
+    admin, _, _ = auth_client()
+    assert start(create_exam(admin)).status_code == 201
+    assert start(create_exam(admin)).status_code == 201
+
+
+def test_legacy_rollout_attempt_is_normalized_before_duplicate_check(auth_client):
+    admin, _, _ = auth_client(); e = create_exam(admin); start(e)
+    RecruitmentExamAttempt.objects.update(identity_email='', identity_phone='')
+    assert start(e, email='PRUEBA@EXAMPLE.INVALID', phone='5511111111').status_code == 409
+    assert RecruitmentExamAttempt.objects.get().identity_phone == '5500000000'
+
+
+def test_identity_migration_preserves_attempt_data(auth_client):
+    import importlib
+    from django.apps import apps
+    from django.db import connection
+    admin, _, _ = auth_client(); e = create_exam(admin); start(e, phone='+52 (55) 0000-0000', email='PRUEBA@example.invalid')
+    before = RecruitmentExamAttempt.objects.get()
+    RecruitmentExamAttempt.objects.update(identity_email='', identity_phone='')
+    from types import SimpleNamespace
+    importlib.import_module('core.migrations.0071_exam_identity_guard').fill_identity(apps, SimpleNamespace(connection=connection))
+    after = RecruitmentExamAttempt.objects.get()
+    assert (after.pk, after.email, after.phone, after.answers, after.started_at) == (before.pk, before.email, before.phone, before.answers, before.started_at)
+    assert (after.identity_email, after.identity_phone) == ('prueba@example.invalid', '5500000000')
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_starts_only_create_one_attempt(auth_client):
+    from concurrent.futures import ThreadPoolExecutor
+    from django.db import connection, close_old_connections
+    if connection.vendor != 'postgresql':
+        pytest.skip('Row-level locking is verified on PostgreSQL CI, not SQLite.')
+    admin, _, _ = auth_client(); e = create_exam(admin)
+    def submit():
+        close_old_connections()
+        try:
+            return start(e).status_code
+        finally:
+            close_old_connections()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        statuses = list(executor.map(lambda _: submit(), range(2)))
+    assert sorted(statuses) == [201, 409]
+    assert RecruitmentExamAttempt.objects.count() == 1
+
+
 @pytest.mark.parametrize('roles', [[], [('anon',), ('authenticated',)]])
 def test_private_migration_supports_postgres_and_supabase(roles):
     import importlib
