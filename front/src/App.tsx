@@ -26,7 +26,7 @@ export default function App() {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => { const update = () => setHash(window.location.hash); window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update); }, []);
   if (!isSoccerWa && hash.startsWith('#/examen/')) return <Suspense fallback={<main>Cargando evaluación…</main>}><PublicExam key={hash} invitation={hash.slice('#/examen/'.length)} /></Suspense>;
-  if (!isSoccerWa && (hash === '#/examenes' || hash === '#/examenes/')) return <Suspense fallback={<main>Cargando Exámenes…</main>}><ExamPortal /></Suspense>;
+  if (!isSoccerWa && (hash === '#/examenes' || hash.startsWith('#/examenes/'))) return <Suspense fallback={<main>Cargando Exámenes…</main>}><ExamPortal /></Suspense>;
   if (!isSoccerWa && hash.startsWith("#/baja/")) {
     return <Suspense fallback={<main>Cargando baja…</main>}><PublicPlayerWithdrawal invitation={hash.slice("#/baja/".length)} /></Suspense>;
   }
