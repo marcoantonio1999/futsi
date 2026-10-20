@@ -1,0 +1,66 @@
+// Real local API and fictional exams only; never write to production.
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const base='http://127.0.0.1:5187/';
+const browser=await chromium.launch({headless:true,channel:'chrome'});
+async function fits(page){assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+try{
+ for(const width of [320,390,1440]){
+  const context=await browser.newContext({viewport:{width,height:900}});
+  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(base+'#/examenes');
+  await page.getByLabel('Usuario',{exact:true}).fill('exam_qa_vero');
+  await page.getByLabel('Contraseña',{exact:true}).fill('local-fictional-exam-test-2026');
+  await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
+  await page.getByRole('button',{name:'Nuevo examen',exact:true}).click();
+  await page.getByLabel('Nombre del examen',{exact:true}).fill('QA Opciones variables '+width);
+  let q1=page.locator('fieldset').nth(0);
+  assert.equal(await q1.locator('input').count(),2);
+  assert(await q1.getByRole('button',{name:'Quitar opción A de pregunta 1',exact:true}).isDisabled());
+  await q1.getByLabel('Enunciado',{exact:true}).fill('Primera con dos opciones');
+  await q1.getByLabel('Opción A',{exact:true}).fill('Uno');await q1.getByLabel('Opción B',{exact:true}).fill('Dos');
+  await page.getByRole('button',{name:'Agregar pregunta',exact:true}).click();
+  const chooser=page.getByRole('group',{name:'Elegir tipo de pregunta',exact:true});
+  assert(await chooser.isVisible());await fits(page);
+  await chooser.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-type-choice-${width}.png`});
+  await chooser.getByRole('button',{name:'Pregunta abierta',exact:true}).click();
+  const q2=page.locator('fieldset').nth(1);
+  assert.equal(await q2.locator('input').count(),0);
+  await q2.getByLabel('Enunciado',{exact:true}).fill('Explica tu propuesta');
+  await page.getByRole('button',{name:'Agregar pregunta',exact:true}).click();
+  await chooser.getByRole('button',{name:'Opción múltiple',exact:true}).click();
+  const q3=page.locator('fieldset').nth(2);
+  await q3.getByLabel('Enunciado',{exact:true}).fill('Cinco opciones');
+  for(let i=0;i<4;i++)await q3.getByRole('button',{name:'Agregar opción',exact:true}).click();
+  assert.equal(await q3.locator('input').count(),6);
+  await q3.getByRole('button',{name:'Quitar opción C de pregunta 3',exact:true}).click();
+  assert.equal(await q3.locator('input').count(),5);
+  for(let i=0;i<5;i++)await q3.getByLabel('Opción '+String.fromCharCode(65+i),{exact:true}).fill('Respuesta '+i);
+  await q3.getByRole('combobox').selectOption('open');
+  assert.equal(await q3.locator('input').count(),0);
+  await q3.getByRole('combobox').selectOption('choice');
+  assert.equal(await q3.getByLabel('Opción E',{exact:true}).inputValue(),'Respuesta 4');
+  await fits(page);await q3.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-variable-options-${width}.png`});
+  const created=page.waitForResponse(r=>r.url().endsWith('/recruitment-exams/')&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'Crear y obtener enlace',exact:true}).click();
+  const response=await created;assert.equal(response.status(),201);const exam=await response.json();
+  assert.deepEqual(exam.questions.map(q=>q.kind==='choice'?q.options.length:0),[2,0,5]);
+  const candidate=await context.newPage();await candidate.goto(base+'#/examen/'+exam.public_token);
+  await candidate.getByLabel('Nombre completo',{exact:true}).fill('Persona Ficticia');
+  await candidate.getByLabel('Correo electrónico',{exact:true}).fill('qa@example.invalid');
+  await candidate.getByLabel('Teléfono',{exact:true}).fill('5500000000');await candidate.getByRole('checkbox').check();
+  await candidate.getByRole('button',{name:'Iniciar examen',exact:true}).click();
+  await candidate.locator('#question-1').waitFor();
+  assert.equal(await candidate.locator('#question-1 input[type=radio]').count(),2);
+  assert.equal(await candidate.locator('#question-3 input[type=radio]').count(),5);
+  await candidate.locator('#question-1 input[type=radio]').nth(1).check();
+  await candidate.locator('#question-2 textarea').fill('Propuesta escrita de prueba.');
+  await candidate.locator('#question-3 input[type=radio]').nth(4).check();
+  candidate.on('dialog',d=>d.accept());await candidate.getByRole('button',{name:'Enviar examen',exact:true}).click();
+  await candidate.getByRole('heading',{name:'Gracias. Recibimos tus respuestas.',exact:true}).waitFor();
+  await fits(candidate);assert.deepEqual(errors,[]);
+  console.log(JSON.stringify({width,typePicker:true,options:[2,5],openQuestion:true,preservedOnTypeSwitch:true,submission:true,overflow:false}));
+  await context.close();
+ }
+}finally{await browser.close();}

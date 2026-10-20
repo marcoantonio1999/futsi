@@ -6,6 +6,7 @@ Portal en el dominio y los servicios existentes de Futsi; no requiere otro sitio
 - Menú integrado: Comunicaciones → RRHH → Exámenes (también para la cuenta restringida de Verónica).
 - Enlace público generado por examen: `#/examen/<token-aleatorio>`.
 - Crear → usar plantilla Business Operations & AI (40 preguntas) o redactar preguntas abiertas/de opción múltiple → crear → copiar enlace.
+- Al agregar una pregunta se elige «Pregunta abierta» u «Opción múltiple». Cada pregunta de opción múltiple admite de 2 a 26 opciones mediante Agregar/Quitar opción; no exige cuatro. Cambiar el tipo conserva el borrador de las opciones si se vuelve a opción múltiple.
 - Ver respuestas muestra participantes, contacto, inicio, entrega, duración y respuestas individuales, con páginas de 50 participantes. Cerrar un enlace impide nuevos inicios, sin impedir la entrega de un intento ya iniciado.
 
 ## Tiempo y conservación
@@ -28,7 +29,9 @@ El borrador y el token privado del intento se guardan en `sessionStorage` de la 
 
 ## Validación
 
-`back/core/tests/test_recruitment_exams.py`: 24 pruebas de permisos, datos, privacidad, inicio idempotente, cierre del enlace, respuestas incompletas, inmutabilidad, tiempo del servidor y permisos de migración en PostgreSQL/Supabase.
+`back/core/tests/test_recruitment_exams.py`: 32 pruebas de permisos, datos, privacidad, inicio idempotente, cierre del enlace, respuestas incompletas, inmutabilidad, tiempo del servidor, opciones variables y permisos de migración en PostgreSQL/Supabase.
+
+`front/tests/exam-editor.browser.mjs`: creación y entrega local de un examen mixto con preguntas de 2 y 5 opciones y una pregunta abierta en 320/390/1440 px, elección de tipo y conservación de opciones al cambiar de tipo.
 
 `front/tests/exams.browser.mjs`: usa exclusivamente `127.0.0.1`, Django real y SQLite aislada, cuenta y participantes ficticios. Comprueba crear la plantilla de 40 preguntas, responder/recargar/enviar a 320/390/1440 px, ausencia de desbordamiento de página y ausencia de sondeo, tabla de Vero y detalle de las 40 respuestas. Nunca ejecutar contra producción.
 

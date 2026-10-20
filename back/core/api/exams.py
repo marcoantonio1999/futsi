@@ -42,8 +42,8 @@ def clean_questions(value):
         row = {'id': str(i), 'kind': q['kind'], 'prompt': text(q.get('prompt'), f'la pregunta {i}', 5000)}
         if q['kind'] == 'choice':
             options = q.get('options')
-            if not isinstance(options, list) or not 2 <= len(options) <= 8:
-                raise ValidationError({'detail': f'Agrega de 2 a 8 opciones en la pregunta {i}.'})
+            if not isinstance(options, list) or not 2 <= len(options) <= 26:
+                raise ValidationError({'detail': f'Agrega de 2 a 26 opciones en la pregunta {i}.'})
             row['options'] = [text(o, f'las opciones de la pregunta {i}', 2000) for o in options]
         result.append(row)
     return result

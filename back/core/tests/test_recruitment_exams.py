@@ -8,6 +8,14 @@ from core.models import RecruitmentExam, RecruitmentExamAttempt
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def isolated_exam_throttle_cache():
+    from django.core.cache import cache
+    cache.clear()
+    yield
+    cache.clear()
+
+
 def create_exam(client, questions=None):
     r = client.post('/api/recruitment-exams/', {'title': 'Prueba de evaluación', 'duration_minutes': 40,
         'questions': questions or [{'kind': 'choice', 'prompt': 'Selecciona una opción.', 'options': ['Primera', 'Segunda']}, {'kind': 'open', 'prompt': 'Explica tu propuesta.'}]}, format='json')
@@ -105,6 +113,26 @@ def test_template_preserves_all_questions(auth_client):
     assert all(len(q['options']) == 4 for q in template['questions'])
     assert 'Probarla primero' in template['questions'][35]['options'][3]
     assert not any('correct' in q for q in template['questions'])
+
+
+@pytest.mark.parametrize('count', [2, 3, 4, 9, 26])
+def test_variable_choice_count(auth_client, count):
+    admin, _, _ = auth_client()
+    options = [f'Opción {i}' for i in range(count)]
+    e = create_exam(admin, [{'kind': 'choice', 'prompt': 'Elige', 'options': options}, {'kind': 'open', 'prompt': 'Explica'}])
+    a = start(e).json()
+    assert len(a['snapshot']['questions'][0]['options']) == count
+    assert 'options' not in a['snapshot']['questions'][1]
+    c = APIClient(); c.credentials(HTTP_AUTHORIZATION='Exam ' + a['access_token'])
+    r = c.post('/api/public-exams/attempt/', {'answers': {'1': count-1, '2': 'Respuesta escrita.'}}, format='json')
+    assert r.status_code == 200 and r.json()['answers']['1'] == count-1
+
+
+@pytest.mark.parametrize('count', [0, 1, 27])
+def test_invalid_choice_count(auth_client, count):
+    admin, _, _ = auth_client()
+    r = admin.post('/api/recruitment-exams/', {'title': 'Prueba', 'questions': [{'kind': 'choice', 'prompt': 'Elige', 'options': ['Texto'] * count}]}, format='json')
+    assert r.status_code == 400
 
 
 @pytest.mark.parametrize('roles', [[], [('anon',), ('authenticated',)]])
