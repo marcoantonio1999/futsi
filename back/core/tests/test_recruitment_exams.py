@@ -105,3 +105,19 @@ def test_template_preserves_all_questions(auth_client):
     assert all(len(q['options']) == 4 for q in template['questions'])
     assert 'Probarla primero' in template['questions'][35]['options'][3]
     assert not any('correct' in q for q in template['questions'])
+
+
+@pytest.mark.parametrize('roles', [[], [('anon',), ('authenticated',)]])
+def test_private_migration_supports_postgres_and_supabase(roles):
+    import importlib
+    from unittest.mock import MagicMock
+    migration = importlib.import_module('core.migrations.0070_recruitment_exams')
+    editor = MagicMock()
+    editor.connection.vendor = 'postgresql'
+    editor.connection.cursor.return_value.__enter__.return_value.fetchall.return_value = roles
+    migration.secure_exam_tables(None, editor)
+    sql = [call.args[0] for call in editor.execute.call_args_list]
+    assert sum('ENABLE ROW LEVEL SECURITY' in q for q in sql) == 2
+    assert sum('FROM PUBLIC' in q for q in sql) == 2
+    assert sum('FROM "anon"' in q for q in sql) == (2 if roles else 0)
+    assert sum('FROM "authenticated"' in q for q in sql) == (2 if roles else 0)

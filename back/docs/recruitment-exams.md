@@ -28,7 +28,7 @@ El borrador y el token privado del intento se guardan en `sessionStorage` de la 
 
 ## Validación
 
-`back/core/tests/test_recruitment_exams.py`: 22 pruebas de permisos, datos, privacidad, inicio idempotente, cierre del enlace, respuestas incompletas, inmutabilidad y tiempo del servidor.
+`back/core/tests/test_recruitment_exams.py`: 24 pruebas de permisos, datos, privacidad, inicio idempotente, cierre del enlace, respuestas incompletas, inmutabilidad, tiempo del servidor y permisos de migración en PostgreSQL/Supabase.
 
 `front/tests/exams.browser.mjs`: usa exclusivamente `127.0.0.1`, Django real y SQLite aislada, cuenta y participantes ficticios. Comprueba crear la plantilla de 40 preguntas, responder/recargar/enviar a 320/390/1440 px, ausencia de desbordamiento de página y ausencia de sondeo, tabla de Vero y detalle de las 40 respuestas. Nunca ejecutar contra producción.
 

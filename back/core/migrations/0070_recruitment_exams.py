@@ -8,9 +8,14 @@ from django.db import migrations, models
 
 def secure_exam_tables(apps, schema_editor):
     if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated')")
+            roles = [row[0] for row in cursor.fetchall()]
         for table in ('recruitment_exams', 'recruitment_exam_attempts'):
             schema_editor.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
-            schema_editor.execute(f'REVOKE ALL ON TABLE "{table}" FROM PUBLIC, anon, authenticated')
+            schema_editor.execute(f'REVOKE ALL ON TABLE "{table}" FROM PUBLIC')
+            for role in roles:
+                schema_editor.execute(f'REVOKE ALL ON TABLE "{table}" FROM "{role}"')
 
 
 class Migration(migrations.Migration):
