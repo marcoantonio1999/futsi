@@ -3,6 +3,7 @@ import { isSoccerWa } from "../../appBrand";
 import type { CoachesSection } from "../../features/coach/coachWorkspaceModel";
 import { CourtCommunicationsOnlyContext, VeronicaOnlyContext, isCourtCommunicationsSection, isVeronicaSection } from '../../features/voice-agent/CommunicationsAccess';
 import { VeronicaPanel } from '../../features/voice-agent/VeronicaPanel';
+import { ExamAdmin } from '../../features/exams/ExamPortal';
 import { BulkTemplatesPanel } from '../../features/voice-agent/BulkTemplatesPanel';
 import { VeronicaTemplatesPanel } from '../../features/voice-agent/VeronicaTemplatesPanel';
 import { VeronicaStatsPanel } from '../../features/voice-agent/VeronicaStatsPanel';
@@ -485,7 +486,7 @@ export function AdminShell({
             onLogout={onLogout}
           />
           {veronicaOnly ? <div className="communications"><div className="mt-5">
-            {communicationsSection === 'veronica-stats' ? <VeronicaStatsPanel token={token} onOpenConversation={() => selectCommunicationsSection('veronica')} /> : communicationsSection === 'veronica-templates' ? <VeronicaTemplatesPanel token={token} /> : communicationsSection === 'bulk-veronica' ? <BulkTemplatesPanel token={token} kind="veronica" /> : <VeronicaPanel token={token} />}
+            {communicationsSection === 'veronica-exams' ? <ExamAdmin token={token} /> : communicationsSection === 'veronica-stats' ? <VeronicaStatsPanel token={token} onOpenConversation={() => selectCommunicationsSection('veronica')} /> : communicationsSection === 'veronica-templates' ? <VeronicaTemplatesPanel token={token} /> : communicationsSection === 'bulk-veronica' ? <BulkTemplatesPanel token={token} kind="veronica" /> : <VeronicaPanel token={token} />}
           </div></div> : <AdminShellContent
             coachesSection={coachesSection}
             onSelectCoachesSection={selectCoachesSection}

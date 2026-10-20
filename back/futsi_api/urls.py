@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView, VeronicaWeeklyStatsView
+from core.api.exams import ExamAdminView, ExamTemplateView, PublicExamView, ExamAttemptView
 from core.api.bulk import BulkView
 from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
 from core.api.team_reuse import TeamReuseView
@@ -77,6 +78,11 @@ from futsi_api.health import (
 
 
 urlpatterns = [
+    path('api/recruitment-exams/', ExamAdminView.as_view()),
+    path('api/recruitment-exams/template/', ExamTemplateView.as_view()),
+    path('api/recruitment-exams/<int:pk>/', ExamAdminView.as_view()),
+    path('api/public-exams/attempt/', ExamAttemptView.as_view()),
+    path('api/public-exams/<str:token>/', PublicExamView.as_view()),
     path("api/player-enrollments/", EnrollmentAdminView.as_view()),
     path("api/player-enrollments/catalog/", EnrollmentCatalogView.as_view()),
     path("api/player-enrollments/players/", EnrollmentPlayersView.as_view()),

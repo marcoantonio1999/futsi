@@ -16,6 +16,7 @@ import { DebtCommunicationsPanel } from "./DebtCommunicationsPanel";
 import { WhatsAppTemplatesPanel } from "./WhatsAppTemplatesPanel";
 import { WhatsAppTemplateBuilder } from "./WhatsAppTemplateBuilder";
 import { VeronicaPanel } from "./VeronicaPanel";
+import { ExamAdmin } from '../exams/ExamPortal';
 import { VeronicaTemplatesPanel } from "./VeronicaTemplatesPanel";
 import { VeronicaStatsPanel } from "./VeronicaStatsPanel";
 import { BulkTemplatesPanel } from "./BulkTemplatesPanel";
@@ -34,6 +35,7 @@ import { auditPeriods, type AuditRange } from './auditPeriods';
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
 const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
+  'veronica-exams': { title: 'Exámenes de reclutamiento' },
   connections: { title: "Conexiones" },
   "veronica-templates": { title: "Plantillas de WhatsApp" },
   "veronica-stats": { title: "Estadísticas de Verónica" },
@@ -208,6 +210,7 @@ export function VoiceDashboardPanel({
   }
 
   if (!canManageTrials || (courtCommunicationsOnly && !isCourtCommunicationsSection(section))) return null;
+  if (section === 'veronica-exams') return canReviewCalls ? <ExamAdmin token={token} /> : null;
   if (section === 'veronica-templates') return canReviewCalls ? <div className="communications"><VeronicaTemplatesPanel token={token} /></div> : null;
   if (section === 'veronica-stats') return canReviewCalls ? <div className="communications"><VeronicaStatsPanel token={token} onOpenConversation={() => onSelectSection('veronica')} /></div> : null;
   if (section === 'connections') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><ConnectionsPanel token={token} /></div> : null;

@@ -1,6 +1,6 @@
 import type { AppData, TrialAvailabilityRule, TrialBooking, TrialVisit, User, VoiceCall } from "../../types";
 
-export type VoiceDashboardSection = "summary" | "chat-quality" | "bookings" | "calls" | "whatsapp" | "weekly-stats" | "availability" | "settings" | "collections" | "templates" | "template-builder" | "veronica" | "veronica-stats" | "veronica-templates" | "veronica-filters" | "bulk-veronica" | "bulk-academy" | "bulk-academy-history" | "connections" | "chat-export";
+export type VoiceDashboardSection = "summary" | "chat-quality" | "bookings" | "calls" | "whatsapp" | "weekly-stats" | "availability" | "settings" | "collections" | "templates" | "template-builder" | "veronica" | "veronica-stats" | "veronica-templates" | "veronica-filters" | "veronica-exams" | "bulk-veronica" | "bulk-academy" | "bulk-academy-history" | "connections" | "chat-export";
 
 export type VoiceDashboardProps = {
   onOpenDebts?: () => void;

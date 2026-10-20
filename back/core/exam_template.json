@@ -1,0 +1,447 @@
+{
+  "title": "Business Operations & AI Specialist",
+  "instructions": "Responde las 40 preguntas de manera continua. Selecciona una sola opción por pregunta. Puedes usar calculadora simple y papel. No utilices IA, búsquedas en internet ni ayuda de otra persona. Tiempo máximo: 40 minutos.",
+  "duration_minutes": 40,
+  "questions": [
+    {
+      "id": "1",
+      "kind": "choice",
+      "prompt": "Una herramienta de IA te proporciona estadísticas de mercado muy específicas y convincentes, pero no identifica claramente sus fuentes. ¿Qué deberías hacer?",
+      "options": [
+        "Utilizarlas si coinciden aproximadamente con lo que esperabas encontrar.",
+        "Preguntarle a otra IA y aceptar las cifras si ambas coinciden.",
+        "Verificar las cifras contra fuentes originales o confiables antes de utilizarlas para una decisión importante.",
+        "Pedirle a la misma IA que escriba una explicación más detallada."
+      ]
+    },
+    {
+      "id": "2",
+      "kind": "choice",
+      "prompt": "La sucursal X recibió 200 prospectos y cerró 60 ventas. La sucursal Y recibió 400 prospectos y cerró 80 ventas. Si quieres identificar cuál tiene mejor tasa de conversión:",
+      "options": [
+        "X.",
+        "Y.",
+        "Ambas tienen el mismo desempeño.",
+        "No existe información suficiente."
+      ]
+    },
+    {
+      "id": "3",
+      "kind": "choice",
+      "prompt": "Un proceso manual tiene muchas excepciones, las personas lo realizan de maneras diferentes y nadie tiene claro cuál es el procedimiento correcto. Antes de automatizarlo conviene:",
+      "options": [
+        "Elegir una plataforma de automatización flexible.",
+        "Pedir a IA que diseñe automáticamente el nuevo procedimiento.",
+        "Entender, simplificar y estandarizar primero el proceso en la medida posible.",
+        "Automatizar solamente la forma en que trabaja la persona más experimentada."
+      ]
+    },
+    {
+      "id": "4",
+      "kind": "choice",
+      "prompt": "Llegas por la mañana y encuentras estas cuatro tareas. ¿Cuál atenderías primero?",
+      "options": [
+        "Actualizar el diseño de una presentación que se utilizará dentro de tres semanas.",
+        "Dar seguimiento a 40 prospectos interesados que llegaron ayer y todavía no han sido contactados.",
+        "Automatizar un reporte que actualmente requiere 20 minutos al mes.",
+        "Ordenar las carpetas digitales del equipo."
+      ]
+    },
+    {
+      "id": "5",
+      "kind": "choice",
+      "prompt": "El objetivo real de una campaña es conseguir personas que agenden y asistan a una clase muestra. ¿Cuál sería el indicador principal más alineado con el objetivo?",
+      "options": [
+        "Número de seguidores nuevos.",
+        "Número de reproducciones del anuncio.",
+        "Número de likes y comentarios.",
+        "Número de prospectos calificados que agendan y efectivamente asisten."
+      ]
+    },
+    {
+      "id": "6",
+      "kind": "choice",
+      "prompt": "Después de implementar un nuevo sistema, los usuarios comentan que \"el sistema es demasiado lento\" . Al revisar información encuentras que el sistema procesa cada operación en menos de 10 segundos, pero 70% de las solicitudes permanece varias horas esperando autorización de un supervisor. ¿Cuál es la conclusión inicial más razonable?",
+      "options": [
+        "Es necesario comprar servidores más rápidos.",
+        "El principal cuello de botella parece estar en la autorización, no en la velocidad del sistema.",
+        "Los usuarios necesitan capacitación para utilizar mejor el sistema.",
+        "El nuevo sistema debería eliminarse hasta conocer mejor el problema."
+      ]
+    },
+    {
+      "id": "7",
+      "kind": "choice",
+      "prompt": "Te asignan un proyecto que nunca has realizado. Debe quedar terminado en siete días. ¿Qué deberías hacer primero?",
+      "options": [
+        "Buscar inmediatamente un proveedor externo que sepa hacerlo.",
+        "Empezar a producir algo para no perder tiempo.",
+        "Pedir una semana adicional porque no tienes experiencia previa.",
+        "Definir claramente el entregable, restricciones y plazo; dividirlo en etapas e identificar rápidamente lo que necesitas aprender o resolver."
+      ]
+    },
+    {
+      "id": "8",
+      "kind": "choice",
+      "prompt": "Todos los meses recibes un archivo con la misma estructura y necesitas generar un resumen siguiendo prácticamente las mismas reglas. ¿Cuál sería el uso más eficiente de IA a mediano plazo?",
+      "options": [
+        "Escribir cada mes un prompt diferente.",
+        "Hacer manualmente el análisis y utilizar IA solamente para mejorar la redacción.",
+        "Contratar a alguien para revisar el archivo.",
+        "Crear un flujo o plantilla estandarizada que procese la información y contemple una etapa de validación."
+      ]
+    },
+    {
+      "id": "9",
+      "kind": "choice",
+      "prompt": "Dos campañas producen estos resultados: Campaña A: 100 prospectos a $50 cada uno. Conversión a venta: 5%. Campaña B: 60 prospectos a $70 cada uno. Conversión a venta: 12%. Suponiendo que el valor de cada venta es similar, ¿cuál parece más eficiente?",
+      "options": [
+        "A, porque genera más prospectos.",
+        "Son equivalentes porque la diferencia de costos es pequeña.",
+        "No pueden compararse sin conocer el número de impresiones.",
+        "B, porque su costo aproximado por venta es considerablemente menor."
+      ]
+    },
+    {
+      "id": "10",
+      "kind": "choice",
+      "prompt": "Tu jefe te dice: \"Necesito que mejores nuestro proceso de WhatsApp. \" No proporciona información adicional. ¿Cuál sería tu mejor primera acción?",
+      "options": [
+        "Investigar las mejores herramientas de automatización de WhatsApp.",
+        "Analizar qué hacen los principales competidores.",
+        "Crear inmediatamente una propuesta y enseñársela para obtener comentarios.",
+        "Precisar cuál es el problema, qué resultado espera, restricciones y cómo se medirá la mejora."
+      ]
+    },
+    {
+      "id": "11",
+      "kind": "choice",
+      "prompt": "Una automatización crítica puede dejar de funcionar sin que nadie lo note durante varios días. ¿Qué elemento hace falta principalmente?",
+      "options": [
+        "Registro de errores, alertas y un mecanismo definido de recuperación o reintento.",
+        "Una interfaz gráfica más clara.",
+        "Utilizar una herramienta de automatización diferente.",
+        "Agregar inteligencia artificial al proceso."
+      ]
+    },
+    {
+      "id": "12",
+      "kind": "choice",
+      "prompt": "Un producto genera $1,000,000 en ventas con $950,000 de costos variables. Otro genera $500,000 en ventas con $300,000 de costos variables. Si sólo consideras esta información, ¿qué producto aporta más económicamente?",
+      "options": [
+        "El primero porque vende el doble.",
+        "El segundo porque genera mayor margen de contribución.",
+        "Ambos aportan lo mismo.",
+        "No puede compararse ningún producto utilizando costos variables."
+      ]
+    },
+    {
+      "id": "13",
+      "kind": "choice",
+      "prompt": "¿Cuál es la mejor manera de evaluar la confiabilidad de información encontrada en internet?",
+      "options": [
+        "Revisar si aparece en los primeros resultados de Google.",
+        "Revisar origen, fecha, metodología, evidencia y, cuando sea importante, corroborarla con fuentes independientes o primarias.",
+        "Confirmar que el sitio tenga un diseño profesional.",
+        "Revisar si varias páginas repiten la misma cifra."
+      ]
+    },
+    {
+      "id": "14",
+      "kind": "choice",
+      "prompt": "Una encuesta fue contestada por 12 de los 600 clientes de una empresa. Diez de los doce mencionaron que el precio es demasiado alto. ¿Cuál es la mejor conclusión?",
+      "options": [
+        "Se debe reducir inmediatamente el precio.",
+        "El 83% de los clientes considera que el precio es alto.",
+        "Existe una señal que vale la pena investigar, pero la muestra no permite generalizar todavía.",
+        "El precio probablemente no es el problema porque contestaron pocas personas."
+      ]
+    },
+    {
+      "id": "15",
+      "kind": "choice",
+      "prompt": "Necesitas analizar información de clientes que contiene datos sensibles utilizando IA. ¿Cuál es la mejor práctica?",
+      "options": [
+        "Utilizar únicamente herramientas autorizadas para ese tipo de información o anonimizar los datos antes de procesarlos.",
+        "Utilizar cualquier IA siempre que después elimines la conversación.",
+        "Cambiar los nombres de los clientes, aunque dejes todos los demás datos identificables.",
+        "Utilizar una cuenta personal para evitar compartir la información dentro de la empresa."
+      ]
+    },
+    {
+      "id": "16",
+      "kind": "choice",
+      "prompt": "Una tasa de conversión aumenta de 4% a 5%. ¿Cómo se describe correctamente el cambio?",
+      "options": [
+        "Aumentó 1%.",
+        "Aumentó 20 puntos porcentuales.",
+        "Aumentó 1 punto porcentual, equivalente a un aumento relativo de 25%.",
+        "Aumentó 25 puntos porcentuales."
+      ]
+    },
+    {
+      "id": "17",
+      "kind": "choice",
+      "prompt": "Dirección solicita urgentemente un reporte. Al mismo tiempo detectas una falla en el proceso de venta que está impidiendo que algunos clientes terminen su compra. ¿Qué harías?",
+      "options": [
+        "Hacer el reporte primero porque fue solicitado por dirección.",
+        "Corregir la falla sin avisar y posteriormente entregar el reporte.",
+        "Informar brevemente el impacto detectado y alinear cuál de las dos actividades debe recibir prioridad.",
+        "Delegar el reporte a cualquier persona disponible."
+      ]
+    },
+    {
+      "id": "18",
+      "kind": "choice",
+      "prompt": "Quieres automatizar un proceso, pero aproximadamente 40% de los casos requiere decisiones diferentes y difíciles de formalizar. ¿Qué enfoque sería generalmente mejor?",
+      "options": [
+        "Automatizar todo y corregir manualmente los errores.",
+        "Automatizar las etapas repetitivas y dejar los casos excepcionales para revisión humana.",
+        "No automatizar ninguna parte del proceso.",
+        "Pedir a una IA que tome todas las decisiones excepcionales."
+      ]
+    },
+    {
+      "id": "19",
+      "kind": "choice",
+      "prompt": "Dos canales generan prospectos al mismo costo. Los prospectos del canal A terminan comprando en 20% de los casos y los del canal B en 5%. Si los clientes tienen características económicas similares:",
+      "options": [
+        "Ambos canales son igualmente eficientes porque el costo por prospecto es el mismo.",
+        "B debería recibir mayor presupuesto porque existe más oportunidad para mejorarlo.",
+        "A parece generar prospectos de mayor valor y debería recibir mayor consideración presupuestal.",
+        "Debe dividirse el presupuesto 50/50 para mantener diversificación."
+      ]
+    },
+    {
+      "id": "20",
+      "kind": "choice",
+      "prompt": "Una empresa incrementó 40% la cantidad de prospectos generados durante los últimos dos meses, pero las ventas permanecieron prácticamente iguales. ¿Qué harías primero?",
+      "options": [
+        "Aumentar nuevamente el presupuesto publicitario para generar todavía más prospectos.",
+        "Cambiar los anuncios porque probablemente dejaron de funcionar.",
+        "Revisar el embudo por etapa y por fuente para identificar dónde se está perdiendo la conversión.",
+        "Contratar temporalmente a otra persona para ayudar a ventas."
+      ]
+    },
+    {
+      "id": "21",
+      "kind": "choice",
+      "prompt": "Una persona de quien depende tu proyecto incumple una entrega intermedia importante. ¿Cuál sería la mejor reacción inicial?",
+      "options": [
+        "Identificar la causa y el impacto, acordar una acción correctiva con una nueva entrega específica y actualizar el plan si es necesario.",
+        "Esperar hasta la fecha final para evaluar si realmente afectó el proyecto.",
+        "Hacer tú mismo todo el trabajo pendiente.",
+        "Reportar inmediatamente a la persona con su superior."
+      ]
+    },
+    {
+      "id": "22",
+      "kind": "choice",
+      "prompt": "¿Cuál de los siguientes prompts probablemente produciría el resultado más útil?",
+      "options": [
+        "Uno que explique objetivo, contexto, restricciones, datos disponibles y formato deseado.",
+        "Uno muy corto para no condicionar el razonamiento de la IA.",
+        "Uno que simplemente pida \"actúa como experto\" .",
+        "Uno muy largo que incluya toda la información disponible, aunque parte no tenga relación con la tarea."
+      ]
+    },
+    {
+      "id": "23",
+      "kind": "choice",
+      "prompt": "Una automatización envía un mensaje cuando recibe un nuevo registro. Algunas veces el sistema origen reenvía el mismo registro y los clientes reciben mensajes duplicados. ¿Cuál sería una solución más robusta?",
+      "options": [
+        "Agregar diez segundos de espera antes de cada mensaje.",
+        "Enviar todos los mensajes únicamente una vez al día.",
+        "Pedir a una persona que revise cada mensaje antes de enviarlo.",
+        "Asignar o revisar un identificador único para impedir procesar dos veces el mismo evento."
+      ]
+    },
+    {
+      "id": "24",
+      "kind": "choice",
+      "prompt": "Tienes diez tareas abiertas y sabes que no podrás terminarlas todas hoy. ¿Qué enfoque es más adecuado?",
+      "options": [
+        "Ordenarlas por impacto, urgencia, dependencias y consecuencias; definir prioridades y alinear expectativas cuando sea necesario.",
+        "Empezar por las más rápidas para reducir el número de pendientes.",
+        "Hacer primero las que llegaron antes.",
+        "Trabajar un poco en todas para demostrar avance."
+      ]
+    },
+    {
+      "id": "25",
+      "kind": "choice",
+      "prompt": "Un equipo revisa semanalmente un dashboard con 25 indicadores. Casi ninguno ocasiona decisiones o acciones. ¿Qué recomendarías?",
+      "options": [
+        "Priorizar pocos indicadores vinculados con decisiones y objetivos concretos.",
+        "Agregar indicadores adicionales para tener una visión más completa.",
+        "Eliminar el dashboard y sustituirlo por una junta semanal.",
+        "Mantener los 25 indicadores y destacar únicamente los que mejoraron."
+      ]
+    },
+    {
+      "id": "26",
+      "kind": "choice",
+      "prompt": "Cinco operaciones tardaron respectivamente 8, 9, 9, 10 y 50 minutos. Si quieres describir el tiempo \"típico\" sin que el caso extraordinario distorsione el resultado, ¿qué medida resulta más útil?",
+      "options": [
+        "Promedio.",
+        "Mediana.",
+        "Suma.",
+        "Rango."
+      ]
+    },
+    {
+      "id": "27",
+      "kind": "choice",
+      "prompt": "Un proveedor informa que entregará cinco días tarde una actividad necesaria para que tu proyecto continúe. ¿Cuál es la mejor respuesta inicial?",
+      "options": [
+        "Determinar el impacto sobre la ruta crítica y buscar de inmediato alternativas o acciones para reducir el retraso.",
+        "Esperar los cinco días y posteriormente recuperar el tiempo trabajando más rápido.",
+        "Sustituir inmediatamente al proveedor.",
+        "Informar a dirección que el proyecto se retrasará cinco días."
+      ]
+    },
+    {
+      "id": "28",
+      "kind": "choice",
+      "prompt": "Dos modelos de IA te proporcionan recomendaciones opuestas sobre una decisión importante. ¿Qué harías?",
+      "options": [
+        "Escoger la recomendación del modelo más avanzado.",
+        "Pedir una tercera opinión y utilizar la alternativa que obtenga dos votos.",
+        "Revisar los supuestos, evidencia y razonamiento detrás de cada respuesta antes de decidir.",
+        "Promediar ambas recomendaciones."
+      ]
+    },
+    {
+      "id": "29",
+      "kind": "choice",
+      "prompt": "Quieres saber si cambiar el encabezado de un anuncio mejora la conversión. ¿Cuál es el diseño de prueba más limpio?",
+      "options": [
+        "Cambiar encabezado, imagen y público al mismo tiempo.",
+        "Mantener las demás variables razonablemente constantes y comparar las versiones cambiando principalmente el encabezado.",
+        "Publicar el nuevo encabezado un mes después y comparar ambos meses.",
+        "Preguntar internamente cuál encabezado gusta más."
+      ]
+    },
+    {
+      "id": "30",
+      "kind": "choice",
+      "prompt": "Una empresa quiere comprar un CRM porque actualmente da seguimiento a clientes mediante WhatsApp, hojas de cálculo y notas individuales. ¿Qué conviene hacer primero?",
+      "options": [
+        "Solicitar demostraciones de los principales CRM del mercado.",
+        "Entender y mapear el proceso actual, la información necesaria y los problemas que se quieren resolver.",
+        "Comprar el CRM más utilizado para reducir el riesgo.",
+        "Migrar primero todos los contactos a una sola hoja de cálculo."
+      ]
+    },
+    {
+      "id": "31",
+      "kind": "choice",
+      "prompt": "Un negocio tenía 100 clientes. El siguiente mes aumentó 20% y posteriormente disminuyó 20%. ¿Cuántos clientes tendría después de ambos cambios?",
+      "options": [
+        "96.",
+        "100.",
+        "104.",
+        "80."
+      ]
+    },
+    {
+      "id": "32",
+      "kind": "choice",
+      "prompt": "Una IA recomienda cinco estudios para respaldar una presentación. Al buscar uno de ellos descubres que aparentemente no existe. ¿Qué deberías hacer?",
+      "options": [
+        "Eliminar solamente ese estudio y conservar automáticamente los otros cuatro.",
+        "Verificar también las demás referencias antes de utilizarlas.",
+        "Cambiar a otra herramienta de IA y repetir la búsqueda.",
+        "Evitar utilizar IA para investigaciones en el futuro."
+      ]
+    },
+    {
+      "id": "33",
+      "kind": "choice",
+      "prompt": "Una persona de tu equipo o un proveedor entrega algo a tiempo, pero claramente por debajo de la calidad que necesitabas. ¿Cuál es generalmente la mejor respuesta?",
+      "options": [
+        "Corregirlo tú para asegurar calidad y evitar conflictos.",
+        "Aceptarlo esta vez y explicar después que la siguiente entrega debe ser mejor.",
+        "Sustituir inmediatamente a la persona.",
+        "Explicar específicamente la brecha contra el resultado esperado, mostrar criterios o ejemplos claros y establecer una corrección con punto de revisión."
+      ]
+    },
+    {
+      "id": "34",
+      "kind": "choice",
+      "prompt": "Dos reportes internos presentan cifras diferentes para \"clientes nuevos\" . Ambos parecen haber sido elaborados correctamente. ¿Qué harías primero?",
+      "options": [
+        "Utilizar el reporte elaborado por la persona con mayor experiencia.",
+        "Calcular el promedio de ambos reportes.",
+        "Presentar ambas cifras y permitir que dirección decida.",
+        "Confirmar cómo define cada reporte \"cliente nuevo\" y de qué fuente obtiene los datos."
+      ]
+    },
+    {
+      "id": "35",
+      "kind": "choice",
+      "prompt": "¿Cuál de estas actividades suele ser mejor candidata para automatización?",
+      "options": [
+        "Negociar condiciones complejas con un cliente estratégico.",
+        "Resolver por primera vez una situación completamente nueva.",
+        "Transferir diariamente información estructurada entre dos sistemas utilizando reglas repetitivas.",
+        "Evaluar el desempeño cualitativo de un directivo."
+      ]
+    },
+    {
+      "id": "36",
+      "kind": "choice",
+      "prompt": "Has desarrollado una nueva automatización que podría afectar un proceso utilizado por toda la empresa. ¿Qué implementación sería generalmente más razonable?",
+      "options": [
+        "Activarla para todos y corregir los errores conforme aparezcan.",
+        "Esperar hasta estar completamente seguro de que nunca fallará.",
+        "Mantener también indefinidamente el proceso manual completo.",
+        "Probarla primero en un entorno o grupo limitado, medir resultados y después ampliar su uso."
+      ]
+    },
+    {
+      "id": "37",
+      "kind": "choice",
+      "prompt": "Estás investigando el tamaño de un mercado. Dos fuentes reconocidas presentan cifras muy diferentes. ¿Qué haces?",
+      "options": [
+        "Utilizas la cifra más reciente.",
+        "Utilizas el promedio entre ambas.",
+        "Comparas definiciones, periodo, metodología, alcance geográfico y fuentes originales antes de decidir cuál utilizar.",
+        "Utilizas la cifra menor para ser conservador."
+      ]
+    },
+    {
+      "id": "38",
+      "kind": "choice",
+      "prompt": "Sólo tienes cuatro horas disponibles. ¿Qué proyecto parece tener mayor prioridad?",
+      "options": [
+        "Una automatización de cuatro horas que ahorrará aproximadamente diez minutos por semana.",
+        "Rediseñar un documento interno que varias personas consideran poco atractivo.",
+        "Investigar una nueva plataforma que podría utilizarse en seis meses.",
+        "Corregir un problema de dos horas que está provocando la pérdida aproximada de cinco prospectos diarios."
+      ]
+    },
+    {
+      "id": "39",
+      "kind": "choice",
+      "prompt": "¿Cuál representa mejor la estructura de una automatización empresarial bien diseñada?",
+      "options": [
+        "Datos → reporte → correo → archivo.",
+        "Evento disparador → captura de datos → reglas → acción → registro/control de excepciones.",
+        "Software → usuario → resultado → supervisor.",
+        "Formulario → inteligencia artificial → solución."
+      ]
+    },
+    {
+      "id": "40",
+      "kind": "choice",
+      "prompt": "Una campaña está obteniendo muchos clics a buen costo, pero muy pocas personas completan el formulario después de llegar al sitio. ¿Qué investigarías primero?",
+      "options": [
+        "La propuesta, experiencia y fricción entre el anuncio, la página de destino y el formulario.",
+        "Cómo conseguir todavía más alcance.",
+        "Si deberían publicarse más contenidos orgánicos.",
+        "Si el logotipo necesita modernizarse."
+      ]
+    }
+  ]
+}
