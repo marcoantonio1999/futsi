@@ -42,6 +42,20 @@ class CourtesyResponseReportTests(TestCase):
                      'Gracias mi hijo tiene 7 años','Adiós me confirman la inscripción','[audio]','[image]','你好','1234','']:
             with self.subTest(text=text): self.assertFalse(closing_acknowledgement(text))
 
+    def test_groups_never_contribute_response_events_or_waits(self):
+        first=self.message('Necesitamos información',30)
+        self.event(first)
+        for context in [{'is_group': True}, {'chat_type': 'group'}, {'group_id': '12345'}]:
+            with self.subTest(context=context):
+                self.conversation.context=context
+                self.conversation.save(update_fields=['context'])
+                self.assertEqual(self.report()['summary']['total'],0)
+                self.assertEqual(self.report()['longest_waits'],[])
+        self.conversation.context={'contact_name': 'Grupo de familias', 'is_group': False}
+        self.conversation.save(update_fields=['context'])
+        self.assertEqual(self.report()['summary']['unanswered'],1)
+        self.assertEqual(WhatsAppHumanResponseEvent.objects.count(),1)
+
     def test_real_final_variants_do_not_start_a_new_manual_request(self):
         for text in ['Bueno gracias', 'Vale gracias', 'Entiendo muchas gracias', 'Sí nos vemos', 'Holaaa si muchas gracias', 'Buenas noches muchas gracias']:
             with self.subTest(text=text): self.assertTrue(closing_acknowledgement(text))

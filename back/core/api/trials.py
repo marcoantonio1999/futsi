@@ -53,6 +53,7 @@ from core.api.manual_message_transport import (
 )
 from core.veronica_access import court_communications_allowed_channels, is_court_communications_only
 from core.whatsapp.attention import closing_acknowledgement
+from core.whatsapp.conversation_scope import individual_conversations
 
 
 TRIAL_DASHBOARD_ROLES = ADMIN_ROLES | {"site_coordinator"}
@@ -494,7 +495,7 @@ class WhatsAppConversationViewSet(
             if allowed_channels is not None:
                 queryset = queryset.filter(to_address__in=allowed_channels)
         from core.services.whatsapp_attention_audit import annotate_attention
-        return annotate_attention(queryset)
+        return annotate_attention(individual_conversations(queryset))
 
     @action(detail=False, methods=["get"], url_path="attention-notifications",
             permission_classes=[CanViewWhatsAppNotifications])
@@ -507,7 +508,7 @@ class WhatsAppConversationViewSet(
         allowed = court_communications_allowed_channels(user)
         scope = "all" if user.role in ADMIN_ROLES else f"site:{user.primary_site_id}:{allowed}"
         # Shared per authorized scope, not per browser: no full inbox polling.
-        key = "whatsapp-attention:v2:last-seven-days:" + sha256(scope.encode()).hexdigest()
+        key = "whatsapp-attention:v3:individual-last-seven-days:" + sha256(scope.encode()).hexdigest()
         result = None if settings.FUTSI_ENV == "test" else cache.get(key)
         if result is None:
             result = attention_notifications(self.visible_conversations())

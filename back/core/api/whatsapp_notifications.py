@@ -7,6 +7,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from core.models import WhatsAppHumanResponseEvent, WhatsAppMessage
 from core.whatsapp.attention import closing_acknowledgement
+from core.whatsapp.conversation_scope import individual_conversations
 
 MEXICO = ZoneInfo("America/Mexico_City")
 
@@ -38,7 +39,7 @@ def attention_notifications(conversations, now=None):
     start = now - timedelta(days=7)
     monday = start.astimezone(MEXICO).date()
     # Strip the inbox's message prefetch: alerts must not serialize/load full chats.
-    conversations = conversations.prefetch_related(None).order_by()
+    conversations = individual_conversations(conversations).prefetch_related(None).order_by()
     events = list(WhatsAppHumanResponseEvent.objects.filter(
         conversation__in=conversations, human_attention_expected=True,
         first_inbound_at__gte=start, first_inbound_at__lte=now,
