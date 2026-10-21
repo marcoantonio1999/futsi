@@ -91,7 +91,7 @@ const closingPhrase = new RegExp("^(?:" + [
   "(?:muchas? |muchisimas? |mil |muchisisimas? )?gracia+s+(?: (?:por (?:todo|la (?:informacion|info|ayuda|atencion|respuesta)|el (?:apoyo|dato)|confirmar|avisar)|a ti|a usted|a ustedes))?",
   "grax|grx|thanks|thank you|thx|te agradezco|le agradezco|se agradece|muy amable",
   "a ustedes|a usted|a ti|igualmente|de nada|por nada|con gusto",
-  "ok(?:ay)?|perfecto|listo|entendido|excelente|super|sale|va|de acuerdo|esta bien|muy bien|claro",
+  "ok(?:ay)?|perfecto|listo|entendido|entiendo|excelente|ecelente|super|sale|vale|va|bueno|de acuerdo|esta bien|esta perfecto|muy bien|claro",
   "adio+s+|chao|chau|bye(?: bye)?|hasta luego|hasta pronto|hasta manana|nos vemos|cuidate|cuidese",
   "saludos(?: cordiales)?|(?:que (?:tengas|tenga|tengan|pases|pase|pasen) (?:un )?)?(?:buen dia|buena tarde|buena noche|bonito dia|lindo dia|excelente dia|buen fin de semana)",
 ].join("|") + ")");
@@ -114,6 +114,11 @@ export function isClosingAcknowledgement(body: string) {
   if (!/[\p{L}\p{N}]/u.test(trimmed)) return true;
   let normalized = normalizedAcknowledgement(trimmed);
   if (["buen dia", "buena tarde", "buena noche", "bonito dia", "lindo dia", "excelente dia"].includes(normalized)) return false;
+  const prefix = /^(?:(?:hola+|buenas (?:tardes|noches)|buenos dias|si+)\s+)+/.exec(normalized);
+  if (prefix) {
+    normalized = normalized.slice(prefix[0].length);
+    if (["buen dia", "buena tarde", "buena noche", "bonito dia", "lindo dia", "excelente dia"].includes(normalized)) return false;
+  }
   while (normalized) {
     const match = closingPhrase.exec(normalized);
     if (!match || (match[0].length < normalized.length && normalized[match[0].length] !== " ")) return false;
@@ -121,6 +126,19 @@ export function isClosingAcknowledgement(body: string) {
     if (normalized.startsWith("y ")) normalized = normalized.slice(2);
   }
   return true;
+}
+
+// No model call: identify ONLY acknowledgement messages, not the real request
+// before them. All trend views use the same contextual policy as the inbox.
+export function acknowledgementIds(c: WhatsAppConversation): Set<number> {
+  const ids = new Set(c.attention_not_required_ids ?? []);
+  let seenOutbound = false;
+  for (const m of orderedMessages(c)) {
+    if (m.event_type === "revoked") continue;
+    if (m.direction === "outbound") seenOutbound = true;
+    else if (seenOutbound && isClosingAcknowledgement(m.body ?? "")) ids.add(m.id);
+  }
+  return ids;
 }
 
 // Operational state comes from the current exchange, never from historical
@@ -146,7 +164,7 @@ export function conversationAttention(c: WhatsAppConversation): ConversationAtte
   const nonTextAcknowledgement = latestEvent?.direction === "inbound"
     && (/^\[(?:sticker|reaction)\]$/i.test(latestEvent.body.trim()) || (latestEvent.body.trim() !== "" && normalizedAcknowledgement(latestEvent.body) === ""));
   const previousMeaningful = nonRevokedMessages.filter(message => message.id !== latestEvent?.id
-    && !(message.direction === "inbound" && isClosingAcknowledgement(message.body))).at(-1);
+    && !isClosingAcknowledgement(message.body)).at(-1);
 
   const reviewed = c.attention_resolution?.message_id === last?.id && !!last
     && Date.parse(c.attention_resolution?.resolved_at ?? "") >= Math.max(lastAt, humanAt);
@@ -171,9 +189,13 @@ export function conversationAttention(c: WhatsAppConversation): ConversationAtte
     key: "waiting_client", tone: "blue", label: "Esperando al cliente", since: previousMeaningful.created_at, turn: "client",
     detail: "El equipo respondió. El emoji, sticker o reacción del cliente no genera una nueva solicitud de respuesta.",
   };
-  if (closingAcknowledgement && (!nonTextAcknowledgement || previousMeaningful?.direction === "outbound")) return c.follow_up_required
+  if (closingAcknowledgement && previousMeaningful?.direction === "outbound") return c.follow_up_required
     ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "none", detail: "El contacto cerró el intercambio con un agradecimiento o una reacción. El seguimiento marcado por el equipo se conserva." }
     : { key: "up_to_date", tone: "green", label: "Conversación cerrada", since: null, turn: "none", detail: "El contacto respondió sólo con un agradecimiento, emoji, sticker o reacción después de nuestro mensaje; no requiere otra respuesta." };
+  if (closingAcknowledgement && previousMeaningful?.direction === "inbound") return {
+    key: "needs_reply", tone: "red", label: "Nos toca responder", since: previousMeaningful.created_at, turn: "team",
+    detail: "El agradecimiento o reacción final no borra la solicitud anterior que sigue sin una respuesta de fondo.",
+  };
   if (needsHuman || (turn === "team" && !c.bot_response_pending)) return {
     key: "needs_reply", tone: "red", label: "Nos toca responder", since: inbound?.created_at ?? null, turn: "team",
     detail: c.human_takeover_active ? "El cliente escribió después de la última respuesta humana. El asistente está pausado." : humanRequested ? "El cliente está en atención humana; una respuesta automática no cierra esa solicitud." : "El último mensaje es del cliente y no tiene una respuesta posterior registrada.",

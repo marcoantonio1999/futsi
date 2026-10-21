@@ -42,6 +42,21 @@ class CourtesyResponseReportTests(TestCase):
                      'Gracias mi hijo tiene 7 años','Adiós me confirman la inscripción','[audio]','[image]','你好','1234','']:
             with self.subTest(text=text): self.assertFalse(closing_acknowledgement(text))
 
+    def test_real_final_variants_do_not_start_a_new_manual_request(self):
+        for text in ['Bueno gracias', 'Vale gracias', 'Entiendo muchas gracias', 'Sí nos vemos', 'Holaaa si muchas gracias', 'Buenas noches muchas gracias']:
+            with self.subTest(text=text): self.assertTrue(closing_acknowledgement(text))
+        for text in ['Sí', 'Hola', 'Buenas noches', 'Bueno gracias necesito el costo', 'Vale gracias me puedes agendar', 'Sí nos vemos ¿a qué hora?']:
+            with self.subTest(text=text): self.assertFalse(closing_acknowledgement(text))
+        self.message('Hola me pasas información',60,routing='unclassified')
+        self.message('Las clases son los lunes a las cinco',50,'outbound','human_whatsapp')
+        self.message('Excelente muchas gracias',40,routing='unclassified')
+        self.message('A ti muchas gracias',30,'outbound','human_whatsapp')
+        self.message('[sticker]',20,routing='unclassified')
+        self.message('Bueno gracias',10,routing='unclassified')
+        data=self.report()
+        self.assertEqual(data['summary']['answered'],1)
+        self.assertEqual(data['summary']['unanswered'],0)
+
     def test_historical_courtesy_events_are_omitted_without_database_writes(self):
         first = self.message('Muchísimas gracias 🙏',30)
         event = self.event(first)

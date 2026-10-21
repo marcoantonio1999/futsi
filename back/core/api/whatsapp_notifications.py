@@ -89,9 +89,20 @@ def attention_notifications(conversations, now=None):
                 output_field=models.DateTimeField(),
             )).order_by("created_at", "id")
         first_human_wait = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef("pk"), direction="inbound").exclude(pk__in=ignored_ids).exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$').filter(created_at__gt=Coalesce(models.OuterRef("alert_human_at"), models.Value(datetime(1970, 1, 1, tzinfo=MEXICO)), output_field=models.DateTimeField())).order_by("created_at", "id")
-        for chat in pending.annotate(alert_started_at=models.Subquery(first.values("created_at")[:1]), alert_human_started_at=models.Subquery(first_human_wait.values("created_at")[:1])).values(
+        pending_rows = list(pending.annotate(alert_started_at=models.Subquery(first.values("created_at")[:1]), alert_human_started_at=models.Subquery(first_human_wait.values("created_at")[:1])).values(
             "id", "to_address", "contact_phone", "context", "channel_site_id", "channel_site_name", "channel_label", "alert_started_at", "alert_last_id", "alert_last_at", "alert_last_out", "alert_inbound_at", "alert_inbound_body", "alert_inbound_routing", "alert_human_at", "alert_human_started_at", "alert_last_direction",
-        ).iterator():
+        ))
+        # Inspect the open incoming turn, not just its last emoji. One bounded
+        # read for the visible candidates; no per-chat lookup, model or timer.
+        incoming_by_chat = {}
+        starts = [stamp for row in pending_rows for stamp in (row["alert_started_at"], row["alert_human_started_at"]) if stamp]
+        if starts:
+            incoming = WhatsAppMessage.objects.filter(conversation_id__in=[row["id"] for row in pending_rows],
+                direction="inbound", created_at__gte=min(starts)).exclude(pk__in=ignored_ids).order_by("created_at", "id").values("id", "conversation_id", "created_at", "body")
+            for message in incoming.iterator():
+                if not closing_acknowledgement(message["body"]) and message["body"].strip().lower() not in {"[reaction]", "[revoke]"}:
+                    incoming_by_chat.setdefault(message["conversation_id"], []).append(message)
+        for chat in pending_rows:
             context = chat["context"] if isinstance(chat["context"], dict) else {}
             resolution = context.get("attention_resolution")
             resolution = resolution if isinstance(resolution, dict) else {}
@@ -106,17 +117,17 @@ def attention_notifications(conversations, now=None):
                 pass
             if human_at and (not chat["alert_inbound_at"] or human_at >= chat["alert_inbound_at"]):
                 continue
-            if chat["alert_last_out"] and closing_acknowledgement(chat["alert_inbound_body"]):
-                continue
             needs_human = bool(context.get("automation_paused_by_human")) or chat["alert_inbound_routing"] in ("human_only", "automation_paused")
             if not needs_human and (chat["alert_last_direction"] != "inbound" or context.get("human_response_wait")):
                 continue
             if needs_human:
                 chat["alert_started_at"] = chat["alert_human_started_at"]
-                if human_at and chat["alert_started_at"] and chat["alert_started_at"] <= human_at:
-                    chat["alert_started_at"] = WhatsAppMessage.objects.filter(
-                        conversation_id=chat["id"], direction="inbound", created_at__gt=human_at,
-                    ).exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$').order_by("created_at", "id").values_list("created_at", flat=True).first()
+            boundary = human_at if needs_human else chat["alert_last_out"]
+            actual_request = next((m for m in incoming_by_chat.get(chat["id"], [])
+                if boundary is None or m["created_at"] > boundary), None)
+            if actual_request is None:
+                continue  # The incoming turn contains only closing acknowledgements.
+            chat["alert_started_at"] = actual_request["created_at"]
             if not chat["alert_started_at"] or not start <= chat["alert_started_at"] <= now:
                 continue
             seconds = working_seconds(chat["alert_started_at"], now) if chat["alert_started_at"] else 0

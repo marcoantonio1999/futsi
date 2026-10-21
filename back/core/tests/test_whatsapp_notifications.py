@@ -126,6 +126,19 @@ def test_recorded_human_reply_prevents_false_alert_before_echo(auth_client):
         assert client.get(URL).json()["total"] == 0
 
 
+@pytest.mark.parametrize('ending',['Gracias','Bueno gracias','😊','[sticker]'])
+def test_final_closing_does_not_hide_a_real_unanswered_question(auth_client, ending):
+    conversation, question=chat(make_site(),age=4)
+    close=WhatsAppMessage.objects.create(conversation=conversation,direction='inbound',body=ending,routing_decision='unclassified')
+    WhatsAppMessage.objects.filter(pk=close.pk).update(created_at=NOW-timedelta(hours=3))
+    client,_,_=auth_client(role='admin')
+    with patch('core.api.whatsapp_notifications.timezone.now',return_value=NOW):
+        pending=[a for a in client.get(URL).json()['items'] if a['kind']=='pending']
+    assert len(pending)==1
+    question.refresh_from_db()
+    assert pending[0]['started_at']==question.created_at.isoformat()
+
+
 def test_bot_acknowledgement_does_not_close_human_requested_chat(auth_client):
     conversation, message = chat(make_site())
     WhatsAppMessage.objects.filter(pk=message.pk).update(routing_decision="human_only")

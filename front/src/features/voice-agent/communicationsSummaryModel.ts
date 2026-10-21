@@ -1,6 +1,6 @@
 import type { WhatsAppConversation } from "../../types";
 import { auditPeriods, type AuditRange } from "./auditPeriods.ts";
-import { isClosingAcknowledgement } from "./communicationUtils.ts";
+import { acknowledgementIds } from "./communicationUtils.ts";
 
 export function buildDatedMessageTrend(conversations: WhatsAppConversation[], start: string, days: number): WeeklyMessageTrendRow[] {
   const startTime = Date.parse(start + "T00:00:00-06:00");
@@ -10,13 +10,7 @@ export function buildDatedMessageTrend(conversations: WhatsAppConversation[], st
   const rows = Array.from({ length: days === 1 ? 24 : days }, (_, index) => ({ week: new Date(startTime + index * bucketSize).toISOString(), label: formatter.format(startTime + index * bucketSize), received: 0, replied: 0, waiting: 0, attended: 0 }));
   for (const conversation of conversations) {
     const messages = conversation.messages.filter(message => message.event_type !== "revoked").sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id);
-    const acknowledgements = new Set<number>(conversation.attention_not_required_ids ?? []);
-    let previousDirection = "";
-    for (const message of messages) {
-      const acknowledgement = message.direction === "inbound" && isClosingAcknowledgement(message.body ?? "");
-      if (acknowledgement && previousDirection === "outbound") acknowledgements.add(message.id);
-      if (!acknowledgement) previousDirection = message.direction;
-    }
+    const acknowledgements = acknowledgementIds(conversation);
     let laterOutbound = false;
     for (let index = messages.length - 1; index >= 0; index--) {
       const message = messages[index], timestamp = Date.parse(message.created_at);
@@ -36,7 +30,7 @@ export function buildRangeMessageTrend(conversations: WhatsAppConversation[], ra
   const rows = Array.from({ length: (endTime-startTime)/bucketSize }, (_, index) => ({ week: new Date(startTime+index*bucketSize).toISOString(), label: formatter.format(startTime+index*bucketSize), received: 0, replied: 0, waiting: 0, attended: 0 }));
   for (const conversation of conversations) {
     const messages = conversation.messages.filter(message => message.event_type !== 'revoked' && Date.parse(message.created_at) < endTime).sort((a,b) => Date.parse(b.created_at)-Date.parse(a.created_at) || b.id-a.id);
-    const acknowledgements = new Set(conversation.attention_not_required_ids ?? []);
+    const acknowledgements = acknowledgementIds(conversation);
     let laterOutbound = false;
     for (const message of messages) {
       const time = Date.parse(message.created_at);
@@ -94,7 +88,7 @@ export function buildWeeklyMessageTrend(
   }]));
 
   conversations.forEach(conversation => {
-    const acknowledgements = new Set(conversation.attention_not_required_ids ?? []);
+    const acknowledgements = acknowledgementIds(conversation);
     const messages = conversation.messages
       .filter(message => message.event_type !== "revoked")
       .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id);

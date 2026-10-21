@@ -25,6 +25,13 @@ const data: AppData = { ...emptyData, sites, whatsappConversations: conversation
   trialBookings: [1, 2].map(site => ({ id: site, site, site_name: sites[site - 1].name, responsible_name: "Prueba", responsible_phone: "+525511110000", child_first_name: `Alumno ${sites[site - 1].name}`, status: "scheduled", source: "manual", visits: [], created_at: now })) as AppData["trialBookings"],
   trialAvailabilityRules: [1, 2].map(site => ({ id: site, site, site_name: sites[site - 1].name, court: null, court_name: "", weekday: 1, starts_at: "17:00", ends_at: "18:00", slot_minutes: 60, capacity: 5, is_active: true })) as AppData["trialAvailabilityRules"],
 };
+if (new URLSearchParams(location.search).has('closing-regression')) {
+  conversations.forEach((conversation,index) => {
+    const bodies=['Hola buenas tardes me pasas info','Las clases son lunes a las cinco','Excelente muchas gracias','A ti muchas gracias','😊'];
+    conversation.messages=bodies.map((body,i)=>({id:index*100+i+1,body,direction:i===1||i===3?'outbound':'inbound',response_source:i===1||i===3?'human_whatsapp':'unknown',routing_decision:'unclassified',event_type:'message',created_at:new Date(Date.now()-(6-i)*60000).toISOString()})) as WhatsAppConversation['messages'];
+    if(index===1) conversation.messages[2].body='¿Y cuánto cuesta la inscripción?';
+  });
+}
 // Saved weekly snapshots exercise existing counters without new UI or AI calls.
 if (new URLSearchParams(location.search).has('weekly-attention')) {
   conversations.forEach((conversation,index) => {

@@ -12,7 +12,7 @@ _CLOSING = re.compile(
     r"(?: (?:por (?:todo|la (?:informacion|info|ayuda|atencion|respuesta)|el (?:apoyo|dato)|confirmar|avisar)|a ti|a usted|a ustedes))?"
     r"|grax|grx|thanks|thank you|thx|te agradezco|le agradezco|se agradece|muy amable"
     r"|a ustedes|a usted|a ti|igualmente|de nada|por nada|con gusto"
-    r"|ok(?:ay)?|perfecto|listo|entendido|excelente|super|sale|va|de acuerdo|esta bien|muy bien|claro"
+    r"|ok(?:ay)?|perfecto|listo|entendido|entiendo|excelente|ecelente|super|sale|vale|va|bueno|de acuerdo|esta bien|esta perfecto|muy bien|claro"
     r"|adio+s+|chao|chau|bye(?: bye)?|hasta luego|hasta pronto|hasta manana|nos vemos|cuidate|cuidese"
     r"|saludos(?: cordiales)?|(?:que (?:tengas|tenga|tengan|pases|pase|pasen) (?:un )?)?"
     r"(?:buen dia|buena tarde|buena noche|bonito dia|lindo dia|excelente dia|buen fin de semana)"
@@ -35,6 +35,13 @@ def closing_acknowledgement(body):
         if not unicodedata.combining(char))).split())
     if normalized in {'buen dia', 'buena tarde', 'buena noche', 'bonito dia', 'lindo dia', 'excelente dia'}:
         return False  # A standalone greeting may be the start of a request.
+    # Greetings/affirmations are not closures on their own. Accept them only
+    # before a COMPLETE acknowledgement, never before arbitrary new information.
+    prefix = re.match(r'^(?:(?:hola+|buenas (?:tardes|noches)|buenos dias|si+)\s+)+', normalized)
+    if prefix:
+        normalized = normalized[prefix.end():]
+        if normalized in {'buen dia', 'buena tarde', 'buena noche', 'bonito dia', 'lindo dia', 'excelente dia'}:
+            return False
     # Consume complete acknowledgement phrases, permitting combinations such as
     # "perfecto, muchas gracias, hasta luego" but never an arbitrary text suffix.
     while normalized:

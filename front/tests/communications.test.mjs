@@ -3,6 +3,36 @@ import assert from "node:assert/strict";
 import { compareConversations, compareConversationsByRecency, conversationAttention, matchesAttention, contactName, durationLabel, isClosingAcknowledgement, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
 import { templateStatusMeta } from "../src/features/voice-agent/veronicaTemplateStatus.ts";
 import { firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue } from "../src/features/voice-agent/bulkReview.ts";
+import { buildRangeMessageTrend, buildDatedMessageTrend, buildWeeklyMessageTrend } from "../src/features/voice-agent/communicationsSummaryModel.ts";
+
+test("the complete info-thanks-thanks-emoji exchange has no false pending anywhere", () => {
+  for (const ending of ["😊", "[sticker]", "Bueno, gracias", "Vale gracias", "Sí, nos vemos", "Holaaa si muchas gracias"]) {
+    const c = chat([
+      msg(1, "inbound", "unknown", "10", { body: "Hola, me pasas información" }),
+      msg(2, "outbound", "human_whatsapp", "11", { body: "Las clases son lunes a las cinco y cuestan 100 pesos" }),
+      msg(3, "inbound", "unknown", "12", { body: "Excelente muchas gracias" }),
+      msg(4, "outbound", "human_whatsapp", "13", { body: "A ti muchas gracias" }),
+      msg(5, "inbound", "unknown", "14", { body: ending }),
+    ], { human_takeover_active: true });
+    assert.notEqual(conversationAttention(c).key, "needs_reply", ending);
+    for (const rows of [buildRangeMessageTrend([c], 'week', new Date('2026-09-06T00:00:00Z')), buildDatedMessageTrend([c], '2026-09-05', 1), buildWeeklyMessageTrend([c], new Date('2026-09-06T00:00:00Z'))]) {
+      assert.equal(rows.reduce((sum, row) => sum + row.waiting, 0), 0, ending);
+    }
+  }
+});
+
+test("a final thank-you never hides an intervening question, even after an agent courtesy", () => {
+  for (const body of ['Excelente gracias', 'Bueno gracias', '😊', '[sticker]']) {
+    const c = chat([
+      msg(1,'outbound','human_whatsapp','10',{body:'La clase es a las cinco'}),
+      msg(2,'inbound','unknown','11',{body:'¿Y cuánto cuesta la inscripción?'}),
+      msg(3,'outbound','human_whatsapp','12',{body:'Gracias'}),
+      msg(4,'inbound','unknown','13',{body}),
+    ]);
+    assert.equal(conversationAttention(c).key,'needs_reply',body);
+    assert.equal(conversationAttention(c).since,c.messages[1].created_at);
+  }
+});
 
 test("bulk imports that require a column selection keep safe empty review collections", () => {
   assert.deepEqual(normalizeBulkReview({ needs_column: true, columns: [{ index: 1, label: "Contacto" }] }), {
