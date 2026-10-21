@@ -30,8 +30,8 @@ def clean_key(questions, key):
 
 
 def choice_grades(questions, answers, key):
-    return {q['id']: {'points': 10 if answers[q['id']] == key[q['id']] else 0,
-                     'reason': 'Correcta' if answers[q['id']] == key[q['id']] else 'Incorrecta', 'review': False}
+    return {q['id']: {'points': 10 if answers.get(q['id']) == key[q['id']] else 0,
+                     'reason': 'Sin respuesta' if q['id'] not in answers else 'Correcta' if answers[q['id']] == key[q['id']] else 'Incorrecta', 'review': False}
             for q in questions if q['kind'] == 'choice'}
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { API_URL, apiRequest } from '../../api';
 import { isSoccerWa } from '../../appBrand';
 import { ExamQuestionEditor, blankQuestion as blank, type Question } from './ExamQuestionEditor';
@@ -9,7 +9,7 @@ import { ExamKeyImport, LegacyExamKey, ExamGrade, draftKey, type Grading, type A
 import './exams.css';
 
 type Exam = { id: number; title: string; instructions: string; duration_minutes: number; questions: Question[]; public_token: string; accepting: boolean; attempt_count: number; answer_key: AnswerKey };
-type Attempt = { id: number; name: string; email: string; phone: string; started_at: string; submitted_at: string | null; elapsed_seconds: number; over_time: boolean; snapshot: Pick<Exam, 'title' | 'instructions' | 'duration_minutes' | 'questions'>; answers: Record<string, number | string>; access_token?: string; grading_status?: string; grading?: Grading };
+type Attempt = { id: number; name: string; email: string; phone: string; started_at: string; submitted_at: string | null; elapsed_seconds: number; over_time: boolean; timed_out?: boolean; deadline_at?: string; snapshot: Pick<Exam, 'title' | 'instructions' | 'duration_minutes' | 'questions'>; answers: Record<string, number | string>; access_token?: string; grading_status?: string; grading?: Grading };
 type Results = { exam: Exam; results: Attempt[]; count: number; page: number };
 const errorText = (e: unknown) => e instanceof Error ? e.message : 'No se pudo completar la operación.';
 const duration = (seconds: number) => `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
@@ -110,17 +110,84 @@ export function PublicExam({ invitation }: { invitation: string }) {
   const [submitted, setSubmitted] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [storageWarning, setStorageWarning] = useState('');
+  const [saveStatus, setSaveStatus] = useState('');
+  const [clipboardWarning, setClipboardWarning] = useState('');
+  function blockClipboard(event: { preventDefault(): void }) {
+    event.preventDefault();
+    setClipboardWarning('Durante el examen no está permitido copiar, cortar ni pegar preguntas o respuestas.');
+  }
+  useEffect(() => {
+    if (!attempt || submitted) return;
+    // Covers menu/keyboard copying whose event targets the document rather
+    // than a question. Removed on receipt/unmount; applicant details are unaffected.
+    const events = ['copy', 'cut', 'paste', 'contextmenu', 'dragstart'];
+    events.forEach(type => document.addEventListener(type, blockClipboard));
+    return () => events.forEach(type => document.removeEventListener(type, blockClipboard));
+  }, [Boolean(attempt), submitted]);
+  const draftQueue = useRef<Promise<void>>(Promise.resolve());
+  const expiryRequested = useRef(false);
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
+  function acceptReceipt(a: Attempt) {
+    setAttempt(a); setElapsed(a.elapsed_seconds); setSubmitted(Boolean(a.submitted_at));
+    if (a.submitted_at) { setAnswers(a.answers); sessionStorage.removeItem(storageKey); setError(''); }
+  }
+  function persistDraft(next: Attempt['answers']) {
+    setSaveStatus('Guardando respuestas…');
+    const task = draftQueue.current.catch(() => {}).then(async () => {
+      const a = await publicApi<Attempt>('attempt/', { action: 'draft', answers: next }, access);
+      if (a.submitted_at) acceptReceipt(a);
+      else setSaveStatus('Respuestas guardadas en el servidor.');
+    });
+    draftQueue.current = task;
+    void task.catch(() => setSaveStatus('No se confirmó el guardado. Revisa tu conexión; no hay reintentos automáticos.'));
+  }
+  async function confirmExpiry() {
+    setBusy(true); setError('');
+    try {
+      const a = await publicApi<Attempt>('attempt/', undefined, access);
+      if (!a.submitted_at) throw new Error('El servidor aún no confirmó el cierre. Pulsa «Confirmar cierre» para comprobarlo.');
+      acceptReceipt(a);
+    } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
+  }
   function remember(value: unknown) { try { sessionStorage.setItem(storageKey, JSON.stringify(value)); } catch { setStorageWarning('No se pudo guardar el avance local. No cierres ni recargues esta pestaña antes de enviar.'); } }
   function saved(): Record<string, unknown> { try { return JSON.parse(sessionStorage.getItem(storageKey) || '{}'); } catch { return {}; } }
   useEffect(() => { let active = true; setBusy(true); void (async () => { try { const i = await publicApi<typeof info>(`${encodeURIComponent(invitation)}/`); if (!active) return; setInfo(i); const s = saved(); if (typeof s.access === 'string') { const a = await publicApi<Attempt>('attempt/', undefined, s.access); if (!active) return; setAttempt(a); setAccess(s.access); setSubmitted(Boolean(a.submitted_at)); setAnswers(a.submitted_at ? a.answers : (s.answers as Attempt['answers'] || {})); if (a.submitted_at) sessionStorage.removeItem(storageKey); } } catch (e) { if (active) setError(errorText(e)); } finally { if (active) setBusy(false); } })(); return () => { active = false; }; }, [invitation]);
   useEffect(() => { if (!attempt || submitted) return; const base = attempt.elapsed_seconds; const start = Date.now(); const tick = () => setElapsed(base + Math.floor((Date.now() - start) / 1000)); tick(); const id = window.setInterval(tick, 1000); return () => clearInterval(id); }, [attempt, submitted]);
+  useEffect(() => {
+    if (!attempt || submitted || !access || elapsed < attempt.snapshot.duration_minutes * 60 || expiryRequested.current) return;
+    expiryRequested.current = true;
+    void confirmExpiry();
+  }, [elapsed, attempt, submitted, access]);
+  useEffect(() => {
+    if (!attempt || submitted || !access) return;
+    const sync = () => {
+      if (document.visibilityState !== 'visible') return;
+      void publicApi<Attempt>('attempt/', undefined, access).then(a => {
+        if (a.submitted_at) acceptReceipt(a);
+        else setAttempt(a);
+      }).catch(e => setError(errorText(e)));
+    };
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, [attempt, submitted, access]);
   useEffect(() => { if (!attempt || submitted) return; const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); }; window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn); }, [attempt, submitted]);
   async function start(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); const f = new FormData(e.currentTarget); setBusy(true); setError('');
     try { const s = saved(); const key = typeof s.start_key === 'string' ? s.start_key : crypto.randomUUID(); remember({ ...s, start_key: key }); const a = await publicApi<Attempt>(`${encodeURIComponent(invitation)}/`, { start_key: key, name: f.get('name'), email: f.get('email'), phone: f.get('phone'), consent: f.get('consent') === 'on' }); setAttempt(a); setAccess(a.access_token!); setSubmitted(Boolean(a.submitted_at)); remember({ start_key: key, access: a.access_token, answers: {} }); } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   }
-  function answer(id: string, value: string | number) { const next = { ...answers, [id]: value }; setAnswers(next); setMissing(m => m.filter(v => v !== id)); remember({ ...saved(), access, answers: next }); }
+  const textSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (textSaveTimer.current) clearTimeout(textSaveTimer.current); }, []);
+  function answer(id: string, value: string | number) {
+    if (!attempt || submitted || busy || elapsed >= attempt.snapshot.duration_minutes * 60) return;
+    const next = { ...answersRef.current, [id]: value }; answersRef.current = next;
+    setAnswers(next); setMissing(m => m.filter(v => v !== id)); remember({ ...saved(), access, answers: next });
+    if (textSaveTimer.current) clearTimeout(textSaveTimer.current);
+    if (typeof value === 'number') persistDraft(next);
+    else textSaveTimer.current = setTimeout(() => persistDraft(answersRef.current), 300);
+  }
   async function submit(e: FormEvent) {
+    if (attempt && elapsed >= attempt.snapshot.duration_minutes * 60) { e.preventDefault(); void confirmExpiry(); return; }
     e.preventDefault(); const gaps = attempt!.snapshot.questions.filter(q => answers[q.id] === undefined || String(answers[q.id]).trim() === '').map(q => q.id); setMissing(gaps);
     if (gaps.length) { setError(`Faltan ${gaps.length} preguntas. Revisa los campos marcados en rojo.`); document.getElementById(`question-${gaps[0]}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     if (!window.confirm('¿Enviar tus respuestas? Después de entregar no podrás modificarlas.')) return;
@@ -130,6 +197,6 @@ export function PublicExam({ invitation }: { invitation: string }) {
   const remaining = attempt ? remainingExamSeconds(attempt.snapshot.duration_minutes, elapsed) : 0;
   return <main className="exam-app"><header className="exam-top"><ExamBrand publicView /><span className="exam-muted">RECURSOS HUMANOS</span></header><div className="exam-public">
     {error && <p className="exam-error" role="alert">{error}</p>}{storageWarning && <p className="exam-error">{storageWarning}</p>}
-    {submitted && attempt ? <section className="exam-card exam-receipt"><p className="exam-eyebrow">ENTREGA CONFIRMADA</p><h1>Gracias. Recibimos tus respuestas.</h1><p>{attempt.snapshot.title}</p><p>Entrega: {date(attempt.submitted_at!)}<br />Tiempo registrado: {duration(attempt.elapsed_seconds)}</p><p>Recursos Humanos revisará tu evaluación. Ya puedes cerrar esta pestaña.</p></section> : attempt ? <form noValidate onSubmit={submit}><div className="exam-progress"><div><strong>{attempt.snapshot.title}</strong><span>{completed} de {attempt.snapshot.questions.length} respondidas</span></div><div aria-live="off"><span>Tiempo restante</span><strong className={`exam-countdown ${remaining === 0 ? 'exam-countdown-finished' : ''}`} data-testid="exam-countdown">{formatExamCountdown(remaining)}</strong></div></div><p className="exam-muted">El tiempo continúa si recargas o sales. Tu borrador se conserva en esta pestaña, pero no se considera entregado hasta confirmar el envío.</p>{elapsed >= attempt.snapshot.duration_minutes * 60 && <p className="exam-error">El tiempo llegó a cero. Puedes entregar tus respuestas; el tiempo real quedará registrado para revisión.</p>}<section className="exam-card"><h1>{attempt.snapshot.title}</h1><p className="exam-preline">{attempt.snapshot.instructions}</p></section>{attempt.snapshot.questions.map(q => <fieldset tabIndex={-1} id={`question-${q.id}`} key={q.id} className={`exam-card exam-question ${missing.includes(q.id) ? 'exam-invalid' : ''}`} aria-invalid={missing.includes(q.id)}><legend>Pregunta {q.id}</legend><h2>{q.prompt}</h2>{q.kind === 'choice' ? q.options?.map((o, i) => <label className={`exam-choice ${answers[q.id] === i ? 'selected' : ''}`} key={i}><input type="radio" name={`q-${q.id}`} checked={answers[q.id] === i} onChange={() => answer(q.id, i)} disabled={busy} /><span><b>{String.fromCharCode(65 + i)}.</b> {o}</span></label>) : <label>Tu respuesta<textarea maxLength={10000} value={answers[q.id] || ''} onChange={e => answer(q.id, e.target.value)} disabled={busy} /></label>}{missing.includes(q.id) && <p className="exam-late">Responde esta pregunta.</p>}</fieldset>)}<div className="exam-card"><p>Revisa tus respuestas antes de enviar. La entrega es definitiva.</p><button className="exam-primary" disabled={busy}>{busy ? 'Guardando entrega…' : 'Enviar examen'}</button></div></form> : info ? <section className="exam-card"><p className="exam-eyebrow">EVALUACIÓN EN LÍNEA</p><h1>{info.title}</h1><div className="exam-actions"><span className="exam-tag">{info.question_count} preguntas</span><span className="exam-tag">{info.duration_minutes} minutos</span></div><p className="exam-preline">{info.instructions}</p>{info.accepting ? <form onSubmit={start}><h2>Antes de comenzar</h2><p>El tiempo empieza al pulsar «Iniciar examen».</p><label>Nombre completo<input name="name" required autoComplete="name" maxLength={180} /></label><label>Correo electrónico<input name="email" type="email" required autoComplete="email" maxLength={254} /></label><label>Teléfono<input name="phone" type="tel" required autoComplete="tel" maxLength={30} /></label><label className="exam-consent"><input name="consent" type="checkbox" required /><span>Autorizo a BPower y su equipo de Recursos Humanos a guardar mis datos, respuestas y tiempo de evaluación para revisar mi postulación.</span></label><button className="exam-primary" disabled={busy}>{busy ? 'Iniciando…' : 'Iniciar examen'}</button></form> : <p className="exam-notice">Este enlace ya no admite nuevos participantes.</p>}</section> : busy ? <p role="status">Cargando examen…</p> : <p>No se pudo abrir el examen. Verifica el enlace o recarga la página.</p>}
+    {submitted && attempt ? <section className="exam-card exam-receipt"><p className="exam-eyebrow">ENTREGA CONFIRMADA</p><h1>{attempt.timed_out ? 'Gracias por tu tiempo. El tiempo del examen terminó.' : 'Gracias. Recibimos tus respuestas.'}</h1>{attempt.timed_out && <p>Se guardaron las respuestas recibidas hasta el límite de tiempo. El examen se envió automáticamente y ya no permite cambios.</p>}<p>{attempt.snapshot.title}</p><p>Entrega: {date(attempt.submitted_at!)}<br />Tiempo registrado: {duration(attempt.elapsed_seconds)}</p><p>Recursos Humanos revisará tu evaluación. Ya puedes cerrar esta pestaña.</p></section> : attempt ? <form noValidate onSubmit={submit} onCopy={blockClipboard} onCut={blockClipboard} onPaste={blockClipboard} onContextMenu={blockClipboard} onDragStart={blockClipboard}><div className="exam-progress"><div><strong>{attempt.snapshot.title}</strong><span>{completed} de {attempt.snapshot.questions.length} respondidas</span></div><div aria-live="off"><span>Tiempo restante</span><strong className={`exam-countdown ${remaining === 0 ? 'exam-countdown-finished' : ''}`} data-testid="exam-countdown">{formatExamCountdown(remaining)}</strong></div></div><p className="exam-muted" role="status">{saveStatus}</p>{clipboardWarning && <p className="exam-notice" role="status">{clipboardWarning}</p>}<p className="exam-muted">El tiempo continúa si recargas o sales. Tus respuestas se guardan mientras contestas. Al llegar a cero, el examen se cierra automáticamente con lo recibido hasta ese momento.</p>{elapsed >= attempt.snapshot.duration_minutes * 60 && <section className="exam-card" role="status"><h2>El tiempo del examen terminó.</h2><p>Las respuestas están bloqueadas. {busy ? 'Confirmando el envío automático…' : 'Pulsa el botón para confirmar el cierre; no se aceptarán respuestas nuevas.'}</p>{!busy && <button type="button" className="exam-primary" onClick={() => void confirmExpiry()}>Confirmar cierre</button>}</section>}<section className="exam-card"><h1>{attempt.snapshot.title}</h1><p className="exam-preline">{attempt.snapshot.instructions}</p></section>{attempt.snapshot.questions.map(q => <fieldset disabled={busy || remaining === 0} tabIndex={-1} id={`question-${q.id}`} key={q.id} className={`exam-card exam-question ${missing.includes(q.id) ? 'exam-invalid' : ''}`} aria-invalid={missing.includes(q.id)}><legend>Pregunta {q.id}</legend><h2>{q.prompt}</h2>{q.kind === 'choice' ? q.options?.map((o, i) => <label className={`exam-choice ${answers[q.id] === i ? 'selected' : ''}`} key={i}><input type="radio" name={`q-${q.id}`} checked={answers[q.id] === i} onChange={() => answer(q.id, i)} disabled={busy} /><span><b>{String.fromCharCode(65 + i)}.</b> {o}</span></label>) : <label>Tu respuesta<textarea maxLength={10000} value={answers[q.id] || ''} onChange={e => answer(q.id, e.target.value)} disabled={busy} /></label>}{missing.includes(q.id) && <p className="exam-late">Responde esta pregunta.</p>}</fieldset>)}<div className="exam-card"><p>Revisa tus respuestas antes de enviar. La entrega es definitiva.</p><button className="exam-primary" disabled={busy || remaining === 0}>{busy ? 'Guardando entrega…' : 'Enviar examen'}</button></div></form> : info ? <section className="exam-card"><p className="exam-eyebrow">EVALUACIÓN EN LÍNEA</p><h1>{info.title}</h1><div className="exam-actions"><span className="exam-tag">{info.question_count} preguntas</span><span className="exam-tag">{info.duration_minutes} minutos</span></div><p className="exam-preline">{info.instructions}</p>{info.accepting ? <form onSubmit={start}><h2>Antes de comenzar</h2><p>El tiempo empieza al pulsar «Iniciar examen».</p><label>Nombre completo<input name="name" required autoComplete="name" maxLength={180} /></label><label>Correo electrónico<input name="email" type="email" required autoComplete="email" maxLength={254} /></label><label>Teléfono<input name="phone" type="tel" required autoComplete="tel" maxLength={30} /></label><label className="exam-consent"><input name="consent" type="checkbox" required /><span>Autorizo a BPower y su equipo de Recursos Humanos a guardar mis datos, respuestas y tiempo de evaluación para revisar mi postulación.</span></label><button className="exam-primary" disabled={busy}>{busy ? 'Iniciando…' : 'Iniciar examen'}</button></form> : <p className="exam-notice">Este enlace ya no admite nuevos participantes.</p>}</section> : busy ? <p role="status">Cargando examen…</p> : <p>No se pudo abrir el examen. Verifica el enlace o recarga la página.</p>}
   </div></main>;
 }

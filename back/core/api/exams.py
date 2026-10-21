@@ -1,5 +1,6 @@
 """On-demand exams: automatic choice grading, explicitly requested AI grading."""
 import uuid
+import hashlib
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -15,6 +16,7 @@ from core.models import RecruitmentExam, RecruitmentExamAttempt
 from core.veronica_access import is_veronica_only
 from core.exam_identity import exam_email, exam_phone
 from core.exam_grading import clean_key, choice_grades, finish_grade, grade_open, GradingError, MODEL
+from core.exam_timing import exam_deadline, expire_attempt
 
 
 class CanManageExams(BasePermission):
@@ -26,6 +28,18 @@ class CanManageExams(BasePermission):
 
 class ExamPublicThrottle(AnonRateThrottle):
     rate = '40/min'
+
+
+class ExamAttemptThrottle(AnonRateThrottle):
+    scope = 'exam_attempt'
+    rate = '180/min'
+
+    def get_cache_key(self, request, view):
+        auth = request.headers.get('Authorization', '')
+        # Drafts from multiple applicants sharing an office IP have separate
+        # bounded quotas; do not store the raw capability in cache keys.
+        ident = hashlib.sha256(auth.encode()).hexdigest() if auth.startswith('Exam ') and 40 <= len(auth[5:]) <= 64 else self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
 
 
 class ExamAITestThrottle(UserRateThrottle):
@@ -81,6 +95,8 @@ def exam_data(exam):
 def attempt_data(a, private=False):
     elapsed = max(0, int(((a.submitted_at or timezone.now()) - a.started_at).total_seconds()))
     result = {'started_at': a.started_at.isoformat(), 'submitted_at': a.submitted_at.isoformat() if a.submitted_at else None,
+              'deadline_at': exam_deadline(a).isoformat(),
+              'timed_out': bool(a.submitted_at and a.submitted_at >= exam_deadline(a)),
               'elapsed_seconds': elapsed, 'over_time': elapsed > a.snapshot['duration_minutes'] * 60,
               'snapshot': a.snapshot, 'answers': a.answers}
     if private:
@@ -93,6 +109,7 @@ def attempt_data(a, private=False):
 class ExamAdminView(APIView):
     permission_classes = [CanManageExams]
 
+    @transaction.atomic
     def get(self, request, pk=None):
         if pk is not None:
             exam = get_object_or_404(RecruitmentExam, pk=pk)
@@ -102,8 +119,11 @@ class ExamAdminView(APIView):
             except (TypeError, ValueError):
                 raise ValidationError({'detail': 'Página inválida.'})
             rows = exam.attempts.all()
+            page_rows = list(rows.select_for_update()[(page-1)*50:page*50])
+            for attempt in page_rows:
+                expire_attempt(attempt)
             return Response({'exam': exam_data(exam), 'count': rows.count(), 'page': page,
-                             'results': [attempt_data(a, True) for a in rows[(page-1)*50:page*50]]})
+                             'results': [attempt_data(a, True) for a in page_rows]})
         rows = RecruitmentExam.objects.annotate(attempt_count=Count('attempts'))[:200]
         return Response({'results': [exam_data(e) for e in rows]})
 
@@ -170,8 +190,9 @@ class PublicExamView(APIView):
             start_key = uuid.UUID(str(data.get('start_key', '')))
         except ValueError:
             raise ValidationError({'detail': 'Identificador de inicio inválido.'})
-        existing = e.attempts.filter(start_key=start_key).first()
+        existing = e.attempts.select_for_update().filter(start_key=start_key).first()
         if existing:
+            expire_attempt(existing)
             return Response({'access_token': existing.access_token, **attempt_data(existing)})
         if not e.accepting:
             return Response({'detail': 'Este examen ya no admite nuevos participantes.'}, status=410)
@@ -204,7 +225,7 @@ class PublicExamView(APIView):
 class ExamAttemptView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [ExamPublicThrottle]
+    throttle_classes = [ExamAttemptThrottle]
 
     def get_attempt(self, request, lock=False):
         # Capability stays in a header rather than logs/URLs. 256-bit random token.
@@ -212,31 +233,47 @@ class ExamAttemptView(APIView):
         auth = request.headers.get('Authorization', '')
         return get_object_or_404(rows, access_token=auth[5:] if auth.startswith('Exam ') else '')
 
+    @transaction.atomic
     def get(self, request):
-        return Response(attempt_data(self.get_attempt(request)))
+        a = self.get_attempt(request, True)
+        expire_attempt(a)
+        return Response(attempt_data(a))
 
     @transaction.atomic
     def post(self, request):
         a = self.get_attempt(request, True)
         if a.submitted_at:
             return Response(attempt_data(a))  # Idempotent; submitted answers cannot be overwritten.
+        if expire_attempt(a):
+            return Response(attempt_data(a))  # Ignore all late client answers.
         data = request.data
         if not isinstance(data, dict):
             raise ValidationError({'detail': 'Formulario inválido.'})
         answers = data.get('answers')
         questions = a.snapshot['questions']
-        if not isinstance(answers, dict) or set(answers) != {q['id'] for q in questions}:
+        draft = data.get('action') == 'draft'
+        ids = {q['id'] for q in questions}
+        if not isinstance(answers, dict) or not set(answers).issubset(ids) or (not draft and set(answers) != ids):
             raise ValidationError({'detail': 'Responde todas las preguntas antes de enviar.'})
         cleaned = {}
         for q in questions:
+            if draft and q['id'] not in answers:
+                continue
             value = answers[q['id']]
             if q['kind'] == 'choice':
                 if type(value) is not int or not 0 <= value < len(q['options']):
                     raise ValidationError({'detail': f'Revisa la pregunta {q["id"]}.'})
                 cleaned[q['id']] = value
             else:
+                if draft and isinstance(value, str) and not value.strip():
+                    continue
                 cleaned[q['id']] = text(value, f'la pregunta {q["id"]}', 10000)
         a.answers = cleaned
+        if draft:
+            a.save(update_fields=['answers'])
+            # Do not retransmit the entire questionnaire on every answer.
+            return Response({'saved': True, 'answers': a.answers, 'submitted_at': None,
+                             'deadline_at': exam_deadline(a).isoformat()})
         a.submitted_at = timezone.now()
         # Legacy exams retain their original answers. Missing keys never mean zero.
         if a.grading_key and all(q['kind'] == 'choice' for q in questions):
@@ -269,10 +306,13 @@ class ExamGradeView(APIView):
         try:
             questions = a.snapshot['questions']
             grades = choice_grades(questions, a.answers, a.grading_key)
-            has_open = any(q['kind'] == 'open' for q in questions)
+            open_questions = [q for q in questions if q['kind'] == 'open' and str(a.answers.get(q['id'], '')).strip()]
+            grades.update({q['id']: {'points': 0, 'reason': 'Sin respuesta', 'review': False}
+                for q in questions if q['kind'] == 'open' and q not in open_questions})
+            has_open = bool(open_questions)
             usage = {}
             if has_open:
-                open_grades, usage = grade_open(questions, a.answers, a.grading_key)
+                open_grades, usage = grade_open(open_questions, a.answers, a.grading_key)
                 grades.update(open_grades)
             finish_grade(a, grades, MODEL if has_open else 'deterministic', usage)
         except GradingError as error:

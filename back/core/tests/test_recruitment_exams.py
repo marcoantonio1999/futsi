@@ -103,7 +103,8 @@ def test_snapshot_and_server_elapsed(auth_client):
     RecruitmentExamAttempt.objects.update(started_at=timezone.now() - timedelta(minutes=41))
     c = APIClient(); c.credentials(HTTP_AUTHORIZATION='Exam ' + a['access_token'])
     r = c.post('/api/public-exams/attempt/', {'answers': {'1': 0, '2': 'Texto'}}, format='json')
-    assert r.status_code == 200 and r.json()['over_time'] and len(r.json()['snapshot']['questions']) == 2
+    assert r.status_code == 200 and r.json()['timed_out'] and len(r.json()['snapshot']['questions']) == 2
+    assert r.json()['answers'] == {}  # A late POST cannot add new answers.
 
 
 def test_template_preserves_all_questions(auth_client):
