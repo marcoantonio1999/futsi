@@ -9,6 +9,9 @@ from rest_framework.views import APIView
 from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentExamAttempt, RecruitmentProfile
 from core.exam_profiles import filtered_attempts, normalized, clean_string, clean_fields, match_form
+from core.cv_import import match_cv,cv_digest
+import hmac
+import re
 
 
 def submitted_rows(detail=False):
@@ -119,3 +122,45 @@ class ExamProfileImportView(APIView):
         return Response({'saved':False,'match_status':status,
                          'candidate':profile_data(chosen) if chosen else None,
                          'candidates':[profile_data(a) for a in candidates]})
+
+
+class ExamCVImportView(APIView):
+    permission_classes=[CanManageExams]
+
+    @transaction.atomic
+    def post(self,request):
+        data=request.data
+        if not isinstance(data,dict) or set(data)-{'cv_text','exam','commit','expected_cv_hash'}:
+            raise ValidationError({'detail':'Envía solo el texto extraído del CV; no se reciben archivos PDF.'})
+        body=clean_string(data.get('cv_text',''),80000,'el texto del CV')
+        if not body:
+            raise ValidationError({'detail':'No se encontró texto legible en el CV.'})
+        rows=submitted_rows()
+        if data.get('exam'):
+            try: rows=rows.filter(exam_id=int(data['exam']))
+            except (ValueError,TypeError): raise ValidationError({'detail':'Postulación inválida.'})
+        status,matches=match_cv(rows,body)
+        chosen=matches.first() if status=='matched' else None
+        if data.get('commit') is True:
+            if chosen is None:
+                return Response({'detail':'El CV no tiene una coincidencia única. No se actualizó ningún perfil.','match_status':status},status=409)
+            expected=data.get('expected_cv_hash')
+            if not isinstance(expected,str) or not re.fullmatch(r'[0-9a-f]{64}',expected):
+                raise ValidationError({'detail':'Primero revisa la coincidencia del CV.'})
+            attempt=RecruitmentExamAttempt.objects.select_for_update().get(pk=chosen.pk)
+            profile=getattr(attempt,'profile',None)
+            old=profile.cv_text if profile else ''
+            if not hmac.compare_digest(expected,cv_digest(old)):
+                return Response({'detail':'El CV del perfil cambió durante la carga. Se conservó la versión más reciente; revisa este archivo manualmente.'},status=409)
+            if old==body:
+                return Response({'saved':True,'unchanged':True,'attempt_id':attempt.pk})
+            if profile is None: profile=RecruitmentProfile(attempt=attempt)
+            profile.cv_text=body
+            profile.cv_search=normalized(body)
+            profile.updated_by=request.user
+            profile.save()
+            return Response({'saved':True,'unchanged':False,'attempt_id':attempt.pk})
+        old=chosen.profile.cv_text if chosen and getattr(chosen,'profile',None) else ''
+        return Response({'saved':False,'match_status':status,'candidate':profile_data(chosen) if chosen else None,
+            'candidates':[profile_data(a) for a in matches.order_by('-id')[:20]],
+            'expected_cv_hash':cv_digest(old) if chosen else None})

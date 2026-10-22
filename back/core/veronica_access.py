@@ -66,7 +66,7 @@ def veronica_route_allowed(path, method):
         return method in {'GET','HEAD'}
     if re.fullmatch(r'/api/recruitment-applications/[1-9][0-9]*/',path):
         return method in {'GET','HEAD','POST'}
-    if path == '/api/recruitment-profiles/import/':
+    if path in {'/api/recruitment-profiles/import/','/api/recruitment-profiles/import-cv/'}:
         return method == 'POST'
     if re.fullmatch(r'/api/recruitment-profiles/[1-9][0-9]*/', path):
         return method in {'GET', 'HEAD', 'POST'}

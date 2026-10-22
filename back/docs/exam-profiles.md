@@ -33,7 +33,8 @@ texto del formato ni cuestionarios completos de la DB; se leen al abrir el detal
 
 ## Importación explícita
 
-El navegador lee PDF/TXT (hasta 20 archivos de 8 MB; PDF hasta 10 páginas), usando
+El navegador lee una carpeta completa o varios PDF/TXT (8 MB por archivo; PDF
+hasta 10 páginas), en secuencia y usando
 PDF.js fijado en package-lock y cargado solo al seleccionar un PDF. No retiene
 los PDF ni los envía a Storage/servidor/proveedores. AcroForms utiliza valores
 rellenados (no títulos de campos vacíos). Un archivo sin texto legible no genera
@@ -50,6 +51,33 @@ Importar otra vez reemplaza el formato del perfil, conservando CV, puesto ya
 capturado y calificaciones. Un error queda visible y el lote explícito continúa,
 sin reintentos ni trabajos o consultas periódicas en segundo plano.
 
+## Carpeta de CV
+
+«Cargar carpeta de CV» acepta PDF/TXT y subcarpetas. PDF.js extrae solo texto
+localmente (8 MB, 20 páginas y 80 000 caracteres por CV); no sube ni conserva el
+PDF. Escaneos sin texto y documentos parcialmente ilegibles requieren revisión,
+sin OCR ni IA. Los demás tipos de archivo se omiten y contabilizan.
+
+`POST /api/recruitment-profiles/import-cv/` recibe `cv_text` y `exam` opcional.
+Primero previsualiza toda la selección, sin escrituras. Usa correo/teléfono del
+encabezado del CV, antes de experiencia/referencias; no usa nombres ni archivos.
+Contactos contradictorios, varias identidades o varias postulaciones impiden la
+asignación automática. Elegir examen limita el contexto; no fusiona evaluaciones.
+Si varios CV apuntan al mismo perfil, todos quedan para revisión, sin sobrescritura.
+
+Después guarda solo coincidencias únicas mediante `commit:true` y
+`expected_cv_hash`. Bajo bloqueo de la entrega compara el hash con el CV actual:
+una edición posterior a la previsualización devuelve 409 y se conserva. Un CV
+idéntico no escribe. Reemplaza solo texto/búsqueda del CV y su autor; conserva
+puesto, formato, respuestas y nota. No crea personas ni perfiles sin examen.
+
+El reporte distingue actualizados, idénticos, sin coincidencia, ambiguos,
+duplicados y errores. El texto extraído puede copiarse para pegarlo en un perfil
+existente; los textos sin asignar permanecen solo en la pestaña. Procesa archivos
+secuencialmente, documenta cada error y continúa sin reintentar; 401/403 detienen
+las solicitudes. Cancelar o salir aborta la carga; un envío ya aceptado debe
+verificarse antes de repetirlo. No agrega cron, sondeo, Storage ni migraciones.
+
 ## Seguridad y validación
 
 Mismos permisos que Exámenes: admin/owner/dev o colaborador veronica_only,
@@ -64,3 +92,11 @@ liviana sin consultas por persona. `exam-profiles.browser.mjs`: DB local y datos
 ficticios, PDF de empleo rellenado para QA, flujo completo en 320/390/1440 px,
 tarjetas móviles, filtros, preservación del CV y verificación de solicitudes JSON
 sin subida binaria. Las pruebas no envían solicitudes a IA ni WhatsApp.
+
+`test_cv_import.py` comprueba coincidencias conservadoras, permisos de Vero,
+previsualización sin escritura, conflictos de edición y preservación de datos.
+`exam-cv-folder.browser.mjs` prueba carpetas mixtas de más de 20 CV, PDF reales,
+duplicados, errores aislados, copia de texto y solicitudes JSON sin binarios.
+`exam-cv-integration.browser.mjs` verifica contra Django/SQLite local la
+actualización del CV y búsqueda por palabras clave en 320/390/1440 px, sin
+modificar nota ni formato. Todos los datos de estas pruebas son ficticios.

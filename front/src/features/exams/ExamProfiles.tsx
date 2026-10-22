@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { apiRequest } from '../../api';
 import { filterQuery } from './ExamResultFilters';
 import { readProfileForm, type FormText } from './readProfileForm';
+import { ExamCVImport } from './ExamCVImport';
 import './ExamProfiles.css';
 
 type Profile = { id: number; name: string; email: string; phone: string; exam_id: number; exam_title: string; score: number | null; grading_status: string; position: string; position_source?: 'exam' | 'saved'; has_cv: boolean; has_form: boolean; matched_keywords: string[]; cv_text?: string; form_text?: string; form_fields?: Record<string,string> };
@@ -24,6 +25,7 @@ export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[
   const [customPosition,setCustomPosition]=useState(false);
   const [busy,setBusy]=useState(false), [error,setError]=useState(''), [notice,setNotice]=useState('');
   const [imports,setImports]=useState<ImportRow[]>([]), [importOpen,setImportOpen]=useState(false);
+  const [cvOpen,setCvOpen]=useState(false);
   const [importProgress,setImportProgress]=useState<{total:number;done:number;ignored:number}|null>(null);
   async function run(fn:()=>Promise<void>) { setBusy(true);setError('');setNotice('');try { await fn(); } catch(e){setError(errorText(e));}finally{setBusy(false);} }
   async function load(filters=applied,page=1) { setRows(await apiRequest<Page>(`/recruitment-profiles/?${filterQuery({...filters,page})}`,token)); }
@@ -75,9 +77,10 @@ export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[
     });
   }
   return <div className="exam-profiles">
-    <div className="exam-actions"><button disabled={busy} className="exam-primary" onClick={()=>{setImportOpen(!importOpen);setDetail(null);}}>Cargar formatos de empleo</button><button disabled={busy} onClick={()=>void run(()=>load())}>Actualizar perfiles</button></div>
+    <div className="exam-actions"><button disabled={busy} className="exam-primary" onClick={()=>{setCvOpen(!cvOpen);setImportOpen(false);setDetail(null);}}>Cargar carpeta de CV</button><button disabled={busy} onClick={()=>{setImportOpen(!importOpen);setCvOpen(false);setDetail(null);}}>Cargar formatos de empleo</button><button disabled={busy} onClick={()=>void run(()=>load())}>Actualizar perfiles</button></div>
     <p className="exam-muted">Cada fila corresponde a una entrega de examen. El mismo candidato puede aparecer en evaluaciones diferentes, sin mezclar puestos ni notas. Los datos son privados de Recursos Humanos.</p>
     {error&&<p className="exam-error" role="alert">{error}</p>}{notice&&<p className="exam-notice" role="status">{notice}</p>}{busy&&<p role="status">Procesando…</p>}
+    {cvOpen&&<ExamCVImport token={token} exams={exams} initialExam={applied.exam} onBusyChange={setBusy} onUpdated={()=>load()} onClose={()=>setCvOpen(false)}/>}
     {importOpen&&<section className="exam-card" aria-label="Importar formatos"><h2>Cargar formatos</h2><p>Selecciona PDF digitales llenados o archivos TXT. Se leen en tu navegador: solo se guardan sus campos y texto, no el PDF. No se utiliza IA ni OCR.</p><p className="exam-muted">Se buscan correo o teléfono del candidato entre las entregas{applied.exam?' del examen seleccionado':''}. Revisa antes de guardar. Cargar nuevamente un formato reemplaza solo su información de formato; conserva el CV, el examen y un puesto ya capturado.</p>
       <label>Seleccionar formatos PDF o TXT<input type="file" multiple accept=".pdf,.txt,application/pdf,text/plain" disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)void readFiles(files);}} /></label>
       <label>Seleccionar carpeta de formatos<input type="file" multiple {...{webkitdirectory:''}} disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)void readFiles(files);}} /></label>

@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView, VeronicaWeeklyStatsView
 from core.api.exams import ExamAdminView, ExamTemplateView, PublicExamView, ExamAttemptView, ExamGradeView, ExamGradingTestView
-from core.api.exam_profiles import ExamProfilesView, ExamProfileImportView
+from core.api.exam_profiles import ExamProfilesView, ExamProfileImportView, ExamCVImportView
 from core.api.employment_forms import PublicEmploymentFormView, EmploymentFormsAdminView
 from core.api.bulk import BulkView
 from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView
@@ -86,6 +86,7 @@ urlpatterns = [
     path('api/recruitment-exams/', ExamAdminView.as_view()),
     path('api/recruitment-profiles/', ExamProfilesView.as_view()),
     path('api/recruitment-profiles/import/', ExamProfileImportView.as_view()),
+    path('api/recruitment-profiles/import-cv/', ExamCVImportView.as_view()),
     path('api/recruitment-profiles/<int:pk>/', ExamProfilesView.as_view()),
     path('api/recruitment-exams/template/', ExamTemplateView.as_view()),
     path('api/recruitment-exams/test-grading/', ExamGradingTestView.as_view()),
