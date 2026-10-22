@@ -1,5 +1,37 @@
 # Perfiles y filtros de evaluaciones - 22/10/2026
 
+## Estadísticas de exámenes
+
+`#/examenes/estadisticas` usa `GET /api/recruitment-exams/statistics/`, privado
+con los mismos permisos de Exámenes, incluido Vero. Solo lectura: no materializa
+vencimientos, no califica ni consulta IA. Carga al entrar/actualizar, sin sondeo
+ni reintentos; cancela la solicitud al salir. No requiere migración ni permisos
+nuevos de Supabase. No devuelve contactos, claves, respuestas, CV ni cuestionarios.
+
+Filtros `since`, `until` (ISO, inclusivos, America/Mexico_City) y `exam` opcional.
+Por defecto últimos 30 días naturales incluyendo hoy; admite hasta 366 días, sin
+futuro. Entregas por `submitted_at`, inicios por `started_at`, creaciones por
+`created_at`: no confundir esos universos. «Sin entrega registrada» no afirma que
+el intento siga abierto. Las notas solo incluyen entregas calificadas con valor
+válido 0–10; pendientes/errores no son ceros. Promedio de tiempo usa entregas con
+duración no negativa. Distribución 0–<2, 2–<4, 4–<6, 6–<8, 8–10.
+
+Arriba se puede distinguir evaluaciones recibidas de candidatos (por defecto) y
+exámenes nuevos creados por cuentas collaborator/veronica_only, según el autor
+guardado, no el usuario que abre el reporte. No atribuye a Vero las creaciones de
+administración ni el trabajo de los candidatos. Promedios: total / días naturales,
+semanal = diario × 7; mensual normalizado = diario × 30. Incluye días sin actividad
+y muestra período, denominador y fórmula. No es productividad manual ni previsión.
+
+Agregados calculados en servidor con un número fijo de consultas; la serie diaria
+incluye ceros y queda acotada a 366 filas. Resultados por examen y distribución
+son sumarios; no descarga documentos ni resultados de cada participante. La
+interfaz usa tarjetas móviles, controles de 44 px y listado diario con scroll
+interno. `test_exam_statistics.py` valida fechas/cortes CDMX, ceros, permisos,
+notas nulas, atribución, filtros y ausencia de escrituras/consultas N+1.
+`exam-statistics.browser.mjs` contrasta con Django/SQLite ficticio en 320/390/1440,
+verifica menú móvil, filtros, errores sin reintento y ausencia de sondeo.
+
 ## Filtros
 
 `GET /api/recruitment-exams/<id>/` acepta `ordering=score_desc|score_asc|newest|name`,

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Menu, X, Plus, FileText, ListChecks, UsersRound } from 'lucide-react';
+import { Menu, X, Plus, FileText, ListChecks, UsersRound, BarChart3 } from 'lucide-react';
 import './ExamWorkspace.css';
 import { examLogo } from './ExamBrand';
 
-export type ExamSection = 'list' | 'create' | 'evaluations' | 'profiles' | 'applications';
+export type ExamSection = 'list' | 'create' | 'evaluations' | 'profiles' | 'applications' | 'statistics';
 const sections = [
   { key: 'create' as const, label: 'Crear examen', path: 'crear', icon: Plus },
   { key: 'list' as const, label: 'Mis exámenes', path: 'mis-examenes', icon: FileText },
   { key: 'evaluations' as const, label: 'Ver evaluaciones', path: 'evaluaciones', icon: ListChecks },
+  { key: 'statistics' as const, label: 'Estadísticas', path: 'estadisticas', icon: BarChart3 },
   { key: 'profiles' as const, label: 'Perfiles', path: 'perfiles', icon: UsersRound },
   { key: 'applications' as const, label: 'Formatos postulaciones', path: 'formatos-postulaciones', icon: FileText },
 ];
