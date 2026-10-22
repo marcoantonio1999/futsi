@@ -18,6 +18,7 @@ export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[
   const [customPosition,setCustomPosition]=useState(false);
   const [busy,setBusy]=useState(false), [error,setError]=useState(''), [notice,setNotice]=useState('');
   const [imports,setImports]=useState<ImportRow[]>([]), [importOpen,setImportOpen]=useState(false);
+  const [importProgress,setImportProgress]=useState<{total:number;done:number;ignored:number}|null>(null);
   async function run(fn:()=>Promise<void>) { setBusy(true);setError('');setNotice('');try { await fn(); } catch(e){setError(errorText(e));}finally{setBusy(false);} }
   async function load(filters=applied,page=1) { setRows(await apiRequest<Page>(`/recruitment-profiles/?${filterQuery({...filters,page})}`,token)); }
   useEffect(()=>{void run(()=>load(initial));},[token]);
@@ -30,19 +31,24 @@ export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[
   }
   const updateImport=(index:number,patch:Partial<ImportRow>)=>setImports(items=>items.map((r,i)=>i===index?{...r,...patch}:r));
   async function readFiles(files:File[]) {
-    if(files.length>20){setError('Selecciona hasta 20 formatos por carga.');return;}
+    const formats=files.filter(file=>/\.(pdf|txt)$/i.test(file.name));
+    const ignored=files.length-formats.length;
     setImports([]);
+    setImportProgress({total:formats.length,done:0,ignored});
+    if(!formats.length){setNotice('');setError('No se encontraron formatos PDF o TXT en la selección.');return;}
     await run(async()=>{
       const batch:ImportRow[]=[];
-      for(const file of files){
-        const row:ImportRow={name:file.name,match_status:'',candidate:null,candidates:[],chosen:'',search:'',error:'',saved:false};
+      for(const file of formats){
+        const row:ImportRow={name:file.webkitRelativePath||file.name,match_status:'',candidate:null,candidates:[],chosen:'',search:'',error:'',saved:false};
         try {
           row.data=await readProfileForm(file);
           const match=await apiRequest<Pick<ImportRow,'match_status'|'candidate'|'candidates'>>('/recruitment-profiles/import/',token,{method:'POST',body:JSON.stringify({...row.data,exam:applied.exam})});
           Object.assign(row,match);row.chosen=match.candidate?String(match.candidate.id):'';
         }catch(e){row.error=errorText(e);}
         batch.push(row);setImports([...batch]);
+        setImportProgress({total:formats.length,done:batch.length,ignored});
       }
+      setNotice('Lectura terminada. Revisa las coincidencias antes de guardar. Los archivos con error no se reintentan automáticamente.');
     });
   }
   async function lookup(index:number) {
@@ -68,6 +74,9 @@ export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[
     {error&&<p className="exam-error" role="alert">{error}</p>}{notice&&<p className="exam-notice" role="status">{notice}</p>}{busy&&<p role="status">Procesando…</p>}
     {importOpen&&<section className="exam-card" aria-label="Importar formatos"><h2>Cargar formatos</h2><p>Selecciona PDF digitales llenados o archivos TXT. Se leen en tu navegador: solo se guardan sus campos y texto, no el PDF. No se utiliza IA ni OCR.</p><p className="exam-muted">Se buscan correo o teléfono del candidato entre las entregas{applied.exam?' del examen seleccionado':''}. Revisa antes de guardar. Cargar nuevamente un formato reemplaza solo su información de formato; conserva el CV, el examen y un puesto ya capturado.</p>
       <label>Seleccionar formatos PDF o TXT<input type="file" multiple accept=".pdf,.txt,application/pdf,text/plain" disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)void readFiles(files);}} /></label>
+      <label>Seleccionar carpeta de formatos<input type="file" multiple {...{webkitdirectory:''}} disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)void readFiles(files);}} /></label>
+      <p className="exam-muted">La carpeta incluye sus subcarpetas. Se detectan todos los PDF y TXT y se leen uno por uno; los demás archivos se omiten. También puedes seleccionar varios archivos sueltos. Cada formato puede pesar hasta 8 MB.</p>
+      {importProgress&&<p role="status">Formatos revisados: {importProgress.done} de {importProgress.total}. Archivos de otros tipos omitidos: {importProgress.ignored}.</p>}
       {imports.map((row,index)=><article className="exam-import-row" key={index}><h3>{row.name}</h3>{row.error&&<p className="exam-error" role="alert">{row.error}</p>}{row.saved?<p className="exam-notice">Guardado correctamente</p>:row.data&&<><p>{matchLabel(row.match_status)}{row.candidate?` · ${row.candidate.name} · ${row.candidate.exam_title}`:''}</p><details><summary>Ver texto extraído</summary><pre>{row.data.form_text}</pre></details><label>Buscar participante para vincular manualmente<input value={row.search} onChange={e=>updateImport(index,{search:e.target.value})} placeholder="Nombre, correo o teléfono" disabled={busy}/></label><button disabled={busy} onClick={()=>void lookup(index)}>Buscar participante</button><label>Participante del formato<select value={row.chosen} disabled={busy} onChange={e=>updateImport(index,{chosen:e.target.value})}><option value="">Selecciona una entrega</option>{row.candidates.map(p=><option key={p.id} value={p.id}>{p.name} · {p.email} · {p.exam_title}</option>)}</select></label><button disabled={busy||!row.chosen} onClick={()=>void commit([index])}>Confirmar y guardar formato</button></>}</article>)}
       <div className="exam-actions">{imports.some(r=>r.match_status==='matched'&&!r.saved&&r.chosen)&&<button className="exam-primary" disabled={busy} onClick={()=>void commit(imports.map((_,i)=>i).filter(i=>imports[i].match_status==='matched'&&!imports[i].saved&&Boolean(imports[i].chosen)))}>Guardar coincidencias revisadas</button>}<button disabled={busy} onClick={()=>setImportOpen(false)}>Cerrar carga de formatos</button></div>
     </section>}
