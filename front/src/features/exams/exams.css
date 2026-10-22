@@ -5,3 +5,7 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+.exam-filter-disclosure{margin:20px 0;min-width:0}
+.exam-filter-disclosure .exam-filter-panel[hidden]{display:none}
+.exam-filter-disclosure .exam-filter-panel{margin-bottom:0}
+.exam-filter-chevron-open{transform:rotate(180deg)}

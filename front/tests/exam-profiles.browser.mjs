@@ -68,6 +68,7 @@ try {
   await page.getByRole('button',{name:'Volver a perfiles',exact:true}).click();
   await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-profiles-${width}.png`,fullPage:true});
   await nav('Mis exámenes');await page.getByRole('button',{name:'Ver respuestas',exact:true}).click();
+  await page.getByRole('button',{name:'Filtros',exact:true}).click();
   await page.getByLabel('Ordenar por',{exact:true}).selectOption('score_desc');
   await page.getByLabel('Selección',{exact:true}).selectOption('10');
   await page.getByRole('button',{name:'Aplicar filtros',exact:true}).click();
