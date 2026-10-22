@@ -5,7 +5,7 @@ import { formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } 
 import "./veronica.css";
 import "./veronica-inbox.css";
 import { deliveryProblem } from "./veronicaDelivery";
-import { VeronicaAutomaticPdf } from './VeronicaAutomaticPdf';
+import { VeronicaFormLink } from './VeronicaFormLink';
 import { templateStatusMeta } from "./veronicaTemplateStatus";
 import type { VeronicaFilterCatalog } from "./VeronicaFiltersPanel";
 
@@ -220,7 +220,7 @@ export function VeronicaPanel({ token }: { token: string }) {
   useEffect(() => { setTemplates([]); setTemplateKey(""); setTemplateParameters({}); request.current = null; }, [activeSource]);
   const lastProblem = [...history.messages].reverse().find(m => m.direction === "outbound" && deliveryProblem(m.status, m.error_codes));
   return <div ref={consoleRef} className={`veronica-console${mobileConversation ? ' has-conversation' : ''}`}>
-    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes</h2></div><div className="vero-heading-actions"><button className="vero-toolbar-button" onClick={() => setPdfOpen(true)}><FileText size={18} aria-hidden="true" />PDF automático</button><button className="vero-toolbar-button" disabled={busy} onClick={() => { setRefresh(n => n + 1); void loadTemplates(); }}><RefreshCw size={18} aria-hidden="true" />Actualizar</button></div></header>
+    <header className="comm-page-heading"><div><p className="comm-eyebrow">Comunicaciones / Verónica</p><h2>Mensajes</h2></div><div className="vero-heading-actions"><button className="vero-toolbar-button" onClick={() => setPdfOpen(true)}><FileText size={18} aria-hidden="true" />Formulario automático</button><button className="vero-toolbar-button" disabled={busy} onClick={() => { setRefresh(n => n + 1); void loadTemplates(); }}><RefreshCw size={18} aria-hidden="true" />Actualizar</button></div></header>
     <div className="vero-feedback">
     {error && <p className="comm-error" role="alert">{error}</p>}
     {chat && lastProblem ? <DeliveryAlert message={lastProblem} phone={chat.phone} /> : notice && <p className="vero-note" role="status">{notice}</p>}
@@ -251,8 +251,8 @@ export function VeronicaPanel({ token }: { token: string }) {
       <button className={primaryButtonClass} disabled={!canSend} onClick={() => setConfirming(true)}>{busy ? "Procesando…" : templateRequired ? "Enviar plantilla" : "Enviar mensaje"}</button>
     </div></section></div>
     <dialog ref={pdfDialog} className="vero-pdf-modal" aria-labelledby="vero-pdf-title" onCancel={() => setPdfOpen(false)} onClose={() => setPdfOpen(false)}>
-      <header className="vero-modal-heading"><h2 id="vero-pdf-title">PDF automático</h2><button className="vero-toolbar-button" aria-label="Cerrar configuración del PDF" onClick={() => setPdfOpen(false)}><X size={20} /></button></header>
-      {pdfOpen && <VeronicaAutomaticPdf token={token} onSaved={() => setRefresh(n => n+1)} />}
+      <header className="vero-modal-heading"><h2 id="vero-pdf-title">Formulario automático</h2><button className="vero-toolbar-button" aria-label="Cerrar formulario automático" onClick={() => setPdfOpen(false)}><X size={20} /></button></header>
+      {pdfOpen && <VeronicaFormLink token={token} />}
     </dialog>
     {confirming && <div className="vero-confirm-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="vero-confirm-title" className="vero-confirm">
       <h3 id="vero-confirm-title">Confirmar envío desde Verónica</h3>

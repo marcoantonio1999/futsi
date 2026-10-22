@@ -62,6 +62,10 @@ def court_communications_route_allowed(path, method):
 
 
 def veronica_route_allowed(path, method):
+    if path == '/api/recruitment-applications/':
+        return method in {'GET','HEAD'}
+    if re.fullmatch(r'/api/recruitment-applications/[1-9][0-9]*/',path):
+        return method in {'GET','HEAD','POST'}
     if path == '/api/recruitment-profiles/import/':
         return method == 'POST'
     if re.fullmatch(r'/api/recruitment-profiles/[1-9][0-9]*/', path):
@@ -88,6 +92,7 @@ def veronica_route_allowed(path, method):
         "/api/veronica/contact-filters/": {"POST"},
         "/api/veronica/filter-options/": {"GET", "HEAD", "POST"},
         "/api/veronica/auto-pdf/": {"GET", "HEAD", "POST"},
+        "/api/veronica/form-link/": {"GET", "HEAD"},
     }
     for operation in ('channels', 'catalog', 'list', 'detail'):
         allowed[f'/api/veronica/bulk/{operation}/'] = {'GET', 'HEAD'}

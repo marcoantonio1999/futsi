@@ -283,6 +283,8 @@ class ExamAttemptView(APIView):
         if a.grading_key and all(q['kind'] == 'choice' for q in questions):
             finish_grade(a, choice_grades(questions, cleaned, a.grading_key))
         a.save(update_fields=['answers', 'submitted_at', 'grading', 'grading_status', 'graded_at'])
+        from core.employment_forms import link_forms_after_exam
+        link_forms_after_exam(a)
         return Response(attempt_data(a))
 
 

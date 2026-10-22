@@ -8,11 +8,14 @@ if (!import.meta.env.DEV) throw new Error('Vista previa solo disponible en desar
 
 const open = new URLSearchParams(location.search).has('open');
 const windowEnd = open ? new Date(Date.now()+86400000).toISOString() : null;
-const chat={id:1,phone:'+525500000001',name:'Contacto de prueba',opted_out:false,last_message_at:new Date().toISOString(),can_reply:open,window_end:windowEnd};
+const chat={id:1,phone:'+525500000001',name:'Contacto de prueba',channel:'123',platform:'',vacancy_type:'',opted_out:false,last_message_at:new Date().toISOString(),can_reply:open,window_end:windowEnd};
 let sent:any[]=[];
 window.fetch=async (input,init)=>{
   const url=String(input);let data:any;
-  if(url.includes('/veronica/inbox/'))data={conversations:Array.from({length:30},(_,i)=>({...chat,id:i+1,name:i ? `Contacto ${i+1}` : chat.name})),has_more:false};
+  if(url.includes('/veronica/form-link/'))data={ready:true,url:'https://futsi.bpoweracademy.mx/#/postulacion',detail:'Se envía una vez al responder a la plantilla; sustituye el PDF.'};
+  else if(url.includes('/veronica/channels/'))data={channels:[{id:'123',label:'Verónica QA'}]};
+  else if(url.includes('/veronica/filter-options/'))data={platforms:[],vacancy_types:[]};
+  else if(url.includes('/veronica/inbox/'))data={conversations:Array.from({length:30},(_,i)=>({...chat,id:i+1,name:i ? `Contacto ${i+1}` : chat.name})),has_more:false};
   else if(url.includes('/veronica/history/'))data={messages:[...Array.from({length:60},(_,i)=>({id:i+1,body:`Mensaje de prueba ${i+1}. Hola, me interesa recibir la información.`,direction:i%2?'outbound':'inbound',created_at:new Date().toISOString(),status:i%2?'delivered':'',error_codes:[]})),...sent],can_reply:open,window_end:windowEnd,has_more:false};
   else if(url.includes('/veronica/auto-pdf/'))data={configured:true,enabled:true,filename:'Formulario de prueba.pdf',caption:'Completa el formulario.',updated_at:new Date().toISOString()};
   else if(url.includes('/veronica/templates/'))data={templates:[{name:'reclutamiento_primer_mensaje',language:'es',text:'Hola {{1}}. Texto ficticio para revisar la interfaz.',status:'APPROVED',sendable:true,reason:'',parameters:[{key:'body:1',label:'Nombre del destinatario',contact_name:true}]},{name:'pendiente_de_ejemplo',language:'es',text:'Pendiente',status:'PENDING',sendable:false,reason:''}],next_cursor:''};

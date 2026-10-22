@@ -19,20 +19,22 @@ try {
    const history=document.querySelector('.vero-history'),contacts=document.querySelector('.vero-contacts'),editor=document.querySelector('.vero-composer'),panel=document.querySelector('.veronica-console');
    return {historyScroll:history.scrollHeight>history.clientHeight,contactsScroll:contacts.scrollHeight>contacts.clientHeight,panelBottom:panel.getBoundingClientRect().bottom,editorBottom:editor.getBoundingClientRect().bottom,editorHeight:editor.clientHeight,width:document.documentElement.scrollWidth,viewport:innerWidth};
   });
-  assert(geometry.historyScroll);assert(geometry.editorHeight>0);assert(geometry.panelBottom<=height);assert(geometry.editorBottom<=height);assert(geometry.width<=geometry.viewport);
+  assert(geometry.historyScroll);assert(geometry.editorHeight>0);assert(geometry.panelBottom<=height);if(width>850)assert(geometry.editorBottom<=height);assert(geometry.width<=geometry.viewport);
+  if(width<=850){await page.locator('.vero-composer').scrollIntoViewIfNeeded();assert(await page.getByRole('button',{name:'Enviar plantilla',exact:true}).isVisible());}
   if(width>850)assert(geometry.contactsScroll);
   await page.mouse.move(width-100,300);await page.mouse.wheel(0,500);
   assert.equal(await page.evaluate(()=>window.scrollY),0);
-  await page.getByRole('button',{name:'PDF automático',exact:true}).click();
-  await page.getByRole('dialog',{name:'PDF automático',exact:true}).waitFor();
-  await page.getByText('Cambiar PDF o mensaje',{exact:true}).click();
-  await page.getByRole('button',{name:'Elegir PDF',exact:true}).waitFor();
-  if(width===1440)await page.screenshot({path:'tests/veronica-layout-pdf.png'});
+  await page.getByRole('button',{name:'Formulario automático',exact:true}).click();
+  await page.getByRole('dialog',{name:'Formulario automático',exact:true}).waitFor();
+  await page.getByText('Enlace automático activo.',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Enlace público',{exact:true}).inputValue(),'https://futsi.bpoweracademy.mx/#/postulacion');
+  assert.equal(await page.getByRole('button',{name:'Elegir PDF',exact:true}).count(),0);
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/veronica-form-link-${width}.png`});
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('dialog[open]').count(),0);
   await page.locator('.vero-heading-actions').getByRole('button',{name:'Actualizar',exact:true}).waitFor({state:'visible'});
-  if(width===1440)await page.screenshot({path:'tests/veronica-layout-desktop.png'});
-  if(width===390){await page.screenshot({path:'tests/veronica-layout-mobile.png'});await page.getByRole('button',{name:'Conversaciones',exact:true}).click();await page.getByRole('button',{name:'Nuevo destinatario'}).click();await page.getByRole('textbox',{name:'Destinatario (10 dígitos)'}).waitFor();assert.equal(await page.locator('.vero-history').count(),0);assert.equal(await page.getByText('Ventana de atención cerrada',{exact:true}).count(),0);}
+  if(width===390){await page.getByRole('button',{name:'Conversaciones',exact:true}).click();await page.getByRole('button',{name:'Nuevo destinatario'}).click();await page.getByRole('textbox',{name:'Destinatario (10 dígitos)'}).waitFor();assert.equal(await page.locator('.vero-history').count(),0);assert.equal(await page.getByText('Ventana de atención cerrada',{exact:true}).count(),0);}
   assert.deepEqual(errors,[]);console.log(JSON.stringify({width,height,passed:true,geometry}));
   await page.close();
  }

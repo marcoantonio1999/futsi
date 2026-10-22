@@ -19,4 +19,6 @@ def expire_attempt(attempt, now=None):
     if attempt.grading_key and all(q['kind'] == 'choice' for q in questions):
         finish_grade(attempt, choice_grades(questions, attempt.answers, attempt.grading_key))
     attempt.save(update_fields=['submitted_at', 'grading', 'grading_status', 'graded_at'])
+    from core.employment_forms import link_forms_after_exam
+    link_forms_after_exam(attempt)
     return True

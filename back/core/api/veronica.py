@@ -32,7 +32,7 @@ class VeronicaConsoleView(APIView):
     def get(self, request, operation):
         if operation == 'filter-options':
             return Response(catalog(request.user))
-        if operation not in {'inbox', 'history', 'templates', 'auto-pdf', 'channels'}:
+        if operation not in {'inbox', 'history', 'templates', 'auto-pdf', 'channels', 'form-link'}:
             return Response({'detail': 'Operación no permitida.'}, status=405)
         query = {k: request.query_params[k] for k in ('q', 'offset', 'conversation_id', 'before', 'after', 'platform', 'vacancy_type', 'channel') if k in request.query_params}
         return self.forward(operation, query=query)

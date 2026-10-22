@@ -7,3 +7,5 @@
 .dark .veronica-console .vero-sidebar h3 { color: #d5eedf; }
 .dark .veronica-console .vero-contacts button { background: #203e2e; }
 .dark .veronica-console .vero-contacts button:hover, .dark .veronica-console .vero-contacts button[aria-pressed=true] { background: #285b3e; }
+.veronica-console .vero-toolbar-button,.vero-pdf-modal button{min-height:44px;min-width:44px}
+@media(max-width:850px){.veronica-console .vero-sidebar,.veronica-console .vero-conversation{overflow-y:auto}.veronica-console .vero-contacts{flex:none;min-height:180px;max-height:220px}.veronica-console .vero-history{min-height:100px}.veronica-console .vero-composer{max-height:none}.vero-pdf-modal .comm-panel{overflow-wrap:anywhere}.vero-pdf-modal input{max-width:100%;min-width:0}}

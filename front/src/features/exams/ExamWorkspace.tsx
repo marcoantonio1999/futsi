@@ -3,12 +3,13 @@ import { Menu, X, Plus, FileText, ListChecks, UsersRound } from 'lucide-react';
 import './ExamWorkspace.css';
 import { examLogo } from './ExamBrand';
 
-export type ExamSection = 'list' | 'create' | 'evaluations' | 'profiles';
+export type ExamSection = 'list' | 'create' | 'evaluations' | 'profiles' | 'applications';
 const sections = [
   { key: 'create' as const, label: 'Crear examen', path: 'crear', icon: Plus },
   { key: 'list' as const, label: 'Mis exámenes', path: 'mis-examenes', icon: FileText },
   { key: 'evaluations' as const, label: 'Ver evaluaciones', path: 'evaluaciones', icon: ListChecks },
   { key: 'profiles' as const, label: 'Perfiles', path: 'perfiles', icon: UsersRound },
+  { key: 'applications' as const, label: 'Formatos postulaciones', path: 'formatos-postulaciones', icon: FileText },
 ];
 export const examSectionLabel = (section: ExamSection) => sections.find(s => s.key === section)!.label;
 
