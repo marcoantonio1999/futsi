@@ -99,6 +99,25 @@
 .bulk-review table { table-layout:fixed; }
 .bulk-review th:first-child { width:36%; }
 .bulk-review input { min-width:0; }
+.bulk-recipient-exclusions { display:grid; gap:8px; min-width:0; }
+.bulk-recipient-exclusions p { overflow-wrap:anywhere; }
+.bulk-recipient-exclusions .bulk-actions { justify-content:flex-start; }
+.bulk-review .bulk-review-editable { table-layout:auto; min-width:700px; }
+.bulk-review-editable th:first-child { width:auto; }
+.bulk-review-editable td { min-width:120px; }
+.bulk-templates .bulk-remove-recipient { min-height:44px; color:#a12b24; }
+@media(max-width:640px) {
+  .bulk-recipient-exclusions button { min-height:44px; white-space:normal; }
+  .bulk-templates:has(.bulk-review-editable) button { min-height:44px; }
+  .bulk-review-editable input { min-height:44px; }
+  .bulk-review .bulk-table-wrap { max-width:100%; }
+  .bulk-review-editable :is(th,td):first-child,
+  .bulk-review-editable :is(th,td):last-child { position:sticky; z-index:1; padding:8px; background:var(--comm-panel,white); }
+  .bulk-review-editable :is(th,td):first-child { left:0; min-width:116px; }
+  .bulk-review-editable :is(th,td):last-child { right:0; min-width:80px; box-shadow:-3px 0 4px #193c3010; }
+}
+.dark .bulk-review-editable :is(th,td):first-child,
+.dark .bulk-review-editable :is(th,td):last-child { background:#172820; }
 .bulk-drop { position:relative; }
 .bulk-drop input[type=file] { position:absolute; width:1px; height:1px; overflow:hidden; opacity:0; padding:0; }
 .bulk-drop:focus-within { outline:3px solid #0e9365; outline-offset:3px; }

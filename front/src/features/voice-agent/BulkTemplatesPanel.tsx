@@ -4,7 +4,7 @@ import { apiRequest, apiFormRequest } from '../../api';
 import './bulk-templates.css';
 import { UvmContactPicker } from './UvmContactPicker';
 import { FileContactFilters, initialFileFilters, type FileContact, type FileFilters } from './FileContactFilters';
-import { firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue, type BulkReview as Review, type RecipientParameters, type TemplateParameter } from './bulkReview';
+import { excludeBulkPhones, firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue, type BulkReview as Review, type RecipientParameters, type TemplateParameter } from './bulkReview';
 import { WhatsAppTemplatePreview } from './WhatsAppTemplatePreview';
 
 type Kind = 'veronica' | 'academy';
@@ -34,6 +34,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const [file, setFile] = useState<File | null>(null);
   const [column, setColumn] = useState('');
   const [review, setReview] = useState<Review | null>(null);
+  const [excludedPhones, setExcludedPhones] = useState<string[]>([]);
   const [fileReview, setFileReview] = useState<Review | null>(null);
   const [fileFilters, setFileFilters] = useState<FileFilters>(initialFileFilters);
   const [reviewPage, setReviewPage] = useState(0);
@@ -62,14 +63,15 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const selected = templates.find(t => `${t.name}:${t.language}` === templateKey);
   const availableTemplates = templates.filter(t => t.sendable);
   const selectedParameters = selected?.parameters || [];
+  const selectedReview = review && kind === 'veronica' ? excludeBulkPhones(review, excludedPhones) : review;
   const prepareReason = busy ? 'Espera a que termine la operación actual.'
     : !channel ? 'Selecciona el número desde el que enviarás en el paso 1.'
     : !availableTemplates.length ? 'No hay plantillas aprobadas disponibles para este número.'
     : !selected ? 'Falta seleccionar una plantilla aprobada en el paso 1.'
     : !selected.sendable ? selected.reason || 'La plantilla seleccionada no está disponible para envíos masivos.'
     : review?.needs_column ? 'Selecciona la columna de teléfonos y vuelve a cargar el archivo.'
-    : !review?.count ? 'Carga y revisa al menos un número válido antes de continuar.' : '';
-  const missingFields = review && selected ? missingRequiredRecipientFields(review.phones, selectedParameters, recipientParameters) : 0;
+    : !selectedReview?.count ? 'Carga y revisa al menos un número válido antes de continuar.' : '';
+  const missingFields = selectedReview && selected ? missingRequiredRecipientFields(selectedReview.phones, selectedParameters, recipientParameters) : 0;
   const blockedReason = prepareReason || (missingFields ? `Completa ${missingFields} ${missingFields === 1 ? 'campo requerido' : 'campos requeridos'} de los destinatarios en la tabla.` : '');
   const templateReady = !!selected?.sendable;
   const draft = job?.status === 'draft' ? job : null;
@@ -77,12 +79,19 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const historyView = view === 'history' || historyOpen;
   const activeId = processing ? job?.id : undefined;
   const post = <T,>(op: string, body: unknown) => apiRequest<T>(base+op+'/', token, { method: 'POST', body: JSON.stringify(body) });
-  function invalidate() { setReview(null); setFileReview(null); setRecipientParameters({}); setFileFilters(initialFileFilters); setReviewPage(0); requestId.current = crypto.randomUUID(); }
+  function invalidate() { setReview(null); setExcludedPhones([]); setFileReview(null); setRecipientParameters({}); setFileFilters(initialFileFilters); setReviewPage(0); requestId.current = crypto.randomUUID(); }
   function loadReview(next: Review) {
     const normalized = normalizeBulkReview(next);
     setReview(normalized);
+    setExcludedPhones([]);
     setRecipientParameters(recipientFields(normalized, selected));
     setReviewPage(0);
+    requestId.current = crypto.randomUUID();
+  }
+  function changeExclusions(next: string[]) {
+    setExcludedPhones(next);
+    setReviewPage(0);
+    setError('');
     requestId.current = crypto.randomUUID();
   }
   async function action(fn: () => Promise<void>) {
@@ -103,7 +112,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     const controller = new AbortController();
     catalogGeneration.current += 1;
     setTemplates([]); setTemplateKey(''); setRecipientParameters({}); setCursor('');
-    setReview(null); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); setMode(null); setStep(1); setJob(null); setError('');
+    setReview(null); setExcludedPhones([]); setFileReview(null); setFileFilters(initialFileFilters); setReviewPage(0); setMode(null); setStep(1); setJob(null); setError('');
     requestId.current = crypto.randomUUID();
     setCatalogLoading(!!channel);
     if (channel) {
@@ -193,7 +202,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   }
   function newJob() { setJob(null); setOffset(0); invalidate(); setMode(null); setStep(1); setHistoryOpen(false); setError(''); setPollError(''); }
   function closeConfirmation() { if (!busy) { setJob(null); setError(''); } }
-  const previewPhone = review?.phones[0];
+  const previewPhone = selectedReview?.phones[0];
   const previewText = selected ? selectedParameters.reduce((message, parameter, index) => {
     const recipientValue = previewPhone ? recipientParameters[previewPhone]?.[parameter.key]?.trim() : '';
     const value = recipientPreviewValue(parameter, recipientValue, index);
@@ -244,14 +253,23 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       </section>}
       {step === 4 && review && !review.needs_column && <section className="bulk-card"><header className="bulk-step-heading"><div><button className="bulk-back-button" type="button" aria-label="Regresar a cargar destinatarios" title="Regresar" disabled={busy} onClick={() => { if (fileReview) setReview(fileReview); setStep(3); setError(''); }}><ArrowLeft aria-hidden="true" size={18} /></button><h3 ref={stepHeadingRef} tabIndex={-1}>Revisa los destinatarios</h3></div></header><div className="bulk-review" aria-live="polite">
           {kind === 'veronica' && !!((review.added_filter_options?.platform.length || 0) + (review.added_filter_options?.vacancy_type.length || 0)) && <p className="bulk-alert">Se agregaron categorías nuevas: {[...(review.added_filter_options?.platform || []), ...(review.added_filter_options?.vacancy_type || [])].join(', ')}.</p>}
-          <div className="bulk-table-wrap"><table><thead><tr><th>Número</th><th>Último envío</th>{kind === 'veronica' && mode === 'file' && <><th>Plataforma</th><th>Vacante</th></>}{selectedParameters.map(parameter => <th key={parameter.key}>{parameter.label}{parameter.contact_name ? ' (opcional)' : ''}</th>)}</tr></thead><tbody>{review.phones.slice(reviewPage*50, reviewPage*50+50).map(phone => <tr key={phone}><td>{phone}</td><td>{review.sent_history?.[phone] ? <span>Ya se le envió una plantilla<br />{new Date(review.sent_history[phone].sent_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'short', timeStyle: 'short' })}</span> : 'Sin envíos previos'}</td>{kind === 'veronica' && mode === 'file' && <><td>{review.filters?.[phone]?.platform || 'Sin clasificar'}</td><td>{review.filters?.[phone]?.vacancy_type || 'Sin clasificar'}</td></>}{selectedParameters.map(parameter => <td key={parameter.key}><input aria-label={`${parameter.label} de ${phone}`} placeholder={parameter.contact_name ? 'Opcional' : `Escribe ${parameter.label.toLocaleLowerCase('es-MX')}`} disabled={busy} maxLength={parameter.contact_name ? 120 : 500} value={recipientParameters[phone]?.[parameter.key] || ''} onChange={e => { const value = e.target.value; setRecipientParameters(old => ({ ...old, [phone]: { ...old[phone], [parameter.key]: value } })); if (parameter.contact_name) setReview(old => old ? { ...old, names: { ...old.names, [phone]: value } } : old); requestId.current = crypto.randomUUID(); }} /></td>)}</tr>)}</tbody></table></div>
-          {review.count > 50 && <div className="bulk-pages"><button disabled={!reviewPage} onClick={() => setReviewPage(p => p-1)}>Anterior</button><span>Página {reviewPage+1} de {Math.ceil(review.count/50)}</span><button disabled={(reviewPage+1)*50 >= review.count} onClick={() => setReviewPage(p => p+1)}>Siguiente</button></div>}
+          {kind === 'veronica' && <div className="bulk-recipient-exclusions">
+            <p role="status">{selectedReview?.count || 0} destinatarios seleccionados · {excludedPhones.length} quitados de este lote</p>
+            <p>Puedes quitar personas antes de confirmar. No se borran contactos ni envíos anteriores.</p>
+            <div className="bulk-actions">
+              <button type="button" disabled={busy || !selectedReview?.phones.some(phone => review.sent_history?.[phone])} onClick={() => changeExclusions([...new Set([...excludedPhones, ...review.phones.filter(phone => review.sent_history?.[phone])])])}>Quitar los que ya recibieron una plantilla</button>
+              {!!excludedPhones.length && <button type="button" disabled={busy} onClick={() => changeExclusions([])}>Restaurar quitados</button>}
+            </div>
+          </div>}
+          <div className="bulk-table-wrap" role="region" aria-label="Destinatarios seleccionados" tabIndex={0}><table className={kind === 'veronica' ? 'bulk-review-editable' : undefined}><thead><tr><th>Número</th><th>Último envío</th>{kind === 'veronica' && mode === 'file' && <><th>Plataforma</th><th>Vacante</th></>}{selectedParameters.map(parameter => <th key={parameter.key}>{parameter.label}{parameter.contact_name ? ' (opcional)' : ''}</th>)}{kind === 'veronica' && <th>Acciones</th>}</tr></thead><tbody>{selectedReview?.phones.slice(reviewPage*50, reviewPage*50+50).map(phone => <tr key={phone}><td>{phone}</td><td>{review.sent_history?.[phone] ? <span>Ya se le envió una plantilla<br />{new Date(review.sent_history[phone].sent_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'short', timeStyle: 'short' })}</span> : 'Sin envíos previos'}</td>{kind === 'veronica' && mode === 'file' && <><td>{review.filters?.[phone]?.platform || 'Sin clasificar'}</td><td>{review.filters?.[phone]?.vacancy_type || 'Sin clasificar'}</td></>}{selectedParameters.map(parameter => <td key={parameter.key}><input aria-label={`${parameter.label} de ${phone}`} placeholder={parameter.contact_name ? 'Opcional' : `Escribe ${parameter.label.toLocaleLowerCase('es-MX')}`} disabled={busy} maxLength={parameter.contact_name ? 120 : 500} value={recipientParameters[phone]?.[parameter.key] || ''} onChange={e => { const value = e.target.value; setRecipientParameters(old => ({ ...old, [phone]: { ...old[phone], [parameter.key]: value } })); if (parameter.contact_name) setReview(old => old ? { ...old, names: { ...old.names, [phone]: value } } : old); requestId.current = crypto.randomUUID(); }} /></td>)}{kind === 'veronica' && <td><button type="button" className="bulk-remove-recipient" aria-label={`Quitar ${phone} de este lote`} disabled={busy} onClick={() => changeExclusions([...excludedPhones, phone])}>Quitar</button></td>}</tr>)}</tbody></table></div>
+          {!!selectedReview?.count && selectedReview.count > 50 && <div className="bulk-pages"><button disabled={!reviewPage || busy} onClick={() => setReviewPage(p => p-1)}>Anterior</button><span>Página {reviewPage+1} de {Math.ceil(selectedReview.count/50)}</span><button disabled={busy || (reviewPage+1)*50 >= selectedReview.count} onClick={() => setReviewPage(p => p+1)}>Siguiente</button></div>}
           {!!review.invalid.length && <details><summary>Ver números excluidos y corregir ({review.invalid.length})</summary><div className="bulk-exclusions">{review.invalid.map((r, i) => <p key={i}>Fila {r.row}: {r.value} — {r.reason}</p>)}</div><p>Corrige el texto o el archivo y vuelve a cargarlo.</p></details>}
         </div>
       {blockedReason && <div id="bulk-prepare-reason" className="bulk-alert" role="status"><strong>Para continuar: </strong>{blockedReason}</div>}
       <div className="bulk-actions"><button ref={confirmButtonRef} className="primary bulk-prepare" aria-describedby={blockedReason ? 'bulk-prepare-reason' : undefined} disabled={!!blockedReason} onClick={() => void action(async () => {
         if (blockedReason) return;
-        const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, ...(selectedParameters.length ? { recipient_parameters: recipientParameters } : { parameters: {} }), phones: review?.phones, names: review?.names || {}, ...(kind === 'veronica' ? { filters: mode === 'file' ? review?.filters || {} : {} } : {}), ...(review?.contact_ids ? { contact_ids: review.contact_ids } : {}) });
+        const values = kind === 'veronica' ? Object.fromEntries((selectedReview?.phones || []).map(phone => [phone, recipientParameters[phone] || {}])) : recipientParameters;
+        const saved = await post<Job>('create', { request_id: requestId.current, channel, name: selected?.name, language: selected?.language, ...(selectedParameters.length ? { recipient_parameters: values } : { parameters: {} }), phones: selectedReview?.phones, names: selectedReview?.names || {}, ...(kind === 'veronica' ? { filters: mode === 'file' ? selectedReview?.filters || {} : {} } : {}), ...(selectedReview?.contact_ids ? { contact_ids: selectedReview.contact_ids } : {}) });
         setJob(saved); setOffset(0);
       })}>{busy ? 'Calculando costo…' : 'Confirmar destinatarios'}</button></div>
       </section>}

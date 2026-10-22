@@ -55,3 +55,13 @@ export function normalizeBulkReview(value: Partial<BulkReview> | null | undefine
     invalid: Array.isArray(value?.invalid) ? value.invalid : [],
   };
 }
+
+// Phone-based review only (Verónica); directory contact IDs are not used here.
+export function excludeBulkPhones(review: BulkReview, excluded: string[]): BulkReview {
+  const excludedSet = new Set(excluded);
+  const phones = review.phones.filter(phone => !excludedSet.has(phone));
+  const keep = <T,>(values: Record<string, T> | undefined) => values &&
+    Object.fromEntries(phones.filter(phone => Object.hasOwn(values, phone)).map(phone => [phone, values[phone]]));
+  return { ...review, phones, count: phones.length, names: keep(review.names),
+    sent_history: keep(review.sent_history), parameter_values: keep(review.parameter_values), filters: keep(review.filters) };
+}

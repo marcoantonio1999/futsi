@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { compareConversations, compareConversationsByRecency, conversationAttention, matchesAttention, contactName, durationLabel, isClosingAcknowledgement, mediaLabel, messageAuthor, messagePreview, mondayKey, nameNeedsReview, replyWindowOpen, shiftWeek, waitingByConversation } from "../src/features/voice-agent/communicationUtils.ts";
 import { templateStatusMeta } from "../src/features/voice-agent/veronicaTemplateStatus.ts";
-import { firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue } from "../src/features/voice-agent/bulkReview.ts";
+import { excludeBulkPhones, firstContactName, missingRequiredRecipientFields, normalizeBulkReview, recipientPreviewValue } from "../src/features/voice-agent/bulkReview.ts";
 import { buildRangeMessageTrend, buildDatedMessageTrend, buildWeeklyMessageTrend } from "../src/features/voice-agent/communicationsSummaryModel.ts";
 
 test("the complete info-thanks-thanks-emoji exchange has no false pending anywhere", () => {
@@ -32,6 +32,23 @@ test("a final thank-you never hides an intervening question, even after an agent
     assert.equal(conversationAttention(c).key,'needs_reply',body);
     assert.equal(conversationAttention(c).since,c.messages[1].created_at);
   }
+});
+
+test("Veronica exclusions filter only the draft and all recipient metadata without mutating the import", () => {
+  const original = normalizeBulkReview({phones:['5511111111','5522222222'], count:2,
+    names:{'5511111111':'Uno','5522222222':'Dos'},
+    sent_history:{'5511111111':{sent_at:'2026-10-16T18:00:00Z'}},
+    filters:{'5511111111':{platform:'Indeed'},'5522222222':{platform:'OCC'}},
+    parameter_values:{'5511111111':{'body:1':'Uno'},'5522222222':{'body:1':'Dos'}}});
+  const snapshot = structuredClone(original);
+  const next = excludeBulkPhones(original,['5511111111','5511111111','unknown']);
+  assert.deepEqual(next.phones,['5522222222']); assert.equal(next.count,1);
+  for(const field of ['names','filters','parameter_values']) assert.deepEqual(Object.keys(next[field]),['5522222222']);
+  assert.deepEqual(next.sent_history,{});
+  assert.deepEqual(original,snapshot);
+  assert.deepEqual(excludeBulkPhones(original,[]),original);
+  assert.equal(excludeBulkPhones(original,original.phones).count,0);
+  assert.equal(excludeBulkPhones(normalizeBulkReview({phones:['5511111111']}),[]).names,undefined);
 });
 
 test("bulk imports that require a column selection keep safe empty review collections", () => {
