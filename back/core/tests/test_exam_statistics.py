@@ -1,5 +1,6 @@
 from datetime import datetime,timezone as dtz
 import json
+import re
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -43,7 +44,9 @@ def test_delivery_dates_timezone_scores_and_read_only(auth_client):
     assert len(queries)<15
     sql=' '.join(q['sql'].lower() for q in queries)
     assert 'update ' not in sql and 'insert ' not in sql and 'delete ' not in sql
-    assert '"answers"' not in sql and '"snapshot"' not in sql and '"cv_text"' not in sql
+    assert '"answers"' not in sql and '"cv_text"' not in sql
+    # JSON predicates identify offline imports, but never select whole snapshots.
+    assert not re.search(r'(select |, )"recruitment_exam_attempts"\."snapshot"(?=,| from)',sql)
     assert 'access_token' not in json.dumps(data) and 'email' not in json.dumps(data)
 
 

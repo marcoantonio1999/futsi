@@ -32,6 +32,7 @@ export function LegacyExamKey({ questions, busy, onSave, onError }: { questions:
 
 export type Grading = { score?: number; review?: boolean; error?: string; questions?: Record<string, { points: number; reason: string; review: boolean }> };
 export function ExamGrade({ status, grading }: { status?: string; grading?: Grading }) {
+  if (status === 'review') return <span className="exam-late">{grading?.error || 'Requiere revisión manual'}</span>;
   if (status === 'graded') return <span><strong>{grading?.score} / 10</strong>{grading?.review && <small className="exam-late">Requiere revisión humana</small>}</span>;
   return <span>{status === 'error' ? grading?.error : status === 'processing' ? 'En proceso / revisar si se interrumpió' : 'Pendiente de calificar'}</span>;
 }

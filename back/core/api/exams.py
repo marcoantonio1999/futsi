@@ -103,6 +103,12 @@ def attempt_data(a, private=False):
         result.update(id=a.id, name=a.name, email=a.email, phone=a.phone,
                       grading_status=a.grading_status, grading=a.grading,
                       graded_at=a.graded_at.isoformat() if a.graded_at else None)
+        offline = a.snapshot.get('offline_import', {})
+        if isinstance(offline, dict) and offline.get('source') == 'pdf_manual':
+            # Date-only anchors support historical day filters, not invented clocks.
+            result.update(started_at=None, deadline_at=None, elapsed_seconds=None,
+                          timed_out=False, over_time=False, offline_import={
+                              key: offline.get(key) for key in ('completed_on', 'imported_at', 'ambiguous_answers')})
     return result
 
 

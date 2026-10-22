@@ -44,17 +44,19 @@ class ExamStatisticsView(APIView):
         # Submissions belong to their delivery date, not the date their attempt started.
         delivered = score_rows(rows.filter(submitted_at__gte=begin, submitted_at__lt=stop))
         valid = Q(profile_score__gte=0, profile_score__lte=10)
+        offline = Q(snapshot__offline_import__source='pdf_manual')
+        known_timing = Q(snapshot__offline_import__source__isnull=True) | ~offline
         metrics = dict(delivered=Count('id'), graded=Count('id', filter=valid),
             average_score=Avg('profile_score', filter=valid), highest_score=Max('profile_score', filter=valid),
             lowest_score=Min('profile_score', filter=valid),
             grading_errors=Count('id', filter=Q(grading_status='error')),
             pending_grading=Count('id', filter=~Q(grading_status__in=['graded','error'])),
             invalid_grades=Count('id', filter=Q(grading_status='graded') & (Q(profile_score__isnull=True)|Q(profile_score__lt=0)|Q(profile_score__gt=10))))
-        summary = delivered.aggregate(**metrics)
+        summary = delivered.aggregate(**metrics, imported_offline=Count('id', filter=offline))
         elapsed = ExpressionWrapper(F('submitted_at')-F('started_at'), output_field=DurationField())
-        duration = delivered.filter(submitted_at__gte=F('started_at')).aggregate(value=Avg(elapsed))['value']
+        duration = delivered.filter(known_timing, submitted_at__gte=F('started_at')).aggregate(value=Avg(elapsed))['value']
         summary['average_seconds'] = round(duration.total_seconds()) if duration is not None else None
-        started = rows.filter(started_at__gte=begin, started_at__lt=stop)
+        started = rows.filter(known_timing, started_at__gte=begin, started_at__lt=stop)
         summary['started'] = started.count()
         summary['without_delivery'] = started.filter(submitted_at__isnull=True).count()
         created = exams.filter(created_at__gte=begin, created_at__lt=stop)
