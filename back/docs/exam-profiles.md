@@ -14,6 +14,10 @@ el universo sobre el que se calcula ese percentil.
 `#/examenes/perfiles` lista entregas existentes, incluso antes de capturar el CV.
 Un perfil corresponde a una entrega/contexto de postulación. La misma persona
 puede aparecer en distintos exámenes; no se fusionan puestos o notas automáticamente.
+El puesto usa el título del examen cuando no hay un valor específico guardado,
+sin backfill ni escrituras al leer. El editor no exige recapturarlo: «Asignar otro
+puesto» habilita una excepción y «Usar el puesto del examen» recupera el valor
+heredado. El filtro de puesto sigue la misma regla y respeta las excepciones.
 
 `GET /api/recruitment-profiles/` agrega `exam`, `position`, `keywords` (hasta 20
 frases separadas por comas), `keyword_mode=all|any`, `form_q`, `has_cv=yes`, `has_form=yes`.

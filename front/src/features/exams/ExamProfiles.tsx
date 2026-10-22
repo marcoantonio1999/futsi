@@ -4,7 +4,7 @@ import { filterQuery } from './ExamResultFilters';
 import { readProfileForm, type FormText } from './readProfileForm';
 import './ExamProfiles.css';
 
-type Profile = { id: number; name: string; email: string; phone: string; exam_id: number; exam_title: string; score: number | null; grading_status: string; position: string; has_cv: boolean; has_form: boolean; matched_keywords: string[]; cv_text?: string; form_text?: string; form_fields?: Record<string,string> };
+type Profile = { id: number; name: string; email: string; phone: string; exam_id: number; exam_title: string; score: number | null; grading_status: string; position: string; position_source?: 'exam' | 'saved'; has_cv: boolean; has_form: boolean; matched_keywords: string[]; cv_text?: string; form_text?: string; form_fields?: Record<string,string> };
 type Page = { count: number; page: number; results: Profile[]; filters: { graded_count: number; top_threshold: number | null } };
 type ExamOption = { id:number; title:string };
 type ImportRow = { name:string; data?:FormText; match_status:string; candidate:Profile|null; candidates:Profile[]; chosen:string; search:string; error:string; saved:boolean };
@@ -15,6 +15,7 @@ const matchLabel = (status:string) => ({matched:'Coincidencia de contacto',ambig
 export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[] }) {
   const [draft,setDraft]=useState(initial), [applied,setApplied]=useState(initial);
   const [rows,setRows]=useState<Page|null>(null), [detail,setDetail]=useState<Profile|null>(null);
+  const [customPosition,setCustomPosition]=useState(false);
   const [busy,setBusy]=useState(false), [error,setError]=useState(''), [notice,setNotice]=useState('');
   const [imports,setImports]=useState<ImportRow[]>([]), [importOpen,setImportOpen]=useState(false);
   async function run(fn:()=>Promise<void>) { setBusy(true);setError('');setNotice('');try { await fn(); } catch(e){setError(errorText(e));}finally{setBusy(false);} }
@@ -22,10 +23,10 @@ export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[
   useEffect(()=>{void run(()=>load(initial));},[token]);
   const change=(key:keyof typeof initial,value:string)=>setDraft(d=>({...d,[key]:value}));
   function apply(e:FormEvent) {e.preventDefault();void run(async()=>{await load(draft);setApplied(draft);});}
-  async function open(id:number) {await run(async()=>{setDetail(await apiRequest<Profile>(`/recruitment-profiles/${id}/`,token));});}
+  async function open(id:number) {await run(async()=>{const p=await apiRequest<Profile>(`/recruitment-profiles/${id}/`,token);setCustomPosition(Boolean(p.position&&p.position!==p.exam_title));setDetail({...p,position:p.position||p.exam_title});});}
   async function save(e:FormEvent) {
     e.preventDefault();if(!detail)return;
-    await run(async()=>{await apiRequest(`/recruitment-profiles/${detail.id}/`,token,{method:'POST',body:JSON.stringify({position:detail.position,cv_text:detail.cv_text||'',form_text:detail.form_text||''})});setDetail(null);await load();setNotice('Perfil guardado. Solo texto; el examen y su calificación no cambiaron.');});
+    await run(async()=>{await apiRequest(`/recruitment-profiles/${detail.id}/`,token,{method:'POST',body:JSON.stringify({position:customPosition?detail.position:'',cv_text:detail.cv_text||'',form_text:detail.form_text||''})});setDetail(null);await load();setNotice('Perfil guardado. Solo texto; el examen y su calificación no cambiaron.');});
   }
   const updateImport=(index:number,patch:Partial<ImportRow>)=>setImports(items=>items.map((r,i)=>i===index?{...r,...patch}:r));
   async function readFiles(files:File[]) {
@@ -70,8 +71,8 @@ export function ExamProfiles({ token, exams }: { token:string; exams:ExamOption[
       {imports.map((row,index)=><article className="exam-import-row" key={index}><h3>{row.name}</h3>{row.error&&<p className="exam-error" role="alert">{row.error}</p>}{row.saved?<p className="exam-notice">Guardado correctamente</p>:row.data&&<><p>{matchLabel(row.match_status)}{row.candidate?` · ${row.candidate.name} · ${row.candidate.exam_title}`:''}</p><details><summary>Ver texto extraído</summary><pre>{row.data.form_text}</pre></details><label>Buscar participante para vincular manualmente<input value={row.search} onChange={e=>updateImport(index,{search:e.target.value})} placeholder="Nombre, correo o teléfono" disabled={busy}/></label><button disabled={busy} onClick={()=>void lookup(index)}>Buscar participante</button><label>Participante del formato<select value={row.chosen} disabled={busy} onChange={e=>updateImport(index,{chosen:e.target.value})}><option value="">Selecciona una entrega</option>{row.candidates.map(p=><option key={p.id} value={p.id}>{p.name} · {p.email} · {p.exam_title}</option>)}</select></label><button disabled={busy||!row.chosen} onClick={()=>void commit([index])}>Confirmar y guardar formato</button></>}</article>)}
       <div className="exam-actions">{imports.some(r=>r.match_status==='matched'&&!r.saved&&r.chosen)&&<button className="exam-primary" disabled={busy} onClick={()=>void commit(imports.map((_,i)=>i).filter(i=>imports[i].match_status==='matched'&&!imports[i].saved&&Boolean(imports[i].chosen)))}>Guardar coincidencias revisadas</button>}<button disabled={busy} onClick={()=>setImportOpen(false)}>Cerrar carga de formatos</button></div>
     </section>}
-    {detail?<form className="exam-card" onSubmit={save}><div className="exam-heading"><div><h2>{detail.name}</h2><p>{detail.email} · {detail.phone}</p><p>{detail.exam_title} · {detail.score??'Por calificar'}</p></div><button type="button" disabled={busy} onClick={()=>setDetail(null)}>Volver a perfiles</button></div>
-      <label>Puesto al que se postula<input maxLength={180} value={detail.position} onChange={e=>setDetail({...detail,position:e.target.value})}/></label>
+    {detail?<form className="exam-card" onSubmit={save}><div className="exam-heading"><div><h2>{detail.name}</h2><p>{detail.email} · {detail.phone}</p><p>{customPosition?`${detail.exam_title} · `:''}{detail.score===null?'Por calificar':`Calificación: ${detail.score} / 10`}</p></div><button type="button" disabled={busy} onClick={()=>setDetail(null)}>Volver a perfiles</button></div>
+      {customPosition?<><label>Puesto al que se postula<input maxLength={180} value={detail.position} onChange={e=>setDetail({...detail,position:e.target.value})}/></label><button type="button" disabled={busy} onClick={()=>{setCustomPosition(false);setDetail({...detail,position:detail.exam_title});}}>Usar el puesto del examen</button></>:<div className="exam-notice"><p>El puesto corresponde al examen: <strong>{detail.exam_title}</strong>. No necesitas capturarlo de nuevo.</p><button type="button" disabled={busy} onClick={()=>setCustomPosition(true)}>Asignar otro puesto</button></div>}
       <label>Texto del CV<textarea aria-label="Texto del CV" className="exam-profile-text" maxLength={80000} value={detail.cv_text||''} onChange={e=>setDetail({...detail,cv_text:e.target.value})} placeholder="Pega el texto del CV. No se necesita el archivo original." /></label>
       <label>Importar texto del CV (TXT)<input type="file" accept=".txt,text/plain" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void run(async()=>{if(file.size>320000)throw new Error('El TXT supera 320 KB.');const value=await file.text();if(value.length>80000)throw new Error('El CV supera 80 000 caracteres.');setDetail({...detail,cv_text:value});});}}/></label>
       <label>Texto del formato de empleo<textarea aria-label="Texto del formato de empleo" maxLength={60000} value={detail.form_text||''} onChange={e=>setDetail({...detail,form_text:e.target.value})}/></label>

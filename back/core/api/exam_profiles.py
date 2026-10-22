@@ -27,7 +27,9 @@ def profile_data(a, detail=False, terms=()):
     result = dict(id=a.pk, name=a.name, email=a.email, phone=a.phone,
                   exam_id=a.exam_id, exam_title=a.exam.title, submitted_at=a.submitted_at.isoformat(),
                   grading_status=a.grading_status, score=a.grading.get('score') if a.grading_status == 'graded' else None,
-                  position=p.position if p else '', has_cv=bool(p and p.cv_text) if detail else a.cv_available,
+                  position=p.position if p and p.position else a.exam.title,
+                  position_source='saved' if p and p.position else 'exam',
+                  has_cv=bool(p and p.cv_text) if detail else a.cv_available,
                   has_form=bool(p and p.form_text) if detail else a.form_available,
                   updated_at=p.updated_at.isoformat() if p else None,
                   matched_keywords=[t for i,t in enumerate(terms) if getattr(a,f'profile_keyword_{i}',False)])

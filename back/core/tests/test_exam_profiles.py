@@ -52,6 +52,28 @@ def test_empty_top_has_no_fake_score(auth_client):
     assert c.get(f'/api/recruitment-exams/{e["id"]}/?top=10').json()['results']==[]
 
 
+def test_position_inherits_exam_without_creating_or_backfilling_profiles(auth_client):
+    c,_,_=auth_client();e=create_exam(c);a=attempt(e)
+    RecruitmentExam.objects.filter(pk=e['id']).update(title='Business Operations & AI')
+    data=c.get(f'/api/recruitment-profiles/{a.id}/').json()
+    assert data['position']=='Business Operations & AI' and data['position_source']=='exam'
+    assert c.get('/api/recruitment-profiles/?position=Business').json()['count']==1
+    assert not RecruitmentProfile.objects.exists()
+
+
+def test_position_override_survives_and_empty_position_restores_exam_default(auth_client):
+    c,_,_=auth_client();e=create_exam(c);a=attempt(e)
+    endpoint=f'/api/recruitment-profiles/{a.id}/'
+    data=c.post(endpoint,{'position':'Analista Python','cv_text':'Excel'},format='json').json()
+    assert data['position']=='Analista Python' and data['position_source']=='saved'
+    assert c.get('/api/recruitment-profiles/?position=Analista').json()['count']==1
+    assert c.get('/api/recruitment-profiles/?position=evaluación').json()['count']==0
+    data=c.post(endpoint,{'position':''},format='json').json()
+    assert data['position']==e['title'] and data['position_source']=='exam'
+    assert c.get('/api/recruitment-profiles/?position=evaluación').json()['count']==1
+    assert data['cv_text']=='Excel'
+
+
 def test_profile_literal_keywords_all_any_accent_and_punctuation(auth_client):
     c,_,_=auth_client();e=create_exam(c)
     a,b,d=[attempt(e,i) for i in range(1,4)]

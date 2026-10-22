@@ -21,7 +21,18 @@ try {
   await nav('Perfiles');await page.getByRole('heading',{name:'Perfiles',exact:true}).waitFor();
   await page.getByText('12 perfiles encontrados',{exact:true}).waitFor();await fits();
   if(width<=900)assert(!(await page.getByRole('dialog',{name:'Navegación de exámenes'}).isVisible()));
+  const inherited=page.locator(width<=600?'.exam-profile-card':'.exam-profile-table tbody tr').filter({hasText:'qa1@example.invalid'});
+  await inherited.getByRole('button',{name:'Ver / editar perfil'}).click();
+  await page.getByText('El puesto corresponde al examen:',{exact:false}).waitFor();
+  assert.equal(await page.getByLabel('Puesto al que se postula',{exact:true}).count(),0);
+  await page.getByRole('button',{name:'Asignar otro puesto',exact:true}).click();
+  assert.equal(await page.getByLabel('Puesto al que se postula',{exact:true}).inputValue(),'QA perfiles ficticios');
+  await page.getByRole('button',{name:'Usar el puesto del examen',exact:true}).click();
+  await fits();await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-inherited-position-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();
+  await page.getByText('Perfil guardado.',{exact:false}).waitFor();
   await person().getByRole('button',{name:'Ver / editar perfil'}).click();
+  if(await page.getByRole('button',{name:'Asignar otro puesto',exact:true}).isVisible())await page.getByRole('button',{name:'Asignar otro puesto',exact:true}).click();
   await page.getByLabel('Puesto al que se postula',{exact:true}).fill('Analista QA confirmado');
   await page.getByLabel('Texto del CV',{exact:true}).fill('Experiencia en EXCEL, Python y atención al cliente. Perfil ficticio QA.');
   await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();

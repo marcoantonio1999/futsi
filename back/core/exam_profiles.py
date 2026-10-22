@@ -78,7 +78,10 @@ def filtered_attempts(rows, params, profiles=False):
             default=Value(False),output_field=BooleanField()) for i,term in enumerate(terms)})
     if profiles:
         if params.get('position'):
-            rows = rows.filter(profile__position__icontains=params['position'][:180])
+            position=params['position'][:180]
+            inherited=Q(profile__isnull=True) | Q(profile__position='')
+            rows = rows.filter(Q(profile__position__icontains=position) |
+                               (inherited & Q(exam__title__icontains=position)))
         if params.get('form_q'):
             rows = rows.filter(profile__form_search__contains=normalized(params['form_q'][:180]))
         if params.get('has_cv') == 'yes':
