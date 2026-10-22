@@ -1,0 +1,61 @@
+// Real isolated Django/SQLite only. No production data, Zoom or WhatsApp sends.
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const base='http://127.0.0.1:5206';
+const browser=await chromium.launch({headless:true,channel:'chrome'});
+try {
+ for(const width of [320,390,1440]) {
+  const context=await browser.newContext({viewport:{width,height:950}}),page=await context.newPage(),errors=[],writes=[];
+  const email=`seen-${width}-${Date.now()}@example.invalid`,name=`Revisión Ficticia ${width}`;
+  const submitted=await context.request.post(base+'/api/public-employment-form/',{data:{submit_key:crypto.randomUUID(),consent:true,fields:{nombres:name,apellido_paterno:'QA',correo:email,telefono:'5500000000',puesto_solicitado:'Revisión QA',firma_solicitante:name}}});
+  assert.equal(submitted.status(),201);
+  const login=await context.request.post(base+'/api/auth/login/',{data:{username:'exam_profiles_qa',password:'fictional-local-profile-2026'}});
+  assert.equal(login.status(),200);const {token}=await login.json(),headers={Authorization:'Token '+token};
+  const listed=await (await context.request.get(base+'/api/recruitment-applications/?q='+encodeURIComponent(email),{headers})).json();
+  assert.equal(listed.count,1);const id=listed.results[0].id,fullName=listed.results[0].name;
+  const detailBefore=await (await context.request.get(base+`/api/recruitment-applications/${id}/`,{headers})).json();
+  await page.addInitScript(t=>localStorage.setItem('futsi_token',t),token);
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('request',r=>{if(r.method()==='POST'){assert.equal(new URL(r.url()).pathname,`/api/recruitment-applications/${id}/`);assert.deepEqual(Object.keys(r.postDataJSON()),['seen']);writes.push(r.postDataJSON());}});
+  await page.goto(base+'/#/examenes');
+  await page.getByRole('heading',{name:'Mis exámenes',exact:true}).waitFor();
+  if(width<=900)await page.getByRole('button',{name:'Abrir menú de exámenes'}).click();
+  await page.getByRole('navigation',{name:'Menú de exámenes'}).filter({visible:true}).getByRole('button',{name:'Formatos postulaciones',exact:true}).click();
+  if(width<=900)assert(!(await page.getByRole('dialog',{name:'Navegación de exámenes'}).isVisible()));
+  await page.getByLabel('Buscar en los datos del formato',{exact:true}).fill(email);
+  await page.getByRole('button',{name:'Filtrar formatos',exact:true}).click();
+  await page.getByText('1 formatos recibidos',{exact:true}).waitFor();
+  const check=()=>page.getByRole('checkbox',{name:`Ya visto: ${fullName}`,exact:true});
+  assert(!(await check().isChecked()));assert.equal(writes.length,0);
+  await check().click();await page.getByText('Postulación marcada como ya vista.',{exact:false}).waitFor();
+  assert(await check().isChecked());assert.equal(writes.length,1);
+  assert(await page.getByText('Marcado por exam_profiles_qa',{exact:false}).isVisible());
+  assert((await check().locator('..').boundingBox()).height>=44);
+  const after=await (await context.request.get(base+`/api/recruitment-applications/${id}/`,{headers})).json();
+  for(const key of ['fields','receipt','position','attempt_id','exam_title','submitted_at','link_status'])assert.deepEqual(after[key],detailBefore[key]);
+  await page.reload();await page.getByRole('button',{name:'Filtrar formatos',exact:true}).waitFor();
+  await page.getByLabel('Buscar en los datos del formato',{exact:true}).fill(email);
+  await page.getByLabel('Revisión de postulaciones',{exact:true}).selectOption('no');
+  await page.getByRole('button',{name:'Filtrar formatos',exact:true}).click();await page.getByText('0 formatos recibidos',{exact:true}).waitFor();
+  await page.getByLabel('Revisión de postulaciones',{exact:true}).selectOption('yes');
+  await page.getByRole('button',{name:'Filtrar formatos',exact:true}).click();await page.getByText('1 formatos recibidos',{exact:true}).waitFor();
+  assert(await check().isChecked());assert.equal(writes.length,1);
+  await page.getByRole('button',{name:'Ver todos los datos',exact:true}).click();
+  await page.getByRole('button',{name:'Volver a formatos',exact:true}).waitFor();
+  assert.equal(writes.length,1);await check().click();await page.getByText('Postulación marcada como sin ver.',{exact:true}).waitFor();
+  assert(!(await check().isChecked()));assert.equal(writes.length,2);
+  await page.getByRole('button',{name:'Volver a formatos',exact:true}).click();await page.getByText('0 formatos recibidos',{exact:true}).waitFor();
+  await page.getByLabel('Revisión de postulaciones',{exact:true}).selectOption('no');await page.getByRole('button',{name:'Filtrar formatos',exact:true}).click();await page.getByText('1 formatos recibidos',{exact:true}).waitFor();
+  await page.route(`**/api/recruitment-applications/${id}/`,async route=>route.request().method()==='POST'?route.fulfill({status:503,json:{detail:'Fallo ficticio al guardar'}}):route.continue());
+  await check().click();await page.getByRole('alert').filter({hasText:'Fallo ficticio al guardar'}).waitFor();
+  assert(!(await check().isChecked()));assert.equal(writes.length,3);await page.waitForTimeout(2200);assert.equal(writes.length,3);
+  await page.unroute(`**/api/recruitment-applications/${id}/`);
+  await page.getByLabel('Revisión de postulaciones',{exact:true}).selectOption('');await page.getByRole('button',{name:'Filtrar formatos',exact:true}).click();
+  await check().click();await page.getByText('Postulación marcada como ya vista.',{exact:false}).waitFor();
+  assert.equal(writes.length,4);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/application-seen-${width}.png`,fullPage:true});
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({width,persistent:true,reversible:true,explicitOnly:true,filters:true,detailAndList:true,failedWriteNotApplied:true,noRetry:true,noZoomOrWhatsApp:true,touch44:true,overflow:false}));
+  await context.close();
+ }
+} finally {await browser.close();}

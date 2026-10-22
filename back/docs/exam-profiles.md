@@ -1,5 +1,29 @@
 # Perfiles y filtros de evaluaciones - 22/10/2026
 
+## Revisión manual de postulaciones
+
+«Formatos postulaciones» tiene un check explícito «Ya visto» en cada tarjeta y
+en el detalle. Abrir el formato no lo marca. `POST /api/recruitment-applications/<id>/`
+acepta exclusivamente `{"seen": true|false}` para esta operación; no se mezcla
+con selección de examen ni se admiten autor/fecha desde el cliente. Bajo bloqueo
+del registro guarda `seen_at` y `seen_by` del usuario autenticado. Repetir el
+mismo estado es idempotente y conserva al primer autor/fecha; quitarlo limpia
+ambos valores. Conserva texto, contactos, vínculo, perfil y calificación.
+
+Listado/detalle privados devuelven `seen`, `seen_at` y nombre de usuario del
+autor. `seen=yes|no` filtra antes de paginar. Consulta el nombre en el mismo JOIN
+sin N+1 ni descargar el registro completo del usuario. La migración 0075 agrega
+solo columnas nulas y FK privada a la tabla existente; no marca datos históricos.
+No cambia RLS/grants ni expone la marca en el formulario/recibo público.
+
+El checkbox confirma el guardado antes de cambiar visualmente y conserva el
+estado anterior si falla. Sin reintentos, sondeo ni envío de Zoom/WhatsApp: la
+marca organiza la revisión humana, no acredita que una invitación fue enviada.
+`test_application_seen.py` valida permisos, estado reversible/idempotente,
+preservación de datos y lectura sin marcar. `application-seen.browser.mjs` prueba
+lista/detalle, filtros, persistencia, fallos sin retry y 320/390/1440 px con API
+y SQLite locales ficticios.
+
 ## Estadísticas de exámenes
 
 `#/examenes/estadisticas` usa `GET /api/recruitment-exams/statistics/`, privado

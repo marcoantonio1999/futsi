@@ -94,6 +94,8 @@ class RecruitmentApplication(models.Model):
     linked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT)
     submitted_at = models.DateTimeField(auto_now_add=True)
     consent_version = models.CharField(max_length=30, default='employment_v1')
+    seen_at = models.DateTimeField(null=True, blank=True)
+    seen_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='seen_recruitment_applications')
 
     class Meta:
         db_table = 'recruitment_applications'

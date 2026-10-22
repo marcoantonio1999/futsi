@@ -3,8 +3,9 @@ import uuid
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import Q, F
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
@@ -92,7 +93,9 @@ class PublicEmploymentFormView(APIView):
 def application_data(row,detail=False):
     result=dict(id=row.id,name=row.name,email=row.email,phone=row.phone,position=row.position,
         submitted_at=row.submitted_at.isoformat(),receipt=str(row.receipt),link_status=row.link_status,
-        attempt_id=row.attempt_id,exam_title=row.attempt.exam.title if row.attempt_id else None)
+        attempt_id=row.attempt_id,exam_title=row.attempt.exam.title if row.attempt_id else None,
+        seen=row.seen_at is not None,seen_at=row.seen_at.isoformat() if row.seen_at else None,
+        seen_by=(getattr(row,'seen_by_name',None) or row.seen_by.username) if row.seen_by_id else None)
     if detail:
         result.update(fields=row.fields,candidates=[dict(id=a.id,name=a.name,email=a.email,phone=a.phone,exam_title=a.exam.title) for a in candidates(row,same_vacancy=False)])
     return result
@@ -102,7 +105,7 @@ class EmploymentFormsAdminView(APIView):
     permission_classes=[CanManageExams]
 
     def get(self,request,pk=None):
-        rows=RecruitmentApplication.objects.select_related('attempt__exam')
+        rows=RecruitmentApplication.objects.select_related('attempt__exam').annotate(seen_by_name=F('seen_by__username'))
         if pk is not None: return Response(application_data(get_object_or_404(rows,pk=pk),True))
         query=request.query_params.get('q','').strip()[:180]
         if query: rows=rows.filter(search_text__contains=normalized(query))
@@ -110,6 +113,9 @@ class EmploymentFormsAdminView(APIView):
         if position: rows=rows.filter(position__icontains=position)
         status=request.query_params.get('status','')
         if status in {'linked','pending','review'}: rows=rows.filter(link_status=status)
+        seen=request.query_params.get('seen','')
+        if seen not in {'','yes','no'}: raise ValidationError({'detail':'Filtro de revisión inválido.'})
+        if seen: rows=rows.filter(seen_at__isnull=seen=='no')
         try: page=min(1000000,max(1,int(request.query_params.get('page',1))))
         except ValueError: raise ValidationError({'detail':'Página inválida.'})
         return Response(dict(public_url=FORM_URL,sections=SECTIONS,count=rows.count(),page=page,
@@ -117,8 +123,18 @@ class EmploymentFormsAdminView(APIView):
 
     @transaction.atomic
     def post(self,request,pk):
+        if isinstance(request.data,dict) and set(request.data)=={'seen'}:
+            if type(request.data['seen']) is not bool:
+                raise ValidationError({'detail':'La marca «Ya visto» debe ser verdadero o falso.'})
+            row=get_object_or_404(RecruitmentApplication.objects.select_for_update(),pk=pk)
+            desired=request.data['seen']
+            if desired != (row.seen_at is not None):
+                row.seen_at=timezone.now() if desired else None
+                row.seen_by=request.user if desired else None
+                row.save(update_fields=['seen_at','seen_by'])
+            return Response(application_data(row))
         if not isinstance(request.data,dict) or set(request.data)-{'attempt_id'}:
-            raise ValidationError({'detail':'Selecciona únicamente la entrega de examen.'})
+            raise ValidationError({'detail':'Envía solo la marca «Ya visto» o selecciona únicamente la entrega de examen.'})
         try: attempt_id=int(request.data.get('attempt_id'))
         except (ValueError,TypeError): raise ValidationError({'detail':'Selecciona una entrega de examen.'})
         attempt=get_object_or_404(RecruitmentExamAttempt.objects.select_for_update(),pk=attempt_id,submitted_at__isnull=False)
