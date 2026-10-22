@@ -34,13 +34,13 @@ def form_text(fields):
     return '\n'.join(f'{LABELS.get(k,k)}: {v}' for k,v in fields.items() if v and not k.startswith('_'))
 
 
-def candidates(application):
+def candidates(application, same_vacancy=True):
     rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False).select_related('exam')
     if application.exam_id:
         rows = rows.filter(exam_id=application.exam_id)
     rows = rows.filter(Q(identity_email=application.identity_email)|Q(identity_phone=application.identity_phone))
     # A generic form must not cross-link different vacancies by contact alone.
-    return [a for a in rows.order_by('-id').iterator() if application.exam_id or normalized(a.exam.title)==normalized(application.position)]
+    return [a for a in rows.order_by('-id').iterator() if not same_vacancy or application.exam_id or normalized(a.exam.title)==normalized(application.position)]
 
 
 def link_application(application, attempt, actor=None):
@@ -64,7 +64,7 @@ def auto_link(application):
         attempt=RecruitmentExamAttempt.objects.select_for_update().get(pk=matches[0].pk)
         link_application(application,attempt)
     else:
-        application.link_status='review' if matches else 'pending'
+        application.link_status='review' if matches or candidates(application,same_vacancy=False) else 'pending'
         application.save(update_fields=['link_status'])
 
 
@@ -74,5 +74,4 @@ def link_forms_after_exam(attempt):
     forms=RecruitmentApplication.objects.select_for_update().filter(attempt__isnull=True,
         identity_email=attempt.identity_email,identity_phone=attempt.identity_phone).filter(Q(exam=attempt.exam)|Q(exam__isnull=True))
     for application in forms:
-        if application.exam_id or normalized(application.position)==normalized(attempt.exam.title):
-            auto_link(application)
+        auto_link(application)

@@ -94,7 +94,7 @@ def application_data(row,detail=False):
         submitted_at=row.submitted_at.isoformat(),receipt=str(row.receipt),link_status=row.link_status,
         attempt_id=row.attempt_id,exam_title=row.attempt.exam.title if row.attempt_id else None)
     if detail:
-        result.update(fields=row.fields,candidates=[dict(id=a.id,name=a.name,email=a.email,phone=a.phone,exam_title=a.exam.title) for a in candidates(row)])
+        result.update(fields=row.fields,candidates=[dict(id=a.id,name=a.name,email=a.email,phone=a.phone,exam_title=a.exam.title) for a in candidates(row,same_vacancy=False)])
     return result
 
 
@@ -125,7 +125,7 @@ class EmploymentFormsAdminView(APIView):
         row=get_object_or_404(RecruitmentApplication.objects.select_for_update(),pk=pk)
         if row.attempt_id and row.attempt_id!=attempt.pk:
             return Response({'detail':'Este formato ya está vinculado. No se modificó.'},status=409)
-        if attempt not in candidates(row):
+        if attempt not in candidates(row,same_vacancy=False):
             return Response({'detail':'No coincide el contacto o el puesto. Revisa la identidad antes de vincular.'},status=409)
         link_application(row,attempt,request.user)
         return Response(application_data(row,True))

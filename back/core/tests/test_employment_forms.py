@@ -102,11 +102,14 @@ def test_other_vacancy_never_auto_matches_and_admin_filters_text(auth_client):
     c,_,_=auth_client();e=create_exam(c);attempt(e)
     assert submit(payload(puesto_solicitado='Otra vacante',software='Excel Python')).status_code==201
     assert RecruitmentApplication.objects.get().attempt_id is None
-    result=c.get('/api/recruitment-applications/?q=python&position=Otra&status=pending').json()
+    result=c.get('/api/recruitment-applications/?q=python&position=Otra&status=review').json()
     assert result['count']==1 and 'fields' not in result['results'][0]
     row=result['results'][0]
     detail=c.get(f'/api/recruitment-applications/{row["id"]}/').json()
     assert detail['fields']['software']=='Excel Python'
+    # A differently worded vacancy is never auto-linked, but HR can review it.
+    assert len(detail['candidates'])==1
+    assert c.post(f'/api/recruitment-applications/{row["id"]}/',{'attempt_id':detail['candidates'][0]['id']},format='json').status_code==200
     assert c.get('/api/recruitment-applications/?q=imposible').json()['count']==0
 
 
