@@ -37,6 +37,7 @@ try {
   await page.getByLabel('Texto del CV',{exact:true}).fill('Experiencia en EXCEL, Python y atención al cliente. Perfil ficticio QA.');
   await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();
   await page.getByText('Perfil guardado.',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'Filtros',exact:true}).click();
   await page.getByLabel('Cargar palabras clave (TXT)',{exact:true}).setInputFiles({name:'conocimientos-qa.txt',mimeType:'text/plain',buffer:Buffer.from('excel\npython')});
   await page.getByRole('button',{name:'Filtrar perfiles',exact:true}).click();
   await page.getByText('1 perfiles encontrados',{exact:true}).waitFor();
@@ -57,6 +58,7 @@ try {
   await page.getByText('El formato tiene campos digitales, pero están vacíos.',{exact:false}).waitFor();
   assert.equal(imports.length,requestsBeforeBlank,'blank templates must not be sent to the API');
   await page.getByRole('button',{name:'Cerrar carga de formatos',exact:true}).click();
+  await page.getByRole('button',{name:'Filtros',exact:true}).click();
   await page.getByLabel('Datos del formato',{exact:true}).fill('ingenieria');
   await page.getByRole('button',{name:'Filtrar perfiles',exact:true}).click();
   await page.getByText('1 perfiles encontrados',{exact:true}).waitFor();
