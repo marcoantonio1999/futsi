@@ -1,5 +1,6 @@
 // Real local API and fictional exams only; never write to production.
 import assert from 'node:assert/strict';
+import {navigateExamSection} from './exam-admin-navigation.mjs';
 import {createRequire} from 'node:module';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const base='http://127.0.0.1:5187/';
@@ -13,7 +14,7 @@ try{
   await page.getByLabel('Usuario',{exact:true}).fill('exam_qa_vero');
   await page.getByLabel('Contraseña',{exact:true}).fill('local-fictional-exam-test-2026');
   await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
-  await page.getByRole('button',{name:'Nuevo examen',exact:true}).click();
+  await navigateExamSection(page,'Crear examen');
   await page.getByLabel('Nombre del examen',{exact:true}).fill('QA Opciones variables '+width);
   let q1=page.locator('fieldset').nth(0);
   assert.equal(await q1.locator('input').count(),2);

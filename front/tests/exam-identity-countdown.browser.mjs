@@ -1,5 +1,6 @@
 // Fictional contacts and real local API only.
 import assert from 'node:assert/strict';
+import {navigateExamSection} from './exam-admin-navigation.mjs';
 import {createRequire} from 'node:module';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({headless:true,channel:'chrome'});
@@ -9,7 +10,7 @@ try{
   const context=await browser.newContext({viewport:{width,height:900}});
   const admin=await context.newPage();await admin.goto(base+'#/examenes');
   await admin.getByLabel('Usuario',{exact:true}).fill('exam_qa_vero');await admin.getByLabel('Contraseña',{exact:true}).fill('local-fictional-exam-test-2026');
-  await admin.getByRole('button',{name:'Iniciar sesión',exact:true}).click();await admin.getByRole('button',{name:'Nuevo examen',exact:true}).click();
+  await admin.getByRole('button',{name:'Iniciar sesión',exact:true}).click();await navigateExamSection(admin,'Crear examen');
   await admin.getByLabel('Nombre del examen',{exact:true}).fill('QA Identidad y reloj '+width);
   await admin.getByLabel('Tipo de respuesta',{exact:true}).selectOption('open');await admin.getByLabel('Enunciado',{exact:true}).fill('Explica tu propuesta.');
   await admin.getByLabel('Respuesta esperada y criterios (privados)',{exact:true}).fill('Propuesta viable y clara.');

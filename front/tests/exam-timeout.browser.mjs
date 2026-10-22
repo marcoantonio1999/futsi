@@ -13,7 +13,7 @@ try {
   await admin.getByLabel('Usuario',{exact:true}).fill('exam_timeout_qa');
   await admin.getByLabel('Contraseña',{exact:true}).fill('fictional-local-exam-2026');
   await admin.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
-  await admin.getByRole('button',{name:'Nuevo examen',exact:true}).waitFor();
+  await admin.getByRole('heading',{name:'Mis exámenes',exact:true}).waitFor();
   const token=await admin.evaluate(()=>localStorage.getItem('futsi_token'));
   const questions=Array.from({length:40},(_,i)=>({kind:'choice',prompt:`Pregunta ficticia ${i+1}`,options:['Correcta','Incorrecta']}));
   const created=await admin.request.post(base+'/api/recruitment-exams/',{headers:{Authorization:'Token '+token},data:{title:'QA cierre automático',duration_minutes:60,questions,answer_key:Object.fromEntries(questions.map((_,i)=>[String(i+1),0]))}});

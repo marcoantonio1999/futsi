@@ -1,5 +1,6 @@
 // Real local Django API, isolated SQLite, fictional applicants only.
 import assert from 'node:assert/strict';
+import {navigateExamSection} from './exam-admin-navigation.mjs';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -18,8 +19,8 @@ try {
  await admin.getByLabel('Usuario', {exact:true}).fill('exam_qa_vero');
  await admin.getByLabel('Contraseña', {exact:true}).fill('local-fictional-exam-test-2026');
  await admin.getByRole('button', {name:'Iniciar sesión',exact:true}).click();
- await admin.getByRole('button', {name:'Nuevo examen',exact:true}).waitFor();
- await admin.getByRole('button', {name:'Nuevo examen',exact:true}).click();
+ await admin.getByRole('heading', {name:'Mis exámenes',exact:true}).waitFor();
+ await navigateExamSection(admin,'Crear examen');
  await admin.getByRole('button', {name:/Usar evaluación Business/}).click();
  await admin.getByLabel('Nombre del examen',{exact:true}).fill('QA · Business Operations 40 preguntas');
  assert.equal(await admin.locator('fieldset').count(),40);

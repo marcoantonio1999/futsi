@@ -1,5 +1,6 @@
 // Local isolated DB only. Three explicitly requested tiny, real Luna calls.
 import assert from 'node:assert/strict';
+import {navigateExamSection} from './exam-admin-navigation.mjs';
 import {createRequire} from 'node:module';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({headless:true,channel:'chrome'});
@@ -12,7 +13,7 @@ try {
   await page.getByLabel('Usuario',{exact:true}).fill('exam_qa_vero');
   await page.getByLabel('Contraseña',{exact:true}).fill('local-fictional-exam-test-2026');
   await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
-  await page.getByRole('button',{name:'Nuevo examen',exact:true}).click();
+  await navigateExamSection(page,'Crear examen');
   await page.getByLabel('Nombre del examen',{exact:true}).fill('QA Calificación '+width+' '+Date.now());
   await page.getByLabel('Enunciado',{exact:true}).fill('¿Cuánto es dos más dos?');
   await page.getByLabel('Opción A',{exact:true}).fill('Cuatro');
