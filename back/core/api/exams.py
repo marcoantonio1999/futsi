@@ -122,7 +122,11 @@ class ExamAdminView(APIView):
             page_rows = list(rows.select_for_update()[(page-1)*50:page*50])
             for attempt in page_rows:
                 expire_attempt(attempt)
+            from core.exam_profiles import filtered_attempts
+            rows, filters = filtered_attempts(rows, request.query_params)
+            page_rows = list(rows[(page-1)*50:page*50])
             return Response({'exam': exam_data(exam), 'count': rows.count(), 'page': page,
+                             'filters': filters,
                              'results': [attempt_data(a, True) for a in page_rows]})
         rows = RecruitmentExam.objects.annotate(attempt_count=Count('attempts'))[:200]
         return Response({'results': [exam_data(e) for e in rows]})

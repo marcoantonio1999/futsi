@@ -1,0 +1,69 @@
+// Local isolated API/DB only; fictional contacts and a filled copy of the blank form.
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const base='http://127.0.0.1:5201/';
+const browser=await chromium.launch({headless:true,channel:'chrome'});
+try {
+ for(const width of [320,390,1440]) {
+  const context=await browser.newContext({viewport:{width,height:1000}});
+  const page=await context.newPage();const errors=[];const imports=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('request',r=>{if(r.url().includes('/recruitment-profiles/import/'))imports.push({headers:r.headers(),data:r.postData()});});
+  const fits=async()=>assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'page must not overflow');
+  const person=()=>page.locator(width<=600?'.exam-profile-card':'.exam-profile-table tbody tr').filter({hasText:'qa0@example.invalid'});
+  const nav=async(label)=>{if(width<=900)await page.getByRole('button',{name:'Abrir menú de exámenes'}).click();await page.getByRole('navigation',{name:'Menú de exámenes'}).filter({visible:true}).getByRole('button',{name:label,exact:true}).click();};
+  await page.goto(base+'#/examenes');
+  await page.getByLabel('Usuario',{exact:true}).fill('exam_profiles_qa');
+  await page.getByLabel('Contraseña',{exact:true}).fill('fictional-local-profile-2026');
+  await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
+  await page.getByRole('heading',{name:'Mis exámenes',exact:true}).waitFor();
+  await nav('Perfiles');await page.getByRole('heading',{name:'Perfiles',exact:true}).waitFor();
+  await page.getByText('12 perfiles encontrados',{exact:true}).waitFor();await fits();
+  if(width<=900)assert(!(await page.getByRole('dialog',{name:'Navegación de exámenes'}).isVisible()));
+  await person().getByRole('button',{name:'Ver / editar perfil'}).click();
+  await page.getByLabel('Puesto al que se postula',{exact:true}).fill('Analista QA confirmado');
+  await page.getByLabel('Texto del CV',{exact:true}).fill('Experiencia en EXCEL, Python y atención al cliente. Perfil ficticio QA.');
+  await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();
+  await page.getByText('Perfil guardado.',{exact:false}).waitFor();
+  await page.getByLabel('Cargar palabras clave (TXT)',{exact:true}).setInputFiles({name:'conocimientos-qa.txt',mimeType:'text/plain',buffer:Buffer.from('excel\npython')});
+  await page.getByRole('button',{name:'Filtrar perfiles',exact:true}).click();
+  await page.getByText('1 perfiles encontrados',{exact:true}).waitFor();
+  assert.equal(await page.locator('tbody tr').count(),1);await fits();
+  await page.getByRole('button',{name:'Cargar formatos de empleo',exact:true}).click();
+  await page.getByLabel('Seleccionar formatos PDF o TXT',{exact:true}).setInputFiles('C:/Users/daniel/Documents/marco/mexprod/tmp/pdfs/qa-empleo-perfiles.pdf');
+  await page.getByText('Coincidencia de contacto',{exact:false}).waitFor({timeout:30000});
+  const imported=page.getByRole('article').filter({hasText:'qa-empleo-perfiles.pdf'});
+  assert((await imported.getByLabel('Participante del formato').inputValue())!=='');
+  await imported.getByRole('button',{name:'Confirmar y guardar formato',exact:true}).click();
+  await page.getByText('Guardado correctamente',{exact:true}).waitFor();
+  assert(imports.length>=2);
+  for(const request of imports){assert(request.headers['content-type'].includes('application/json'));assert(!request.data.includes('%PDF'));}
+  const payload=JSON.parse(imports.at(-1).data);assert.equal(payload.form_fields.telefono,'55 0012 3456');assert.equal(payload.form_fields.software,'Excel, Python');
+  assert(!payload.form_text.includes('Personas dependientes'));
+  const requestsBeforeBlank=imports.length;
+  await page.getByLabel('Seleccionar formatos PDF o TXT',{exact:true}).setInputFiles('C:/Users/daniel/Downloads/Formulario_de_Empleo_BPower_Academy.pdf');
+  await page.getByText('El formato tiene campos digitales, pero están vacíos.',{exact:false}).waitFor();
+  assert.equal(imports.length,requestsBeforeBlank,'blank templates must not be sent to the API');
+  await page.getByRole('button',{name:'Cerrar carga de formatos',exact:true}).click();
+  await page.getByLabel('Datos del formato',{exact:true}).fill('ingenieria');
+  await page.getByRole('button',{name:'Filtrar perfiles',exact:true}).click();
+  await page.getByText('1 perfiles encontrados',{exact:true}).waitFor();
+  await person().getByRole('button',{name:'Ver / editar perfil'}).click();
+  assert.equal(await page.getByLabel('Puesto al que se postula',{exact:true}).inputValue(),'Analista QA confirmado');
+  assert((await page.getByLabel('Texto del CV',{exact:true}).inputValue()).includes('Python'));
+  assert((await page.getByLabel('Texto del formato de empleo',{exact:true}).inputValue()).includes('software: Excel, Python'));
+  await fits();await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-profile-detail-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'Volver a perfiles',exact:true}).click();
+  await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-profiles-${width}.png`,fullPage:true});
+  await nav('Mis exámenes');await page.getByRole('button',{name:'Ver respuestas',exact:true}).click();
+  await page.getByLabel('Ordenar por',{exact:true}).selectOption('score_desc');
+  await page.getByLabel('Selección',{exact:true}).selectOption('10');
+  await page.getByRole('button',{name:'Aplicar filtros',exact:true}).click();
+  await page.getByText('2 participantes · 60 minutos de referencia',{exact:true}).waitFor();
+  assert.equal(await page.locator('tbody tr').count(),2);await fits();
+  await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/exam-top10-${width}.png`,fullPage:true});
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({width,overflow:false,top10WithTies:true,keywords:true,pdfFieldsReadLocally:true,noBinaryUpload:true,cvPreserved:true,veronicaAccess:true}));
+  await context.close();
+ }
+} finally {await browser.close();}

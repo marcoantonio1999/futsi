@@ -62,6 +62,12 @@ def court_communications_route_allowed(path, method):
 
 
 def veronica_route_allowed(path, method):
+    if path == '/api/recruitment-profiles/import/':
+        return method == 'POST'
+    if re.fullmatch(r'/api/recruitment-profiles/[1-9][0-9]*/', path):
+        return method in {'GET', 'HEAD', 'POST'}
+    if path == '/api/recruitment-profiles/':
+        return method in {'GET', 'HEAD'}
     if path == '/api/recruitment-exams/test-grading/':
         return method == 'POST'
     if re.fullmatch(r'/api/recruitment-exams/[1-9][0-9]*/grade/', path):

@@ -57,3 +57,19 @@ class RecruitmentExamAttempt(models.Model):
         if kwargs.get('update_fields') is not None:
             kwargs['update_fields'] = set(kwargs['update_fields']) | {'identity_email', 'identity_phone'}
         return super().save(*args, **kwargs)
+
+
+class RecruitmentProfile(models.Model):
+    """Private application profile; never retains uploaded binary documents."""
+    attempt = models.OneToOneField(RecruitmentExamAttempt, on_delete=models.PROTECT, related_name='profile')
+    position = models.CharField(max_length=180, blank=True)
+    cv_text = models.TextField(blank=True)
+    cv_search = models.TextField(blank=True, editable=False)
+    form_text = models.TextField(blank=True)
+    form_fields = models.JSONField(default=dict)
+    form_search = models.TextField(blank=True, editable=False)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'recruitment_profiles'
