@@ -42,9 +42,12 @@ class ExamStatisticsView(APIView):
             rows = rows.filter(exam_id=int(exam_id))
             exams = exams.filter(pk=int(exam_id))
         # Submissions belong to their delivery date, not the date their attempt started.
-        delivered = score_rows(rows.filter(submitted_at__gte=begin, submitted_at__lt=stop))
+        unknown_date = Q(snapshot__offline_import__source='xlsx_results', snapshot__offline_import__completed_on=None)
+        # Exclude by IDs: negating a JSON-path predicate can discard web rows
+        # whose optional metadata keys are absent (SQL NULL semantics).
+        delivered = score_rows(rows.exclude(pk__in=rows.filter(unknown_date).values('pk')).filter(submitted_at__gte=begin, submitted_at__lt=stop))
         valid = Q(profile_score__gte=0, profile_score__lte=10)
-        offline = Q(snapshot__offline_import__source='pdf_manual')
+        offline = Q(snapshot__offline_import__source__in=['pdf_manual', 'xlsx_results'])
         known_timing = Q(snapshot__offline_import__source__isnull=True) | ~offline
         metrics = dict(delivered=Count('id'), graded=Count('id', filter=valid),
             average_score=Avg('profile_score', filter=valid), highest_score=Max('profile_score', filter=valid),
@@ -53,6 +56,7 @@ class ExamStatisticsView(APIView):
             pending_grading=Count('id', filter=~Q(grading_status__in=['graded','error'])),
             invalid_grades=Count('id', filter=Q(grading_status='graded') & (Q(profile_score__isnull=True)|Q(profile_score__lt=0)|Q(profile_score__gt=10))))
         summary = delivered.aggregate(**metrics, imported_offline=Count('id', filter=offline))
+        summary['imported_without_date'] = rows.filter(unknown_date, submitted_at__isnull=False).count()
         elapsed = ExpressionWrapper(F('submitted_at')-F('started_at'), output_field=DurationField())
         duration = delivered.filter(known_timing, submitted_at__gte=F('started_at')).aggregate(value=Avg(elapsed))['value']
         summary['average_seconds'] = round(duration.total_seconds()) if duration is not None else None

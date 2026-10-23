@@ -104,11 +104,14 @@ def attempt_data(a, private=False):
                       grading_status=a.grading_status, grading=a.grading,
                       graded_at=a.graded_at.isoformat() if a.graded_at else None)
         offline = a.snapshot.get('offline_import', {})
-        if isinstance(offline, dict) and offline.get('source') == 'pdf_manual':
+        if isinstance(offline, dict) and offline.get('source') in {'pdf_manual', 'xlsx_results'}:
             # Date-only anchors support historical day filters, not invented clocks.
             result.update(started_at=None, deadline_at=None, elapsed_seconds=None,
                           timed_out=False, over_time=False, offline_import={
-                              key: offline.get(key) for key in ('completed_on', 'imported_at', 'ambiguous_answers')})
+                              key: offline.get(key) for key in ('source', 'completed_on', 'imported_at', 'ambiguous_answers', 'correct_count', 'question_count', 'answers_available')})
+            if not offline.get('completed_on'):
+                result['submitted_at'] = None
+            result['submitted'] = bool(a.submitted_at)
     return result
 
 

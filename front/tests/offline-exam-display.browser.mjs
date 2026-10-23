@@ -14,7 +14,7 @@ try {
   const common={exam_id:2,phone:'5500000000',started_at:null,submitted_at:'2026-10-20T06:00:00Z',elapsed_seconds:null,deadline_at:null,over_time:false,timed_out:false,snapshot:{...exam,duration_minutes:40},answers:{1:2},offline_import:{completed_on:'2026-10-20',imported_at:'2026-10-22T22:00:00Z',ambiguous_answers:{}}};
   const people=[{...common,id:10,name:'Persona PDF ficticia',email:'pdf@example.invalid',grading_status:'graded',grading:{score:8,model:'deterministic'}},
    {...common,id:11,name:'Persona PDF por revisar',email:'revision@example.invalid',grading_status:'review',grading:{review:true,error:'PDF con doble selección: requiere revisión manual, sin nota definitiva.'},offline_import:{...common.offline_import,ambiguous_answers:{22:['A','B'],26:['B','C'],36:['A','D']}}},
-   {...common,id:12,name:'Persona PDF criterio confirmado',email:'confirmado@example.invalid',grading_status:'graded',grading:{score:9.75,review:false,accepted_multiple_answers:['22','26','36']},offline_import:{...common.offline_import,ambiguous_answers:{22:['A','B'],26:['B','C'],36:['A','D']}}}];
+   {...common,id:12,name:'Persona PDF criterio confirmado',email:'confirmado@example.invalid',grading_status:'graded',grading:{score:9.75,review:false,accepted_multiple_answers:['22','26','36']},offline_import:{...common.offline_import,ambiguous_answers:{22:['A','B'],26:['B','C'],36:['A','D']}}}, {...common,id:13,name:'Persona Excel ficticia',email:'',phone:'',submitted_at:null,submitted:true,snapshot:{...exam,questions:[]},offline_import:{source:'xlsx_results',completed_on:null,imported_at:'2026-10-23T18:00:00Z',correct_count:34,question_count:40,answers_available:false},grading_status:'graded',grading:{score:8.5,review:false}}];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>localStorage.setItem('futsi_token','fake-read-only'));
   await page.route('**/api/**',async route=>{
@@ -28,7 +28,18 @@ try {
   await page.goto('http://127.0.0.1:5210/#/examenes/evaluaciones');
   await page.getByRole('button',{name:'Ver respuestas',exact:true}).click();
   await page.getByText('Persona PDF ficticia',{exact:true}).waitFor();
-  assert.equal(await page.getByText('Sin tiempo registrado',{exact:true}).count(),3);
+  assert.equal(await page.getByText('Sin tiempo registrado',{exact:true}).count(),4);
+  assert.equal(await page.getByText('Carga de Excel',{exact:true}).count(),1);
+  const xlsxRow=page.locator('tbody tr').filter({hasText:'Persona Excel ficticia'});
+  assert((await xlsxRow.innerText()).includes('Entregado'));
+  assert((await xlsxRow.innerText()).includes('Fecha del examen no registrada'));
+  assert((await xlsxRow.innerText()).includes('8.5 / 10'));
+  await xlsxRow.getByRole('button',{name:'Ver respuestas',exact:true}).click();
+  assert(await page.getByText(/34 aciertos de 40/).isVisible());
+  assert.equal(await page.locator('.exam-question').count(),0);
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:fileURLToPath(new URL(`xlsx-${width}.png`,output)),fullPage:true});
+  await page.getByRole('button',{name:'Volver a participantes',exact:true}).click();
   assert.equal(await page.getByText('Carga manual de PDF',{exact:true}).count(),3);
   assert.equal(await page.getByText('0 min 0 s',{exact:true}).count(),0);
   assert((await page.locator('tbody').innerText()).includes('20/10/2026'));

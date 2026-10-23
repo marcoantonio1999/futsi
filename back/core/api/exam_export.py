@@ -105,7 +105,8 @@ class ExamExportView(APIView):
                 raise ValidationError({'detail': 'El archivo excede el límite de filas de Excel. Exporta por examen.'})
             snapshot, grading = attempt.snapshot or {}, attempt.grading or {}
             metadata = snapshot.get('offline_import') or {}
-            offline = metadata.get('source') == 'pdf_manual'
+            offline = metadata.get('source') in {'pdf_manual', 'xlsx_results'}
+            totals_only = metadata.get('source') == 'xlsx_results'
             ambiguous = metadata.get('ambiguous_answers') or {}
             accepted = set(grading.get('accepted_multiple_answers') or []) if attempt.grading_status == 'graded' else set()
             title = snapshot.get('title') or attempt.exam.title
@@ -114,13 +115,14 @@ class ExamExportView(APIView):
                 score = None
             review = bool(grading.get('review') or (set(ambiguous) - accepted) or attempt.grading_status in {'review','error'}
                           or (attempt.grading_status == 'graded' and score is None))
-            completed = date.fromisoformat(metadata['completed_on']) if offline else attempt.submitted_at.astimezone(CDMX).date()
+            completed = (date.fromisoformat(metadata['completed_on']) if metadata.get('completed_on') else None) if offline else attempt.submitted_at.astimezone(CDMX).date()
+            observations = (f"{metadata.get('correct_count')} aciertos de {metadata.get('question_count')}. Nota calculada con aciertos. Sin fecha, contactos, tiempos ni respuestas individuales en el archivo." if totals_only else 'Sin horas ni duración registradas' if offline else '')
             append_row(results, [attempt.id, title, attempt.name, attempt.email, attempt.phone, completed,
                 None if offline else local_clock(attempt.started_at), None if offline else local_clock(attempt.submitted_at),
                 None if offline else round(max(0,(attempt.submitted_at-attempt.started_at).total_seconds())/60,2),
-                snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado'), score,
-                'Sí' if review else 'No', grading.get('error') or ('Sin horas ni duración registradas' if offline else ''),
-                'Carga manual de PDF' if offline else 'Formulario web'])
+                None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado'), score,
+                'Sí' if review else 'No', grading.get('error') or observations,
+                'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'])
             for question in snapshot.get('questions', []):
                 detail_count += 1
                 if detail_count >= 1048576:
