@@ -31,8 +31,8 @@ def test_admin_can_read_both_connections_without_write(auth_client):
 def test_explicit_bulk_resume_is_forwarded_with_server_actor(auth_client):
     client,_,user=auth_client(role='collaborator',section_permissions=['veronica_only'])
     with patch('core.api.bulk.BulkView.forward',return_value=Response({'status':'queued'})) as forward:
-        assert client.post('/api/veronica/bulk/start/',{'id':'test-lot','consent':True,'resume':True,'actor_id':999},format='json').status_code==200
-        assert forward.call_args.kwargs['data']=={'id':'test-lot','consent':True,'resume':True,'actor_id':user.pk}
+        assert client.post('/api/veronica/bulk/start/',{'id':'test-lot','consent':True,'resume':True,'exclude_uncertain':True,'actor_id':999},format='json').status_code==200
+        assert forward.call_args.kwargs['data']=={'id':'test-lot','consent':True,'resume':True,'exclude_uncertain':True,'actor_id':user.pk}
 
 
 @pytest.mark.django_db

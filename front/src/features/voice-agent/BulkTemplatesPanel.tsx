@@ -281,8 +281,8 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
     </div>{(step === 1 || step === 4) && <WhatsAppTemplatePreview className={step === 1 ? 'bulk-preview-selection' : ''} loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name.replaceAll('_', ' ')} />}</div> : job && <section className="bulk-card bulk-send-progress-card">
       {job.detail && <div role="alert" className="bulk-alert error">{job.detail}</div>}
       <div className="bulk-actions"><button type="button" disabled={busy} onClick={() => setRefreshTick(value=>value+1)}>Actualizar avance</button>{job.status==='paused' && <button type="button" disabled={busy || !job.can_resume} onClick={()=>{
-        if(window.confirm('¿Continuar únicamente los pendientes y los que no se enviaron? Se validará la plantilla una vez. No se repetirán mensajes enviados ni resultados sin confirmar.')) void action(async()=>{
-          const next=await post<Job>('start',{id:job.id,consent:true,review_confirmed:true,resume:true});setJob(next);setRefreshTick(value=>value+1);
+        if(window.confirm(`¿Continuar únicamente los pendientes y los que no se enviaron? ${job.counts.uncertain || 0} envío(s) sin confirmar quedarán excluidos y no se reenviarán. Tampoco se repetirán los ya enviados. Se validará la plantilla una vez.`)) void action(async()=>{
+          const next=await post<Job>('start',{id:job.id,consent:true,review_confirmed:true,resume:true,exclude_uncertain:true});setJob(next);setRefreshTick(value=>value+1);
         });
       }}>Continuar pendientes</button>}</div>
       <div className="bulk-progress"><progress id="bulk-progress" aria-label="Avance del envío" value={job.processed} max={job.total || 1} /></div>

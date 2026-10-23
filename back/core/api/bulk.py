@@ -106,7 +106,7 @@ class BulkView(APIView):
         if kind != 'academy' and operation in {'contact-select', 'contact-update'}:
             return Response(status=403)
         allowed = {'create': ('request_id', 'channel', 'title', 'name', 'language', 'parameters', 'recipient_parameters', 'phones', 'names', 'filters', 'contact_ids'),
-                   'start': ('id', 'consent', 'review_confirmed', 'resume'), 'cancel': ('id',),
+                   'start': ('id', 'consent', 'review_confirmed', 'resume', 'exclude_uncertain'), 'cancel': ('id',),
                    'contact-select': ('channel', 'contact_ids'),
                    'contact-update': ('channel', 'contact_id', 'name', 'priority', 'notes', 'manually_blocked')}
         data = {k: request.data[k] for k in allowed[operation] if k in request.data}

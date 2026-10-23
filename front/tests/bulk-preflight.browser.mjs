@@ -11,12 +11,13 @@ try {
   const context=await browser.newContext({viewport:{width,height:950}}),page=await context.newPage();
   const requests=[],posts=[],errors=[];let fail=false;
   const job={id:'fake-lot',title:'Lote ficticio detenido',channel:'fake-vero',status:'paused',can_resume:true,
-   detail:'No se pudo validar la plantilla. No se enviaron los pendientes.',created_at:'2026-10-23T17:00:00Z',heartbeat_at:null,
-   percent:67,processed:2,total:3,counts:{delivered:1,not_sent:1,pending:1},template:{name:'fake_template',language:'es',text:'Hola'},
+   detail:'Timeout de proveedor. No se repetirá el envío sin confirmar.',created_at:'2026-10-23T17:00:00Z',heartbeat_at:null,
+   percent:75,processed:3,total:4,counts:{delivered:1,not_sent:1,pending:1,uncertain:1},template:{name:'fake_template',language:'es',text:'Hola'},
    quote:{total:null,note:'Prueba sin costo'},recipients:[
     {id:1,name:'Persona entregada',phone:'5500000001',status:'delivered',detail:''},
     {id:2,name:'Persona no enviada',phone:'5500000002',status:'not_sent',detail:'Consulta previa fallida; no hubo envío.'},
-    {id:3,name:'Persona pendiente',phone:'5500000003',status:'pending',detail:''}],has_more:false};
+    {id:3,name:'Persona pendiente',phone:'5500000003',status:'pending',detail:''},
+    {id:4,name:'Persona sin confirmar',phone:'5500000004',status:'uncertain',detail:'Timeout. No reenviar.'}],has_more:false};
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/api/**',async route=>{
    const request=route.request(),op=new URL(request.url()).pathname.split('/').filter(Boolean).at(-1);
@@ -44,9 +45,9 @@ try {
   fail=true;await page.getByRole('button',{name:'Actualizar avance',exact:true}).click();
   await page.getByRole('alert').filter({hasText:'Lo mostrado puede estar desactualizado'}).waitFor();
   const failedCalls=requests.length;await page.clock.fastForward(60000);await page.waitForTimeout(50);assert.equal(requests.length,failedCalls);
-  fail=false;page.once('dialog',dialog=>dialog.accept());await button.click();
+  fail=false;page.once('dialog',dialog=>{assert(dialog.message().includes('1 envío(s) sin confirmar quedarán excluidos'));return dialog.accept();});await button.click();
   await page.getByText('Persona no enviada',{exact:true}).waitFor();
-  assert.deepEqual(posts,[{id:'fake-lot',consent:true,review_confirmed:true,resume:true}]);
+  assert.deepEqual(posts,[{id:'fake-lot',consent:true,review_confirmed:true,resume:true,exclude_uncertain:true}]);
   await page.clock.fastForward(60000);await page.waitForTimeout(50);assert.equal(posts.length,1);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({width,noSentMislabeled:true,pausedHasNoPolling:true,failedReadsNeverRetry:true,onlyExplicitResume:true,noOverflow:true}));
