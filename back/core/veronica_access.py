@@ -62,7 +62,7 @@ def court_communications_route_allowed(path, method):
 
 
 def veronica_route_allowed(path, method):
-    if path == '/api/recruitment-exams/statistics/':
+    if path in {'/api/recruitment-exams/statistics/', '/api/recruitment-exams/export/'}:
         return method in {'GET','HEAD'}
     if path == '/api/recruitment-applications/':
         return method in {'GET','HEAD'}

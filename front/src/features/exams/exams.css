@@ -6,6 +6,9 @@
   -webkit-touch-callout: none;
 }
 .exam-filter-controls{margin:20px 0;min-width:0}
+.exam-app button.exam-export-excel,.exam-scope button.exam-export-excel{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:46px;background:#107c41;border-color:#107c41;color:#fff;font-weight:700;white-space:normal}
+.exam-app button.exam-export-excel:hover:not(:disabled),.exam-scope button.exam-export-excel:hover:not(:disabled){background:#0b6333;border-color:#0b6333}
+.exam-export-excel svg{flex-shrink:0}
 .exam-filter-modal{width:min(980px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);margin:auto;padding:24px;border:1px solid var(--exam-line);border-radius:16px;background:white;color:var(--exam-ink);box-shadow:0 24px 80px #162c3b40;overflow:hidden}
 .exam-filter-modal[open]{display:flex;flex-direction:column;gap:16px}
 .exam-filter-modal::backdrop{background:#10233799}
