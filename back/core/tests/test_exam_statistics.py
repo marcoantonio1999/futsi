@@ -87,3 +87,57 @@ def test_public_and_post_rejected(auth_client):
     assert APIClient().get(URL).status_code in (401,403)
     c,_,_=auth_client(role='collaborator',section_permissions=['veronica_only'])
     assert c.post(URL,{},format='json').status_code in (403,405)
+
+
+def test_skill_breakdown_uses_snapshot_points_not_overall_score(auth_client):
+    from pathlib import Path
+    from core.exam_skills import SKILLS
+    template=json.loads((Path(__file__).parents[1]/'exam_template.json').read_text(encoding='utf-8'))
+    assert sorted(n for _,ids in SKILLS.values() for n in ids)==list(range(1,41))
+    c,_,_=auth_client();e=create_exam(c)
+    math_ids={str(n) for n in SKILLS['mathematics'][1]}
+    for index in range(2):
+        a=attempt(e,index,9)
+        grades={q['id']:{'points':(10 if index else 0) if q['id'] in math_ids else 8} for q in template['questions']}
+        RecruitmentExamAttempt.objects.filter(pk=a.pk).update(snapshot={'questions':template['questions']},grading={'score':9,'questions':grades})
+    # Total-only import and pending result have known questions, no area score.
+    for index in range(2,4):
+        a=attempt(e,index,9 if index==2 else None)
+        RecruitmentExamAttempt.objects.filter(pk=a.pk).update(snapshot={'questions':template['questions']})
+    # Same IDs/title are insufficient when the question itself is different.
+    a=attempt(e,4,10)
+    RecruitmentExamAttempt.objects.filter(pk=a.pk).update(snapshot={'questions':[dict(template['questions'][1],prompt='Otra pregunta')]})
+    data=c.get(URL+f'?exam={e["id"]}').json()
+    skills={s['id']:s for s in data['skills']['results']}
+    math=skills['mathematics']
+    assert (math['delivered'],math['graded'],math['without_breakdown'])==(4,2,2)
+    assert (math['average_score'],math['lowest_score'],math['highest_score'])==(5,0,10)
+    assert math['question_count']==14 and math['per_exam'][0]['average_score']==5
+    assert skills['sales']['average_score']==8
+    assert data['skills']['unclassified']==1
+    assert data['summary']['average_score']==9.25
+
+
+@pytest.mark.parametrize('bad',[None,True,'10',-1,11])
+def test_incomplete_or_invalid_area_never_becomes_zero(auth_client,bad):
+    from pathlib import Path
+    template=json.loads((Path(__file__).parents[1]/'exam_template.json').read_text(encoding='utf-8'))
+    c,_,_=auth_client();e=create_exam(c);a=attempt(e)
+    # IDs may change: match the actual question, then read its saved ID's points.
+    q=dict(template['questions'][1],id='renumbered')
+    RecruitmentExamAttempt.objects.filter(pk=a.pk).update(snapshot={'questions':[q]},grading={'score':8,'questions':{'renumbered':{'points':bad}}})
+    skill=c.get(URL).json()['skills']['results'][0]
+    assert skill['average_score'] is None and skill['without_breakdown']==1
+    RecruitmentExamAttempt.objects.filter(pk=a.pk).update(grading={'score':8,'questions':{'renumbered':{'points':6}}})
+    assert c.get(URL).json()['skills']['results'][0]['average_score']==6
+
+
+def test_skill_breakdown_respects_date_and_exam_filters(auth_client):
+    from pathlib import Path
+    template=json.loads((Path(__file__).parents[1]/'exam_template.json').read_text(encoding='utf-8'))
+    c,_,_=auth_client();e=create_exam(c);other=create_exam(c)
+    for index,(exam,when) in enumerate([(e,'2026-10-22'),(e,'2026-10-20'),(other,'2026-10-22')]):
+        a=attempt(exam,index)
+        RecruitmentExamAttempt.objects.filter(pk=a.pk).update(submitted_at=datetime.fromisoformat(when+'T12:00:00+00:00'),snapshot={'questions':template['questions']},grading={'score':8,'questions':{q['id']:{'points':8} for q in template['questions']}})
+    data=c.get(URL+f'?exam={e["id"]}&since=2026-10-22&until=2026-10-22').json()
+    assert all(s['graded']==1 and s['average_score']==8 for s in data['skills']['results'])

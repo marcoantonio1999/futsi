@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentExam, RecruitmentExamAttempt
 from core.exam_profiles import score_rows
+from core.exam_skills import skill_statistics
 from django.contrib.auth import get_user_model
 
 CDMX = ZoneInfo('America/Mexico_City')
@@ -79,4 +80,5 @@ class ExamStatisticsView(APIView):
                 if row[key] is not None: row[key] = round(row[key],2)
         return Response(dict(since=start.isoformat(),until=end.isoformat(),days=days,timezone=str(CDMX),
             generated_at=now.isoformat(),summary=summary,averages=averages,daily=daily,per_exam=per_exam,
+            skills=skill_statistics(delivered),
             distribution=[dict(label=f'{i*2} a '+('10' if i==4 else f'< {(i+1)*2}'),total=buckets[f'b{i}']) for i in range(5)]))
