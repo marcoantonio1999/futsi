@@ -74,6 +74,15 @@ def test_details_formula_safety_dates_and_offline_ambiguity(auth_client):
     assert details['H4'].value=='Varias opciones: A, B' and details['J4'].value is None
     assert details['K4'].value=='Sí'
     assert not any(cell.data_type=='f' or cell.hyperlink for sheet in w for row in sheet for cell in row)
+    # An explicit administrative resolution preserves the two marks without a false review flag.
+    RecruitmentExamAttempt.objects.filter(pk=review.pk).update(grading_status='graded',
+        grading={'score':10,'review':False,'accepted_multiple_answers':['1'],
+                 'questions':{'1':{'points':10,'reason':'Doble marca aceptada: incluye la correcta.','review':False}}})
+    resolved=book(c.get(URL))
+    assert resolved['Evaluaciones']['L3'].value==10 and resolved['Evaluaciones']['M3'].value=='No'
+    assert resolved['Respuestas']['H4'].value=='Varias opciones: A, B'
+    assert resolved['Respuestas']['J4'].value==10 and resolved['Respuestas']['K4'].value=='No'
+    assert resolved['Respuestas']['L4'].value=='Doble marca aceptada: incluye la correcta.'
 
 
 @pytest.mark.parametrize('role,permissions',[('site_coordinator',[]),('collaborator',[]),

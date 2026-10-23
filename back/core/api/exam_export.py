@@ -107,11 +107,12 @@ class ExamExportView(APIView):
             metadata = snapshot.get('offline_import') or {}
             offline = metadata.get('source') == 'pdf_manual'
             ambiguous = metadata.get('ambiguous_answers') or {}
+            accepted = set(grading.get('accepted_multiple_answers') or []) if attempt.grading_status == 'graded' else set()
             title = snapshot.get('title') or attempt.exam.title
             score = grading.get('score') if attempt.grading_status == 'graded' else None
             if not numeric(score) or not 0 <= score <= 10:
                 score = None
-            review = bool(grading.get('review') or ambiguous or attempt.grading_status in {'review','error'}
+            review = bool(grading.get('review') or (set(ambiguous) - accepted) or attempt.grading_status in {'review','error'}
                           or (attempt.grading_status == 'graded' and score is None))
             completed = date.fromisoformat(metadata['completed_on']) if offline else attempt.submitted_at.astimezone(CDMX).date()
             append_row(results, [attempt.id, title, attempt.name, attempt.email, attempt.phone, completed,
@@ -135,8 +136,8 @@ class ExamExportView(APIView):
                     '\n'.join(f'{chr(65+i)}. {option}' for i,option in enumerate(question.get('options', []))),
                     f'Varias opciones: {", ".join(marks)}' if marks else answer_text(question, attempt.answers.get(qid)),
                     answer_text(question, attempt.grading_key.get(qid)) if qid in attempt.grading_key else 'Sin clave registrada',
-                    points, 'Sí' if marks or grade.get('review') else 'No',
-                    'Confirmar selección con Vero' if marks else grade.get('reason','')])
+                    points, 'Sí' if (marks and qid not in accepted) or grade.get('review') else 'No',
+                    'Confirmar selección con Vero' if marks and qid not in accepted else grade.get('reason','')])
         results.auto_filter.ref = f'A1:O{max(1,count+1)}'
         answers.auto_filter.ref = f'A1:L{max(1,detail_count+1)}'
         output = BytesIO()

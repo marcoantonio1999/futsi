@@ -30,7 +30,7 @@ export function LegacyExamKey({ questions, busy, onSave, onError }: { questions:
   return <form onSubmit={e => { e.preventDefault(); onSave(key); }}><h3>Agregar clave de respuestas</h3><p>Este examen se creó sin clave. No se inventarán respuestas ni notas. La clave se guarda una sola vez y permitirá calificar también entregas anteriores.</p><ExamKeyImport questions={questions} onImport={setKey} onError={onError} />{questions.map(q => <label key={q.id}>{q.id}. {q.prompt}{q.kind === 'choice' ? <select required value={key[q.id] ?? ''} onChange={e => setKey({ ...key, [q.id]: Number(e.target.value) })}><option value="">Elige la respuesta correcta</option>{q.options?.map((option, i) => <option value={i} key={i}>{String.fromCharCode(65 + i)}. {option}</option>)}</select> : <textarea required maxLength={5000} value={key[q.id] ?? ''} onChange={e => setKey({ ...key, [q.id]: e.target.value })} />}</label>)}<button className="exam-primary" disabled={busy}>Guardar clave de respuestas</button></form>;
 }
 
-export type Grading = { score?: number; review?: boolean; error?: string; questions?: Record<string, { points: number; reason: string; review: boolean }> };
+export type Grading = { score?: number; review?: boolean; error?: string; accepted_multiple_answers?: string[]; questions?: Record<string, { points: number; reason: string; review: boolean }> };
 export function ExamGrade({ status, grading }: { status?: string; grading?: Grading }) {
   if (status === 'review') return <span className="exam-late">{grading?.error || 'Requiere revisión manual'}</span>;
   if (status === 'graded') return <span><strong>{grading?.score} / 10</strong>{grading?.review && <small className="exam-late">Requiere revisión humana</small>}</span>;
