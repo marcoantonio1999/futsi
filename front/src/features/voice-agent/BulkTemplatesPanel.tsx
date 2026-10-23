@@ -9,8 +9,8 @@ import { WhatsAppTemplatePreview } from './WhatsAppTemplatePreview';
 
 type Kind = 'veronica' | 'academy';
 type Template = { name: string; language: string; category: string; text: string; sendable: boolean; reason?: string; parameters?: TemplateParameter[] };
-type Job = { id: string; title: string; channel: string; status: string; detail: string; created_at: string; heartbeat_at: string | null; percent: number; processed: number; total: number; counts: Record<string, number>; template: { name: string; language: string; text: string }; quote: { total: string; currency: string; unit: string; category: string; note: string; verified_on: string; source: string }; recipients?: { id: number; phone: string; name?: string; status: string; detail: string; retry_later?: boolean; retry_after?: string | null }[]; has_more?: boolean; directory?: { dataset?: string; needs_review_count?: number; unverified_consent_count?: number } };
-const labels: Record<string, string> = { draft: 'Por confirmar', queued: 'En cola', running: 'Enviando', completed: 'Intentos terminados', cancelled: 'Cancelado', paused: 'Detenido: requiere revisión', pending: 'Pendiente', sending: 'En proceso', accepted: 'Aceptado, sin entrega confirmada', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', uncertain: 'Resultado sin confirmar', skipped: 'Excluido: no desea mensajes' };
+type Job = { can_resume?: boolean; id: string; title: string; channel: string; status: string; detail: string; created_at: string; heartbeat_at: string | null; percent: number; processed: number; total: number; counts: Record<string, number>; template: { name: string; language: string; text: string }; quote: { total: string; currency: string; unit: string; category: string; note: string; verified_on: string; source: string }; recipients?: { id: number; phone: string; name?: string; status: string; detail: string; retry_later?: boolean; retry_after?: string | null }[]; has_more?: boolean; directory?: { dataset?: string; needs_review_count?: number; unverified_consent_count?: number } };
+const labels: Record<string, string> = { draft: 'Por confirmar', queued: 'En cola', running: 'Enviando', completed: 'Intentos terminados', cancelled: 'Cancelado', paused: 'Detenido: requiere revisión', pending: 'Pendiente', sending: 'En proceso', accepted: 'Aceptado, sin entrega confirmada', sent: 'Enviado', delivered: 'Entregado', read: 'Leído', failed: 'No entregado', not_sent: 'No enviado', uncertain: 'Resultado sin confirmar', skipped: 'Excluido: no desea mensajes' };
 
 function recipientFields(review: Review, template?: Template): RecipientParameters {
   return Object.fromEntries(review.phones.map(phone => [phone, Object.fromEntries((template?.parameters || []).map(parameter => {
@@ -50,6 +50,7 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pollError, setPollError] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [channelsLoading, setChannelsLoading] = useState(true);
@@ -140,25 +141,28 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       return;
     }
     let disposed = false;
+    let timer: number | undefined;
     setJobsLoading(true);
     async function refresh() {
       try {
         const result = await apiRequest<{ jobs: Job[]; has_more: boolean }>(base+'list/?'+new URLSearchParams({ channel, offset: String(jobsPage*20) }), token);
         if (!disposed) { setJobs(result.jobs); setJobsMore(result.has_more); }
+        let keepWatching = false;
         if (activeId) {
           const next = await apiRequest<Job>(base+'detail/?'+new URLSearchParams({ id: activeId, offset: '0' }), token);
           const pages = next.has_more ? await Promise.all(Array.from({ length: Math.ceil(next.total / 50) - 1 }, (_, index) =>
             apiRequest<Job>(base+'detail/?'+new URLSearchParams({ id: activeId, offset: String((index + 1) * 50) }), token))) : [];
           if (!disposed) setJob({ ...next, recipients: [...(next.recipients || []), ...pages.flatMap(page => page.recipients || [])], has_more: false });
+          keepWatching = ['queued','running'].includes(next.status);
         }
         if (!disposed) setPollError('');
+        if (!disposed && keepWatching) timer = window.setTimeout(() => { void refresh(); }, 5000);
       } catch (e) { if (!disposed) setPollError(e instanceof Error ? e.message : 'No se pudo actualizar el avance.'); }
       finally { if (!disposed) setJobsLoading(false); }
     }
     void refresh();
-    const timer = window.setInterval(() => { void refresh(); }, 5000);
-    return () => { disposed = true; window.clearInterval(timer); };
-  }, [base, token, channel, activeId, offset, jobsPage, historyView, channelsLoading]);
+    return () => { disposed = true; window.clearTimeout(timer); };
+  }, [base, token, channel, activeId, job?.status, offset, jobsPage, historyView, channelsLoading, refreshTick]);
   async function loadTemplates(after = '') {
     const generation = catalogGeneration.current;
     if (!after) setCatalogLoading(true);
@@ -231,7 +235,8 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       {step === 1 && setupLoading && <section className="bulk-card bulk-setup-skeleton" aria-busy="true"><span className="bulk-visually-hidden" role="status">Cargando canales y plantillas disponibles…</span><header className="bulk-step-heading" aria-hidden="true"><i className="bulk-skeleton heading" /><i className="bulk-skeleton compact" /></header><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label" /><i className="bulk-skeleton control" /></div><div className="bulk-skeleton-field" aria-hidden="true"><i className="bulk-skeleton label wide" /><div className="bulk-skeleton-options"><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /><i className="bulk-skeleton control" /></div></div><i className="bulk-skeleton action" aria-hidden="true" /></section>}
       {step === 1 && !setupLoading && <section className="bulk-card"><header className="bulk-step-heading"><h3 className="bulk-template-heading" ref={stepHeadingRef} tabIndex={-1}>Selecciona tu plantilla</h3></header>
         {channels.length > 1 && <label>Enviar desde<select value={channel} disabled={busy} onChange={e => { setCatalogLoading(true); setChannel(e.target.value); setJobsPage(0); }}><option value="" disabled>Selecciona un canal</option>{channels.map(c => <option key={c.channel} value={c.channel}>{c.label}</option>)}</select></label>}
-        {!!channel && !availableTemplates.length && <p>No hay plantillas aprobadas para envíos masivos en este número.</p>}
+        {!!channel && !availableTemplates.length && !error && <p>No hay plantillas aprobadas para envíos masivos en este número.</p>}
+        {!!channel && !!error && <button type="button" className="bulk-manual-action" disabled={busy || catalogLoading} onClick={()=>void loadTemplates()}>Consultar plantillas de nuevo</button>}
         {!channels.length && <p>No hay canales conectados disponibles. No se pueden realizar envíos.</p>}
         {!!availableTemplates.length && <div className="bulk-template-choices" role="group" aria-label="Plantillas disponibles">{availableTemplates.map(t => <button key={`${t.name}:${t.language}`} type="button" className="bulk-template-choice" aria-pressed={templateKey === `${t.name}:${t.language}`} disabled={busy} onClick={() => { setTemplateKey(`${t.name}:${t.language}`); invalidate(); }}><strong>{t.name.replaceAll('_', ' ')}</strong></button>)}</div>}
         {cursor && <button disabled={busy} onClick={() => void loadTemplates(cursor)}>Cargar más plantillas</button>}
@@ -275,6 +280,11 @@ export function BulkTemplatesPanel({ token, kind, view = 'create' }: { token: st
       </section>}
     </div>{(step === 1 || step === 4) && <WhatsAppTemplatePreview className={step === 1 ? 'bulk-preview-selection' : ''} loading={step === 1 && setupLoading} channelLabel={previewChannel} text={previewText} templateName={selected?.name.replaceAll('_', ' ')} />}</div> : job && <section className="bulk-card bulk-send-progress-card">
       {job.detail && <div role="alert" className="bulk-alert error">{job.detail}</div>}
+      <div className="bulk-actions"><button type="button" disabled={busy} onClick={() => setRefreshTick(value=>value+1)}>Actualizar avance</button>{job.status==='paused' && <button type="button" disabled={busy || !job.can_resume} onClick={()=>{
+        if(window.confirm('¿Continuar únicamente los pendientes y los que no se enviaron? Se validará la plantilla una vez. No se repetirán mensajes enviados ni resultados sin confirmar.')) void action(async()=>{
+          const next=await post<Job>('start',{id:job.id,consent:true,review_confirmed:true,resume:true});setJob(next);setRefreshTick(value=>value+1);
+        });
+      }}>Continuar pendientes</button>}</div>
       <div className="bulk-progress"><progress id="bulk-progress" aria-label="Avance del envío" value={job.processed} max={job.total || 1} /></div>
       <div className="bulk-table-wrap bulk-send-recipients" role="region" aria-label="Detalle de los destinatarios" tabIndex={0}><table><thead><tr><th>Nombre</th><th>Número</th><th>Estado</th><th>Qué ocurrió</th></tr></thead><tbody>{job.recipients?.map(r => <tr key={r.id}><td>{r.name || 'Sin nombre'}</td><td>{r.phone}</td><td><span className={`bulk-state ${r.retry_later ? 'retry' : r.status}`}>{r.retry_later ? 'Reintentar después' : labels[r.status] || r.status}</span></td><td>{r.detail || '—'}{r.retry_later && r.retry_after && <small className="bulk-retry-date">Puede volver a considerarse a partir del {new Date(r.retry_after).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}.</small>}</td></tr>)}</tbody></table></div>
     </section>}

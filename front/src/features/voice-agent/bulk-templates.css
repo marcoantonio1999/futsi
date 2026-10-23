@@ -30,6 +30,8 @@
 .bulk-send-progress-card{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}.bulk-send-progress-card>.bulk-progress{flex:0 0 auto}.bulk-send-recipients{flex:1;min-height:0;max-height:calc(100dvh - 260px);overflow:auto;overscroll-behavior:contain}.bulk-send-recipients thead{position:sticky;top:0;z-index:1;background:var(--comm-panel,white)}
 .bulk-state { display:inline-block; border-radius:6px; padding:5px 9px; background:#edf1ef; color:#35473e; font-size:.9rem; }
 .bulk-state.failed, .bulk-state.paused, .bulk-state.uncertain { background:#ffe5e0; color:#962b23; }
+.bulk-state.not_sent { background:#fff3cc; color:#704d00; }
+.bulk-send-progress-card .bulk-actions button,.bulk-templates .bulk-manual-action { min-height:44px; }
 .bulk-state.delivered, .bulk-state.read { background:#d9f3e2; color:#165333; }
 .bulk-state.retry{background:#fff0d0;color:#875100}.bulk-retry-date{display:block;margin-top:8px;color:#607168;font-size:12px}.dark .bulk-state.retry{background:#493614;color:#ffdc91}.dark .bulk-retry-date{color:#a9b9ae}
 .bulk-table-wrap { overflow:auto; } .bulk-templates table { width:100%; text-align:left; border-collapse:collapse; } .bulk-templates td, .bulk-templates th { padding:12px; border-bottom:1px solid #d9e4dd; }
