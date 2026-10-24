@@ -47,6 +47,21 @@ class EnrollmentPlayersTests(TestCase):
         self.enroll(birth=date(2001, 1, 2))
         self.assertEqual(self.client.get(URL).json()['count'], 2)
 
+    def test_signed_sheet_filter_selects_exact_authorized_enrollment(self):
+        first = self.enroll()
+        second = self.enroll(team=self.team2)
+        response = self.client.get('/api/player-enrollments/', {'enrollment_id': second.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row['id'] for row in response.json()['results']], [second.pk])
+        self.client.force_authenticate(self.other)
+        response = self.client.get('/api/player-enrollments/', {'enrollment_id': first.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['results'], [])
+
+    def test_signed_sheet_filter_rejects_invalid_identifier(self):
+        for value in ['0', '-1', 'abc', '1,2']:
+            self.assertEqual(self.client.get('/api/player-enrollments/', {'enrollment_id': value}).status_code, 400)
+
     def test_global_state_is_inactive_only_when_no_active_membership_remains(self):
         self.enroll(withdrawn_at=timezone.now())
         self.enroll('Otro Jugador', team=self.team2)
