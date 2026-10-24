@@ -3,6 +3,8 @@ import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks,
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
+import "./rosterIdentity.css";
+import rosterWatermark from "./assets/bpower-roster-watermark.png";
 import "./enrollmentButtons.css";
 import "./enrollmentSelects.css";
 import "./enrollmentValidation.css";
@@ -421,9 +423,11 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
   const [time, setTime] = useEnrollmentViewState(`paper.${team.id}.time`, "");
   useEnrollmentScrollReady(!busy);
   const [imageResults, setImageResults] = useState<Record<number, boolean>>({});
+  const [watermarkReady, setWatermarkReady] = useState(false);
+  const [watermarkFailed, setWatermarkFailed] = useState(false);
   const printed = useRef(false);
-  const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo"));
-  const photosReady = photos.every(doc => imageResults[doc.id] === true);
+  const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo" || doc.kind === "player_signature"));
+  const photosReady = photos.every(doc => imageResults[doc.id] === true) && (alignment || watermarkReady);
   const photoFailed = Object.values(imageResults).includes(false);
   useEffect(() => {
     if (!autoPrint || printed.current || busy || error || !photosReady) return;
@@ -464,15 +468,26 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
       setPlayers(previous => previous.map(row => ({ ...row, is_delegate: row.id === id })).sort((a, b) => Number(Boolean(b.is_delegate)) - Number(Boolean(a.is_delegate))));
       setChangingDelegate(false); setDelegateMessage("Delegado actualizado.");
     }} />}
-    {photoFailed && <p className="error no-print" role="alert">No se pudieron cargar las fotos. Actualiza antes de imprimir.</p>}
+    {(photoFailed || watermarkFailed) && <p className="error no-print" role="alert">No se pudieron cargar todas las fotos, firmas o la marca de agua. Actualiza antes de imprimir.</p>}
     {!busy && !error && <div className="enrollment-team-roster-scroll">{pages.map((pagePlayers, page) => <section key={page} className={`roster-sheet match-paper ${alignment ? "alignment-paper" : "photo-paper"}`}>
-      {alignment && <h1 className="alignment-title">HOJA DE ALINEACIÓN</h1>}
-      <div className="match-paper-header"><div><strong>{team.name}</strong>{alignment && <small>EQUIPO</small>}<b>{tournament?.name || players[0]?.tournament || ""}</b>{alignment && <small>CATEGORÍA</small>}</div><div><strong>{formattedDate || "\u00a0"}</strong>{alignment && <small>FECHA</small>}<b>{time || "\u00a0"}</b>{alignment && <small>HORARIO</small>}</div></div>
+      {!alignment && <img className="roster-watermark" src={rosterWatermark} alt="" aria-hidden="true" onLoad={() => setWatermarkReady(true)} onError={() => { setWatermarkReady(false); setWatermarkFailed(true); }} />}
+      <h1 className="alignment-title">{alignment ? "HOJA DE ALINEACIÓN" : "SÁBANA DE JUGADORES"}</h1>
+      <div className="match-paper-header"><div><strong>{team.name}</strong><small>EQUIPO</small><b>{tournament?.name || players[0]?.tournament || ""}</b><small>CATEGORÍA</small></div><div><strong>{formattedDate || "\u00a0"}</strong><small>FECHA</small><b>{time || "\u00a0"}</b><small>HORARIO</small></div></div>
       {!alignment && <p className="match-round">{round || "\u00a0"}</p>}
       <PrintableDelegate name={players.find(row => row.is_delegate)?.name} />
       <div className="match-paper-columns">{[0, 1].map(column => <div key={column} className="match-paper-column">{Array.from({ length: slots / 2 }, (_, index) => {
         const row = pagePlayers[column * (slots / 2) + index];
-        return <article className={`match-player-box${row?.sanctions?.length ? " is-sanctioned" : ""}`} key={index}>{alignment ? <><div className="alignment-number"><span>Número</span></div><div className="alignment-fields"><div><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong></div><div>{row?.sanctions?.length ? <SanctionBadge sanctions={row.sanctions} /> : <small>Firma</small>}</div></div></> : <><div className="match-photo">{row && <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={row.name} onReady={ok => { const id = row.documents.find(doc => doc.kind === "player_photo")?.id; if (id) setImageResults(previous => previous[id] === ok ? previous : { ...previous, [id]: ok }); }} />}</div><div className="match-player-data"><strong>{row?.name || "\u00a0"}</strong><div><SanctionBadge sanctions={row?.sanctions} /></div></div></>}</article>;
+        const imageReady = (kind: string, ok: boolean) => {
+          const id = row?.documents.find(doc => doc.kind === kind)?.id;
+          if (id) setImageResults(previous => previous[id] === ok ? previous : { ...previous, [id]: ok });
+        };
+        return <article className={`match-player-box${row?.sanctions?.length ? " is-sanctioned" : ""}`} key={index}>{alignment ? <><div className="alignment-number"><span>Número</span></div><div className="alignment-fields"><div><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong></div><div>{row?.sanctions?.length ? <SanctionBadge sanctions={row.sanctions} /> : <small>Firma</small>}</div></div></> : <>
+          <div className="alignment-number roster-dorsal"><span>Dorsal</span></div>
+          <div className="match-photo">{row && <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={`Foto de ${row.name}`} onReady={ok => imageReady("player_photo", ok)} />}</div>
+          <div className="roster-identity-fields"><div className="roster-name"><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong><SanctionBadge sanctions={row?.sanctions} /></div>
+            <div className="roster-player-signature">{row?.documents.some(doc => doc.kind === "player_signature") ? <PrivateImage document={row.documents.find(doc => doc.kind === "player_signature")} token={token} alt={`Firma de ${row.name}`} onReady={ok => imageReady("player_signature", ok)} /> : row ? <span className="roster-signature-missing">Firma no disponible</span> : null}<small>Firma</small></div>
+          </div>
+        </>}</article>;
       })}</div>)}</div>
       {alignment && <footer className="alignment-signatures"><div><span>FIRMA DEL CAPITÁN</span></div><div><span>FIRMA DEL ÁRBITRO</span></div><div className="alignment-count"><span>Nº DE JUGADORES</span></div></footer>}
     </section>)}</div>}
@@ -521,7 +536,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
   const [inviteTournament, setInviteTournament] = useEnrollmentViewState('invite.tournament', ""), [inviteTeam, setInviteTeam] = useEnrollmentViewState('invite.team', "");
   const tournamentSection = navigation.screen.section.startsWith('tournament-') ? navigation.screen.section.slice('tournament-'.length) as TournamentSection : null;
-  const enrollmentSection = tournamentSection ? 'history' : navigation.screen.section;
+  const enrollmentSection = tournamentSection || navigation.screen.section === 'tools' ? 'history' : navigation.screen.section;
   function setTournamentSection(section: TournamentSection | null) {
     if (section) navigation.navigate({ section: `tournament-${section}` as EnrollmentSection, roster: null, detail: null, alignment: false });
   }
@@ -530,7 +545,8 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   }
   const rosterTeam = catalog.teams.find(row => row.id === navigation.screen.roster) as Team | undefined;
   const [printRoster, setPrintRoster] = useState(false);
-  const alignmentSheet = navigation.screen.alignment;
+  // Old alignment links now open the unified roster, without a second tool.
+  const alignmentSheet = false;
   useEnrollmentScrollReady(!catalogBusy);
   useEffect(() => { setMobileMenuOpen(false); if (!navigation.screen.roster) setPrintRoster(false); setError(''); setMessage(''); }, [navigation.screen.section, navigation.screen.roster]);
   const [rosterRevision, setRosterRevision] = useState(0);
@@ -612,7 +628,6 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
         <div className="enrollment-sidebar-submenu">
           <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Registrar</button>
           <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Sábana</button>
-          <button aria-current={tournamentSection === null && enrollmentSection === "tools" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("tools"); setTournament(""); setTeam(""); setError(""); setMessage(""); }}><Printer size={16} aria-hidden="true" />Herramientas</button>
         </div>
         <div className="enrollment-sidebar-heading"><LogOut size={18} aria-hidden="true" />Bajas</div>
         <div className="enrollment-sidebar-submenu">
@@ -632,7 +647,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print"><button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></button><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "tools" ? "Herramientas" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
+      <header className="operator-header enrollment-admin-header no-print"><button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></button><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
         <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { setPrintRoster(false); setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
         <button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></button>
       </div></header>
@@ -675,17 +690,6 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
           <a className="enrollment-whatsapp-share" href={"https://wa.me/?text=" + encodeURIComponent((enrollmentSection === "withdraw" ? "Completa y firma la baja del equipo aquí: " : "Hola, completa y firma tu inscripción aquí: ") + link)} target="_blank" rel="noreferrer"><WhatsAppIcon /><span>Compartir por WhatsApp</span></a>
           <a href={link} target="_blank" rel="noreferrer">Ver formulario</a>
         </div></div>}
-      </section> : enrollmentSection === "tools" ? <section className="operator-controls no-print">
-        <h2>Hoja de alineación</h2>
-        <div className="control-grid enrollment-sabana-filters">
-          <label>Torneo<select value={tournament} disabled={catalogBusy} onChange={event => { setTournament(event.target.value); setTeam(""); }}>
-            <option value="">Selecciona un torneo</option>{catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select></label>
-          <label>Equipo<select value={team} disabled={catalogBusy || !tournament} onChange={event => setTeam(event.target.value)}>
-            <option value="">Selecciona un equipo</option>{catalog.teams.filter(item => String(item.tournament) === tournament).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select></label>
-        </div>
-        <div className="tournament-actions"><button type="button" disabled={catalogBusy || !team} onClick={() => { const selected = catalog.teams.find(item => String(item.id) === team && String(item.tournament) === tournament); if (selected) openRoster(selected, false, true); }}>Ver hoja de alineación</button></div>
       </section> : <section className="enrollment-sabana-directory">
         <section className="operator-controls no-print">
           <div className="control-grid enrollment-sabana-filters">

@@ -1,0 +1,23 @@
+/* Unified roster: alignment-sheet design, with private photo and signature. */
+.photo-paper{position:relative;isolation:isolate;color:#26578b!important}
+.photo-paper>.roster-watermark{position:absolute;z-index:-1;top:50%;left:50%;transform:translate(-50%,-50%);width:155mm;height:auto;max-height:220mm;object-fit:contain;opacity:.11;pointer-events:none;user-select:none}
+.photo-paper .match-paper-header{border-radius:5mm;overflow:hidden;border-color:#7b9ab7;margin-bottom:3mm}
+.photo-paper .match-paper-header small{display:block;background:#d2e5f5;font-size:9px;font-weight:bold;padding:1mm}
+.photo-paper .match-paper-header strong,.photo-paper .match-paper-header b{padding:2mm;border:0}
+.photo-paper .match-paper-header>div:first-child>strong{color:#26578b;font-size:18px}
+.photo-paper .match-paper-header>div+div{border-color:#7b9ab7}
+.photo-paper .match-paper-delegate,.photo-paper .match-round{color:#26578b}
+.photo-paper .match-round{margin-bottom:2mm;min-height:3mm;font-size:11px}
+.photo-paper .match-player-box{grid-template-columns:10mm 19mm minmax(0,1fr);border-color:#7b9ab7;border-radius:4mm}
+.photo-paper .match-photo{border-right-color:#7b9ab7}
+.photo-paper .roster-dorsal span{font-size:8px}
+.roster-identity-fields{display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0;text-align:center}
+.roster-identity-fields small{display:block;font-size:8px;line-height:1.1}
+.roster-name{padding:.6mm 1mm}
+.roster-name strong{display:block;font-size:10px;line-height:1.05;overflow-wrap:anywhere}
+.photo-paper .roster-name .player-sanction-badge{font-size:7px;padding:.4mm 0}
+.roster-player-signature{position:relative;min-height:0;border-top:1px solid #7b9ab7;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;overflow:hidden}
+.roster-player-signature img{display:block;min-height:0;flex:1;width:100%;object-fit:contain}
+.roster-player-signature small{flex-shrink:0;padding:.5mm 0}
+.roster-player-signature .photo-placeholder,.roster-signature-missing{min-height:0;font-size:8px;line-height:1.1;color:#526878}
+@media print{.photo-paper>.roster-watermark{opacity:.11;print-color-adjust:exact;-webkit-print-color-adjust:exact}.photo-paper .alignment-title{margin-bottom:3mm!important}.photo-paper .match-paper-header{margin-bottom:2mm}}
