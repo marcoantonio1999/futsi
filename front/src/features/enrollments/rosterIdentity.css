@@ -1,6 +1,8 @@
 /* Unified roster: alignment-sheet design, with private photo and signature. */
-.photo-paper{position:relative;isolation:isolate;overflow:hidden;color:#26578b!important}
-.photo-paper>.roster-watermark{position:absolute;z-index:-1;top:50%;left:50%;transform:translate(-50%,-50%);width:260mm;max-width:none;height:auto;max-height:245mm;object-fit:contain;opacity:.11;pointer-events:none;user-select:none}
+.photo-paper{position:relative;isolation:isolate;color:#26578b!important}
+/* Clip only the oversized artwork, never the last row of players. */
+.photo-paper>.roster-watermark-frame{position:absolute;z-index:-1;inset:0;overflow:hidden;pointer-events:none;user-select:none}
+.roster-watermark-frame>.roster-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:260mm;max-width:none;height:auto;max-height:245mm;object-fit:contain;opacity:.11}
 .photo-paper .match-paper-header{border-radius:5mm;overflow:hidden;border-color:#7b9ab7;margin-bottom:3mm}
 .photo-paper .match-paper-header small{display:block;background:#d2e5f5;font-size:9px;font-weight:bold;padding:1mm}
 .photo-paper .match-paper-header strong,.photo-paper .match-paper-header b{padding:2mm;border:0}
@@ -20,4 +22,12 @@
 .roster-player-signature img{display:block;min-height:0;flex:1;width:100%;object-fit:contain}
 .roster-player-signature small{flex-shrink:0;padding:.5mm 0}
 .roster-player-signature .photo-placeholder,.roster-signature-missing{min-height:0;font-size:8px;line-height:1.1;color:#526878}
-@media print{.photo-paper>.roster-watermark{opacity:.11;print-color-adjust:exact;-webkit-print-color-adjust:exact}.photo-paper .alignment-title{margin-bottom:3mm!important}.photo-paper .match-paper-header{margin-bottom:2mm}}
+@page enrollment-roster{size:A4 portrait;margin:0}
+@media print{
+  /* Keep the safety margin inside the document and let tall content paginate
+     instead of cropping it. Browser headers remain a print-dialog preference. */
+  .enrollment-team-roster-scroll .match-paper.photo-paper{page:enrollment-roster;width:210mm;height:auto;min-height:0;padding:10mm 14mm;overflow:visible;break-inside:avoid-page}
+  .roster-watermark-frame>.roster-watermark{opacity:.11;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .photo-paper .alignment-title{margin-bottom:3mm!important}
+  .photo-paper .match-paper-header{margin-bottom:2mm}
+}
