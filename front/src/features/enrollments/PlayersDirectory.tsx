@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Search, UsersRound } from 'lucide-react';
 import { apiRequest } from '../../api';
-import { useEnrollmentScrollReady, useEnrollmentViewState } from './EnrollmentNavigation';
+import { useEnrollmentNavigation, useEnrollmentScrollReady, useEnrollmentViewState } from './EnrollmentNavigation';
+import { EnrollmentRegistrationSheet } from './EnrollmentRegistrationSheet';
 import './playersDirectory.css';
 
 type Option = { id: number; name: string; site_id: number | null; tournament_id: number | null };
@@ -15,6 +16,10 @@ const empty: Result = { results: [], count: 0, page: 1, totals: { total: 0, acti
 const dateLabel = (date: string) => new Date(date.length === 10 ? date + 'T12:00:00' : date).toLocaleDateString('es-MX');
 
 export function PlayersDirectory({ token, revision }: { token: string; revision: number }) {
+  const navigation=useEnrollmentNavigation();
+  const [localSheet,setLocalSheet]=useState<number|null>(null);
+  const sheetId=navigation ? navigation.screen.detail : localSheet;
+  function openSheet(id:number) { if(navigation)navigation.navigate({detail:id});else setLocalSheet(id); }
   const [search, setSearch] = useEnrollmentViewState('players.search', '');
   const [query, setQuery] = useEnrollmentViewState('players.query', '');
   const [site, setSite] = useEnrollmentViewState('players.site', '');
@@ -40,6 +45,7 @@ export function PlayersDirectory({ token, revision }: { token: string; revision:
   }, [token, revision, query, site, tournament, team, status, source, page, retry]);
   const tournaments = result.filters.tournaments.filter(item => !site || String(item.site_id) === site);
   const teams = result.filters.teams.filter(item => (!site || String(item.site_id) === site) && (!tournament || String(item.tournament_id) === tournament));
+  if(sheetId) return <EnrollmentRegistrationSheet key={sheetId} enrollmentId={sheetId} token={token} onBack={()=>{if(navigation)navigation.back();else setLocalSheet(null);}}/>;
   return <section className="operator-controls players-directory no-print" aria-labelledby="players-title" aria-busy={busy}>
     <header className="players-intro"><p className="players-eyebrow">TORNEOS / DIRECTORIO HISTÓRICO</p><h2 id="players-title"><UsersRound size={25} aria-hidden="true" />Jugadores</h2><p>Una persona, todas sus participaciones. Consulta sus equipos y torneos activos y anteriores.</p></header>
     <div className="players-totals" aria-label="Totales del historial autorizado">
@@ -60,9 +66,9 @@ export function PlayersDirectory({ token, revision }: { token: string; revision:
     </form>
     {error && <p className="error" role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Volver a intentar</button></p>}
     <p className="players-result-count" role="status">{busy ? 'Cargando jugadores…' : `${result.count} ${source === 'legacy' ? 'fichas anteriores' : 'jugadores'} encontrados con estos filtros`}</p>
-    {!busy && !error && <><div className="players-table-scroll"><table className="players-table"><thead><tr><th scope="col">Jugador</th><th scope="col">Estado general</th><th scope="col">Equipos y torneos · historial completo</th></tr></thead><tbody>
-      {result.results.map(player => <tr key={player.id}><th scope="row"><strong>{player.name}</strong><small>{player.birth_date ? `Nacimiento: ${dateLabel(player.birth_date)}` : 'Ficha anterior · sin nacimiento'}</small></th><td><span className={`players-state ${player.is_active ? 'is-active' : 'is-inactive'}`}>{player.is_active ? 'Activo' : 'Inactivo'}</span><small>{player.participations.length} {player.participations.length === 1 ? 'participación' : 'participaciones'}</small></td><td><ul className="players-participations">{player.participations.map(item => <li key={item.id}><div><strong>{item.team}</strong><span>{item.tournament} · {item.site}</span>{item.is_delegate && <small>Delegado de este equipo</small>}<small>{item.signed_at ? `Inscripción: ${dateLabel(item.signed_at)}` : 'Registro anterior'}{item.withdrawn_at ? ` · Baja: ${dateLabel(item.withdrawn_at)}` : ''}</small></div><span className={`players-state ${item.is_active ? 'is-active' : 'is-inactive'}`}>{item.status}</span></li>)}</ul></td></tr>)}
-      {!result.results.length && <tr><td colSpan={3} className="players-empty">No hay jugadores con estos filtros.</td></tr>}
+    {!busy && !error && <><div className="players-table-scroll"><table className="players-table"><thead><tr><th scope="col">Jugador</th><th scope="col">Estado general</th><th scope="col">Equipos y torneos · historial completo</th><th scope="col">Hoja de inscripción</th></tr></thead><tbody>
+      {result.results.map(player => <tr key={player.id}><th scope="row"><strong>{player.name}</strong><small>{player.birth_date ? `Nacimiento: ${dateLabel(player.birth_date)}` : 'Ficha anterior · sin nacimiento'}</small></th><td><span className={`players-state ${player.is_active ? 'is-active' : 'is-inactive'}`}>{player.is_active ? 'Activo' : 'Inactivo'}</span><small>{player.participations.length} {player.participations.length === 1 ? 'participación' : 'participaciones'}</small></td><td><ul className="players-participations">{player.participations.map(item => <li key={item.id}><div><strong>{item.team}</strong><span>{item.tournament} · {item.site}</span>{item.is_delegate && <small>Delegado de este equipo</small>}<small>{item.signed_at ? `Inscripción: ${dateLabel(item.signed_at)}` : 'Registro anterior'}{item.withdrawn_at ? ` · Baja: ${dateLabel(item.withdrawn_at)}` : ''}</small></div><span className={`players-state ${item.is_active ? 'is-active' : 'is-inactive'}`}>{item.status}</span></li>)}</ul></td><td><div className="players-registration-actions">{player.participations.map(item => /^enrollment:[1-9]\d*$/.test(item.id) ? <div key={item.id}><button type="button" aria-label={`Ver hoja de inscripción de ${player.name}, ${item.team}, ${item.tournament}`} onClick={()=>openSheet(Number(item.id.split(':')[1]))}>Ver hoja de inscripción</button><small>{item.team} · {item.tournament}</small></div> : <p key={item.id}>Ficha anterior sin hoja de inscripción firmada.</p>)}</div></td></tr>)}
+      {!result.results.length && <tr><td colSpan={4} className="players-empty">No hay jugadores con estos filtros.</td></tr>}
     </tbody></table></div><nav className="players-pagination" aria-label="Páginas de jugadores"><button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Anterior</button><span>Página {page} de {Math.max(1, Math.ceil(result.count / 25))}</span><button type="button" disabled={page * 25 >= result.count} onClick={() => setPage(value => value + 1)}>Siguiente</button></nav></>}
     <p className="players-footnote">Se muestran los registros conservados; este histórico no recupera torneos o inscripciones eliminados definitivamente. Los filtros seleccionan personas y se conserva visible su historial completo.</p>
   </section>;

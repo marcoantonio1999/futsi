@@ -238,6 +238,11 @@ class EnrollmentAdminView(APIView):
         except (ValueError, TypeError):
             raise ValidationError("Página inválida.")
         rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).select_related('team_record__tournament').prefetch_related("documents")
+        enrollment_id = request.query_params.get('enrollment_id')
+        if enrollment_id is not None:
+            if not enrollment_id.isdecimal() or int(enrollment_id) < 1:
+                raise ValidationError('Inscripción inválida.')
+            rows = rows.filter(pk=int(enrollment_id))
         withdrawal_history = request.query_params.get('withdrawn_only') == 'true'
         withdrawal_filters = None
         if withdrawal_history:
