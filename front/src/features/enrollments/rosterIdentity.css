@@ -1,6 +1,6 @@
 /* Unified roster: alignment-sheet design, with private photo and signature. */
-.photo-paper{position:relative;isolation:isolate;color:#26578b!important}
-.photo-paper>.roster-watermark{position:absolute;z-index:-1;top:50%;left:50%;transform:translate(-50%,-50%);width:155mm;height:auto;max-height:220mm;object-fit:contain;opacity:.11;pointer-events:none;user-select:none}
+.photo-paper{position:relative;isolation:isolate;overflow:hidden;color:#26578b!important}
+.photo-paper>.roster-watermark{position:absolute;z-index:-1;top:50%;left:50%;transform:translate(-50%,-50%);width:260mm;max-width:none;height:auto;max-height:245mm;object-fit:contain;opacity:.11;pointer-events:none;user-select:none}
 .photo-paper .match-paper-header{border-radius:5mm;overflow:hidden;border-color:#7b9ab7;margin-bottom:3mm}
 .photo-paper .match-paper-header small{display:block;background:#d2e5f5;font-size:9px;font-weight:bold;padding:1mm}
 .photo-paper .match-paper-header strong,.photo-paper .match-paper-header b{padding:2mm;border:0}
