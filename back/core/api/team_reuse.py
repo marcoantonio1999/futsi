@@ -6,7 +6,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from core.models import Team, Tournament
 from core.domain_serializers.sports import TeamSerializer
-from core.api.enrollments import enrollment_staff
+from core.api.enrollments import enrollment_staff, enrollment_sites
+from core.enrollment_access import enrollment_site_ids
 
 
 class TeamReusePermission(permissions.BasePermission):
@@ -20,6 +21,8 @@ class TeamReuseView(APIView):
 
     def teams(self, request):
         rows = Team.objects.select_related('tournament__site').all()
+        if enrollment_site_ids(request.user) is not None:
+            rows = rows.filter(tournament__site__in=enrollment_sites(request.user))
         if request.user.role == 'cashier':
             rows = rows.filter(tournament__site_id=request.user.primary_site_id)
         return rows
@@ -53,6 +56,8 @@ class TeamReuseView(APIView):
         try:
             with transaction.atomic():
                 targets = Tournament.objects.select_for_update().filter(is_active=True, site__is_active=True)
+                if enrollment_site_ids(request.user) is not None:
+                    targets = targets.filter(site__in=enrollment_sites(request.user))
                 if request.user.role == 'cashier':
                     targets = targets.filter(site_id=request.user.primary_site_id)
                 target = get_object_or_404(targets, pk=serializer.validated_data['target_id'])

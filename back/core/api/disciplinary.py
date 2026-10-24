@@ -12,7 +12,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from core.models import PlayerSanction, PlayerBlacklistEntry
 from core.api.sanctions import SanctionPermission
-from core.api.enrollments import enrollment_staff
+from core.api.enrollments import enrollment_staff, enrollment_sites
+from core.enrollment_access import enrollment_site_ids
 from core.services.player_blacklist import identity_key, lock_identity
 from core.enrollment_models import PlayerEnrollmentDocument
 from core.services.disciplinary_photos import snapshot_photo, document_thumbnail, stored_thumbnail, thumbnail, legacy_thumbnail
@@ -22,11 +23,21 @@ def can_manage_blacklist(user):
 
 def scoped_sanctions(user):
     rows=PlayerSanction.objects.select_related('team__tournament__site','created_by','enrollment','player','appeal_submitted_by','appeal_decided_by','payment_recorded_by').prefetch_related(Prefetch('enrollment__documents',queryset=PlayerEnrollmentDocument.objects.filter(kind='player_photo').defer('content'),to_attr='disciplinary_photos'))
+    if enrollment_site_ids(user) is not None:
+        sites = enrollment_sites(user)
+        rows = rows.filter(Q(team__tournament__site__in=sites) | Q(team__isnull=True, origin_site_id__in=sites.values('pk')))
     if user.role=='site_coordinator':
         rows=rows.filter(Q(team__tournament__site_id=user.primary_site_id) | Q(team__isnull=True, origin_site_id=user.primary_site_id)) if user.primary_site_id else rows.none()
     return rows.annotate(history_site=Coalesce('team__tournament__site__name','origin_site'),
         history_tournament=Coalesce('team__tournament__name','origin_tournament'),
         history_team=Coalesce('team__name','origin_team'))
+
+def scoped_blacklist(user):
+    rows = PlayerBlacklistEntry.objects.select_related('created_by','revoked_by').defer('photo_content')
+    if enrollment_site_ids(user) is not None:
+        rows = rows.filter(origin_site__in=enrollment_sites(user).values('name'))
+    return rows
+
 
 def status_of(row):
     today=timezone.localdate()
@@ -37,7 +48,7 @@ class DisciplinaryHistoryView(APIView):
     blacklist=False
 
     def get(self,request):
-        rows=PlayerBlacklistEntry.objects.select_related('created_by','revoked_by').defer('photo_content') if self.blacklist else scoped_sanctions(request.user)
+        rows=scoped_blacklist(request.user) if self.blacklist else scoped_sanctions(request.user)
         mappings={'site':'origin_site','tournament':'origin_tournament','team':'origin_team'} if self.blacklist else {'site':'history_site','tournament':'history_tournament','team':'history_team'}
         filters={key:list(rows.order_by().values_list(field,flat=True).distinct()) for key,field in mappings.items()}
         for key,field in mappings.items():
@@ -135,7 +146,7 @@ class DisciplinaryPhotoView(APIView):
     blacklist=False
     def get(self,request,pk):
         if self.blacklist:
-            row=get_object_or_404(PlayerBlacklistEntry,pk=pk)
+            row=get_object_or_404(scoped_blacklist(request.user),pk=pk)
             if not(row.photo_storage_path or row.photo_sha256 or row.photo_legacy_file):raise Http404()
         else:
             row=get_object_or_404(scoped_sanctions(request.user),pk=pk)

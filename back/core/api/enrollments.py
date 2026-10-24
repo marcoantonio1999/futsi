@@ -20,6 +20,7 @@ from core.models import Team, Tournament, Site
 from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
+from core.enrollment_access import enrollment_site_ids
 from core.services import enrollment_storage
 from core.services.enrollment_images import PHOTO_MAX_BYTES, compress_document_photo
 from core.services.team_capacity import assert_capacity, capacity_guard
@@ -35,7 +36,9 @@ def enrollment_invitation_expired(invitation):
 
 
 def enrollment_sites(user):
-    return Site.objects.filter(is_active=True)
+    rows = Site.objects.filter(is_active=True)
+    site_ids = enrollment_site_ids(user)
+    return rows if site_ids is None else rows.filter(pk__in=site_ids)
 
 
 def enrollment_staff(user):
@@ -49,6 +52,8 @@ class EnrollmentStaffPermission(permissions.BasePermission):
 
 def invitations_for(user):
     rows = PlayerEnrollmentInvitation.objects.all()
+    if enrollment_site_ids(user) is not None:
+        return rows.filter(team_record__tournament__site__in=enrollment_sites(user))
     # Emilio administers enrollments across all sites, including links issued
     # by other operators. Other collaborators retain their own-link scope.
     return rows if user.username.casefold() == 'emilio' or user.role in {"admin", "owner", "dev"} else rows.filter(created_by=user)

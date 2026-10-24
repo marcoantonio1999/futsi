@@ -12,7 +12,8 @@ from rest_framework.views import APIView
 from core.models import Team, Player, PlayerSanction, Tournament
 from core.enrollment_models import PlayerEnrollment
 from core.sanction_catalog import CATALOG, BY_CODE
-from core.api.enrollments import enrollment_staff
+from core.api.enrollments import enrollment_staff, enrollment_sites
+from core.enrollment_access import enrollment_site_ids
 from core.services.player_blacklist import lock_identity, identity_key
 
 
@@ -20,11 +21,13 @@ class SanctionPermission(permissions.BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return user.is_authenticated and (user.role in {'admin','owner','dev','site_coordinator'}
-            or (user.username.casefold() == 'emilio' and enrollment_staff(user)))
+            or ((user.username.casefold() == 'emilio' or enrollment_site_ids(user) is not None) and enrollment_staff(user)))
 
 
 def allowed_teams(user):
     rows = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__is_active=True)
+    if enrollment_site_ids(user) is not None:
+        rows = rows.filter(tournament__site__in=enrollment_sites(user))
     if user.role in {'site_coordinator', 'cashier'}:
         rows = rows.filter(tournament__site_id=user.primary_site_id)
     return rows
