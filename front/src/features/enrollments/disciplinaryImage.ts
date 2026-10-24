@@ -1,4 +1,22 @@
-export type PresentationData = { player_name: string; reason: string; date: string };
+export type PresentationRow = {id: number; player_name: string; has_photo?: boolean; reason: string; offense: string; created_at: string; tournament: string; starts_on?: string | null; ends_on?: string | null; status: string};
+export type PresentationData = { player_name: string; reason: string; date: string; tournament: string; offense: string; period: string; status: string };
+const statusLabels: Record<string, string> = {active: 'Vigente', expired: 'Cumplida', awaiting_payment: 'Pago pendiente', scheduled: 'Programada', indefinite: 'Sin término', revoked: 'Retirada'};
+const formatDate = (value: string) => new Date(value.includes('T') ? value : value + 'T12:00:00').toLocaleDateString('es-MX');
+export function presentationData(row: PresentationRow): PresentationData {
+  return {
+    player_name: row.player_name,
+    reason: row.reason.trim() || row.offense.trim() || 'Sin motivo registrado',
+    date: row.created_at ? formatDate(row.created_at) : 'Sin fecha registrada',
+    tournament: row.tournament.trim() || 'Sin torneo registrado',
+    offense: row.offense.trim() || 'Sin sanción registrada',
+    period: `${row.starts_on ? formatDate(row.starts_on) : 'Inicio no registrado'} – ${row.ends_on ? formatDate(row.ends_on) : 'Sin término'}`,
+    status: statusLabels[row.status] || 'Estado no especificado',
+  };
+}
+// Both the modal and PNG use this exact field list, without administrative data.
+export function presentationFields(data: PresentationData): [string, string][] {
+  return [['Torneo', data.tournament], ['Sanción', data.offense], ['Motivo', data.reason], ['Periodo', data.period], ['Estado', data.status], ['Fecha', data.date]];
+}
 
 // Wrap by measured pixels, including names/words without spaces; never omit text.
 export function wrapPresentationText(context: Pick<CanvasRenderingContext2D, 'measureText'>, text: string, width: number): string[] {
@@ -27,9 +45,8 @@ export function disciplinaryImage(data: PresentationData, photo: HTMLImageElemen
   context.font = 'bold 46px Arial';
   const names = wrapPresentationText(context, data.player_name, textWidth);
   context.font = '34px Arial';
-  const reasons = wrapPresentationText(context, data.reason, textWidth);
-  const dates = wrapPresentationText(context, data.date, textWidth);
-  canvas.height = 80 + 420 + 55 + names.length * 58 + 45 + 40 + reasons.length * 46 + 45 + 40 + dates.length * 46 + 80;
+  const fields = presentationFields(data).map(([label, value]) => ({label, lines: wrapPresentationText(context, value, textWidth)}));
+  canvas.height = 80 + 420 + 55 + names.length * 58 + fields.reduce((height, field) => height + 45 + 40 + field.lines.length * 46, 0) + 80;
   context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, canvas.height);
   const photoX = 320, photoY = 80, photoWidth = 360, photoHeight = 420;
   context.fillStyle = '#f1f4f2'; context.fillRect(photoX, photoY, photoWidth, photoHeight);
@@ -45,11 +62,10 @@ export function disciplinaryImage(data: PresentationData, photo: HTMLImageElemen
   let y = 555;
   context.fillStyle = '#172d23'; context.textBaseline = 'top'; context.font = 'bold 46px Arial';
   for (const line of names) { context.fillText(line, padding, y); y += 58; }
-  y += 45; context.font = 'bold 30px Arial'; context.fillText('Motivo', padding, y); y += 40;
-  context.font = '34px Arial';
-  for (const line of reasons) { context.fillText(line, padding, y); y += 46; }
-  y += 45; context.font = 'bold 30px Arial'; context.fillText('Fecha', padding, y); y += 40;
-  context.font = '34px Arial';
-  for (const line of dates) { context.fillText(line, padding, y); y += 46; }
+  for (const field of fields) {
+    y += 45; context.font = 'bold 30px Arial'; context.fillText(field.label, padding, y); y += 40;
+    context.font = '34px Arial';
+    for (const line of field.lines) { context.fillText(line, padding, y); y += 46; }
+  }
   return canvas;
 }

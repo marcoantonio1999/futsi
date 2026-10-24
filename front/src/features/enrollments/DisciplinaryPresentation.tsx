@@ -1,16 +1,14 @@
-import {useEffect, useRef, useState} from 'react';
+import {Fragment, useEffect, useRef, useState} from 'react';
 import {Download, X, UserRound} from 'lucide-react';
 import {API_URL} from '../../api';
-import {disciplinaryImage} from './disciplinaryImage';
+import {disciplinaryImage, presentationData, presentationFields, type PresentationRow} from './disciplinaryImage';
 import './disciplinaryPresentation.css';
 
-type PresentationRow = {id: number; player_name: string; has_photo?: boolean; reason: string; offense: string; created_at: string};
 export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: PresentationRow; token: string; endpoint: string; onClose: () => void}) {
   const dialog = useRef<HTMLDialogElement>(null), photo = useRef<HTMLImageElement>(null);
   const [url, setUrl] = useState(''), [loading, setLoading] = useState(Boolean(row.has_photo)), [photoReady, setPhotoReady] = useState(false);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const reason = row.reason.trim() || row.offense.trim() || 'Sin motivo registrado';
-  const date = row.created_at ? new Date(row.created_at.includes('T') ? row.created_at : row.created_at + 'T12:00:00').toLocaleDateString('es-MX') : 'Sin fecha registrada';
+  const data = presentationData(row);
   useEffect(() => {
     const previous = document.activeElement, overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden'; dialog.current?.showModal();
@@ -31,7 +29,7 @@ export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: 
     if (busy || loading) return;
     setBusy(true); setError('');
     try {
-      const canvas = disciplinaryImage({player_name: row.player_name, reason, date}, photoReady ? photo.current : null);
+      const canvas = disciplinaryImage(data, photoReady ? photo.current : null);
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo generar la imagen.')), 'image/png'));
       const downloadUrl = URL.createObjectURL(blob), anchor = document.createElement('a');
       anchor.href = downloadUrl; anchor.download = `presentacion-${row.player_name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 90)}.png`;
@@ -45,7 +43,7 @@ export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: 
       <div className="disciplinary-presentation-photo">
         {url ? <img ref={photo} src={url} alt={`Foto de ${row.player_name}`} onLoad={() => {setLoading(false); setPhotoReady(true);}} onError={() => {setLoading(false); setPhotoReady(false); setUrl('');}}/> : <UserRound size={100} aria-label={loading ? 'Cargando foto' : 'Foto no disponible'}/>}
       </div>
-      <h3>{row.player_name}</h3><dl><dt>Motivo</dt><dd>{reason}</dd><dt>Fecha</dt><dd>{date}</dd></dl>
+      <h3>{row.player_name}</h3><dl>{presentationFields(data).map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
     </article></div>
     <footer className="disciplinary-presentation-footer">
       {!loading && !photoReady && <p role="status">La foto no está disponible; la imagen usará una silueta.</p>}
