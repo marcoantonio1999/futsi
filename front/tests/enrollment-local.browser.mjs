@@ -25,7 +25,7 @@ async function prepare(width){
    return route.fulfill({status:state.failInvitation?400:201,json:state.failInvitation?{detail:'Sin cupo ficticio'}:{token:'local-fictional'}});
   }
   assert.equal(req.method(),'GET');
-  return route.fulfill({json:path.includes('/public/')?{team:'Equipo ficticio',tournament:'Torneo ficticio',terms:['Compromiso ficticio de prueba.']}:path.endsWith('/catalog/')?catalog:{results:[],count:0}});
+  return route.fulfill({json:path.includes('/public/')?{team:'Equipo ficticio',tournament:'Torneo ficticio',is_delegate:true,delegate_name:'',delegate_phone:'',terms:['Compromiso ficticio de prueba.']}:path.endsWith('/catalog/')?catalog:{results:[],count:0}});
  });
  await page.goto(url);
  const local=page.getByRole('button',{name:'Registro local',exact:true});
@@ -67,6 +67,8 @@ try{
   await page.screenshot({path:`${output}/consent-${width}.png`,fullPage:true});
   page.once('dialog',dialog=>dialog.dismiss());await page.keyboard.press('Escape');assert(await page.getByRole('dialog',{name:'Registro local',exact:true}).isVisible());
   await completeForm(page);
+  assert.equal(await page.getByText('Esta es la primera inscripción del equipo. Esta persona quedará registrada como delegado.',{exact:true}).count(),1);
+  assert.equal(await page.getByText(/Primero debe inscribirse el delegado/).count(),0);
   await page.screenshot({path:`${output}/signature-${width}.png`,fullPage:true});
   if(width===390){
    state.failSave=true;await page.getByRole('button',{name:'Confirmar inscripción',exact:true}).click();

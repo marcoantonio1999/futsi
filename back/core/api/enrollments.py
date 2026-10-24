@@ -66,13 +66,6 @@ def is_minor(birth_date):
     return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day)) < 18
 
 
-def completes_delegate_name(full_name, delegate_name):
-    # Team creation historically allowed abbreviated names. Let the same
-    # delegate add missing names/surnames without guessing their components.
-    remaining = iter(full_name.casefold().split())
-    return all(any(word == candidate for candidate in remaining) for word in delegate_name.casefold().split())
-
-
 class EnrollmentInput(serializers.Serializer):
     given_names = serializers.CharField(max_length=80, label="Nombre(s)")
     paternal_surname = serializers.CharField(max_length=80, label="Apellido paterno")
@@ -161,7 +154,7 @@ class PublicEnrollmentView(APIView):
             return Response({"detail": "Este enlace necesita un equipo y torneo registrados. Pide un enlace nuevo."}, status=410)
         assert_capacity(invitation.team_record)
         first = not PlayerEnrollment.objects.filter(team_record=invitation.team_record).exists()
-        return Response({"team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "max_players_per_team": invitation.team_record.tournament.max_players_per_team, "is_delegate": first, "delegate_name": invitation.team_record.representative_name if first else '', "delegate_phone": invitation.team_record.representative_phone if first else '', "terms_version": TERMS_VERSION, "terms": TERMS})
+        return Response({"team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "max_players_per_team": invitation.team_record.tournament.max_players_per_team, "is_delegate": first, "delegate_name": '', "delegate_phone": '', "terms_version": TERMS_VERSION, "terms": TERMS})
 
     def post(self, request, token):
         serializer = EnrollmentInput(data=request.data)
@@ -222,8 +215,8 @@ class PublicEnrollmentView(APIView):
                 fields['identity_key'] = assert_not_blacklisted(fields['name'], fields['birth_date'], locked=True)
                 assert_no_pending_sanction(fields['name'], fields['birth_date'])
                 first = not PlayerEnrollment.objects.filter(team_record=team).exists()
-                if first and team.representative_name and not completes_delegate_name(fields['name'], team.representative_name):
-                    raise ValidationError('Primero debe inscribirse el delegado del equipo.')
+                # Team-creation contact fields are provisional, not an enrollment.
+                # The locked first completed enrollment establishes the delegate.
                 fields['is_delegate'] = first
                 row = PlayerEnrollment.objects.create(invitation=invitation, terms_version=TERMS_VERSION, terms_text=TERMS, document_checklist=checklist, **fields)
                 if first:

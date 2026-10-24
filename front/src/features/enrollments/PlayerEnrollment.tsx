@@ -326,7 +326,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
                   <EnrollmentField name="given_names" full error={fieldErrors.given_names}><label>Nombre(s)<input {...accessibility('given_names')} name="given_names" required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></label></EnrollmentField>
                   <EnrollmentField name="paternal_surname" error={fieldErrors.paternal_surname}><label>Apellido paterno<input {...accessibility('paternal_surname')} name="paternal_surname" required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></label></EnrollmentField>
                   <EnrollmentField name="maternal_surname" error={fieldErrors.maternal_surname}><label>Apellido materno<input {...accessibility('maternal_surname')} name="maternal_surname" required maxLength={80} disabled={step !== 2} /></label></EnrollmentField>
-                  {defaults.delegate_name && <p className="full">Primero debe inscribirse el delegado: {defaults.delegate_name}. Escribe sus nombres y apellidos completos en los campos anteriores.</p>}
+                  {defaults.is_delegate && <p className="full">Esta es la primera inscripción del equipo. Esta persona quedará registrada como delegado.</p>}
                   <label>Equipo<input readOnly value={defaults.team} /></label>
                   <label>Torneo<input readOnly value={defaults.tournament} /></label>
                   <label>Fecha de nacimiento<input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></label>

@@ -244,17 +244,44 @@ class PlayerEnrollmentTests(TestCase):
         self.assertIsNone(row.withdrawn_at); self.assertIsNone(link.used_at)
 
     def test_link_purposes_cannot_be_swapped_and_delegate_is_first(self):
-        self.assertEqual(self.client.get(self.url).json()['delegate_name'], 'Jugador de prueba')
+        defaults = self.client.get(self.url).json()
+        self.assertTrue(defaults['is_delegate'])
+        self.assertEqual(defaults['delegate_name'], '')
+        self.assertEqual(defaults['delegate_phone'], '')
         data = self.payload(); data['given_names'] = 'Otra persona'
-        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
-        self.assertEqual(PlayerEnrollment.objects.count(), 0)
+        data['phone'] = '5598765432'
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 201)
+        first = PlayerEnrollment.objects.get()
+        self.assertTrue(first.is_delegate)
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.representative_name, first.name)
+        self.assertEqual(self.team.representative_phone, first.phone)
         link = self.new_withdrawal()
         self.assertEqual(self.client.get(f'/api/player-enrollments/public/{link.token}/').status_code, 404)
         self.assertEqual(self.client.get(f'/api/player-enrollments/withdrawal/{self.invitation.token}/').status_code, 404)
-        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
         invitation = self.new_invitation(); data = self.payload(); data['given_names'] = 'Segundo jugador'
+        self.assertFalse(self.client.get(f'/api/player-enrollments/public/{invitation.token}/').json()['is_delegate'])
         self.assertEqual(self.client.post(f'/api/player-enrollments/public/{invitation.token}/', data, format='multipart').status_code, 201)
         self.assertEqual(PlayerEnrollment.objects.filter(is_delegate=True).count(), 1)
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.representative_name, first.name)
+        self.assertEqual(self.team.representative_phone, first.phone)
+
+    def test_two_open_first_invites_do_not_replace_the_completed_delegate(self):
+        second_link = self.new_invitation()
+        second_url = f'/api/player-enrollments/public/{second_link.token}/'
+        self.assertTrue(self.client.get(self.url).json()['is_delegate'])
+        self.assertTrue(self.client.get(second_url).json()['is_delegate'])
+        self.assertEqual(self.client.post(self.url, self.payload(), format='multipart').status_code, 201)
+        first = PlayerEnrollment.objects.get()
+        second_payload = self.payload()
+        second_payload.update(given_names='Segunda persona', phone='5598765432')
+        self.assertEqual(self.client.post(second_url, second_payload, format='multipart').status_code, 201)
+        self.assertFalse(PlayerEnrollment.objects.get(invitation=second_link).is_delegate)
+        self.assertEqual(PlayerEnrollment.objects.filter(is_delegate=True).count(), 1)
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.representative_name, first.name)
+        self.assertEqual(self.team.representative_phone, first.phone)
 
     def test_roster_limits_for_each_modality(self):
         from core.domain_serializers.sports import PlayerSerializer
