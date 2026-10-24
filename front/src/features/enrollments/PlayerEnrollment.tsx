@@ -588,13 +588,12 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   const tournamentData: AppData = { ...emptyData, sites: catalog.sites as Site[],
     tournaments: catalog.tournaments, teams: catalog.teams as Team[] };
   const unsupportedAction = async () => { throw new Error("Acción no disponible en Inscripciones."); };
-  async function deleteTournament(id: number, confirmation: StudentDeletionConfirmation) {
-    const result = await apiRequest<StudentDeletionResult>(`/player-enrollments/tournaments/${id}/`, token, {
-      method: "DELETE", body: JSON.stringify(confirmation),
-    });
-    chooseTournament("");
+  async function updateTournament(id: number, payload: unknown) {
+    const updated = await apiRequest<Tournament>(`/player-enrollments/tournaments/${id}/`, token, {method: "PATCH", body: JSON.stringify(payload)});
+    setCatalog(previous => ({...previous, tournaments: previous.tournaments.map(row => row.id === id ? updated : row)}));
+    setRosterRevision(value => value + 1);
     await loadCatalog().catch(() => undefined);
-    return result;
+    return updated;
   }
   async function deleteTeam(id: number, confirmation: StudentDeletionConfirmation) {
     const result = await apiRequest<StudentDeletionResult>(`/player-enrollments/teams/${id}/`, token, {method: "DELETE", body: JSON.stringify(confirmation)});
@@ -634,7 +633,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   }
   async function createInvitation(local = false) {
     if (invitationSaving.current) return;
-    if (!selectedTournament || !availableTeams.some(item => String(item.id) === inviteTeam)) {
+    if (!selectedTournament?.is_active || !availableTeams.some(item => String(item.id) === inviteTeam)) {
       setError("Selecciona un torneo y uno de sus equipos."); return;
     }
     invitationSaving.current = true; setBusy(true); setError(""); setMessage(""); setLink("");
@@ -693,7 +692,6 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
       {catalogBusy && navigation.screen.roster && !rosterTeam ? <p role="status">Cargando equipo…</p> : rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { navigation.back(); setPrintRoster(false); }} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           onTeamsReused={async () => { await loadCatalog(); }}
-          deletableTournamentIds={catalog.deletable_tournament_ids || []}
           deletionCollectionPath="player-enrollments/tournaments"
           section={tournamentSection} onSelectSection={setTournamentSection}
           selectedTournamentId={inviteTournament ? Number(inviteTournament) : undefined}
@@ -704,7 +702,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
             setInviteTournament(String(created.tournament)); setInviteTeam(String(created.id)); setLink("");
             return created;
           }}
-          onDeleteTeam={deleteTeam} onDeleteTournament={deleteTournament} onRegisterStudent={unsupportedAction}
+          onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
       </section> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
@@ -713,7 +711,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
         <form onSubmit={invite} className="control-grid">
           <label>Torneo<select required value={inviteTournament} disabled={catalogBusy || busy}
             onChange={event => chooseTournament(event.target.value)}><option value="">Selecciona un torneo</option>
-            {catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name} · {catalog.sites.find(site => site.id === item.site)?.name}</option>)}</select></label>
+            {catalog.tournaments.filter(item => item.is_active).map(item => <option key={item.id} value={item.id}>{item.name} · {catalog.sites.find(site => site.id === item.site)?.name}</option>)}</select></label>
           <label>Equipo del torneo<select required value={inviteTeam} disabled={catalogBusy || busy || !inviteTournament}
             onChange={event => { setInviteTeam(event.target.value); setLink(""); }}><option value="">Selecciona un equipo</option>
             {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

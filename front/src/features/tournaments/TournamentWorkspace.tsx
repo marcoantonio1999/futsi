@@ -6,6 +6,7 @@ import { standingsForTournament } from "../../components/views/sportsViewModel";
 import { TournamentStandingsTable } from "./TournamentStandingsTable";
 import { TournamentCreatePage } from "./TournamentCreatePage";
 import { TournamentDialog } from "./TournamentDialog";
+import { TournamentEditDialog } from "./TournamentEditDialog";
 import { CreateTeamDialog, CreateTeamPage, EnrollmentDialog, ScheduleMatchDialog } from "./TournamentManagementDialogs";
 import { TournamentRoster } from "./TournamentRoster";
 import { TournamentMatches } from "./TournamentMatches";
@@ -22,7 +23,8 @@ type Props = {
   onTeamsReused?: () => Promise<void>;
   onDeleteTeam?: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
   onViewTeamRoster?: (team: Team) => void;
-  onDeleteTournament: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
+  onDeleteTournament?: (id: number, confirmation: StudentDeletionConfirmation) => Promise<StudentDeletionResult>;
+  onUpdateTournament?: (id: number, payload: unknown) => Promise<unknown>;
   data: AppData; user?: User; scope?: "academy" | "adult"; readOnly?: boolean; section: TournamentSection;
   setupOnly?: boolean;
   deletableTournamentIds?: number[];
@@ -44,6 +46,7 @@ export function TournamentsPanel(props: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [deletingTournament, setDeletingTournament] = useState<Tournament | null>(null);
+  const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [deletingTeam, setDeletingTeam] = useState<Team | null>(null);
   const [notice, setNotice] = useState("");
   const [reuseOpen, setReuseOpen] = useState(false);
@@ -83,13 +86,14 @@ export function TournamentsPanel(props: Props) {
   const showRoster = (team = "") => { go("registrations"); setRosterTeam(team); };
   const toast = notice && <div className="tournament-toast" role="status"><CheckCircle2 size={19} /><span>{notice}</span><button aria-label="Cerrar aviso" onClick={() => setNotice("")}><X size={17} /></button></div>;
   return <div className="tournament-ui sports-panel" data-testid="tournament-workspace">{toast}
+    {editingTournament && setupOnly && !readOnly && props.onUpdateTournament && <TournamentEditDialog tournament={editingTournament} sites={data.sites} onClose={() => setEditingTournament(null)} onSave={async (id, payload) => { await props.onUpdateTournament!(id, payload); setNotice("Torneo actualizado correctamente."); }}/>}
     {section === "teams" && !readOnly && <div className="tournament-actions"><button type="button" className="tournament-button secondary" onClick={() => setReuseOpen(true)}><Plus size={16} />Agregar equipos existentes</button></div>}
     {reuseOpen && !readOnly && <ReuseTeamsDialog token={props.token} targets={scoped.tournaments} sites={scoped.sites} onClose={() => setReuseOpen(false)} onAdded={(created, skipped) => {
       setReusedTeams(previous => [...previous, ...created]); setNotice(`${created.length} equipo(s) agregados. ${skipped.length} repetido(s) omitidos.`);
       void props.onTeamsReused?.().catch(() => setNotice("Equipos agregados. Pulsa Actualizar para recargar el catálogo."));
     }} />}
     {section === "create" ? readOnly ? <p className="tournament-feedback warning">Esta cuenta solo puede consultar torneos.</p> : <TournamentCreatePage sites={data.sites} onBack={() => go("overview")} onCreate={props.onCreateTournament} onCreated={created => { setNotice(`Torneo creado correctamente: ${created.name}.`); openTournament(created.id); }} />
-      : section === "overview" ? <TournamentDirectory data={scoped} adult={adult} readOnly={Boolean(readOnly)} onOpen={openTournament} onCreate={() => go("create")} onDelete={setDeletingTournament} setupOnly={setupOnly} deletableTournamentIds={props.deletableTournamentIds} />
+      : section === "overview" ? <TournamentDirectory data={scoped} adult={adult} readOnly={Boolean(readOnly)} onOpen={openTournament} onCreate={() => go("create")} onDelete={setDeletingTournament} setupOnly={setupOnly} deletableTournamentIds={props.deletableTournamentIds} onEdit={props.onUpdateTournament ? setEditingTournament : undefined} />
       : section === "teams" && setupOnly ? <EnrollmentTeamsDirectory data={scoped} readOnly={Boolean(readOnly)} onViewRoster={props.onViewTeamRoster} onDelete={props.onDeleteTeam ? setDeletingTeam : undefined} />
       : section === "team-create" && setupOnly ? readOnly ? <p className="tournament-feedback warning">Esta cuenta solo puede consultar equipos.</p> : <CreateTeamPage tournaments={scoped.tournaments} sites={scoped.sites} adult={adult} onBack={() => go("teams")} onSave={async (payload, tournamentId) => { await props.onCreateTeam(payload); chooseTournament(tournamentId); setNotice("Equipo creado correctamente."); go("teams"); }} />
       : !selected ? <div className="tournament-empty tournament-surface"><Trophy size={30} /><h2>Aún no hay torneos</h2><p>Crea el primero para registrar equipos, alumnos y partidos.</p>{!readOnly && (setupOnly ? <p>Abre «Crear torneo» en el menú izquierdo.</p> : <button className="tournament-button primary" onClick={() => go("create")}>Crear torneo</button>)}</div>
@@ -117,7 +121,7 @@ export function TournamentsPanel(props: Props) {
     {selected && !readOnly && dialog?.kind === "match" && <ScheduleMatchDialog tournament={selected} teams={teams.filter(row => row.is_active)} onClose={() => setDialog(null)} onSave={async payload => { await props.onCreateMatch(payload); setNotice("Partido agendado correctamente."); }} />}
     {selected && !readOnly && dialog?.kind === "enrollment" && <EnrollmentDialog tournament={selected} students={data.students} teams={teams.filter(row => row.is_active || row.id === dialog.row?.team)} registrations={registrations} existing={dialog.row} initialTeam={dialog.team} onClose={() => setDialog(null)} onSave={async (payload, id) => { if (id) { if (!await props.onUpdateRegistration(id, payload)) throw new Error("No se pudo actualizar la inscripción."); } else await props.onRegisterStudent(payload); setNotice("Inscripción guardada correctamente."); }} />}
     {selected && !readOnly && dialog?.kind === "withdraw" && <TournamentDialog title="Dar de baja del torneo" description={selected.name} submitLabel="Confirmar baja" danger onClose={() => setDialog(null)} onSubmit={async () => { if (!await props.onUpdateRegistration(dialog.row.id, { status: "withdrawn" })) throw new Error("No se pudo dar de baja al alumno."); setNotice(`${dialog.row.student_name} se dio de baja del torneo correctamente.`); }}><div className="tournament-context"><strong>{dialog.row.student_name}</strong><span>{dialog.row.team_name || "Sin equipo"}</span></div><p>El alumno saldrá de la plantilla activa del torneo y dejará de generar nuevos cobros de esta inscripción. Los cargos existentes y su historial se conservan.</p><p className="tournament-info">Su ficha de academia seguirá disponible. Puedes reinscribirlo desde el filtro «Bajas».</p></TournamentDialog>}
-    {deletingTournament && !readOnly && (!setupOnly || props.deletableTournamentIds?.includes(deletingTournament.id)) && <AcademyDeleteDialog kind="tournament" collectionPath={props.deletionCollectionPath} record={{ id: deletingTournament.id, full_name: deletingTournament.name, site_name: data.sites.find(row => row.id === deletingTournament.site)?.name }} token={props.token} onDelete={props.onDeleteTournament} onClose={() => setDeletingTournament(null)} />}
+    {deletingTournament && !readOnly && !setupOnly && props.onDeleteTournament && <AcademyDeleteDialog kind="tournament" collectionPath={props.deletionCollectionPath} record={{ id: deletingTournament.id, full_name: deletingTournament.name, site_name: data.sites.find(row => row.id === deletingTournament.site)?.name }} token={props.token} onDelete={props.onDeleteTournament} onClose={() => setDeletingTournament(null)} />}
   </div>;
 }
 
@@ -139,7 +143,7 @@ function EnrollmentTeamsDirectory({ data, readOnly, onViewRoster, onDelete }: { 
   </section>;
 }
 
-function TournamentDirectory({ data, adult, readOnly, onOpen, onCreate, onDelete, setupOnly = false, deletableTournamentIds }: { data: AppData; adult: boolean; readOnly: boolean; onOpen: (id: number) => void; onCreate: () => void; onDelete: (tournament: Tournament) => void; setupOnly?: boolean; deletableTournamentIds?: number[] }) {
+function TournamentDirectory({ data, adult, readOnly, onOpen, onCreate, onDelete, setupOnly = false, deletableTournamentIds, onEdit }: { data: AppData; adult: boolean; readOnly: boolean; onOpen: (id: number) => void; onCreate: () => void; onDelete: (tournament: Tournament) => void; setupOnly?: boolean; deletableTournamentIds?: number[]; onEdit?: (tournament: Tournament) => void }) {
   const [query, setQuery] = useEnrollmentViewState('tournaments.query', ""); const [site, setSite] = useEnrollmentViewState('tournaments.site', ""); const [status, setStatus] = useEnrollmentViewState('tournaments.status', "active"); const [limit, setLimit] = useEnrollmentViewState('tournaments.limit', 8);
   const filtered = data.tournaments.filter(row => (!site || String(row.site) === site) && (!status || row.is_active === (status === "active")) && row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   if (setupOnly) return <div className="tournament-directory-list">
@@ -155,7 +159,7 @@ function TournamentDirectory({ data, adult, readOnly, onOpen, onCreate, onDelete
         <tbody>{filtered.map(tournament => <tr key={tournament.id}>
           <td><strong>{tournament.name}</strong></td><td>{data.sites.find(row => row.id === tournament.site)?.name || "Sede sin nombre"}</td><td>{tournament.starts_on || "Por definir"}</td><td>{data.teams.filter(row => row.tournament === tournament.id).length}</td>
           <td><span className={`tournament-badge ${tournament.is_active ? "success" : "muted"}`}>{tournament.is_active ? "Activo" : "Inactivo"}</span></td>
-          <td><div className="tournament-row-actions"><button className="tournament-text-button" aria-label={`Abrir torneo ${tournament.name}`} onClick={() => onOpen(tournament.id)}>Abrir <ArrowRight size={16} /></button>{!readOnly && deletableTournamentIds?.includes(tournament.id) && <button className="tournament-icon-button danger" aria-label={`Eliminar torneo ${tournament.name}`} title="Eliminar torneo" onClick={() => onDelete(tournament)}><Trash2 size={16} /></button>}</div></td>
+          <td><div className="tournament-row-actions"><button className="tournament-text-button" aria-label={`Abrir torneo ${tournament.name}`} onClick={() => onOpen(tournament.id)}>Abrir <ArrowRight size={16} /></button>{!readOnly && onEdit && <button className="tournament-text-button" aria-label={`Editar torneo ${tournament.name}`} onClick={() => onEdit(tournament)}>Editar</button>}</div></td>
         </tr>)}{!filtered.length && <tr><td colSpan={6} className="tournament-directory-empty">{data.tournaments.length ? "No hay torneos con estos filtros." : "No hay torneos. Abre «Crear torneo» en el menú izquierdo."}</td></tr>}</tbody>
       </table>
     </div>

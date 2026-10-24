@@ -22,7 +22,7 @@ const noop = () => {};
 const unavailable = async () => { throw new Error("Not allowed in fixture"); };
 function render(section, setupOnly = true, deletableTournamentIds = [], fixtureData = data) {
   return renderToStaticMarkup(React.createElement(TournamentsPanel, { data: fixtureData, token: "local-test-only", scope: "adult", setupOnly, section, deletableTournamentIds,
-    onSelectSection: noop, onCreateTournament: unavailable, onCreateTeam: unavailable, onDeleteTournament: unavailable,
+    onSelectSection: noop, onCreateTournament: unavailable, onCreateTeam: unavailable, onDeleteTournament: unavailable, onUpdateTournament: unavailable,
     onRegisterStudent: unavailable, onUpdateRegistration: unavailable, onCreateMatch: unavailable, onUpdateMatch: unavailable }));
 }
 
@@ -69,7 +69,8 @@ test("Normal Futsi teams view remains unchanged outside restricted setup", () =>
   assert.match(html, /Partidos|Dashboard/);
 });
 
-test("Pilot displays deletion only for server-authorized tournaments", () => {
-  assert.match(render("overview", true, [81]), /Eliminar torneo Torneo ficticio/);
+test("Enrollment directory offers editing, never tournament deletion even with stale grants", () => {
+  assert.match(render("overview", true, [81]), /Editar torneo Torneo ficticio/);
+  assert.doesNotMatch(render("overview", true, [81]), /Eliminar torneo/);
   assert.doesNotMatch(render("overview", true, [99]), /Eliminar torneo/);
 });

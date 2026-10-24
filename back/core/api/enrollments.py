@@ -454,10 +454,9 @@ class EnrollmentCatalogView(APIView):
     permission_classes = [EnrollmentStaffPermission]
     def get(self, request):
         sites = enrollment_sites(request.user)
-        tournaments = Tournament.objects.filter(is_active=True, site__in=sites).order_by('name', 'id')
+        tournaments = Tournament.objects.filter(site__in=sites).order_by('name', 'id')
         teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__in=sites).order_by('name', 'id')
-        can_delete = request.user.username.casefold() == 'emilio' or request.user.role in {'admin', 'owner', 'dev'}
-        return Response({'sites': list(sites.values('id','name')), 'deletable_tournament_ids': list(tournaments.values_list('pk', flat=True)) if can_delete else [],
+        return Response({'sites': list(sites.values('id','name')), 'deletable_tournament_ids': [],
                          'tournaments': TournamentSerializer(tournaments, many=True).data,
                          'teams': list(teams.values('id','name','tournament','is_active'))})
     def post(self, request):
@@ -475,56 +474,58 @@ class EnrollmentCatalogView(APIView):
         if kind == 'tournament' and not serializer.validated_data['site'].is_active:
             raise ValidationError('Selecciona una sede activa.')
         if kind == 'team':
-            tournament = serializer.validated_data['tournament']
-            if not tournament.is_active or not tournament.site.is_active:
-                raise ValidationError('Selecciona un torneo activo.')
-        serializer.save()
+            # Same lock as tournament editing: an empty tournament cannot move
+            # to another site between permission validation and adding its team.
+            with transaction.atomic():
+                tournament = get_object_or_404(Tournament.objects.select_for_update(), pk=serializer.validated_data['tournament'].pk,
+                    site__in=enrollment_sites(request.user))
+                if not tournament.is_active or not tournament.site.is_active:
+                    raise ValidationError('Selecciona un torneo activo.')
+                serializer.save(tournament=tournament)
+        else:
+            serializer.save()
         return Response(serializer.data, status=201)
 
 
 class EnrollmentTournamentDeletionView(APIView):
+    """Editable enrollment tournaments. Deletion is not an enrollment operation."""
     permission_classes = [EnrollmentStaffPermission]
 
     def post(self, request):
-        from core.models import AuditLog
-        from core.services.student_deletion import cleanup_files
-        if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
-            raise PermissionDenied('No tienes permiso para eliminar torneos.')
-        deletion_id = request.data.get('deletion_id')
-        if not isinstance(deletion_id, int) or isinstance(deletion_id, bool):
-            raise ValidationError('La referencia de eliminación no es válida.')
-        sites = enrollment_sites(request.user)
-        with transaction.atomic():
-            audit = get_object_or_404(AuditLog.objects.select_for_update(), pk=deletion_id,
-                action='tournament_deleted', actor=request.user, metadata__site_id__in=list(sites.values_list('pk', flat=True)))
-            return Response(cleanup_files(audit))
+        raise PermissionDenied('No se pueden eliminar torneos desde Inscripciones.')
 
     def target(self, request, pk):
-        if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
-            raise PermissionDenied('No tienes permiso para eliminar torneos.')
         return get_object_or_404(Tournament, pk=pk, site__in=enrollment_sites(request.user))
 
     def get(self, request, pk):
-        from core.services import tournament_deletion
-        return Response(tournament_deletion.preview(self.target(request, pk), request.user))
+        if request.path_info.endswith('/deletion-preview/'):
+            raise PermissionDenied('No se pueden eliminar torneos desde Inscripciones.')
+        return Response(TournamentSerializer(self.target(request, pk)).data)
+
+    def patch(self, request, pk):
+        allowed = {'site', 'name', 'billing_type', 'starts_on', 'expected_weeks', 'is_active', 'football_format'}
+        if set(request.data) - allowed:
+            raise ValidationError('La solicitud contiene campos no editables.')
+        with transaction.atomic():
+            target = self.target(request, pk)
+            target = get_object_or_404(Tournament.objects.select_for_update(), pk=target.pk, site__in=enrollment_sites(request.user))
+            serializer = TournamentSerializer(target, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            site = serializer.validated_data.get('site', target.site)
+            if not enrollment_sites(request.user).filter(pk=site.pk).exists():
+                raise PermissionDenied('La sede no está disponible para inscripciones.')
+            weeks = serializer.validated_data.get('expected_weeks', target.expected_weeks)
+            if weeks is not None and weeks < 1:
+                raise ValidationError({'expected_weeks': 'Indica al menos una semana.'})
+            if site.pk != target.site_id and (target.teams.exists() or target.student_registrations.exists()):
+                raise ValidationError({'site': 'No se puede cambiar la sede de un torneo con equipos o inscripciones.'})
+            serializer.save()
+        response = Response(serializer.data)
+        response['Cache-Control'] = 'no-store'
+        return response
 
     def delete(self, request, pk):
-        from core.services import tournament_deletion
-        from django.db.models.deletion import ProtectedError
-        stage = 'permission_and_target'
-        try:
-            tournament = self.target(request, pk)
-            stage = 'confirmed_tournament_deletion'
-            return Response(tournament_deletion.permanently_delete(tournament, request.user, request.data))
-        except ProtectedError:
-            raise ValidationError('El torneo tiene registros protegidos y no puede eliminarse.')
-        except (APIException, Http404):
-            raise
-        except Exception:
-            reference = uuid4().hex[:12]
-            # Full exception chain and stack, but never headers, payload or locals.
-            logger.exception('ENROLLMENT_TOURNAMENT_DELETE_FAILED reference=%s tournament_id=%s stage=%s', reference, pk, stage)
-            return Response({'detail': f'No se pudo eliminar el torneo. Referencia del error: {reference}.'}, status=500)
+        raise PermissionDenied('No se pueden eliminar torneos desde Inscripciones.')
 
 
 class EnrollmentTeamDeletionView(APIView):
