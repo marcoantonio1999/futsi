@@ -1,0 +1,22 @@
+/* Screen-only embedding. Existing public wizard and A4 print rules stay intact. */
+@media screen {
+  .local-enrollment-dialog { margin:auto; }
+  .local-enrollment-dialog { box-sizing:border-box;width:min(1100px,calc(100vw - 24px));height:min(960px,calc(100dvh - 24px));max-width:none;max-height:calc(100dvh - 24px);padding:0;border:1px solid #dce7df;border-radius:16px;background:#f8faf9;color:#243329;overflow:hidden; }
+  .local-enrollment-dialog[open] { display:flex;flex-direction:column; }
+  .local-enrollment-dialog::backdrop { background:rgb(10 30 20 / .55); }
+  .local-enrollment-header { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;padding:14px 18px;background:white;border-bottom:1px solid #dce7df; }
+  .local-enrollment-header>div { min-width:0; }
+  .local-enrollment-header h2 { margin:0;font-size:20px; }
+  .local-enrollment-header p { margin:6px 0 0;overflow-wrap:anywhere;font-size:14px; }
+  .local-enrollment-header button { min-height:44px;flex-shrink:0; }
+  .local-enrollment-content { flex:1;min-height:0;overflow:auto;padding:12px; }
+  .local-enrollment-content .enrollment-wizard-embedded { height:100%;min-height:0;padding:0; }
+  .local-enrollment-content .enrollment-public-brand { display:none; }
+  .local-enrollment-content .enrollment-wizard-sheet { min-height:0; }
+}
+@media screen and (max-width:600px) {
+  .local-enrollment-dialog { width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100dvh - 12px);border-radius:12px; }
+  .local-enrollment-header { align-items:flex-start;flex-direction:column;padding:12px;gap:8px; }
+  .local-enrollment-header button { align-self:flex-end; }
+  .local-enrollment-content { padding:6px; }
+}

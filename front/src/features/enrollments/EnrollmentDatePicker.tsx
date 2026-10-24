@@ -30,15 +30,16 @@ function CalendarPopover({ title, children }: { title: string; children: ReactNo
   </Popover.Positioner></Popover.Portal>;
 }
 
-type DateProps = { label: string; name: string; value: string; onChange: (value: string) => void; min?: string; max?: string; birthday?: boolean; required?: boolean; disabled?: boolean; invalid?: boolean; describedBy?: string };
-export function EnrollmentDatePicker({ label, name, value, onChange, min, max, birthday = false, required = false, disabled = false, invalid = false, describedBy }: DateProps) {
+type DateProps = { label: string; name: string; value: string; onChange: (value: string) => void; min?: string; max?: string; birthday?: boolean; required?: boolean; disabled?: boolean; invalid?: boolean; describedBy?: string; forceNative?: boolean };
+export function EnrollmentDatePicker({ label, name, value, onChange, min, max, birthday = false, required = false, disabled = false, invalid = false, describedBy, forceNative = false }: DateProps) {
   const [open, setOpen] = useState(false), id = useId();
   const native = useNativeDatePicker();
   useEffect(() => { if (native) setOpen(false); }, [native]);
   const selected = parseCalendarDate(value), now = new Date();
   const earliest = parseCalendarDate(min) || new Date(birthday ? now.getFullYear() - 110 : now.getFullYear() - 20, 0, 1);
   const latest = parseCalendarDate(max) || new Date(now.getFullYear() + 30, 11, 31);
-  if (native) return <div className="enrollment-date-field enrollment-native-date"><label htmlFor={id}>{label}</label>
+  // A native input stays inside the top-layer dialog used by local registration.
+  if (native || forceNative) return <div className="enrollment-date-field enrollment-native-date"><label htmlFor={id}>{label}</label>
     <input id={id} type="date" name={name} value={value} required={required} disabled={disabled} aria-invalid={invalid} aria-describedby={describedBy} autoComplete={birthday ? 'bday' : undefined}
       min={calendarDateValue(earliest)} max={calendarDateValue(latest)} onChange={event => onChange(event.target.value)} />
   </div>;

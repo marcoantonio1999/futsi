@@ -6,6 +6,7 @@ import "./enrollmentAdmin.css";
 import "./enrollmentButtons.css";
 import "./enrollmentSelects.css";
 import "./enrollmentValidation.css";
+import "./localEnrollment.css";
 import { birthDateError, documentErrors, playerFieldErrors, type EnrollmentErrors } from './enrollmentValidation';
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
@@ -175,7 +176,9 @@ function Terms({ items, guardian, player }: { items: string[]; guardian?: string
   </section>;
 }
 
-export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
+export function PublicPlayerEnrollment({ invitation, embedded = false, onCompleted, onBusyChange }: {
+  invitation: string; embedded?: boolean; onCompleted?: (completed: boolean) => void; onBusyChange?: (busy: boolean) => void;
+}) {
   const [step, setStep] = useState(0), [accepted, setAccepted] = useState(false);
   const [birthDate, setBirthDate] = useState(""), minor = under18(birthDate);
   const [identity, setIdentity] = useState("ine");
@@ -186,6 +189,8 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   function processing(kind: string, value: boolean) { setProcessingFiles(current => ({ ...current, [kind]: value })); }
   const [error, setError] = useState(""), [done, setDone] = useState(false), [busy, setBusy] = useState(false);
   const saving = useRef(false);
+  useEffect(() => { onCompleted?.(done); }, [done, onCompleted]);
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const content = useRef<HTMLDivElement>(null);
   const [fieldErrors, setFieldErrors] = useState<EnrollmentErrors>({});
   const [focusIssue, setFocusIssue] = useState(0);
@@ -204,7 +209,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   const today = new Date();
   const maxDate = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
   useEffect(() => {
-    document.title = "Inscripción BPower";
+    if (!embedded) document.title = "Inscripción BPower";
     let active = true;
     fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/")
       .then(async response => {
@@ -213,7 +218,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
         if (active) { if (body.completed) setDone(true); else setDefaults(body); }
       }).catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
-  }, [invitation]);
+  }, [invitation, embedded]);
   function attach(kind: string, file: Blob | null) {
     setFiles(current => ({ ...current, [kind]: file }));
     if (file && file.size <= ENROLLMENT_FILE_MAX_BYTES) clearIssue(kind);
@@ -281,7 +286,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
   const consent = <EnrollmentField name="accepted_terms" error={fieldErrors.accepted_terms}><label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><input type="checkbox" {...accessibility('accepted_terms')} checked={accepted} onChange={event => { setAccepted(event.target.checked); if (event.target.checked) clearIssue('accepted_terms'); }} />
     He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
   </label></EnrollmentField>;
-  return <main className="enrollment-page public-enrollment-wizard">
+  return <main className={`enrollment-page public-enrollment-wizard${embedded ? ' enrollment-wizard-embedded' : ''}`}>
     <div className="enrollment-public-brand no-print"><EnrollmentBrand /></div>
     {done ? <section className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></section> :
       <form className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate onChange={event => {
@@ -303,7 +308,7 @@ export function PublicPlayerEnrollment({ invitation }: { invitation: string }) {
             </section>
             <section hidden={step !== 1}>
               <div className="enrollment-wizard-identity-fields">
-              <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>
+              <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday forceNative={embedded} value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>
               {!minor && <label>Identificación<select value={identity} onChange={event => setIdentity(event.target.value)}>
                 <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option>
               </select></label>}
@@ -535,6 +540,29 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   useEffect(() => { setMobileMenuOpen(false); if (!navigation.screen.roster) setPrintRoster(false); setError(''); setMessage(''); }, [navigation.screen.section, navigation.screen.roster]);
   const [rosterRevision, setRosterRevision] = useState(0);
   const invitationSaving = useRef(false);
+  const [localRegistration, setLocalRegistration] = useState<{ token: string; team: string; tournament: string } | null>(null);
+  const [localCompleted, setLocalCompleted] = useState(false), [localSaving, setLocalSaving] = useState(false);
+  const localDialogRef = useRef<HTMLDialogElement>(null), localButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreLocalFocus = useRef(false);
+  useEffect(() => {
+    if (restoreLocalFocus.current && !localRegistration && !catalogBusy) {
+      localButtonRef.current?.focus(); restoreLocalFocus.current = false;
+    }
+  }, [localRegistration, catalogBusy]);
+  useEffect(() => {
+    if (!localRegistration) return;
+    const dialog = localDialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (dialog && !dialog.open) dialog.showModal();
+    return () => { dialog?.close(); document.body.style.overflow = previousOverflow; localButtonRef.current?.focus(); };
+  }, [localRegistration]);
+  function closeLocalRegistration() {
+    if (localSaving) return;
+    if (!localCompleted && !window.confirm('¿Cerrar el registro local? Los datos que no hayas enviado se perderán.')) return;
+    restoreLocalFocus.current = true; setLocalRegistration(null);
+    if (localCompleted) { setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }
+  }
   const selectedTournament = catalog.tournaments.find(item => String(item.id) === inviteTournament);
   const availableTeams = catalog.teams.filter(item => String(item.tournament) === inviteTournament);
   // The shared workspace only uses catalog fields in setupOnly mode. It never
@@ -584,15 +612,21 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   useEffect(() => { document.title = "Inscripciones BPower"; void loadCatalog().catch(() => undefined); }, [token]);
   async function invite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await createInvitation();
+  }
+  async function createInvitation(local = false) {
     if (invitationSaving.current) return;
     if (!selectedTournament || !availableTeams.some(item => String(item.id) === inviteTeam)) {
       setError("Selecciona un torneo y uno de sus equipos."); return;
     }
     invitationSaving.current = true; setBusy(true); setError(""); setMessage(""); setLink("");
     try {
-      const data = { tournament_id: Number(inviteTournament), team_id: Number(inviteTeam), purpose: enrollmentSection === "withdraw" ? "withdraw" : "enroll" };
+      const data = { tournament_id: Number(inviteTournament), team_id: Number(inviteTeam), purpose: !local && enrollmentSection === "withdraw" ? "withdraw" : "enroll" };
       const result = await apiRequest<{ token: string }>("/player-enrollments/", token, { method: "POST", body: JSON.stringify(data) });
-      setLink(window.location.origin + window.location.pathname + (enrollmentSection === "withdraw" ? "#/baja/" : "#/inscripcion/") + result.token);
+      if (local) {
+        setLocalCompleted(false); setLocalSaving(false);
+        setLocalRegistration({ token: result.token, team: availableTeams.find(item => String(item.id) === inviteTeam)!.name, tournament: selectedTournament.name });
+      } else setLink(window.location.origin + window.location.pathname + (enrollmentSection === "withdraw" ? "#/baja/" : "#/inscripcion/") + result.token);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo crear el enlace."); }
     finally { invitationSaving.current = false; setBusy(false); }
   }
@@ -667,6 +701,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
             onChange={event => { setInviteTeam(event.target.value); setLink(""); }}><option value="">Selecciona un equipo</option>
             {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</button>
+          {enrollmentSection === "send" && <button ref={localButtonRef} type="button" disabled={busy || catalogBusy || !inviteTeam} onClick={() => void createInvitation(true)}><UserPlus size={18} aria-hidden="true" />Registro local</button>}
         </form>
         {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» del menú izquierdo.</p>}
         {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos.</p>}
@@ -717,5 +752,8 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
         </div>
       </section>}
     </div>
+    <dialog ref={localDialogRef} className="local-enrollment-dialog no-print" aria-labelledby="local-enrollment-title" onCancel={event => { event.preventDefault(); closeLocalRegistration(); }}>
+      {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">Registro local</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div><button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localCompleted ? 'Finalizar registro local' : 'Cerrar registro local'}</button></header><div className="local-enrollment-content"><PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /></div></>}
+    </dialog>
   </main>;
 }
