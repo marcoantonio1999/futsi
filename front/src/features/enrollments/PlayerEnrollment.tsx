@@ -10,7 +10,6 @@ import "./enrollmentSelects.css";
 import "./enrollmentValidation.css";
 import "./localEnrollment.css";
 import { birthDateError, documentErrors, playerFieldErrors, type EnrollmentErrors } from './enrollmentValidation';
-import { enrollmentSignatureKind } from './enrollmentSignature';
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
 import { WhatsAppIcon } from "./WhatsAppIcon";
@@ -432,7 +431,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
   const [watermarkReady, setWatermarkReady] = useState(false);
   const [watermarkFailed, setWatermarkFailed] = useState(false);
   const printed = useRef(false);
-  const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo" || doc.kind === enrollmentSignatureKind(row)));
+  const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo"));
   const photosReady = photos.every(doc => imageResults[doc.id] === true) && (alignment || watermarkReady);
   const photoFailed = Object.values(imageResults).includes(false);
   useEffect(() => {
@@ -475,7 +474,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
       setPlayers(previous => previous.map(row => ({ ...row, is_delegate: row.id === id })).sort((a, b) => Number(Boolean(b.is_delegate)) - Number(Boolean(a.is_delegate))));
       setChangingDelegate(false); setDelegateMessage("Delegado actualizado.");
     }} />}
-    {(photoFailed || watermarkFailed) && <p className="error no-print" role="alert">No se pudieron cargar todas las fotos, firmas o la marca de agua. Actualiza antes de imprimir.</p>}
+    {(photoFailed || watermarkFailed) && <p className="error no-print" role="alert">No se pudieron cargar todas las fotos o la marca de agua. Actualiza antes de imprimir.</p>}
     {!busy && !error && <div className="enrollment-team-roster-scroll">{pages.map((pagePlayers, page) => <section key={page} className={`roster-sheet match-paper ${alignment ? "alignment-paper" : "photo-paper"}`}>
       {!alignment && <div className="roster-watermark-frame" aria-hidden="true"><img className="roster-watermark" src={rosterWatermark} alt="" onLoad={() => setWatermarkReady(true)} onError={() => { setWatermarkReady(false); setWatermarkFailed(true); }} /></div>}
       <h1 className="alignment-title">{alignment ? "HOJA DE ALINEACIÓN" : "SÁBANA DE JUGADORES"}</h1>
@@ -492,7 +491,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
           <div className="alignment-number roster-dorsal"><span>Dorsal</span></div>
           <div className="match-photo">{row && <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={`Foto de ${row.name}`} onReady={ok => imageReady("player_photo", ok)} />}</div>
           <div className="roster-identity-fields"><div className="roster-name"><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong><SanctionBadge sanctions={row?.sanctions} /></div>
-            <div className="roster-player-signature">{row?.documents.some(doc => doc.kind === enrollmentSignatureKind(row)) ? <PrivateImage document={row.documents.find(doc => doc.kind === enrollmentSignatureKind(row))} token={token} alt={row.identity_type === 'minor' ? `Firma del tutor de ${row.name}` : `Firma de ${row.name}`} onReady={ok => imageReady(enrollmentSignatureKind(row), ok)} /> : row ? <span className="roster-signature-missing">Firma no disponible</span> : null}<small>{row?.identity_type === 'minor' ? 'Firma del tutor' : 'Firma'}</small></div>
+            <div className="roster-player-signature" aria-label={row ? `Espacio para firma presencial de ${row.name}` : 'Espacio para firma presencial'}><small>Firma</small></div>
           </div>
         </>}</article>;
       })}</div>)}</div>
