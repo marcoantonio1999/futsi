@@ -23,7 +23,10 @@ test('name errors identify the relevant field and total length marks all name pa
 });
 test('wizard binds inline errors to fields, focuses the first issue and retains signed-file checks', () => {
   const source = readFileSync(new URL('../src/features/enrollments/PlayerEnrollment.tsx', import.meta.url), 'utf8');
-  for (const name of ['accepted_terms', 'birth_date', 'player_photo', 'given_names', 'paternal_surname', 'maternal_surname', 'phone', 'guardian_name', 'player_signature', 'guardian_signature']) assert.ok(source.includes(`name="${name}"`));
+  for (const name of ['accepted_terms', 'birth_date', 'player_photo', 'given_names', 'paternal_surname', 'maternal_surname', 'phone', 'guardian_name']) assert.ok(source.includes(`name="${name}"`));
+  assert.ok(source.includes("const signatureKind = minor ? 'guardian_signature' : 'player_signature'"));
+  assert.ok(source.includes('name={signatureKind} error={fieldErrors[signatureKind]}'));
+  assert.ok(source.includes('for (const signature of [signatureKind])'));
   assert.ok(source.includes("'aria-invalid': !!fieldErrors[name]"));
   assert.ok(source.includes('scrollIntoView({ block: \'center\''));
   assert.ok(source.includes('if (hasInk.current)'));

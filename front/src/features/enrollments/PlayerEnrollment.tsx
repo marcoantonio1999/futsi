@@ -10,6 +10,7 @@ import "./enrollmentSelects.css";
 import "./enrollmentValidation.css";
 import "./localEnrollment.css";
 import { birthDateError, documentErrors, playerFieldErrors, type EnrollmentErrors } from './enrollmentValidation';
+import { enrollmentSignatureKind } from './enrollmentSignature';
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
 import { WhatsAppIcon } from "./WhatsAppIcon";
@@ -41,7 +42,7 @@ const ENROLLMENT_FILE_MAX_BYTES = 20_000_000;
 type Document = { id: number; kind: string };
 type Enrollment = {
   id: number; name: string; birth_date: string; team: string; tournament: string; team_id: number | null; tournament_id: number | null;
-  phone: string; phone_secondary: string; guardian_name: string; signed_at: string;
+  phone: string; phone_secondary: string; guardian_name: string; signed_at: string; identity_type?: string;
   terms_text: string[]; documents: Document[]; is_delegate?: boolean; sanctions?: SanctionSummary[];
 };
 type Defaults = { team: string; tournament: string; terms: string[]; is_delegate?: boolean; delegate_name?: string; delegate_phone?: string };
@@ -228,7 +229,8 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   const kind = minor ? "minor" : identity;
   const documentKinds = minor ? ["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back"]
     : identity === "ine" ? ["ine_front", "ine_back"] : ["identity_document"];
-  const required = ["player_photo", "player_signature", ...documentKinds, ...(minor ? ["guardian_signature"] : [])];
+  const signatureKind = minor ? 'guardian_signature' : 'player_signature';
+  const required = ["player_photo", signatureKind, ...documentKinds];
   function navigate(next: number) { setError(""); setFieldErrors({}); setStep(next); if (content.current) content.current.scrollTop = 0; }
   function identityErrors() {
     const issues = documentErrors(documentKinds, files, labels);
@@ -255,7 +257,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     if (Object.keys(identityIssues).length) { showIssues(identityIssues, 1); return; }
     const nameForm = new FormData(formElement);
     const issues = { ...documentErrors(['player_photo'], files, labels), ...playerFieldErrors(Object.fromEntries([...nameForm].map(([key, value]) => [key, String(value)])), minor) };
-    for (const signature of ['player_signature', ...(minor ? ['guardian_signature'] : [])]) {
+    for (const signature of [signatureKind]) {
       if (!files[signature]) issues[signature] = `Falta ${labels[signature].toLocaleLowerCase()}.`;
     }
     if (Object.keys(issues).length) { showIssues(issues); return; }
@@ -335,8 +337,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
                   {minor && <EnrollmentField name="guardian_name" full error={fieldErrors.guardian_name}><label>Nombre del padre o tutor<input {...accessibility('guardian_name')} name="guardian_name" required maxLength={160} disabled={step !== 2} /></label></EnrollmentField>}
                 </div>
               </div>
-              <div className="enrollment-wizard-signatures"><EnrollmentField name="player_signature" error={fieldErrors.player_signature}><Signature label="Firma del jugador" onChange={blob => attach("player_signature", blob)} /></EnrollmentField>
-                {minor && <EnrollmentField name="guardian_signature" error={fieldErrors.guardian_signature}><Signature label="Firma del tutor" onChange={blob => attach("guardian_signature", blob)} /></EnrollmentField>}</div>
+              <div className="enrollment-wizard-signatures"><EnrollmentField key={signatureKind} name={signatureKind} error={fieldErrors[signatureKind]}><Signature label={labels[signatureKind]} onChange={blob => attach(signatureKind, blob)} /></EnrollmentField></div>
               {minor && <p>El padre o tutor autoriza la participación del menor y acepta los compromisos anteriores.</p>}
             </section>
           </>}
@@ -431,7 +432,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
   const [watermarkReady, setWatermarkReady] = useState(false);
   const [watermarkFailed, setWatermarkFailed] = useState(false);
   const printed = useRef(false);
-  const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo" || doc.kind === "player_signature"));
+  const photos = alignment ? [] : players.flatMap(row => row.documents.filter(doc => doc.kind === "player_photo" || doc.kind === enrollmentSignatureKind(row)));
   const photosReady = photos.every(doc => imageResults[doc.id] === true) && (alignment || watermarkReady);
   const photoFailed = Object.values(imageResults).includes(false);
   useEffect(() => {
@@ -491,7 +492,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
           <div className="alignment-number roster-dorsal"><span>Dorsal</span></div>
           <div className="match-photo">{row && <PrivateImage document={row.documents.find(doc => doc.kind === "player_photo")} token={token} alt={`Foto de ${row.name}`} onReady={ok => imageReady("player_photo", ok)} />}</div>
           <div className="roster-identity-fields"><div className="roster-name"><small>Nombre</small><strong>{row?.name || "\u00a0"}</strong><SanctionBadge sanctions={row?.sanctions} /></div>
-            <div className="roster-player-signature">{row?.documents.some(doc => doc.kind === "player_signature") ? <PrivateImage document={row.documents.find(doc => doc.kind === "player_signature")} token={token} alt={`Firma de ${row.name}`} onReady={ok => imageReady("player_signature", ok)} /> : row ? <span className="roster-signature-missing">Firma no disponible</span> : null}<small>Firma</small></div>
+            <div className="roster-player-signature">{row?.documents.some(doc => doc.kind === enrollmentSignatureKind(row)) ? <PrivateImage document={row.documents.find(doc => doc.kind === enrollmentSignatureKind(row))} token={token} alt={row.identity_type === 'minor' ? `Firma del tutor de ${row.name}` : `Firma de ${row.name}`} onReady={ok => imageReady(enrollmentSignatureKind(row), ok)} /> : row ? <span className="roster-signature-missing">Firma no disponible</span> : null}<small>{row?.identity_type === 'minor' ? 'Firma del tutor' : 'Firma'}</small></div>
           </div>
         </>}</article>;
       })}</div>)}</div>

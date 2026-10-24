@@ -162,13 +162,13 @@ class PublicEnrollmentView(APIView):
         fields = serializer.validated_data
         assert_not_blacklisted(fields['name'], fields['birth_date'])
         assert_no_pending_sanction(fields['name'], fields['birth_date'])
-        kinds = ["player_photo", "player_signature"]
+        kinds = ["player_photo"]
         if is_minor(fields["birth_date"]):
             kinds.extend(["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back", "guardian_signature"])
         elif fields["identity_type"] == "ine":
-            kinds.extend(["ine_front", "ine_back"])
+            kinds.extend(["player_signature", "ine_front", "ine_back"])
         else:
-            kinds.append("identity_document")
+            kinds.extend(["player_signature", "identity_document"])
         files = [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
         # Reject invalid invitations before transferring any private files.
         invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token, purpose='enroll')

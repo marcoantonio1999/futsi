@@ -41,24 +41,25 @@ async function consent(page){
  await page.locator('[data-enrollment-field="accepted_terms_top"] input').check();
  await page.getByRole('button',{name:'Aceptar y continuar',exact:true}).click();
 }
-async function completeForm(page){
+async function completeForm(page,minor=false){
  await consent(page);
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  await page.locator('[data-enrollment-field="birth_date"].enrollment-invalid').waitFor();
- await page.locator('input[type=date][name=birth_date]').fill('2000-01-01');
+ await page.locator('input[type=date][name=birth_date]').fill(minor?'2015-01-01':'2000-01-01');
  const pdf={name:'documento-ficticio.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nFICTICIO')};
- for(const field of ['ine_front','ine_back'])await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
+ for(const field of (minor?['minor_credential','curp','guardian_ine_front','guardian_ine_back']:['ine_front','ine_back']))await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  // A synthetic PNG created locally, not a real player's photograph.
  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=100;c.height=100;const ctx=c.getContext('2d');ctx.fillStyle='#bbb';ctx.fillRect(0,0,100,100);return c.toDataURL().split(',')[1];});
  await page.locator('[data-enrollment-field="player_photo"] input[type=file]').setInputFiles({name:'foto-ficticia.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
  for(const [name,value] of Object.entries({given_names:'José',paternal_surname:'Pérez',maternal_surname:'López',phone:'5550000000'}))await page.locator(`input[name=${name}]`).fill(value);
- const canvas=page.locator('[data-enrollment-field="player_signature"] canvas');await canvas.scrollIntoViewIfNeeded();const b=await canvas.boundingBox();
+ if(minor)await page.locator('input[name=guardian_name]').fill('Tutor ficticio');
+ const canvas=page.locator(`[data-enrollment-field="${minor?'guardian_signature':'player_signature'}"] canvas`);await canvas.scrollIntoViewIfNeeded();const b=await canvas.boundingBox();
  await page.mouse.move(b.x+20,b.y+30);await page.mouse.down();await page.mouse.move(b.x+80,b.y+50,{steps:8});await page.mouse.up();
  await noOverflow(page);
 }
 try{
- for(const width of [320,390,1440]){
+ for(const width of [320,390,1440]){for(const minor of [false,true]){
   const {page,local,writes,errors,state}=await prepare(width);
   await local.click();await page.getByRole('dialog',{name:'Registro local',exact:true}).waitFor();
   assert.equal(page.url(),url);assert.equal(writes.length,1);assert.deepEqual(JSON.parse(writes[0].body),{tournament_id:1,team_id:1,purpose:'enroll'});
@@ -66,10 +67,12 @@ try{
   assert((await page.getByRole('button',{name:'Cerrar registro local',exact:true}).boundingBox()).height>=44);
   await page.screenshot({path:`${output}/consent-${width}.png`,fullPage:true});
   page.once('dialog',dialog=>dialog.dismiss());await page.keyboard.press('Escape');assert(await page.getByRole('dialog',{name:'Registro local',exact:true}).isVisible());
-  await completeForm(page);
+  await completeForm(page,minor);
+  assert.equal(await page.locator('.enrollment-wizard-signatures canvas').count(),1);
+  assert.equal(await page.locator(`[data-enrollment-field="${minor?'player_signature':'guardian_signature'}"] canvas`).count(),0);
   assert.equal(await page.getByText('Esta es la primera inscripción del equipo. Esta persona quedará registrada como delegado.',{exact:true}).count(),1);
   assert.equal(await page.getByText(/Primero debe inscribirse el delegado/).count(),0);
-  await page.screenshot({path:`${output}/signature-${width}.png`,fullPage:true});
+  await page.screenshot({path:`${output}/signature-${minor?'minor':'adult'}-${width}.png`,fullPage:true});
   if(width===390){
    state.failSave=true;await page.getByRole('button',{name:'Confirmar inscripción',exact:true}).click();
    await page.getByRole('alert').filter({hasText:'Error ficticio de guardado'}).waitFor();
@@ -82,13 +85,14 @@ try{
   assert(await page.getByRole('button',{name:'Cerrar registro local',exact:true}).isDisabled());
   release();await page.getByRole('heading',{name:'Inscripción recibida',exact:true}).waitFor();
   const body=writes.at(-1).body;
-  for(const field of ['birth_date','accepted_terms','ine_front','ine_back','player_photo','player_signature','given_names','paternal_surname','maternal_surname','phone'])assert(body.includes(`name="${field}"`),field);
+  for(const field of ['birth_date','accepted_terms','player_photo','given_names','paternal_surname','maternal_surname','phone',...(minor?['guardian_signature','guardian_name','minor_credential','curp','guardian_ine_front','guardian_ine_back']:['player_signature','ine_front','ine_back'])])assert(body.includes(`name="${field}"`),field);
+  assert(!body.includes(`name="${minor?'player_signature':'guardian_signature'}"`));
   assert.equal(writes.length,width===390?3:2);
   await page.getByRole('button',{name:'Finalizar registro local',exact:true}).click();
   assert.equal(await page.locator('dialog[open]').count(),0);assert(await local.evaluate(el=>el===document.activeElement));
-  assert.deepEqual(errors,[]);console.log(JSON.stringify({width,completeRegistration:true,consentDocumentsSignature:true,noNavigation:true,noOverflow:true,saveProtected:true,noRealWrites:true}));
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({width,minor,completeRegistration:true,consentDocumentsSignature:true,noNavigation:true,noOverflow:true,saveProtected:true,noRealWrites:true}));
   await page.close();
- }
+ }}
  const {page,local,writes,state,errors}=await prepare(390);
  state.failInvitation=true;await local.click();await page.getByText(/Sin cupo ficticio/).waitFor();assert.equal(await page.locator('dialog[open]').count(),0);assert.equal(writes.length,1);
  state.failInvitation=false;await local.click();await page.getByRole('dialog',{name:'Registro local',exact:true}).waitFor();

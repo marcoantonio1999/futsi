@@ -860,6 +860,22 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
         self.assertEqual(self.client.post(self.url, self.payload(minor=True), format="multipart").status_code, 201)
 
+    def test_minor_accepts_only_guardian_signature_and_does_not_store_child_signature(self):
+        data = self.payload(minor=True)
+        del data['player_signature']
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 201)
+        self.assertTrue(PlayerEnrollmentDocument.objects.filter(kind='guardian_signature').exists())
+        self.assertFalse(PlayerEnrollmentDocument.objects.filter(kind='player_signature').exists())
+
+    def test_minor_legacy_upload_ignores_child_signature(self):
+        self.assertEqual(self.client.post(self.url, self.payload(minor=True), format='multipart').status_code, 201)
+        self.assertFalse(PlayerEnrollmentDocument.objects.filter(kind='player_signature').exists())
+
+    def test_adult_still_requires_player_signature(self):
+        data = self.payload()
+        del data['player_signature']
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
+
     def test_blank_signature_rejected(self):
         self.assertEqual(self.client.post(self.url, self.payload(blank=True), format="multipart").status_code, 400)
         self.assertEqual(PlayerEnrollment.objects.count(), 0)
