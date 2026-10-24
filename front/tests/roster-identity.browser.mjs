@@ -19,7 +19,7 @@ async function setup(page,{failSignature=false,delaySignature=false,slots=16}={}
    if(id===2&&delaySignature)await new Promise(resolve=>setTimeout(resolve,800));
    return route.fulfill({contentType:'image/svg+xml',body:svg(id)});
   }
-  if(url.pathname.endsWith('/catalog/'))return route.fulfill({json:{sites:[{id:1,name:'Sede ficticia'}],tournaments:[{id:21,name:'Liga ficticia',site:1,max_players_per_team:slots}],teams:[{id:11,name:'Equipo ficticio',tournament:21,is_active:true}]}});
+  if(url.pathname.endsWith('/catalog/'))return route.fulfill({json:{sites:[{id:1,name:'Sede ficticia'}],tournaments:[{id:21,name:'Liga ficticia de prueba con categoría de nombre largo',site:1,max_players_per_team:slots}],teams:[{id:11,name:'Equipo ficticio con nombre largo para validar la impresión completa',tournament:21,is_active:true}]}});
   if(url.pathname.endsWith('/player-enrollments/'))return route.fulfill({json:{results:players,count:players.length}});
   return route.fulfill({json:{results:[],count:0}});
  });return errors;
@@ -38,6 +38,7 @@ try{
   assert(await page.getByText('SANCIONADO',{exact:true}).isVisible());
   assert(await page.locator('.roster-name').first().evaluate(element=>element.scrollHeight<=element.clientHeight));
   assert(await page.getByText('Firma no disponible',{exact:true}).isVisible());
+  assert(await page.locator('.roster-print-help').isVisible());
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert.equal(await page.getByRole('button',{name:'Herramientas',exact:true}).count(),0);
   if(width<1024){
@@ -51,7 +52,13 @@ try{
   await page.screenshot({path:`${output}/roster-${width}.png`,fullPage:true});
   if(width===1440){
    await page.pdf({path:`${output}/sabana-ficticia.pdf`,format:'A4',printBackground:true,margin:{top:'10mm',right:'10mm',bottom:'10mm',left:'10mm'}});
+   for(const format of ['A4','Letter'])await page.pdf({path:`${output}/sabana-headers-${format}.pdf`,format,preferCSSPageSize:true,printBackground:true,displayHeaderFooter:true,headerTemplate:'<div style="font-size:9px">QA-BROWSER-HEADER</div>',footerTemplate:'<div style="font-size:9px">QA-BROWSER-FOOTER</div>'});
    await page.emulateMedia({media:'print'});await page.screenshot({path:`${output}/print-preview.png`,fullPage:true});
+   assert.equal(await page.locator('.roster-print-help').isVisible(),false);
+   for(const sheet of await page.locator('.photo-paper').all()){
+    assert(await sheet.evaluate(element=>getComputedStyle(element).overflow==='visible'));
+    assert(await sheet.evaluate(element=>Array.from(element.querySelectorAll('.match-player-box')).every(card=>card.getBoundingClientRect().bottom<=element.getBoundingClientRect().bottom)));
+   }
   }
   assert.deepEqual(errors,[]);console.log(JSON.stringify({width,photos:17,signatures:16,unavailableSignature:true,pages:2,noPageOverflow:true,noTools:true}));await page.close();
  }

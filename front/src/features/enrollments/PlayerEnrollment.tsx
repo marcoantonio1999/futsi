@@ -467,6 +467,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
       {!alignment && <p>Delegado: <strong>{players.find(row => row.is_delegate)?.name || "Sin delegado"}</strong></p>}</div>
       <div className="control-grid"><label>Fecha<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><label>Horario<input type="time" value={time} onChange={event => setTime(event.target.value)} /></label>{!alignment && <label>Jornada<input value={round} maxLength={30} onChange={event => setRound(event.target.value)} /></label>}<button type="button" disabled={busy || Boolean(error) || !photosReady} onClick={() => window.print()}>Imprimir / guardar PDF</button></div>
     </div>
+    {!alignment && <p className="roster-print-help no-print">Al imprimir, selecciona papel A4 y desactiva «Encabezados y pies de página» en Más ajustes para quitar la fecha, el título y el enlace del navegador.</p>}
     {busy && <p role="status">Cargando plantilla…</p>}{error && <p className="error" role="alert">{error}</p>}
     {delegateMessage && <p className="no-print" role="status">{delegateMessage}</p>}
     {changingDelegate && <ChangeDelegate teamId={team.id} teamName={team.name} players={players} token={token} onClose={() => setChangingDelegate(false)} onChanged={id => {
@@ -475,7 +476,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
     }} />}
     {(photoFailed || watermarkFailed) && <p className="error no-print" role="alert">No se pudieron cargar todas las fotos, firmas o la marca de agua. Actualiza antes de imprimir.</p>}
     {!busy && !error && <div className="enrollment-team-roster-scroll">{pages.map((pagePlayers, page) => <section key={page} className={`roster-sheet match-paper ${alignment ? "alignment-paper" : "photo-paper"}`}>
-      {!alignment && <img className="roster-watermark" src={rosterWatermark} alt="" aria-hidden="true" onLoad={() => setWatermarkReady(true)} onError={() => { setWatermarkReady(false); setWatermarkFailed(true); }} />}
+      {!alignment && <div className="roster-watermark-frame" aria-hidden="true"><img className="roster-watermark" src={rosterWatermark} alt="" onLoad={() => setWatermarkReady(true)} onError={() => { setWatermarkReady(false); setWatermarkFailed(true); }} /></div>}
       <h1 className="alignment-title">{alignment ? "HOJA DE ALINEACIÓN" : "SÁBANA DE JUGADORES"}</h1>
       <div className="match-paper-header"><div><strong>{team.name}</strong><small>EQUIPO</small><b>{tournament?.name || players[0]?.tournament || ""}</b><small>CATEGORÍA</small></div><div><strong>{formattedDate || "\u00a0"}</strong><small>FECHA</small><b>{time || "\u00a0"}</b><small>HORARIO</small></div></div>
       {!alignment && <p className="match-round">{round || "\u00a0"}</p>}
