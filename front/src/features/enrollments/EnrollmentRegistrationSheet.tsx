@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { API_URL, apiRequest } from '../../api';
+import { enrollmentSignatureKind } from './enrollmentSignature';
 import './registrationSheet.css';
 
 type Document = { id: number; kind: string };
-type Enrollment = { id: number; name: string; birth_date: string; team: string; tournament: string;
+type Enrollment = { id: number; name: string; birth_date: string; identity_type: string; team: string; tournament: string;
   phone: string; phone_secondary: string; guardian_name: string; signed_at: string;
   terms_text: string[]; documents: Document[] };
 const labels: Record<string,string> = { player_photo:'Foto del jugador', player_signature:'Firma del jugador',
@@ -47,8 +48,8 @@ export function EnrollmentRegistrationSheet({enrollmentId,token,onBack}:{enrollm
         {!record.documents.some(doc=>!['player_photo','player_signature','guardian_signature'].includes(doc.kind))&&<p>No hay credenciales conservadas para esta inscripción.</p>}
       </section><section className="player-frame"><div className="photo-and-signatures">
         <div>{record.documents.filter(doc=>doc.kind==='player_photo').map(doc=><PrivateDocument key={doc.id} document={doc} token={token}/>)}</div>
-        <div>{record.documents.filter(doc=>['player_signature','guardian_signature'].includes(doc.kind)).map(doc=><PrivateDocument key={doc.id} document={doc} token={token}/>)}
-        {!record.documents.some(doc=>doc.kind==='player_signature')&&<p>Firma del jugador no disponible.</p>}</div>
+        <div>{record.documents.filter(doc=>doc.kind===enrollmentSignatureKind(record)).map(doc=><PrivateDocument key={doc.id} document={doc} token={token}/>)}
+        {!record.documents.some(doc=>doc.kind===enrollmentSignatureKind(record))&&<p>{record.identity_type==='minor'?'Firma del tutor no disponible.':'Firma del jugador no disponible.'}</p>}</div>
       </div><div className="player-fields"><p className="full">NOMBRE<br/><strong>{record.name}</strong></p><p>EQUIPO<br/>{record.team}</p><p>TORNEO<br/>{record.tournament}</p>
         <p>TELÉFONO DE CONTACTO<br/>{record.phone}</p><p>TELÉFONO DE EMERGENCIA<br/>{record.phone_secondary||'No registrado'}</p>
         <p>NACIMIENTO<br/>{record.birth_date}</p><p>FIRMADO<br/>{new Date(record.signed_at).toLocaleString('es-MX')}</p>
