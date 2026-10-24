@@ -3,12 +3,12 @@
   .disciplinary-presentation[open] { display:flex;flex-direction:column; }
   .disciplinary-presentation::backdrop { background:#102218aa; }
   .disciplinary-presentation-toolbar { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid #dce5df;flex-shrink:0; }
-  .disciplinary-presentation-toolbar h2 { margin:0; }
+  .enrollment-page .disciplinary-presentation-toolbar h2 { margin:0;color:#b91c1c;font-size:26px;font-weight:700; }
   .disciplinary-presentation button { min-width:44px;min-height:44px; }
   .disciplinary-presentation-scroll { overflow:auto;min-height:0;overscroll-behavior:contain; }
   .disciplinary-presentation-card { padding:28px;min-width:0;background:white; }
-  .disciplinary-presentation-photo { width:min(240px,100%);height:280px;margin:0 auto 26px;background:#f1f4f2;display:grid;place-items:center;color:#a7b3ac; }
-  .disciplinary-presentation-photo img { width:100%;height:100%;object-fit:contain; }
+  .disciplinary-presentation-photo { width:min(360px,100%);aspect-ratio:4/5;margin:0 auto 26px;background:#f1f4f2;display:grid;place-items:center;color:#a7b3ac;overflow:hidden; }
+  .disciplinary-presentation-photo img { display:block;width:100%;height:100%;max-width:100%;max-height:100%;min-width:0;min-height:0;object-fit:contain;object-position:center; }
   .disciplinary-presentation-card h3 { font-size:26px;line-height:1.3;margin:0 0 28px;overflow-wrap:anywhere; }
   .disciplinary-presentation-card dt { font-size:15px;font-weight:700;margin:20px 0 6px; }
   .disciplinary-presentation-card dd { font-size:19px;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:anywhere; }

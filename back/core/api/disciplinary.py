@@ -16,7 +16,7 @@ from core.api.enrollments import enrollment_staff, enrollment_sites
 from core.enrollment_access import enrollment_site_ids
 from core.services.player_blacklist import identity_key, lock_identity
 from core.enrollment_models import PlayerEnrollmentDocument
-from core.services.disciplinary_photos import snapshot_photo, document_thumbnail, stored_thumbnail, thumbnail, legacy_thumbnail
+from core.services.disciplinary_photos import snapshot_photo, document_thumbnail, stored_thumbnail, stored_presentation_photo, thumbnail, legacy_thumbnail
 
 def can_manage_blacklist(user):
     return user.role in {'admin','owner','dev'} or (user.username.casefold()=='emilio' and enrollment_staff(user))
@@ -145,6 +145,7 @@ class DisciplinaryPhotoView(APIView):
     permission_classes=[SanctionPermission]
     blacklist=False
     def get(self,request,pk):
+        options = {'presentation': True} if request.query_params.get('view') == 'presentation' else {}
         if self.blacklist:
             row=get_object_or_404(scoped_blacklist(request.user),pk=pk)
             if not(row.photo_storage_path or row.photo_sha256 or row.photo_legacy_file):raise Http404()
@@ -154,14 +155,14 @@ class DisciplinaryPhotoView(APIView):
             if not document and not(row.player_id and row.player.photo):raise Http404()
         try:
             if self.blacklist:
-                if row.photo_storage_path:content=stored_thumbnail(row.photo_storage_path,row.photo_sha256)
+                if row.photo_storage_path:content=(stored_presentation_photo if options else stored_thumbnail)(row.photo_storage_path,row.photo_sha256)
                 elif row.photo_sha256:
                     from hashlib import sha256
                     original=bytes(row.photo_content)
                     if sha256(original).hexdigest()!=row.photo_sha256:raise ValueError('Foto inválida.')
-                    content=thumbnail(original)
-                else:content=legacy_thumbnail(row.photo_legacy_file)
-            else:content=document_thumbnail(document) if document else legacy_thumbnail(row.player.photo.name)
+                    content=thumbnail(original,**options)
+                else:content=legacy_thumbnail(row.photo_legacy_file,**options)
+            else:content=document_thumbnail(document,**options) if document else legacy_thumbnail(row.player.photo.name,**options)
         except Exception:
             return Response({'detail':'Foto no disponible.'},status=503)
         response=HttpResponse(content,content_type='image/jpeg')

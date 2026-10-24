@@ -46,9 +46,11 @@ export function disciplinaryImage(data: PresentationData, photo: HTMLImageElemen
   const names = wrapPresentationText(context, data.player_name, textWidth);
   context.font = '34px Arial';
   const fields = presentationFields(data).map(([label, value]) => ({label, lines: wrapPresentationText(context, value, textWidth)}));
-  canvas.height = 80 + 420 + 55 + names.length * 58 + fields.reduce((height, field) => height + 45 + 40 + field.lines.length * 46, 0) + 80;
+  canvas.height = 795 + names.length * 58 + fields.reduce((height, field) => height + 45 + 40 + field.lines.length * 46, 0) + 80;
   context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, canvas.height);
-  const photoX = 320, photoY = 80, photoWidth = 360, photoHeight = 420;
+  context.fillStyle = '#b91c1c'; context.font = 'bold 64px Arial'; context.textBaseline = 'top'; context.textAlign = 'center';
+  context.fillText('Sancionado',width / 2,60); context.textAlign = 'left';
+  const photoX = 260, photoY = 180, photoWidth = 480, photoHeight = 560;
   context.fillStyle = '#f1f4f2'; context.fillRect(photoX, photoY, photoWidth, photoHeight);
   if (photo) {
     const scale = Math.min(photoWidth / photo.naturalWidth, photoHeight / photo.naturalHeight);
@@ -56,10 +58,10 @@ export function disciplinaryImage(data: PresentationData, photo: HTMLImageElemen
     context.drawImage(photo, photoX + (photoWidth - w) / 2, photoY + (photoHeight - h) / 2, w, h);
   } else {
     // Neutral placeholder, never a replacement photograph of another person.
-    context.fillStyle = '#a7b3ac'; context.beginPath(); context.arc(500, 230, 65, 0, Math.PI * 2); context.fill();
-    context.beginPath(); context.ellipse(500, 410, 115, 100, 0, Math.PI, Math.PI * 2); context.fill();
+    context.fillStyle = '#a7b3ac'; context.beginPath(); context.arc(500, 380, 85, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.ellipse(500, 620, 150, 130, 0, Math.PI, Math.PI * 2); context.fill();
   }
-  let y = 555;
+  let y = 795;
   context.fillStyle = '#172d23'; context.textBaseline = 'top'; context.font = 'bold 46px Arial';
   for (const line of names) { context.fillText(line, padding, y); y += 58; }
   for (const field of fields) {

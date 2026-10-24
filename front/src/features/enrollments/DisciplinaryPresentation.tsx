@@ -17,7 +17,7 @@ export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: 
   useEffect(() => {
     if (!row.has_photo) return;
     let active = true, objectUrl = ''; const controller = new AbortController();
-    fetch(`${API_URL}${endpoint}${row.id}/photo/`, {headers: {Authorization: `Token ${token}`}, signal: controller.signal})
+    fetch(`${API_URL}${endpoint}${row.id}/photo/?view=presentation`, {headers: {Authorization: `Token ${token}`}, signal: controller.signal})
       .then(async response => {
         if (!response.ok || !response.headers.get('Content-Type')?.startsWith('image/')) throw new Error('Foto no disponible');
         objectUrl = URL.createObjectURL(await response.blob());
@@ -38,7 +38,7 @@ export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: 
     finally { setBusy(false); }
   }
   return <dialog ref={dialog} className="disciplinary-presentation no-print" aria-labelledby="disciplinary-presentation-title" onCancel={event => { event.preventDefault(); onClose(); }}>
-    <header className="disciplinary-presentation-toolbar"><h2 id="disciplinary-presentation-title">Presentación</h2><button type="button" onClick={onClose} aria-label="Cerrar presentación"><X size={20}/></button></header>
+    <header className="disciplinary-presentation-toolbar"><h2 id="disciplinary-presentation-title">Sancionado</h2><button type="button" onClick={onClose} aria-label="Cerrar presentación"><X size={20}/></button></header>
     <div className="disciplinary-presentation-scroll"><article className="disciplinary-presentation-card" aria-label="Ficha de presentación">
       <div className="disciplinary-presentation-photo">
         {url ? <img ref={photo} src={url} alt={`Foto de ${row.player_name}`} onLoad={() => {setLoading(false); setPhotoReady(true);}} onError={() => {setLoading(false); setPhotoReady(false); setUrl('');}}/> : <UserRound size={100} aria-label={loading ? 'Cargando foto' : 'Foto no disponible'}/>}

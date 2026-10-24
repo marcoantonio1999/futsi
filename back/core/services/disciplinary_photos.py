@@ -18,17 +18,18 @@ def snapshot_photo(sanction):
     return {}
 
 
-def thumbnail(content):
+def thumbnail(content, presentation=False):
     if not content or len(content)>enrollment_storage.MAX_BYTES:
         raise ValueError('Foto inválida.')
     with Image.open(BytesIO(content)) as image:
         if image.format not in {'PNG','JPEG','WEBP'} or image.width*image.height>25_000_000:
             raise ValueError('Foto inválida.')
-        image.draft('RGB',(192,192))
-        image.thumbnail((192,192))
+        size = 960 if presentation else 192
+        image.draft('RGB',(size,size))
+        image.thumbnail((size,size))
         image=ImageOps.exif_transpose(image)
         output=BytesIO()
-        image.convert('RGB').save(output,format='JPEG',quality=82,optimize=True)
+        image.convert('RGB').save(output,format='JPEG',quality=90 if presentation else 82,optimize=True)
         return output.getvalue()
 
 
@@ -40,13 +41,21 @@ def stored_thumbnail(path,digest):
     return thumbnail(content)
 
 
-def document_thumbnail(document):
-    if document.storage_path:return stored_thumbnail(document.storage_path,document.sha256)
+@lru_cache(maxsize=32)
+def stored_presentation_photo(path,digest):
+    content=enrollment_storage.read_document(path)
+    if sha256(content).hexdigest()!=digest: raise ValueError('Foto inválida.')
+    return thumbnail(content,presentation=True)
+
+
+def document_thumbnail(document, presentation=False):
+    if document.storage_path:
+        return (stored_presentation_photo if presentation else stored_thumbnail)(document.storage_path,document.sha256)
     content=bytes(document.content)
     if sha256(content).hexdigest()!=document.sha256:raise ValueError('Foto inválida.')
-    return thumbnail(content)
+    return thumbnail(content,presentation=presentation)
 
 
-def legacy_thumbnail(name):
+def legacy_thumbnail(name, presentation=False):
     with default_storage.open(name,'rb') as file:
-        return thumbnail(file.read(enrollment_storage.MAX_BYTES+1))
+        return thumbnail(file.read(enrollment_storage.MAX_BYTES+1),presentation=presentation)

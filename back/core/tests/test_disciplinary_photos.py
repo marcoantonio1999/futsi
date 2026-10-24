@@ -5,7 +5,7 @@ from core.tests import test_disciplinary
 from core.tests.test_player_enrollments import image_file
 from core.models import User,Player,PlayerBlacklistEntry,AuditLog
 from core.enrollment_models import PlayerEnrollmentDocument
-from core.services.disciplinary_photos import stored_thumbnail
+from core.services.disciplinary_photos import stored_thumbnail, stored_presentation_photo, thumbnail
 
 
 @override_settings(ALLOWED_HOSTS=['testserver'],MIGRATION_MODULES={'core':None})
@@ -42,6 +42,36 @@ class DisciplinaryPhotoTests(TestCase):
         self.assertTrue(response.json()['results'][0]['has_photo'])
         self.assertNotIn('private/source/photo.png',response.content.decode())
         self.assertNotIn('photo_content',response.content.decode())
+
+    def test_presentation_uses_larger_private_photo_without_changing_table_thumbnails(self):
+        self.photo()
+        from PIL import Image
+        from io import BytesIO
+        response=self.client.get(self.url+'?view=presentation')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response['Cache-Control'],'private, no-store')
+        with Image.open(BytesIO(response.content)) as image:self.assertEqual(image.size,(600,180))
+        with Image.open(BytesIO(self.client.get(self.url).content)) as image:self.assertLessEqual(max(image.size),192)
+        coordinator=User.objects.create_user(username='presentation-other',role='site_coordinator',primary_site=self.other)
+        self.client.force_authenticate(coordinator)
+        self.assertEqual(self.client.get(self.url+'?view=presentation').status_code,404)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(self.url+'?view=presentation').status_code,401)
+
+    def test_presentation_derivative_is_bounded_uncropped_and_cached_separately(self):
+        from PIL import Image
+        from io import BytesIO
+        source=BytesIO();Image.new('RGB',(1200,2400),'green').save(source,format='PNG')
+        with Image.open(BytesIO(thumbnail(source.getvalue(),presentation=True))) as image:self.assertEqual(image.size,(480,960))
+        self.photo('private/presentation/photo.png');stored_presentation_photo.cache_clear()
+        with patch('core.services.disciplinary_photos.enrollment_storage.read_document',return_value=self.image) as read:
+            self.assertEqual(self.client.get(self.url+'?view=presentation').status_code,200)
+            self.assertEqual(self.client.get(self.url+'?view=presentation').status_code,200)
+            read.assert_called_once()
+        self.assertEqual(stored_presentation_photo.cache_info().maxsize,32)
+        stored_presentation_photo.cache_clear()
+        with patch('core.services.disciplinary_photos.enrollment_storage.read_document',return_value=b'wrong image'):
+            self.assertEqual(self.client.get(self.url+'?view=presentation').status_code,503)
 
     def test_blacklist_photo_survives_origin_deletion_and_is_global_private(self):
         self.photo();self.client.post(self.blacklist,self.add_payload(),format='json')

@@ -9,24 +9,28 @@ const row={id:7,player_name:'José Pérez López',offense:'Falta ficticia',reaso
 async function setup(width,{missingPhoto=false,long=false,finite=false}={}){
  const page=await browser.newPage({viewport:{width,height:900},acceptDownloads:true}),errors=[],requests=[];
  const record=long?{...row,player_name:'Nombre compuesto '.repeat(12),reason:'Motivo detallado '.repeat(130)}:finite?{...row,ends_on:'2026-11-15',status:'active'}:row;
+ const photoWidth=width===320?600:width===390?1200:800,photoHeight=width===320?900:width===390?600:800;
  page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{window.presentationDrawnText=[];const original=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(text,...args){window.presentationDrawnText.push(text);return original.call(this,text,...args);};});
+ await page.addInitScript(()=>{window.presentationDrawnText=[];window.presentationTextColors=[];window.presentationPhotoBounds=[];const original=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(text,...args){window.presentationDrawnText.push(text);window.presentationTextColors.push(this.fillStyle);return original.call(this,text,...args);};const draw=CanvasRenderingContext2D.prototype.drawImage;CanvasRenderingContext2D.prototype.drawImage=function(img,...args){window.presentationPhotoBounds.push(args);return draw.call(this,img,...args);};});
  await page.route('**/api/**',route=>{
   const req=route.request(),path=new URL(req.url()).pathname;assert.equal(req.method(),'GET');requests.push(path);
   assert.equal(req.headers().authorization,'Token fictional');
-  if(path.endsWith('/photo/'))return missingPhoto?route.fulfill({status:404,json:{detail:'Foto no disponible'}}):route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><rect width="192" height="192" fill="#196c48"/><circle cx="96" cy="75" r="42" fill="#fae3c0"/></svg>'});
+  if(path.endsWith('/photo/'))return missingPhoto?route.fulfill({status:404,json:{detail:'Foto no disponible'}}):route.fulfill({contentType:'image/svg+xml',body:`<svg xmlns="http://www.w3.org/2000/svg" width="${photoWidth}" height="${photoHeight}" viewBox="0 0 600 900" preserveAspectRatio="none"><rect width="600" height="900" fill="#196c48"/><circle cx="300" cy="280" r="120" fill="#fae3c0"/><rect x="10" y="10" width="580" height="880" fill="none" stroke="white" stroke-width="12"/></svg>`});
   if(path.endsWith('/catalog/'))return route.fulfill({json:{sites:[],tournaments:[],teams:[]}});
   return route.fulfill({json:{results:[record],count:1,filters:{site:[],tournament:[],team:[]},can_manage_blacklist:false}});
  });
  await page.goto('http://127.0.0.1:5213/tests/enrollment-register-preview.html#/admin/inscripciones/commission');
  await page.getByRole('button',{name:'Presentación',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'Presentación',exact:true});await dialog.waitFor();
+ const dialog=page.getByRole('dialog',{name:'Sancionado',exact:true});await dialog.waitFor();
+ assert.equal(await dialog.getByRole('heading',{name:'Sancionado',exact:true}).evaluate(el=>getComputedStyle(el).color),'rgb(185, 28, 28)');
  const card=dialog.getByRole('article',{name:'Ficha de presentación'});
  await card.getByRole('heading',{name:record.player_name,exact:true}).waitFor();
  const button=dialog.getByRole('button',{name:'Descargar imagen',exact:true});await button.waitFor();
  assert(await button.isEnabled());assert((await button.boundingBox()).height>=44);
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  assert(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth));
+ if(!missingPhoto){const img=card.locator('img');assert.equal(await img.evaluate(el=>getComputedStyle(el).objectFit),'contain');assert.equal(await img.evaluate(el=>el.naturalWidth),photoWidth);assert(requests.filter(p=>p.endsWith('/photo/')).length>=1);}
+ await page.screenshot({path:`${output}/photo-${width}${missingPhoto?'-missing':''}.png`});
  const text=await card.innerText();for(const hidden of ['Sede privada','Equipo privado','FOLIO-PRIVADO','Administrador privado','CARTA PRIVADA','500'])assert(!text.includes(hidden));
  const period=finite?'25/10/2026 – 15/11/2026':'25/10/2026 – Sin término',status=finite?'Vigente':'Sin término';
  for(const value of [record.tournament,record.offense,period,status])assert(text.includes(value));
@@ -36,7 +40,9 @@ async function setup(width,{missingPhoto=false,long=false,finite=false}={}){
  await page.screenshot({path:`${output}/modal-${width}${long?'-long':''}${missingPhoto?'-missing':''}.png`});
  const downloaded=page.waitForEvent('download');await button.click();const file=await downloaded;assert(file.suggestedFilename().endsWith('.png'));await file.saveAs(`${output}/presentation-${width}${long?'-long':''}${missingPhoto?'-missing':''}.png`);
  const drawn=await page.evaluate(()=>window.presentationDrawnText);
- assert.equal(drawn.join('').replace(/\s/g,''),[record.player_name,'Torneo',record.tournament,'Sanción',record.offense,'Motivo',record.reason,'Periodo',period,'Estado',status,'Fecha','23/10/2026'].join('').replace(/\s/g,''));
+ assert.equal(drawn.join('').replace(/\s/g,''),['Sancionado',record.player_name,'Torneo',record.tournament,'Sanción',record.offense,'Motivo',record.reason,'Periodo',period,'Estado',status,'Fecha','23/10/2026'].join('').replace(/\s/g,''));
+ assert.equal(await page.evaluate(()=>window.presentationTextColors[0]),'#b91c1c');
+ if(!missingPhoto){const [x,y,w,h]=await page.evaluate(()=>window.presentationPhotoBounds[0]);assert(Math.abs(w/h-photoWidth/photoHeight)<0.001);assert(w<=480&&h<=560&&x>=260&&y>=180);}
  await page.keyboard.press('Escape');assert.equal(await page.locator('dialog[open]').count(),0);
  assert(await page.getByRole('button',{name:'Presentación',exact:true}).evaluate(el=>el===document.activeElement));
  assert.deepEqual(errors,[]);console.log(JSON.stringify({width,long,missingPhoto,finite,privatePhoto:true,allRequestedFields:true,png:true,noWrites:true,noOverflow:true}));
