@@ -2,12 +2,20 @@
 @media screen {
   .registration-detail{box-sizing:border-box;min-width:0;max-width:100%;overflow-wrap:anywhere}
   .registration-detail-toolbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
-  .registration-detail-toolbar button,.registration-document a{min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
+  .registration-detail-toolbar button{min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
   .registration-detail .sheet-top>*{min-width:0}
   .registration-document{min-width:0;margin-bottom:16px}
   .registration-document img{display:block;max-width:100%;height:auto;object-fit:contain}
-  .registration-document a{max-width:100%;white-space:normal}
+  .registration-detail-toolbar button{max-width:100%;white-space:normal}
   .players-registration-actions{display:grid;gap:12px}
   .players-registration-actions button{width:100%;white-space:normal;text-align:left}
   .players-registration-actions small{display:block}
+}
+@media print {
+  .registration-detail .sheet-top{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5mm}
+  .registration-detail .sheet-top>*{min-width:0}
+  .registration-detail .registration-document{break-inside:auto;margin-bottom:4mm}
+  .registration-detail .registration-document img{display:block;max-width:100%;height:auto;object-fit:contain;break-inside:avoid}
+  .registration-detail .player-fields{padding:3mm;gap:2mm;overflow-wrap:anywhere}
+  .registration-detail .commitments{break-inside:auto}
 }
