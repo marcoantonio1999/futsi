@@ -1,4 +1,4 @@
-/* Unified roster: alignment-sheet design, with private photo and signature. */
+/* Unified roster: private photo with a blank space for the in-person signature. */
 .photo-paper{position:relative;isolation:isolate;color:#26578b!important}
 /* Clip only the oversized artwork, never the last row of players. */
 .photo-paper>.roster-watermark-frame{position:absolute;z-index:-1;inset:0;overflow:hidden;pointer-events:none;user-select:none}
