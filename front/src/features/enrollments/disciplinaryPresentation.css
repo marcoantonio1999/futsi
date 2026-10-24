@@ -1,0 +1,24 @@
+@media screen {
+  .disciplinary-presentation { width:min(680px,calc(100vw - 24px));max-width:none;max-height:calc(100dvh - 24px);margin:auto;padding:0;border:1px solid #d5dfd9;border-radius:16px;background:#fff;color:#172d23;box-sizing:border-box;overflow:hidden; }
+  .disciplinary-presentation[open] { display:flex;flex-direction:column; }
+  .disciplinary-presentation::backdrop { background:#102218aa; }
+  .disciplinary-presentation-toolbar { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid #dce5df;flex-shrink:0; }
+  .disciplinary-presentation-toolbar h2 { margin:0; }
+  .disciplinary-presentation button { min-width:44px;min-height:44px; }
+  .disciplinary-presentation-scroll { overflow:auto;min-height:0;overscroll-behavior:contain; }
+  .disciplinary-presentation-card { padding:28px;min-width:0;background:white; }
+  .disciplinary-presentation-photo { width:min(240px,100%);height:280px;margin:0 auto 26px;background:#f1f4f2;display:grid;place-items:center;color:#a7b3ac; }
+  .disciplinary-presentation-photo img { width:100%;height:100%;object-fit:contain; }
+  .disciplinary-presentation-card h3 { font-size:26px;line-height:1.3;margin:0 0 28px;overflow-wrap:anywhere; }
+  .disciplinary-presentation-card dt { font-size:15px;font-weight:700;margin:20px 0 6px; }
+  .disciplinary-presentation-card dd { font-size:19px;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:anywhere; }
+  .disciplinary-presentation-footer { padding:14px 20px;border-top:1px solid #dce5df;flex-shrink:0; }
+  .disciplinary-presentation-footer p { font-size:13px; }
+  .disciplinary-presentation-footer button { display:flex;align-items:center;justify-content:center;gap:8px; }
+}
+@media screen and (max-width:600px) {
+  .disciplinary-presentation { width:calc(100vw - 12px);max-height:calc(100dvh - 12px); }
+  .disciplinary-presentation-card { padding:20px 16px; }
+  .disciplinary-presentation-card h3 { font-size:23px; }
+  .disciplinary-presentation-footer button { width:100%; }
+}
