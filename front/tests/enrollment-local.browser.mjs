@@ -93,6 +93,6 @@ try{
  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Cerrar registro local',exact:true}).click();assert.equal(await page.locator('dialog[open]').count(),0);
  await page.getByRole('button',{name:'Crear enlace',exact:true}).click();await page.getByLabel('Enlace de inscripción',{exact:true}).waitFor();assert((await page.getByLabel('Enlace de inscripción',{exact:true}).inputValue()).endsWith('#/inscripcion/local-fictional'));
  assert.deepEqual(JSON.parse(writes.at(-1).body),{tournament_id:1,team_id:1,purpose:'enroll'});
- await page.goto(url.replace('/send','/withdraw'));await page.getByRole('heading',{name:'Bajas',exact:true,level:1}).waitFor();assert.equal(await page.getByRole('button',{name:'Registro local',exact:true}).count(),0);
+ await page.goto(url.replace('/send','/withdraw'));await page.getByRole('heading',{name:'Nueva baja',exact:true,level:1}).waitFor();assert.equal(await page.getByRole('button',{name:'Registro local',exact:true}).count(),0);
  assert.deepEqual(errors,[]);console.log('Errors preserve form; capacity rejected; close confirmed; existing link and withdrawals unchanged.');await page.close();
 }finally{await browser.close();}
