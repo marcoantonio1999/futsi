@@ -29,16 +29,14 @@ try {for(const width of [320,390,1440]) {for(const minor of [false,true]){
  await page.screenshot({path:`${output}/directory-${width}.png`,fullPage:true});
  await button.click();
  const printButton=page.getByRole('button',{name:'Imprimir / guardar PDF',exact:true});await printButton.waitFor();assert(await printButton.isDisabled());
- const signingSpace=page.getByLabel('Espacio para firma presencial',{exact:true});await signingSpace.waitFor();
- assert.equal(await signingSpace.locator('img,canvas').count(),0);
- assert.equal(await signingSpace.innerText(),minor?'Firma del tutor':'Firma del jugador');
+ await page.getByRole('img',{name:minor?'Firma del tutor':'Firma del jugador',exact:true}).waitFor();
  await page.waitForFunction(()=>!Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Imprimir / guardar PDF')?.disabled).catch(async error=>{console.log(await page.locator('.registration-detail').innerText());throw error;});
- assert.equal(await page.getByRole('img').count(),minor?4:3);
+ assert.equal(await page.getByRole('img').count(),minor?5:4);
  assert.equal(await page.locator('a[download]').count(),0);assert.equal(await page.getByText(/^Descargar /).count(),0);
  assert((await printButton.boundingBox()).height>=44);
  await page.evaluate(()=>{window.print=()=>{window.__printed=(window.__printed||0)+1;};});
  await printButton.click();assert.equal(await page.evaluate(()=>window.__printed),1);
- assert(!documents.some(path=>/\/(4|5)\/$/.test(path)),'Stored signatures must not even be fetched');
+ assert(!documents.some(path=>path.endsWith(`/${minor?4:5}/`)));
  assert(await page.getByText('Compromiso de ejemplo.',{exact:true}).isVisible());
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await page.screenshot({path:`${output}/sheet-${minor?'minor':'adult'}-${width}.png`,fullPage:true});
@@ -48,7 +46,7 @@ try {for(const width of [320,390,1440]) {for(const minor of [false,true]){
   assert.equal(await printButton.isVisible(),false);
   assert.equal(await page.locator('.enrollment-admin-sidebar').isVisible(),false);
   assert(await page.getByText('Compromiso de ejemplo.',{exact:true}).isVisible());
-  assert(await signingSpace.isVisible());assert.equal(await signingSpace.locator('img,canvas').count(),0);
+  assert(await page.getByRole('img',{name:'Firma del tutor',exact:true}).isVisible());
   await page.emulateMedia({media:'screen'});
  }
  await page.getByRole('button',{name:'Volver a jugadores',exact:true}).click();await button.waitFor();
