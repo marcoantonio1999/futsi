@@ -236,6 +236,8 @@ def validated_file(upload, kind, *, transform=True):
             image.verify()
         with Image.open(BytesIO(content)) as image:
             if "signature" in kind:
+                if image.width > 2000 or image.height > 1000 or image.width * image.height > 2_000_000:
+                    raise ValidationError('La firma tiene dimensiones demasiado grandes. Dibújala nuevamente en el formulario.')
                 if image.width < 100 or image.height < 40:
                     raise ValidationError("La firma es demasiado pequeña.")
                 background = Image.new("RGB", image.size, "white")
@@ -244,6 +246,8 @@ def validated_file(upload, kind, *, transform=True):
                 if max(ImageStat.Stat(background).stddev) < 2:
                     raise ValidationError("Dibuja la firma antes de continuar.")
             if not transform:
+                if max(image.size) > 2400:
+                    raise ValidationError('La imagen tiene dimensiones demasiado grandes. Vuelve a seleccionarla desde el formulario.')
                 if kind == 'player_photo' and min(image.size) < 1000:
                     raise ValidationError({'player_photo': 'Usa una selfie de al menos 1000 × 1000 píxeles, sin ampliar una foto pequeña.'})
                 return content, "image/png" if image.format == "PNG" else "image/jpeg"
