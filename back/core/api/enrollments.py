@@ -111,8 +111,13 @@ def confirm_r2_uploads(receipts, invitation, kinds):
     try:
         for claim, mime in validated:
             destination = enrollment_r2.reference(f"inscripciones/{invitation.pk}/{uuid4().hex}/{claim['kind']}/{claim['sha256']}")
-            enrollment_r2.copy(claim['path'], destination, mime)
             documents.append(dict(kind=claim['kind'], storage_path=destination, content=b'', content_type=mime, sha256=claim['sha256']))
+            enrollment_r2.copy(claim['path'], destination, mime)
+        for claim, _ in validated:
+            try:
+                enrollment_r2.delete(claim['path'])
+            except Exception:
+                logger.warning('ENROLLMENT_R2_TEMPORARY_CLEANUP_FAILED')
         return documents
     except Exception:
         for doc in documents:
@@ -123,10 +128,14 @@ def confirm_r2_uploads(receipts, invitation, kinds):
         raise
 
 
+class EnrollmentUploadThrottle(EnrollmentThrottle):
+    scope = 'player_enrollment_upload'
+
+
 class EnrollmentUploadView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
-    throttle_classes = [EnrollmentThrottle]
+    throttle_classes = [EnrollmentUploadThrottle]
 
     def post(self, request, token, purpose):
         if not enrollment_r2.enabled():
