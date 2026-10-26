@@ -27,6 +27,8 @@ import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
 import { CameraCapture } from "./CameraCapture";
 import { compressEnrollmentPhoto } from "./compressEnrollmentPhoto";
+import { enrollmentDirectUpload } from './enrollmentDirectUpload';
+import { fetchEnrollmentDocument } from './fetchEnrollmentDocument';
 import { ChangeDelegate } from "./ChangeDelegate";
 import { sampleLighting, type LightingResult } from './photoLighting';
 import { LightingIndicator } from './LightingIndicator';
@@ -44,7 +46,7 @@ type Enrollment = {
   phone: string; phone_secondary: string; guardian_name: string; signed_at: string; identity_type?: string;
   terms_text: string[]; documents: Document[]; is_delegate?: boolean; sanctions?: SanctionSummary[];
 };
-type Defaults = { team: string; tournament: string; terms: string[]; is_delegate?: boolean; delegate_name?: string; delegate_phone?: string };
+type Defaults = { direct_upload?: boolean; team: string; tournament: string; terms: string[]; is_delegate?: boolean; delegate_name?: string; delegate_phone?: string };
 type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: Pick<Team, "id" | "name" | "tournament" | "is_active">[]; deletable_tournament_ids?: number[] };
 
 export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: User) => void }) {
@@ -265,10 +267,12 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     try {
       const form = new FormData(formElement);
       form.set("birth_date", birthDate); form.set("identity_type", kind); form.set("accepted_terms", "true");
-      required.forEach(item => form.append(item, files[item]!,
+      const endpoint = "/player-enrollments/public/" + encodeURIComponent(invitation) + "/";
+      if (!defaults?.direct_upload) required.forEach(item => form.append(item, files[item]!,
         item.includes("signature") ? item + ".png" : (files[item] as File).name));
-      const response = await fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/",
-        { method: "POST", body: form, signal: AbortSignal.timeout(180000) });
+      const response = defaults?.direct_upload
+        ? await enrollmentDirectUpload(endpoint, Object.fromEntries(required.map(item => [item, files[item]!])), form)
+        : await fetch(API_URL + endpoint, { method: "POST", body: form, signal: AbortSignal.timeout(180000) });
       const body = await response.json().catch(() => { throw new Error("El servidor no respondió correctamente. Intenta de nuevo."); });
       if (!response.ok) {
         const fieldNames = ['birth_date', ...required, 'given_names', 'paternal_surname', 'maternal_surname', 'phone', 'phone_secondary', 'guardian_name', 'accepted_terms'];
@@ -362,9 +366,7 @@ function PrivateImage({ document, token, alt, onReady }: { document?: Document; 
     if (!document) return;
     let active = true, objectUrl = "";
     const controller = new AbortController();
-    fetch(API_URL + "/player-enrollments/documents/" + document.id + "/", {
-      headers: { Authorization: "Token " + token }, signal: controller.signal,
-    }).then(async response => {
+    fetchEnrollmentDocument("/player-enrollments/documents/" + document.id + "/", token, controller.signal).then(async response => {
       if (!response.ok || !response.headers.get("Content-Type")?.startsWith("image/")) throw new Error("Imagen no disponible");
       objectUrl = URL.createObjectURL(await response.blob());
       if (active) setUrl(objectUrl); else URL.revokeObjectURL(objectUrl);
@@ -375,7 +377,7 @@ function PrivateImage({ document, token, alt, onReady }: { document?: Document; 
 }
 
 export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
-  const [details, setDetails] = useState<{team: string; tournament: string; players: WithdrawalPlayer[]} | null>(null);
+  const [details, setDetails] = useState<{team: string; tournament: string; players: WithdrawalPlayer[]; direct_upload?: boolean} | null>(null);
   const [selected, setSelected] = useState<number[]>([]), [accepted, setAccepted] = useState(false);
   const selectedPlayers = details?.players.filter(player => selected.includes(player.id)) || [];
   function togglePlayer(id: number) {
@@ -400,8 +402,11 @@ export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
     if (!selected.length || !accepted || !signature) { setError("Selecciona uno o más integrantes, confirma las bajas y firma."); return; }
     saving.current = true; setBusy(true); setError("");
     try {
-      const data = new FormData(); selected.forEach(id => data.append("enrollment_ids", String(id))); data.append("accepted", "true"); data.append("withdrawal_signature", signature, "firma-baja.png");
-      const response = await fetch(endpoint, {method: "POST", body: data}); const body = await response.json();
+      const data = new FormData(); selected.forEach(id => data.append("enrollment_ids", String(id))); data.append("accepted", "true");
+      if (!details?.direct_upload) data.append("withdrawal_signature", signature, "firma-baja.png");
+      const response = details?.direct_upload
+        ? await enrollmentDirectUpload('/player-enrollments/withdrawal/' + encodeURIComponent(invitation) + '/', {withdrawal_signature: signature}, data)
+        : await fetch(endpoint, {method: "POST", body: data}); const body = await response.json();
       if (!response.ok) throw new Error(body.detail || "No se pudo guardar la baja."); setDone(true);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar la baja."); }
     finally { saving.current = false; setBusy(false); }

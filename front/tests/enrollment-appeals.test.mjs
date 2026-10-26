@@ -23,7 +23,8 @@ test('payment pending is printable and private letters load on explicit request 
   assert.match(source,/<CameraCapture embedded selfie=\{false\}/);assert.match(source,/onClick=\{\(\)=>setCameraOpen\(true\)\}/);assert.match(source,/compressEnrollmentPhoto/);
   assert.match(source,/submitDisabled=\{cameraOpen\|\|compressing\}/);
   assert.match(source,/<div hidden=\{cameraOpen\}>/);
-  assert.match(source,/Authorization:`Token/);assert.match(source,/URL.revokeObjectURL/);
+  assert.match(source,/fetchEnrollmentDocument/);assert.match(source,/URL.revokeObjectURL/);
+  assert.match(readFileSync('src/features/enrollments/fetchEnrollmentDocument.ts','utf8'),/Authorization: 'Token ' \+ token/);
   assert.doesNotMatch(source,/setInterval|service_role|supabase.co/);
   const table=readFileSync('src/features/enrollments/DisciplinaryRecords.tsx','utf8');
   assert.match(table,/<th>Apelación<\/th><th>Pago<\/th>/);

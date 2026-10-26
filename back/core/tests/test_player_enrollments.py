@@ -714,8 +714,9 @@ class PlayerEnrollmentTests(TestCase):
         buffer = BytesIO(); image.save(buffer, "JPEG")
         content, mime = validated_file(SimpleUploadedFile("high-resolution.jpg", buffer.getvalue()), "player_photo")
         with Image.open(BytesIO(content)) as saved:
-            self.assertLessEqual(saved.width, 400)
-            self.assertLessEqual(saved.height, 500)
+            self.assertLessEqual(saved.width, 2400)
+            self.assertLessEqual(saved.height, 2400)
+            self.assertGreaterEqual(min(saved.size), 1000)
 
     def test_enrollment_upload_size_limits_remain_enforced(self):
         for kind, limit in (("player_photo", ENROLLMENT_FILE_MAX_BYTES), ("ine_front", ENROLLMENT_FILE_MAX_BYTES), ("player_signature", 500_000)):

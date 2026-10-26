@@ -3,6 +3,7 @@ import { API_URL, apiRequest } from '../../api';
 import { enrollmentSignatureKind } from './enrollmentSignature';
 import { renderRegistrationPdf } from './renderRegistrationPdf';
 import './registrationSheet.css';
+import {fetchEnrollmentDocument} from './fetchEnrollmentDocument';
 
 type Document = { id: number; kind: string };
 type Enrollment = { id: number; name: string; birth_date: string; identity_type: string; team: string; tournament: string;
@@ -18,7 +19,7 @@ function PrivateDocument({document,token,onReady}:{document:Document;token:strin
   useEffect(()=>{
     const controller=new AbortController();let active=true,url='';
     setPages([]);setFailed(false);setLoaded(new Set());onReady(document.id,false);
-    fetch(`${API_URL}/player-enrollments/documents/${document.id}/`,{headers:{Authorization:'Token '+token},signal:controller.signal})
+    fetchEnrollmentDocument(`/player-enrollments/documents/${document.id}/`,token,controller.signal)
       .then(async response=>{
         const type=(response.headers.get('Content-Type')||'').split(';')[0];
         if(!response.ok || !['image/png','image/jpeg','image/webp','application/pdf'].includes(type))throw new Error('Documento no disponible');

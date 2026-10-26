@@ -3,6 +3,7 @@ import {Download, X, UserRound} from 'lucide-react';
 import {API_URL} from '../../api';
 import {disciplinaryImage, presentationData, presentationFields, type PresentationRow} from './disciplinaryImage';
 import './disciplinaryPresentation.css';
+import {fetchEnrollmentDocument} from './fetchEnrollmentDocument';
 
 export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: PresentationRow; token: string; endpoint: string; onClose: () => void}) {
   const dialog = useRef<HTMLDialogElement>(null), photo = useRef<HTMLImageElement>(null);
@@ -17,7 +18,7 @@ export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: 
   useEffect(() => {
     if (!row.has_photo) return;
     let active = true, objectUrl = ''; const controller = new AbortController();
-    fetch(`${API_URL}${endpoint}${row.id}/photo/?view=presentation`, {headers: {Authorization: `Token ${token}`}, signal: controller.signal})
+    fetchEnrollmentDocument(`${endpoint}${row.id}/photo/?view=presentation`, token, controller.signal)
       .then(async response => {
         if (!response.ok || !response.headers.get('Content-Type')?.startsWith('image/')) throw new Error('Foto no disponible');
         objectUrl = URL.createObjectURL(await response.blob());

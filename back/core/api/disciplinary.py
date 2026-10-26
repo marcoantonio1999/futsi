@@ -154,6 +154,11 @@ class DisciplinaryPhotoView(APIView):
             document=row.enrollment.disciplinary_photos[0] if row.enrollment_id and row.enrollment.disciplinary_photos else None
             if not document and not(row.player_id and row.player.photo):raise Http404()
         try:
+            from core.services.enrollment_r2 import PREFIX
+            from core.api.enrollments import private_r2_redirect
+            path = row.photo_storage_path if self.blacklist else document.storage_path if document else ''
+            if path.startswith(PREFIX):
+                return private_r2_redirect(path, request)
             if self.blacklist:
                 if row.photo_storage_path:content=(stored_presentation_photo if options else stored_thumbnail)(row.photo_storage_path,row.photo_sha256)
                 elif row.photo_sha256:

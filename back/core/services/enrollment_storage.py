@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 from .supabase_storage import supabase_url, storage_headers, delete_private_file
+from . import enrollment_r2
 
 BUCKET = "player-enrollment-private"
 MAX_BYTES = 20_000_000
@@ -39,6 +40,9 @@ def object_endpoint(path, authenticated=False):
 
 
 def upload_document(path, content, mime):
+    if enrollment_r2.enabled():
+        path = path if path.startswith(enrollment_r2.PREFIX) else enrollment_r2.reference(path)
+        return enrollment_r2.upload(path, content, mime)
     with urlopen(Request(object_endpoint(path), data=content, method="POST",
                          headers=storage_headers(mime, upsert=True)), timeout=60):
         pass
@@ -46,6 +50,8 @@ def upload_document(path, content, mime):
 
 
 def read_document(path):
+    if path.startswith(enrollment_r2.PREFIX):
+        return enrollment_r2.request(path)
     with urlopen(Request(object_endpoint(path, authenticated=True), headers=storage_headers()), timeout=60) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
@@ -59,4 +65,6 @@ def verify_document(path, expected_hash):
 
 
 def delete_document(path):
+    if path.startswith(enrollment_r2.PREFIX):
+        return enrollment_r2.delete(path)
     return delete_private_file(BUCKET, path)

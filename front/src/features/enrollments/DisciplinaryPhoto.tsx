@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {UserRound} from 'lucide-react';
 import {API_URL} from '../../api';
+import {fetchEnrollmentDocument} from './fetchEnrollmentDocument';
 
 export function DisciplinaryPhoto({token,endpoint,playerName,hasPhoto,large=false}:{token:string;endpoint:string;playerName:string;hasPhoto?:boolean;large?:boolean}){
   const host=useRef<HTMLSpanElement>(null);
@@ -11,7 +12,7 @@ export function DisciplinaryPhoto({token,endpoint,playerName,hasPhoto,large=fals
     let active=true,started=false,objectUrl='';const controller=new AbortController();
     const load=()=>{
       if(started)return;started=true;
-      fetch(API_URL+endpoint,{headers:{Authorization:'Token '+token},signal:controller.signal}).then(async response=>{
+      fetchEnrollmentDocument(endpoint,token,controller.signal).then(async response=>{
         if(!response.ok||!response.headers.get('Content-Type')?.startsWith('image/'))throw new Error('Foto no disponible');
         objectUrl=URL.createObjectURL(await response.blob());if(active)setUrl(objectUrl);else URL.revokeObjectURL(objectUrl);
       }).catch(()=>{if(active)setFailed(true)});

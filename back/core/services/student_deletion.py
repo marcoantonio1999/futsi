@@ -125,7 +125,14 @@ def cleanup_files(audit):
     cleanup_errors = []
     for item in audit.metadata.get("pending_files", []):
         try:
-            if item["kind"] == "supabase":
+            if item['kind'] == 'r2':
+                from .enrollment_r2 import delete
+                Blacklist = apps.get_model('core', 'PlayerBlacklistEntry')
+                EnrollmentDocument = apps.get_model('core', 'PlayerEnrollmentDocument')
+                if Blacklist.objects.filter(photo_storage_path=item['uri']).exists() or EnrollmentDocument.objects.filter(storage_path=item['uri']).exists():
+                    continue
+                delete(item['uri'])
+            elif item["kind"] == "supabase":
                 parsed = parse_storage_uri(item["uri"])
                 if not parsed:
                     raise ValueError("La referencia de Storage no es válida.")

@@ -7,7 +7,9 @@ from uuid import uuid4
 
 from PIL import Image, ImageStat, UnidentifiedImageError
 from django.db import transaction
-from django.http import HttpResponse, Http404
+from django.http import HttpResponse, Http404, HttpResponseRedirect
+from django.core import signing
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, serializers
@@ -21,7 +23,7 @@ from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
 from core.enrollment_access import enrollment_site_ids
-from core.services import enrollment_storage
+from core.services import enrollment_storage, enrollment_r2
 from core.services.enrollment_images import PHOTO_MAX_BYTES, compress_document_photo
 from core.services.team_capacity import assert_capacity, capacity_guard
 from core.services.player_blacklist import assert_not_blacklisted
@@ -66,6 +68,106 @@ class EnrollmentThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
 
 
+def private_r2_redirect(path, request=None):
+    url = enrollment_r2.signed_url(path, expires=120)
+    response = Response({'url': url}) if request is not None and request.query_params.get('delivery') == 'direct' else HttpResponseRedirect(url)
+    response['Cache-Control'] = 'private, no-store'
+    response['Referrer-Policy'] = 'no-referrer'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+UPLOAD_SALT = 'enrollment.r2-upload.v1'
+
+
+def confirm_r2_uploads(receipts, invitation, kinds):
+    if not enrollment_r2.enabled() or not isinstance(receipts, list) or len(receipts) != len(kinds):
+        raise ValidationError('Adjunta todos los documentos requeridos, sin repetirlos.')
+    claims = []
+    try:
+        for receipt in receipts:
+            claim = signing.loads(receipt, salt=UPLOAD_SALT, max_age=1200)
+            if claim['invitation'] != invitation.pk or claim['purpose'] != invitation.purpose:
+                raise ValueError()
+            expected_prefix = f'pending/{invitation.pk}/{invitation.purpose}/'
+            if not enrollment_r2.object_key(claim['path']).startswith(expected_prefix):
+                raise ValueError()
+            claims.append(claim)
+        if sorted(c['kind'] for c in claims) != sorted(kinds):
+            raise ValueError()
+    except (signing.BadSignature, KeyError, TypeError, ValueError):
+        raise ValidationError('La carga venció o no corresponde a este formulario. Selecciona los archivos de nuevo.') from None
+    validated = []
+    # Validate every file before copying or creating any database record.
+    for claim in claims:
+        content = enrollment_r2.request(claim['path'])
+        if len(content) != claim['size'] or sha256(content).hexdigest() != claim['sha256']:
+            raise ValidationError('La integridad de un documento no coincide. Vuelve a cargarlo.')
+        _, mime = validated_file(SimpleUploadedFile('archivo', content), claim['kind'], transform=False)
+        if mime != claim['mime']:
+            raise ValidationError('El tipo de un documento no coincide con su contenido.')
+        validated.append((claim, mime))
+    documents = []
+    try:
+        for claim, mime in validated:
+            destination = enrollment_r2.reference(f"inscripciones/{invitation.pk}/{uuid4().hex}/{claim['kind']}/{claim['sha256']}")
+            enrollment_r2.copy(claim['path'], destination, mime)
+            documents.append(dict(kind=claim['kind'], storage_path=destination, content=b'', content_type=mime, sha256=claim['sha256']))
+        return documents
+    except Exception:
+        for doc in documents:
+            try:
+                enrollment_r2.delete(doc['storage_path'])
+            except Exception:
+                logger.warning('ENROLLMENT_R2_UNCOMMITTED_COPY_CLEANUP_FAILED')
+        raise
+
+
+class EnrollmentUploadView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_classes = [EnrollmentThrottle]
+
+    def post(self, request, token, purpose):
+        if not enrollment_r2.enabled():
+            raise Http404()
+        invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_related('team_record__tournament'), token=token, purpose=purpose)
+        if enrollment_invitation_expired(invitation) or invitation.used_at or PlayerEnrollment.objects.filter(invitation=invitation).exists():
+            raise ValidationError('Este enlace ya fue utilizado o venció.')
+        if not invitation.team_record_id or not invitation.team_record.is_active or not invitation.team_record.tournament.is_active:
+            raise ValidationError('El equipo o torneo ya no está disponible.')
+        if purpose == 'enroll':
+            assert_capacity(invitation.team_record)
+        class Item(serializers.Serializer):
+            kind = serializers.ChoiceField(choices=['player_photo', 'player_signature', 'guardian_signature', 'ine_front', 'ine_back', 'identity_document', 'minor_credential', 'curp', 'guardian_ine_front', 'guardian_ine_back', 'withdrawal_signature'])
+            size = serializers.IntegerField(min_value=1, max_value=ENROLLMENT_FILE_MAX_BYTES)
+            mime = serializers.ChoiceField(choices=['image/jpeg', 'image/png', 'application/pdf'])
+            sha256 = serializers.RegexField(r'^[a-f0-9]{64}$')
+        items = Item(data=request.data.get('files'), many=True)
+        items.is_valid(raise_exception=True)
+        files = items.validated_data
+        if not 1 <= len(files) <= 6 or len({f['kind'] for f in files}) != len(files):
+            raise ValidationError('Selecciona hasta seis documentos distintos.')
+        for file in files:
+            if (purpose == 'withdraw') != (file['kind'] == 'withdrawal_signature'):
+                raise ValidationError('Documento no permitido para este enlace.')
+            if 'signature' in file['kind'] and (file['size'] > 500_000 or file['mime'] != 'image/png'):
+                raise ValidationError('La firma debe ser PNG y pesar menos de 500 KB.')
+            if file['kind'] == 'player_photo' and (file['size'] > PHOTO_MAX_BYTES or file['mime'] != 'image/jpeg'):
+                raise ValidationError('La selfie debe ser JPG y pesar hasta 3 MB.')
+        result = []
+        for file in files:
+            path = enrollment_r2.reference(f"pending/{invitation.pk}/{purpose}/{uuid4().hex}/{file['kind']}")
+            # Signed create-once header prevents changing a validated object.
+            headers = {'Content-Type': file['mime'], 'If-None-Match': '*', 'Cache-Control': 'private, no-store'}
+            claim = {**file, 'path': path, 'invitation': invitation.pk, 'purpose': purpose}
+            result.append({'kind': file['kind'], 'url': enrollment_r2.signed_url(path, 'PUT', expires=600, headers={**headers, 'Content-Length': str(file['size'])}),
+                'headers': headers, 'receipt': signing.dumps(claim, salt=UPLOAD_SALT)})
+        response = Response({'files': result})
+        response['Cache-Control'] = 'no-store'
+        return response
+
+
 def is_minor(birth_date):
     today = timezone.localdate()
     return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day)) < 18
@@ -107,7 +209,7 @@ class EnrollmentInput(serializers.Serializer):
         return data
 
 
-def validated_file(upload, kind):
+def validated_file(upload, kind, *, transform=True):
     if not upload:
         raise ValidationError(f"Falta adjuntar {kind}.")
     limit = 500_000 if "signature" in kind else ENROLLMENT_FILE_MAX_BYTES
@@ -132,10 +234,14 @@ def validated_file(upload, kind):
                 background.paste(rgba, mask=rgba.getchannel("A"))
                 if max(ImageStat.Stat(background).stddev) < 2:
                     raise ValidationError("Dibuja la firma antes de continuar.")
+            if not transform:
+                if kind == 'player_photo' and min(image.size) < 1000:
+                    raise ValidationError({'player_photo': 'Usa una selfie de al menos 1000 × 1000 píxeles, sin ampliar una foto pequeña.'})
+                return content, "image/png" if image.format == "PNG" else "image/jpeg"
             if kind == "player_photo":
-                image.draft("RGB", (800, 1000))
-                image = image.convert("RGB")
-                image.thumbnail((400, 500))
+                from PIL import ImageOps
+                image = ImageOps.exif_transpose(image).convert("RGB")
+                image.thumbnail((2400, 2400))
                 output = BytesIO(); image.save(output, "JPEG", quality=85)
                 return output.getvalue(), "image/jpeg"
             if "signature" not in kind and len(content) > PHOTO_MAX_BYTES:
@@ -159,7 +265,7 @@ class PublicEnrollmentView(APIView):
             return Response({"detail": "Este enlace necesita un equipo y torneo registrados. Pide un enlace nuevo."}, status=410)
         assert_capacity(invitation.team_record)
         first = not PlayerEnrollment.objects.filter(team_record=invitation.team_record).exists()
-        return Response({"team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "max_players_per_team": invitation.team_record.tournament.max_players_per_team, "is_delegate": first, "delegate_name": '', "delegate_phone": '', "terms_version": TERMS_VERSION, "terms": TERMS})
+        return Response({"direct_upload": enrollment_r2.enabled(), "team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "max_players_per_team": invitation.team_record.tournament.max_players_per_team, "is_delegate": first, "delegate_name": '', "delegate_phone": '', "terms_version": TERMS_VERSION, "terms": TERMS})
 
     def post(self, request, token):
         serializer = EnrollmentInput(data=request.data)
@@ -174,7 +280,8 @@ class PublicEnrollmentView(APIView):
             kinds.extend(["player_signature", "ine_front", "ine_back"])
         else:
             kinds.extend(["player_signature", "identity_document"])
-        files = [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
+        direct = request.data.get('uploaded_documents')
+        files = [] if direct is not None else [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
         # Reject invalid invitations before transferring any private files.
         invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token, purpose='enroll')
         if enrollment_invitation_expired(invitation):
@@ -187,11 +294,16 @@ class PublicEnrollmentView(APIView):
         documents = []
         batch = uuid4().hex
         try:
+            if direct is not None:
+                documents = confirm_r2_uploads(direct, invitation, kinds)
+                paths = [doc['storage_path'] for doc in documents]
             for kind, content, mime in files:
                 digest = sha256(content).hexdigest()
                 path = f"inscripciones/{invitation.pk}/{batch}/{kind}/{digest}"
                 paths.append(path)
-                enrollment_storage.upload_document(path, content, mime)
+                saved_path = enrollment_storage.upload_document(path, content, mime)
+                if saved_path:
+                    paths[-1] = path = saved_path
                 documents.append(dict(kind=kind, storage_path=path, content=b"", content_type=mime, sha256=digest))
             return self.save_enrollment(request, token, fields, documents=documents)
         except Exception as exc:
@@ -349,7 +461,7 @@ class PublicWithdrawalView(APIView):
         photos = PlayerEnrollmentDocument.objects.filter(enrollment_id=OuterRef('pk'), kind='player_photo')
         rows = list(PlayerEnrollment.objects.filter(team_record=invitation.team_record, withdrawn_at__isnull=True).annotate(has_photo=Exists(photos)).order_by('signed_at', 'id'))
         sanctions = enrollment_sanctions(rows)
-        response = Response({'team': invitation.team, 'tournament': invitation.tournament,
+        response = Response({'direct_upload': enrollment_r2.enabled(), 'team': invitation.team, 'tournament': invitation.tournament,
             'players': [{'id': row.pk, 'name': row.name, 'is_delegate': row.is_delegate, 'has_photo': row.has_photo,
                          'sanctions': sanctions[row.pk], 'can_withdraw': not sanctions[row.pk]} for row in rows]})
         response['Cache-Control'] = 'no-store'
@@ -384,10 +496,17 @@ class PublicWithdrawalView(APIView):
             assert_withdrawal_allowed(rows)
             return rows
         selected_rows(invitation.team_record)
-        content, mime = validated_file(request.FILES.get('withdrawal_signature'), 'withdrawal_signature')
-        path = f'bajas/{invitation.pk}/{uuid4().hex}/firma.png'
+        direct = request.data.get('uploaded_documents')
+        content, mime = (b'', 'image/png') if direct is not None else validated_file(request.FILES.get('withdrawal_signature'), 'withdrawal_signature')
+        path = ''
         try:
-            enrollment_storage.upload_document(path, content, mime)
+            if direct is not None:
+                doc = confirm_r2_uploads(direct, invitation, ['withdrawal_signature'])[0]
+                path, mime, digest = doc['storage_path'], doc['content_type'], doc['sha256']
+            else:
+                path = f'bajas/{invitation.pk}/{uuid4().hex}/firma.png'
+                path = enrollment_storage.upload_document(path, content, mime) or path
+                digest = sha256(content).hexdigest()
             with transaction.atomic():
                 # Same lock order as admissions: invitation, tournament, then team.
                 locked = PlayerEnrollmentInvitation.objects.select_for_update().get(pk=invitation.pk)
@@ -403,7 +522,7 @@ class PublicWithdrawalView(APIView):
                     row.withdrawn_at = withdrawn_at
                     row.save(update_fields=['withdrawn_at'])
                 PlayerEnrollmentDocument.objects.bulk_create([
-                    PlayerEnrollmentDocument(enrollment=row, kind='withdrawal_signature', storage_path=path, content=b'', content_type=mime, sha256=sha256(content).hexdigest())
+                    PlayerEnrollmentDocument(enrollment=row, kind='withdrawal_signature', storage_path=path, content=b'', content_type=mime, sha256=digest)
                     for row in rows
                 ])
                 locked.used_at = withdrawn_at
@@ -412,7 +531,8 @@ class PublicWithdrawalView(APIView):
                 'players': [{'id': row.pk, 'name': row.name} for row in rows], 'count': len(rows), 'withdrawn_at': withdrawn_at})
         except Exception as exc:
             try:
-                enrollment_storage.delete_document(path)
+                if path:
+                    enrollment_storage.delete_document(path)
             except Exception:
                 logger.exception('WITHDRAWAL_STORAGE_CLEANUP_FAILED')
             if isinstance(exc, (APIException, Http404)):
@@ -435,6 +555,8 @@ class PublicWithdrawalPhotoView(PublicWithdrawalView):
         doc = get_object_or_404(PlayerEnrollmentDocument, enrollment_id=pk,
             enrollment__team_record=invitation.team_record, enrollment__withdrawn_at__isnull=True,
             kind='player_photo', content_type__in=['image/png', 'image/jpeg'])
+        if doc.storage_path.startswith(enrollment_r2.PREFIX):
+            return private_r2_redirect(doc.storage_path, request)
         try:
             content = enrollment_storage.read_document(doc.storage_path) if doc.storage_path else bytes(doc.content)
             if sha256(content).hexdigest() != doc.sha256:
@@ -557,6 +679,8 @@ class EnrollmentDocumentView(APIView):
     permission_classes = [EnrollmentStaffPermission]
     def get(self, request, pk):
         doc = get_object_or_404(PlayerEnrollmentDocument, pk=pk, enrollment__invitation__in=invitations_for(request.user))
+        if doc.storage_path.startswith(enrollment_r2.PREFIX):
+            return private_r2_redirect(doc.storage_path, request)
         extension = {"image/png": "png", "image/jpeg": "jpg", "application/pdf": "pdf"}[doc.content_type]
         try:
             content = enrollment_storage.read_document(doc.storage_path) if doc.storage_path else bytes(doc.content)

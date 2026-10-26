@@ -18,7 +18,7 @@ class SanctionAppealTests(TestCase):
         return f'/api/player-enrollments/sanctions/{self.sanction.pk}/{name}/'
 
     def appeal(self):
-        with patch('core.api.sanction_appeals.enrollment_storage.upload_document'):
+        with patch('core.api.sanction_appeals.enrollment_storage.upload_document', side_effect=lambda path, content, mime: path):
             result=self.client.post(self.url(), {'reason':'Carta del jugador con sus motivos de apelación.','letter':image_file('carta.png')},format='multipart')
         self.assertEqual(result.status_code,201,result.data)
         self.sanction.refresh_from_db()
@@ -74,7 +74,7 @@ class SanctionAppealTests(TestCase):
     def test_letter_required_invalid_files_rejected_and_duplicate_preserves_original(self):
         self.assertEqual(self.client.post(self.url(),{'reason':'Motivos de apelación'},format='multipart').status_code,400)
         self.appeal();original=self.sanction.appeal_letter_path
-        with patch('core.api.sanction_appeals.enrollment_storage.upload_document') as upload:
+        with patch('core.api.sanction_appeals.enrollment_storage.upload_document', side_effect=lambda path, content, mime: path) as upload:
             self.assertEqual(self.client.post(self.url(),{'reason':'Nueva carta diferente','letter':image_file('carta.png')},format='multipart').status_code,400)
             upload.assert_not_called()
         self.sanction.refresh_from_db();self.assertEqual(self.sanction.appeal_letter_path,original)
@@ -92,7 +92,7 @@ class SanctionAppealTests(TestCase):
         with patch('core.api.sanction_appeals.enrollment_storage.read_document',return_value=b'wrong'):
             self.assertEqual(self.client.get(self.url()).status_code,503)
         self.sanction.appeal_status='none';self.sanction.save()
-        with patch('core.api.sanction_appeals.enrollment_storage.upload_document'),patch('core.api.sanction_appeals.enrollment_storage.delete_document') as cleanup,patch('core.api.sanction_appeals.PlayerSanction.save',side_effect=RuntimeError('synthetic save failure')):
+        with patch('core.api.sanction_appeals.enrollment_storage.upload_document', side_effect=lambda path, content, mime: path),patch('core.api.sanction_appeals.enrollment_storage.delete_document') as cleanup,patch('core.api.sanction_appeals.PlayerSanction.save',side_effect=RuntimeError('synthetic save failure')):
             with self.assertRaises(RuntimeError):
                 self.client.post(self.url(),{'reason':'Carta de prueba para validar limpieza','letter':image_file('carta.png')},format='multipart')
             cleanup.assert_called_once()

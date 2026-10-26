@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {API_URL,apiRequest,apiFormRequestWithProgress} from '../../api';
+import {fetchEnrollmentDocument} from './fetchEnrollmentDocument';
 import {TournamentDialog} from '../tournaments/TournamentDialog';
 import {compressEnrollmentPhoto} from './compressEnrollmentPhoto';
 import {CameraCapture} from './CameraCapture';
@@ -41,7 +42,7 @@ export function SanctionAppealDetails({row,token}:{row:AppealRow;token:string}){
   const [letter,setLetter]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(false);
   const url=useRef('');
   useEffect(()=>()=>{if(url.current)URL.revokeObjectURL(url.current)},[]);
-  async function load(){setLoading(true);setError('');try{const response=await fetch(`${API_URL}/player-enrollments/sanctions/${row.id}/appeal/`,{headers:{Authorization:`Token ${token}`}});if(!response.ok)throw new Error('No se pudo cargar la carta.');url.current=URL.createObjectURL(await response.blob());setLetter(url.current)}catch(reason){setError(reason instanceof Error?reason.message:'Carta no disponible.')}finally{setLoading(false)}}
+  async function load(){setLoading(true);setError('');try{const response=await fetchEnrollmentDocument(`/player-enrollments/sanctions/${row.id}/appeal/`,token);if(!response.ok)throw new Error('No se pudo cargar la carta.');url.current=URL.createObjectURL(await response.blob());setLetter(url.current)}catch(reason){setError(reason instanceof Error?reason.message:'Carta no disponible.')}finally{setLoading(false)}}
   return <section className="sanction-appeal-details"><h3>Apelación y pago</h3><dl>
     <div><dt>Apelación</dt><dd>{appealLabels[row.appeal_status||'none']}</dd></div>
     <div><dt>Motivos</dt><dd>{row.appeal_reason||'—'}</dd></div><div><dt>Registrada por</dt><dd>{row.appeal_submitted_by||'—'} {row.appeal_submitted_at&&new Date(row.appeal_submitted_at).toLocaleString('es-MX')}</dd></div>

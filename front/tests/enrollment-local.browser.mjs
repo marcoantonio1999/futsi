@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {mkdir} from 'node:fs/promises';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const direct=process.env.TEST_R2_DIRECT==='1';
 const output=process.env.TEST_OUTPUT||'C:/Users/daniel/Documents/marco/mexprod/tmp/outputs/enrollment-local';
 await mkdir(output,{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
@@ -11,11 +12,16 @@ const catalog={sites:[{id:1,name:'Sede ficticia'}],tournaments:[{id:1,name:'Torn
 async function prepare(width){
  const page=await browser.newPage({viewport:{width,height:900}}),errors=[],writes=[];
  const state={failInvitation:false,failSave:false,holdSave:null};
+ await page.route('https://*.r2.cloudflarestorage.com/**',async route=>{
+  assert.equal(route.request().method(),'PUT');assert(!route.request().headers().authorization);
+  return route.fulfill({status:200});
+ });
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;
   if(req.method()==='OPTIONS')return route.fulfill({status:204});
   if(req.method()==='POST'){
+   if(path.endsWith('/uploads/'))return route.fulfill({json:{files:req.postDataJSON().files.map(file=>({kind:file.kind,url:`https://fictional.r2.cloudflarestorage.com/private/${file.kind}`,headers:{'Content-Type':file.mime,'If-None-Match':'*'},receipt:`receipt:${file.kind}`}))}});
    writes.push({path,body:req.postData()});
    if(path.endsWith('/public/local-fictional/')){
     if(state.holdSave)await state.holdSave;
@@ -25,7 +31,7 @@ async function prepare(width){
    return route.fulfill({status:state.failInvitation?400:201,json:state.failInvitation?{detail:'Sin cupo ficticio'}:{token:'local-fictional'}});
   }
   assert.equal(req.method(),'GET');
-  return route.fulfill({json:path.includes('/public/')?{team:'Equipo ficticio',tournament:'Torneo ficticio',is_delegate:true,delegate_name:'',delegate_phone:'',terms:['Compromiso ficticio de prueba.']}:path.endsWith('/catalog/')?catalog:{results:[],count:0}});
+  return route.fulfill({json:path.includes('/public/')?{direct_upload:direct,team:'Equipo ficticio',tournament:'Torneo ficticio',is_delegate:true,delegate_name:'',delegate_phone:'',terms:['Compromiso ficticio de prueba.']}:path.endsWith('/catalog/')?catalog:{results:[],count:0}});
  });
  await page.goto(url);
  const local=page.getByRole('button',{name:'Registro local',exact:true});
@@ -50,7 +56,7 @@ async function completeForm(page,minor=false){
  for(const field of (minor?['minor_credential','curp','guardian_ine_front','guardian_ine_back']:['ine_front','ine_back']))await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  // A synthetic PNG created locally, not a real player's photograph.
- const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=100;c.height=100;const ctx=c.getContext('2d');ctx.fillStyle='#bbb';ctx.fillRect(0,0,100,100);return c.toDataURL().split(',')[1];});
+ const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=1200;c.height=1200;const ctx=c.getContext('2d');ctx.fillStyle='#bbb';ctx.fillRect(0,0,1200,1200);return c.toDataURL().split(',')[1];});
  await page.locator('[data-enrollment-field="player_photo"] input[type=file]').setInputFiles({name:'foto-ficticia.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
  for(const [name,value] of Object.entries({given_names:'José',paternal_surname:'Pérez',maternal_surname:'López',phone:'5550000000'}))await page.locator(`input[name=${name}]`).fill(value);
  if(minor)await page.locator('input[name=guardian_name]').fill('Tutor ficticio');
@@ -85,8 +91,14 @@ try{
   assert(await page.getByRole('button',{name:'Cerrar registro local',exact:true}).isDisabled());
   release();await page.getByRole('heading',{name:'Inscripción recibida',exact:true}).waitFor();
   const body=writes.at(-1).body;
-  for(const field of ['birth_date','accepted_terms','player_photo','given_names','paternal_surname','maternal_surname','phone',...(minor?['guardian_signature','guardian_name','minor_credential','curp','guardian_ine_front','guardian_ine_back']:['player_signature','ine_front','ine_back'])])assert(body.includes(`name="${field}"`),field);
-  assert(!body.includes(`name="${minor?'player_signature':'guardian_signature'}"`));
+  if(direct){
+   const payload=JSON.parse(body);assert.equal(payload.given_names,'José');assert.equal(payload.birth_date,minor?'2015-01-01':'2000-01-01');
+   assert.equal(payload.uploaded_documents.length,minor?6:4);assert(!body.includes('base64'));assert(!body.includes('filename='));
+   assert(!payload.uploaded_documents.includes(`receipt:${minor?'player_signature':'guardian_signature'}`));
+  }else{
+   for(const field of ['birth_date','accepted_terms','player_photo','given_names','paternal_surname','maternal_surname','phone',...(minor?['guardian_signature','guardian_name','minor_credential','curp','guardian_ine_front','guardian_ine_back']:['player_signature','ine_front','ine_back'])])assert(body.includes(`name="${field}"`),field);
+   assert(!body.includes(`name="${minor?'player_signature':'guardian_signature'}"`));
+  }
   assert.equal(writes.length,width===390?3:2);
   await page.getByRole('button',{name:'Finalizar registro local',exact:true}).click();
   assert.equal(await page.locator('dialog[open]').count(),0);assert(await local.evaluate(el=>el===document.activeElement));

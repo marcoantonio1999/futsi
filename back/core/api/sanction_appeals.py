@@ -52,7 +52,7 @@ class SanctionAppealView(APIView):
             raise ValidationError('La carta debe ser una foto válida y legible (JPG, PNG o WebP).')
         path = f'sanction-appeals/{source.pk}/{uuid4().hex}.jpg'
         try:
-            enrollment_storage.upload_document(path, content, 'image/jpeg')
+            path = enrollment_storage.upload_document(path, content, 'image/jpeg') or path
             with transaction.atomic():
                 row = get_object_or_404(scoped_sanctions(request.user).select_for_update(of=('self',)), pk=pk)
                 if row.appeal_status != 'none':
@@ -71,6 +71,10 @@ class SanctionAppealView(APIView):
 
     def get(self, request, pk):
         row = get_object_or_404(scoped_sanctions(request.user).exclude(appeal_letter_path=''), pk=pk)
+        from core.services.enrollment_r2 import PREFIX
+        if row.appeal_letter_path.startswith(PREFIX):
+            from core.api.enrollments import private_r2_redirect
+            return private_r2_redirect(row.appeal_letter_path, request)
         try:
             content = enrollment_storage.read_document(row.appeal_letter_path)
             if sha256(content).hexdigest() != row.appeal_letter_sha256:
