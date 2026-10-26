@@ -50,9 +50,10 @@ export function EnrollmentRegistrationSheet({enrollmentId,token,onBack}:{enrollm
       .catch(reason=>{if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'No pudimos cargar la inscripción.');});
     return ()=>controller.abort();
   },[enrollmentId,token,retry]);
-  const visibleDocuments=record?.documents.filter(doc=>!['player_signature','guardian_signature'].includes(doc.kind)||doc.kind===enrollmentSignatureKind(record))||[];
+  // The printed copy is signed in person. Never fetch stored signatures here.
+  const visibleDocuments=record?.documents.filter(doc=>!['player_signature','guardian_signature'].includes(doc.kind))||[];
   const printReady=!!record&&visibleDocuments.every(doc=>readyDocuments[doc.id]===true);
-  return <section className="registration-sheet signed-sheet registration-detail" aria-label="Hoja de inscripción firmada">
+  return <section className="registration-sheet signed-sheet registration-detail" aria-label="Hoja de inscripción para firma presencial">
     <div className="registration-detail-toolbar no-print"><button type="button" onClick={onBack}>Volver a jugadores</button><h2>Hoja de inscripción</h2><button type="button" className="primary" disabled={!printReady} onClick={()=>{if(printReady)window.print();}}>Imprimir / guardar PDF</button></div>
     {record&&!printReady&&<p role="status" className="no-print">Espera a que carguen todos los documentos para imprimir. Si alguno no está disponible, recarga la hoja.</p>}
     {error ? <p role="alert" className="error">{error} <button type="button" onClick={()=>setRetry(value=>value+1)}>Volver a intentar</button></p> : !record ? <p role="status">Cargando inscripción…</p> : <>
@@ -61,8 +62,7 @@ export function EnrollmentRegistrationSheet({enrollmentId,token,onBack}:{enrollm
         {!record.documents.some(doc=>!['player_photo','player_signature','guardian_signature'].includes(doc.kind))&&<p>No hay credenciales conservadas para esta inscripción.</p>}
       </section><section className="player-frame"><div className="photo-and-signatures">
         <div>{record.documents.filter(doc=>doc.kind==='player_photo').map(doc=><PrivateDocument key={doc.id} document={doc} token={token} onReady={documentReady}/>)}</div>
-        <div>{record.documents.filter(doc=>doc.kind===enrollmentSignatureKind(record)).map(doc=><PrivateDocument key={doc.id} document={doc} token={token} onReady={documentReady}/>)}
-        {!record.documents.some(doc=>doc.kind===enrollmentSignatureKind(record))&&<p>{record.identity_type==='minor'?'Firma del tutor no disponible.':'Firma del jugador no disponible.'}</p>}</div>
+        <div className="registration-presential-signature" aria-label="Espacio para firma presencial"><span>{labels[enrollmentSignatureKind(record)]}</span></div>
       </div><div className="player-fields"><p className="full">NOMBRE<br/><strong>{record.name}</strong></p><p>EQUIPO<br/>{record.team}</p><p>TORNEO<br/>{record.tournament}</p>
         <p>TELÉFONO DE CONTACTO<br/>{record.phone}</p><p>TELÉFONO DE EMERGENCIA<br/>{record.phone_secondary||'No registrado'}</p>
         <p>NACIMIENTO<br/>{record.birth_date}</p><p>FIRMADO<br/>{new Date(record.signed_at).toLocaleString('es-MX')}</p>

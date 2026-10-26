@@ -1,4 +1,6 @@
-/* Screen-only additions preserve the existing signed-sheet print layout. */
+/* Keep the signing area empty on screen and on the A4 printed copy. */
+.registration-detail .registration-presential-signature{min-height:40mm;display:flex;align-items:flex-end;justify-content:center;box-sizing:border-box}
+.registration-presential-signature span{width:100%;border-top:1px solid #263e52;text-align:center;font-size:12px;padding-top:6px}
 @media screen {
   .registration-detail{box-sizing:border-box;min-width:0;max-width:100%;overflow-wrap:anywhere}
   .registration-detail-toolbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
