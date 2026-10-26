@@ -82,11 +82,12 @@ class EnrollmentR2Tests(TestCase):
             self.assertIn(self.client.get(url).status_code,[401,403])
             self.client.force_authenticate(self.other);self.assertEqual(self.client.get(url).status_code,404)
             self.client.force_authenticate(self.emilio)
-            result=self.client.get(url);self.assertEqual(result.status_code,302)
-            self.assertEqual(urlparse(result['Location']).hostname,'a'*32+'.r2.cloudflarestorage.com')
-            self.assertEqual(result['Cache-Control'],'private, no-store')
             result=self.client.get(url+'?delivery=direct');self.assertEqual(result.status_code,200)
+            self.assertEqual(result['Cache-Control'],'private, no-store')
             self.assertIn('r2.cloudflarestorage.com',result.data['url'])
+            with patch('core.api.enrollments.enrollment_storage.read_document',return_value=self.objects[doc.storage_path]):
+                legacy=self.client.get(url);self.assertEqual(legacy.status_code,200)
+                self.assertEqual(legacy.content,self.objects[doc.storage_path])
             self.client.force_authenticate(None)
             result=self.client.post(self.url+'uploads/',{'files':[]},format='json');self.assertEqual(result.status_code,400)
 

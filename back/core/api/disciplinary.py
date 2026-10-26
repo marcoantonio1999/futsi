@@ -157,7 +157,7 @@ class DisciplinaryPhotoView(APIView):
             from core.services.enrollment_r2 import PREFIX
             from core.api.enrollments import private_r2_redirect
             path = row.photo_storage_path if self.blacklist else document.storage_path if document else ''
-            if path.startswith(PREFIX):
+            if path.startswith(PREFIX) and request.query_params.get('delivery') == 'direct':
                 return private_r2_redirect(path, request)
             if self.blacklist:
                 if row.photo_storage_path:content=(stored_presentation_photo if options else stored_thumbnail)(row.photo_storage_path,row.photo_sha256)

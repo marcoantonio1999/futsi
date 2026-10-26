@@ -679,7 +679,9 @@ class EnrollmentDocumentView(APIView):
     permission_classes = [EnrollmentStaffPermission]
     def get(self, request, pk):
         doc = get_object_or_404(PlayerEnrollmentDocument, pk=pk, enrollment__invitation__in=invitations_for(request.user))
-        if doc.storage_path.startswith(enrollment_r2.PREFIX):
+        # Older open tabs still expect bytes; new clients explicitly request a
+        # direct URL so their images do not pass through Render.
+        if doc.storage_path.startswith(enrollment_r2.PREFIX) and request.query_params.get('delivery') == 'direct':
             return private_r2_redirect(doc.storage_path, request)
         extension = {"image/png": "png", "image/jpeg": "jpg", "application/pdf": "pdf"}[doc.content_type]
         try:

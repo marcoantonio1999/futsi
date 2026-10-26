@@ -72,7 +72,7 @@ class SanctionAppealView(APIView):
     def get(self, request, pk):
         row = get_object_or_404(scoped_sanctions(request.user).exclude(appeal_letter_path=''), pk=pk)
         from core.services.enrollment_r2 import PREFIX
-        if row.appeal_letter_path.startswith(PREFIX):
+        if row.appeal_letter_path.startswith(PREFIX) and request.query_params.get('delivery') == 'direct':
             from core.api.enrollments import private_r2_redirect
             return private_r2_redirect(row.appeal_letter_path, request)
         try:
