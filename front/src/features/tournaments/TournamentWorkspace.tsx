@@ -44,6 +44,7 @@ export function TournamentsPanel(props: Props) {
   const readOnly = props.readOnly || props.user?.role === "coach";
   const adult = scope === "adult";
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [teamsTournamentId, setTeamsTournamentId] = useEnrollmentViewState('teams.tournament', "");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [deletingTournament, setDeletingTournament] = useState<Tournament | null>(null);
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
@@ -82,7 +83,7 @@ export function TournamentsPanel(props: Props) {
   const standings = standingsForTournament(scoped.standings, selected?.id);
   const go = (next: TournamentSection) => { setDialog(null); setRosterTeam(""); onSelectSection(next); };
   const chooseTournament = (id: number) => { setSelectedId(id); props.onSelectTournament?.(id); };
-  const openTournament = (id: number) => { chooseTournament(id); go(setupOnly ? "teams" : "detail"); };
+  const openTournament = (id: number) => { chooseTournament(id); if (setupOnly) setTeamsTournamentId(String(id)); go(setupOnly ? "teams" : "detail"); };
   const showRoster = (team = "") => { go("registrations"); setRosterTeam(team); };
   const toast = notice && <div className="tournament-toast" role="status"><CheckCircle2 size={19} /><span>{notice}</span><button aria-label="Cerrar aviso" onClick={() => setNotice("")}><X size={17} /></button></div>;
   return <div className="tournament-ui sports-panel" data-testid="tournament-workspace">{toast}
@@ -94,7 +95,7 @@ export function TournamentsPanel(props: Props) {
     }} />}
     {section === "create" ? readOnly ? <p className="tournament-feedback warning">Esta cuenta solo puede consultar torneos.</p> : <TournamentCreatePage sites={data.sites} onBack={() => go("overview")} onCreate={props.onCreateTournament} onCreated={created => { setNotice(`Torneo creado correctamente: ${created.name}.`); openTournament(created.id); }} />
       : section === "overview" ? <TournamentDirectory data={scoped} adult={adult} readOnly={Boolean(readOnly)} onOpen={openTournament} onCreate={() => go("create")} onDelete={setDeletingTournament} setupOnly={setupOnly} deletableTournamentIds={props.deletableTournamentIds} onEdit={props.onUpdateTournament ? setEditingTournament : undefined} />
-      : section === "teams" && setupOnly ? <EnrollmentTeamsDirectory data={scoped} readOnly={Boolean(readOnly)} onViewRoster={props.onViewTeamRoster} onDelete={props.onDeleteTeam ? setDeletingTeam : undefined} />
+      : section === "teams" && setupOnly ? <EnrollmentTeamsDirectory data={scoped} tournamentId={teamsTournamentId} onSelectTournament={setTeamsTournamentId} readOnly={Boolean(readOnly)} onViewRoster={props.onViewTeamRoster} onDelete={props.onDeleteTeam ? setDeletingTeam : undefined} />
       : section === "team-create" && setupOnly ? readOnly ? <p className="tournament-feedback warning">Esta cuenta solo puede consultar equipos.</p> : <CreateTeamPage tournaments={scoped.tournaments} sites={scoped.sites} adult={adult} onBack={() => go("teams")} onSave={async (payload, tournamentId) => { await props.onCreateTeam(payload); chooseTournament(tournamentId); setNotice("Equipo creado correctamente."); go("teams"); }} />
       : !selected ? <div className="tournament-empty tournament-surface"><Trophy size={30} /><h2>Aún no hay torneos</h2><p>Crea el primero para registrar equipos, alumnos y partidos.</p>{!readOnly && (setupOnly ? <p>Abre «Crear torneo» en el menú izquierdo.</p> : <button className="tournament-button primary" onClick={() => go("create")}>Crear torneo</button>)}</div>
       : <><button className="tournament-back" onClick={() => go("overview")}><ArrowLeft size={16} />Volver a torneos</button><header className="tournament-page-heading"><div><p className="tournament-eyebrow">Torneos / {section === "detail" ? "Dashboard" : section === "team-create" ? "Crear equipo" : section === "teams" ? "Equipos" : section === "registrations" ? "Alumnos inscritos" : "Partidos"}</p><h2>{selected.name}</h2><p>{data.sites.find(row => row.id === selected.site)?.name} · {selected.billing_type === "full_tournament" ? "Pago por torneo completo" : "Pago semanal"}</p></div><div className="tournament-context-select"><span className={`tournament-badge ${selected.is_active ? "success" : "muted"}`}>{selected.is_active ? "Torneo activo" : "Torneo inactivo"}</span><SelectInput label="Cambiar torneo" value={selected.id} onChange={event => { chooseTournament(Number(event.target.value)); setRosterTeam(""); setDialog(null); }}>{scoped.tournaments.map(row => <option key={row.id} value={row.id}>{row.name}{row.is_active ? "" : " · Inactivo"}</option>)}</SelectInput></div></header>
@@ -125,12 +126,11 @@ export function TournamentsPanel(props: Props) {
   </div>;
 }
 
-function EnrollmentTeamsDirectory({ data, readOnly, onViewRoster, onDelete }: { data: AppData; readOnly: boolean; onViewRoster?: (team: Team) => void; onDelete?: (team: Team) => void }) {
-  const [tournamentId, setTournamentId] = useEnrollmentViewState('teams.tournament', "");
+function EnrollmentTeamsDirectory({ data, tournamentId, onSelectTournament, readOnly, onViewRoster, onDelete }: { data: AppData; tournamentId: string; onSelectTournament: (id: string) => void; readOnly: boolean; onViewRoster?: (team: Team) => void; onDelete?: (team: Team) => void }) {
   const teams = data.teams.filter(team => !tournamentId || String(team.tournament) === tournamentId);
   return <section className="tournament-team-list">
     <header className="tournament-page-heading"><div><p className="tournament-eyebrow">Torneos / Equipos</p><h2>Equipos</h2><p>{teams.length} equipos encontrados</p></div>
-      <div className="tournament-context-select"><SelectInput label="Torneo" value={tournamentId} onChange={event => setTournamentId(event.target.value)}>
+      <div className="tournament-context-select"><SelectInput label="Torneo" value={tournamentId} onChange={event => onSelectTournament(event.target.value)}>
         <option value="">Todos los torneos</option>{data.tournaments.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
       </SelectInput></div>
     </header>
