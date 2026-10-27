@@ -378,7 +378,9 @@ function PrivateImage({ document, token, alt, onReady }: { document?: Document; 
   return url ? <img src={url} alt={alt} onLoad={() => ready.current?.(true)} onError={() => ready.current?.(false)} /> : <span className="photo-placeholder">{failed ? "Imagen no disponible" : document ? "Cargando imagen…" : "Sin foto"}</span>;
 }
 
-export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
+export function PublicPlayerWithdrawal({ invitation, embedded = false, onCompleted, onBusyChange }: {
+  invitation: string; embedded?: boolean; onCompleted?: (completed: boolean) => void; onBusyChange?: (busy: boolean) => void;
+}) {
   const [details, setDetails] = useState<{team: string; tournament: string; players: WithdrawalPlayer[]; direct_upload?: boolean} | null>(null);
   const [selected, setSelected] = useState<number[]>([]), [accepted, setAccepted] = useState(false);
   const selectedPlayers = details?.players.filter(player => selected.includes(player.id)) || [];
@@ -389,6 +391,8 @@ export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
   }
   const [signature, setSignature] = useState<Blob | null>(null);
   const [error, setError] = useState(""), [busy, setBusy] = useState(false), [done, setDone] = useState(false);
+  useEffect(() => { onCompleted?.(done); }, [done, onCompleted]);
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const saving = useRef(false);
   const endpoint = API_URL + "/player-enrollments/withdrawal/" + encodeURIComponent(invitation) + "/";
   useEffect(() => {
@@ -413,7 +417,7 @@ export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar la baja."); }
     finally { saving.current = false; setBusy(false); }
   }
-  return <main className="enrollment-page"><section className="registration-sheet">
+  return <main className={`enrollment-page${embedded ? " enrollment-wizard-embedded" : ""}`}><section className="registration-sheet">
     <div className="enrollment-public-brand"><EnrollmentBrand /></div>
     <h1>Dar de baja</h1>{done ? <p role="status">{selected.length} baja(s) firmada(s) y registrada(s). Se conservan las fichas de los jugadores.</p> : <>
       {details && <form onSubmit={submit}><p>{details.team} · {details.tournament}</p><fieldset disabled={busy}>
@@ -563,7 +567,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   useEffect(() => { setMobileMenuOpen(false); if (!navigation.screen.roster) setPrintRoster(false); setError(''); setMessage(''); }, [navigation.screen.section, navigation.screen.roster]);
   const [rosterRevision, setRosterRevision] = useState(0);
   const invitationSaving = useRef(false);
-  const [localRegistration, setLocalRegistration] = useState<{ token: string; team: string; tournament: string } | null>(null);
+  const [localRegistration, setLocalRegistration] = useState<{ token: string; team: string; tournament: string; purpose: "enroll" | "withdraw" } | null>(null);
   const [localCompleted, setLocalCompleted] = useState(false), [localSaving, setLocalSaving] = useState(false);
   const localDialogRef = useRef<HTMLDialogElement>(null), localButtonRef = useRef<HTMLButtonElement>(null);
   const restoreLocalFocus = useRef(false);
@@ -582,7 +586,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   }, [localRegistration]);
   function closeLocalRegistration() {
     if (localSaving) return;
-    if (!localCompleted && !window.confirm('¿Cerrar el registro local? Los datos que no hayas enviado se perderán.')) return;
+    if (!localCompleted && !window.confirm(localRegistration?.purpose === 'withdraw' ? '¿Cerrar la baja local? Los datos que no hayas enviado se perderán.' : '¿Cerrar el registro local? Los datos que no hayas enviado se perderán.')) return;
     restoreLocalFocus.current = true; setLocalRegistration(null);
     if (localCompleted) { setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }
   }
@@ -643,11 +647,11 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
     }
     invitationSaving.current = true; setBusy(true); setError(""); setMessage(""); setLink("");
     try {
-      const data = { tournament_id: Number(inviteTournament), team_id: Number(inviteTeam), purpose: !local && enrollmentSection === "withdraw" ? "withdraw" : "enroll" };
+      const data = { tournament_id: Number(inviteTournament), team_id: Number(inviteTeam), purpose: enrollmentSection === "withdraw" ? "withdraw" : "enroll" };
       const result = await apiRequest<{ token: string }>("/player-enrollments/", token, { method: "POST", body: JSON.stringify(data) });
       if (local) {
         setLocalCompleted(false); setLocalSaving(false);
-        setLocalRegistration({ token: result.token, team: availableTeams.find(item => String(item.id) === inviteTeam)!.name, tournament: selectedTournament.name });
+        setLocalRegistration({ token: result.token, purpose: enrollmentSection === "withdraw" ? "withdraw" : "enroll", team: availableTeams.find(item => String(item.id) === inviteTeam)!.name, tournament: selectedTournament.name });
       } else setLink(window.location.origin + window.location.pathname + (enrollmentSection === "withdraw" ? "#/baja/" : "#/inscripcion/") + result.token);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo crear el enlace."); }
     finally { invitationSaving.current = false; setBusy(false); }
@@ -721,7 +725,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
             onChange={event => { setInviteTeam(event.target.value); setLink(""); }}><option value="">Selecciona un equipo</option>
             {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></Label>
           <Button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</Button>
-          {enrollmentSection === "send" && <Button ref={localButtonRef} type="button" disabled={busy || catalogBusy || !inviteTeam} onClick={() => void createInvitation(true)}><UserPlus size={18} aria-hidden="true" />Registro local</Button>}
+          <Button ref={localButtonRef} type="button" disabled={busy || catalogBusy || !inviteTeam} onClick={() => void createInvitation(true)}><UserPlus size={18} aria-hidden="true" />{enrollmentSection === "withdraw" ? "Baja local" : "Registro local"}</Button>
         </form>
         {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» del menú izquierdo.</p>}
         {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos.</p>}
@@ -762,7 +766,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
       </section>}
     </div>
     <Dialog ref={localDialogRef} className="local-enrollment-dialog no-print" aria-labelledby="local-enrollment-title" onCancel={event => { event.preventDefault(); closeLocalRegistration(); }}>
-      {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">Registro local</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div><Button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localCompleted ? 'Finalizar registro local' : 'Cerrar registro local'}</Button></header><div className="local-enrollment-content"><PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /></div></>}
+      {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">{localRegistration.purpose === "withdraw" ? "Baja local" : "Registro local"}</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div><Button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localRegistration.purpose === 'withdraw' ? (localCompleted ? 'Finalizar baja local' : 'Cerrar baja local') : (localCompleted ? 'Finalizar registro local' : 'Cerrar registro local')}</Button></header><div className="local-enrollment-content"><>{localRegistration.purpose === "withdraw" ? <PublicPlayerWithdrawal key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /> : <PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} />}</></div></>}
     </Dialog>
   </main>;
 }

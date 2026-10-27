@@ -160,3 +160,9 @@ Las sanciones pendientes, incluidas las programadas y las sin término, bloquean
 Las nuevas inscripciones por enlace comprueban también nombre completo normalizado y fecha de nacimiento contra las sanciones de inscripciones anteriores, sin importar la sede o el equipo. Los jugadores del módulo legado sin fecha de nacimiento se protegen por su ID para baja y cambio de equipo, no por homónimos.
 
 Los sancionados siguen visibles en la plantilla, sábana y alineación, con marca textual SANCIONADO y fecha final o Sin término. Las sanciones programadas muestran la fecha de inicio. Las marcas se imprimen también en blanco y negro y desaparecen al vencer todas las sanciones. No se crea ningún cron: la vigencia se calcula al consultar.
+
+## Baja local en ventanilla
+
+En Bajas > Nueva baja, seleccionar torneo y equipo habilita Baja local junto a Crear enlace. Abre el mismo formulario firmado dentro de un diálogo, sin navegar fuera del panel. La invitación conserva purpose=withdraw y el servidor mantiene permisos de sede, sanciones y validación de integrantes. Reutiliza la carga directa a R2 cuando está habilitada.
+
+Al confirmar se refrescan catálogo e histórico; cerrar antes de terminar pide confirmación y durante el envío permanece bloqueado. No cambia la baja pública por enlace ni el formato de impresión. Validación local: TypeScript, compilación, pruebas de bajas y flujo simulado de firma/error/guardado con y sin R2 en 320, 390 y 1440 px. No se ejecutaron bajas reales.
