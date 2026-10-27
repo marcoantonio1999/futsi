@@ -41,7 +41,7 @@ try{
   assert(await page.getByText('SANCIONADO',{exact:true}).isVisible());
   assert(await page.locator('.roster-name').first().evaluate(element=>element.scrollHeight<=element.clientHeight));
   assert.equal(await page.getByText('Firma no disponible',{exact:true}).count(),0);
-  assert(await page.locator('.roster-print-help').isVisible());
+  assert.equal(await page.locator('.roster-print-help').count(),0);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   async function alignedHeader(){
    for(const header of await page.locator('.match-paper-header').all()){
@@ -72,7 +72,7 @@ try{
    for(const format of ['A4','Letter'])await page.pdf({path:`${output}/sabana-headers-${format}.pdf`,format,preferCSSPageSize:true,printBackground:true,displayHeaderFooter:true,headerTemplate:'<div style="font-size:9px">QA-BROWSER-HEADER</div>',footerTemplate:'<div style="font-size:9px">QA-BROWSER-FOOTER</div>'});
    await page.emulateMedia({media:'print'});await page.screenshot({path:`${output}/print-preview.png`,fullPage:true});
    await alignedHeader();
-   assert.equal(await page.locator('.roster-print-help').isVisible(),false);
+   assert.equal(await page.locator('.roster-print-help').count(),0);
    for(const sheet of await page.locator('.photo-paper').all()){
     assert(await sheet.evaluate(element=>getComputedStyle(element).overflow==='visible'));
     assert(await sheet.evaluate(element=>Array.from(element.querySelectorAll('.match-player-box')).every(card=>card.getBoundingClientRect().bottom<=element.getBoundingClientRect().bottom)));

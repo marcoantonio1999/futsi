@@ -474,7 +474,6 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
       {!alignment && <p>Delegado: <strong>{players.find(row => row.is_delegate)?.name || "Sin delegado"}</strong></p>}</div>
       <div className="control-grid"><Label>Fecha<Input type="date" value={date} onChange={event => setDate(event.target.value)} /></Label><Label>Horario<Input type="time" value={time} onChange={event => setTime(event.target.value)} /></Label>{!alignment && <Label>Jornada<Input value={round} maxLength={30} onChange={event => setRound(event.target.value)} /></Label>}<Button type="button" disabled={busy || Boolean(error) || !photosReady} onClick={() => window.print()}>Imprimir / guardar PDF</Button></div>
     </div>
-    {!alignment && <p className="roster-print-help no-print">Al imprimir, selecciona papel A4 y desactiva «Encabezados y pies de página» en Más ajustes para quitar la fecha, el título y el enlace del navegador.</p>}
     {busy && <p role="status">Cargando plantilla…</p>}{error && <p className="error" role="alert">{error}</p>}
     {delegateMessage && <p className="no-print" role="status">{delegateMessage}</p>}
     {changingDelegate && <ChangeDelegate teamId={team.id} teamName={team.name} players={players} token={token} onClose={() => setChangingDelegate(false)} onChanged={id => {
