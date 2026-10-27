@@ -8,6 +8,17 @@
 .photo-paper .match-paper-header strong,.photo-paper .match-paper-header b{padding:2mm;border:0}
 .photo-paper .match-paper-header>div:first-child>strong{color:#26578b;font-size:18px}
 .photo-paper .match-paper-header>div+div{border-color:#7b9ab7}
+/* Both columns share the same four rows, even with a long team name or an
+   empty date/time. Independent block heights used to stagger the blue bands. */
+.photo-paper .match-paper-header{grid-template-columns:minmax(0,1fr) 42mm;grid-template-rows:minmax(12mm,auto) auto minmax(10mm,auto) auto}
+.photo-paper .match-paper-header>div{display:contents}
+.photo-paper .match-paper-header>div:first-child>*{grid-column:1}
+.photo-paper .match-paper-header>div+div>*{grid-column:2;border-left:1px solid #7b9ab7}
+.photo-paper .match-paper-header>div>:nth-child(1){grid-row:1}
+.photo-paper .match-paper-header>div>:nth-child(2){grid-row:2}
+.photo-paper .match-paper-header>div>:nth-child(3){grid-row:3}
+.photo-paper .match-paper-header>div>:nth-child(4){grid-row:4}
+.photo-paper .match-paper-header :is(strong,b,small){display:flex;align-items:center;justify-content:center;min-width:0;margin:0;line-height:1.2}
 .photo-paper .match-paper-delegate,.photo-paper .match-round{color:#26578b}
 .photo-paper .match-round{margin-bottom:2mm;min-height:3mm;font-size:11px}
 .photo-paper .match-player-box{grid-template-columns:10mm 19mm minmax(0,1fr);border-color:#7b9ab7;border-radius:4mm}

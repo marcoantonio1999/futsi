@@ -9,7 +9,7 @@ const browser=await chromium.launch({channel:'chrome',headless:true});
 const players=Array.from({length:17},(_,i)=>({id:i+1,name:`Jugador ficticio ${i+1} Apellido compuesto`,birth_date:'2000-01-01',team:'Equipo ficticio',team_id:11,tournament:'Liga ficticia',tournament_id:21,phone:'5500000000',phone_secondary:'',guardian_name:'',signed_at:'2026-10-23T12:00:00Z',terms_text:[],is_delegate:i===0,documents:[{id:i*2+1,kind:'player_photo'},...(i===16?[]:[{id:i*2+2,kind:'player_signature'}])]}));
 const svg=id=>id%2?'<svg xmlns="http://www.w3.org/2000/svg" width="80" height="110"><rect width="80" height="110" fill="#dde7ed"/><circle cx="40" cy="32" r="18" fill="#7c98aa"/><path d="M10 105 Q10 55 40 55 Q70 55 70 105" fill="#7c98aa"/></svg>':'<svg xmlns="http://www.w3.org/2000/svg" width="180" height="50"><path d="M10 35 Q30 0 35 35 Q40 50 60 18 Q70 5 65 30 Q75 45 90 20 L105 35 L160 20" fill="none" stroke="#153a69" stroke-width="2"/></svg>';
 players[0].sanctions=[{id:1,starts_on:'2026-10-23',ends_on:'2026-11-23',status:'active'}];
-async function setup(page,{failPhoto=false,delayPhoto=false,slots=16}={}){
+async function setup(page,{failPhoto=false,delayPhoto=false,slots=16,shortName=false}={}){
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/api/**',async route=>{
   assert.equal(route.request().method(),'GET');const url=new URL(route.request().url());
@@ -20,7 +20,7 @@ async function setup(page,{failPhoto=false,delayPhoto=false,slots=16}={}){
    if(id===1&&delayPhoto)await new Promise(resolve=>setTimeout(resolve,800));
    return route.fulfill({contentType:'image/svg+xml',body:svg(id)});
   }
-  if(url.pathname.endsWith('/catalog/'))return route.fulfill({json:{sites:[{id:1,name:'Sede ficticia'}],tournaments:[{id:21,name:'Liga ficticia de prueba con categoría de nombre largo',site:1,max_players_per_team:slots}],teams:[{id:11,name:'Equipo ficticio con nombre largo para validar la impresión completa',tournament:21,is_active:true}]}});
+  if(url.pathname.endsWith('/catalog/'))return route.fulfill({json:{sites:[{id:1,name:'Sede ficticia'}],tournaments:[{id:21,name:shortName?'ap 28':'Liga ficticia de prueba con categoría de nombre largo',site:1,max_players_per_team:slots}],teams:[{id:11,name:shortName?'PARIS':'Equipo ficticio con nombre largo para validar la impresión completa',tournament:21,is_active:true}]}});
   if(url.pathname.endsWith('/player-enrollments/'))return route.fulfill({json:{results:players,count:players.length}});
   return route.fulfill({json:{results:[],count:0}});
  });return errors;
@@ -28,7 +28,7 @@ async function setup(page,{failPhoto=false,delayPhoto=false,slots=16}={}){
 try{
  for(const width of [320,390,1440]){
   const slots=width===320?12:width===390?14:16;
-  const page=await browser.newPage({viewport:{width,height:950}}),errors=await setup(page,{delayPhoto:true,slots});
+  const page=await browser.newPage({viewport:{width,height:950}}),errors=await setup(page,{delayPhoto:true,slots,shortName:width===320});
   await page.goto((process.env.TEST_ENROLLMENT_ORIGIN||'http://127.0.0.1:5218')+'/tests/enrollment-register-preview.html#/admin/inscripciones/history?equipo=11');
   const print=page.getByRole('button',{name:'Imprimir / guardar PDF',exact:true});
   await print.waitFor();assert(await print.isDisabled());await page.waitForFunction(()=>!Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Imprimir / guardar PDF')?.disabled);
@@ -43,6 +43,20 @@ try{
   assert.equal(await page.getByText('Firma no disponible',{exact:true}).count(),0);
   assert(await page.locator('.roster-print-help').isVisible());
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  async function alignedHeader(){
+   for(const header of await page.locator('.match-paper-header').all()){
+    const rows=await header.evaluate(element=>{
+     const [left,right]=Array.from(element.children);
+     return Array.from(left.children).map((cell,i)=>{const a=cell.getBoundingClientRect(),b=right.children[i].getBoundingClientRect();return {top:Math.abs(a.top-b.top),bottom:Math.abs(a.bottom-b.bottom),height:a.height};});
+    });
+    assert(rows.every(row=>row.top<1&&row.bottom<1&&row.height>0),'Team/category and date/time rows must align');
+   }
+  }
+  await alignedHeader();
+  await page.locator('.match-paper-header').first().screenshot({path:`${output}/header-empty-${width}.png`});
+  await page.locator('.control-grid input[type=date]').fill('2026-10-27');
+  await page.locator('.control-grid input[type=time]').fill('18:30');
+  await alignedHeader();
   assert.equal(await page.getByRole('button',{name:'Herramientas',exact:true}).count(),0);
   if(width<1024){
    await page.getByRole('button',{name:'Abrir secciones',exact:true}).click();
@@ -57,6 +71,7 @@ try{
    await page.pdf({path:`${output}/sabana-ficticia.pdf`,format:'A4',printBackground:true,margin:{top:'10mm',right:'10mm',bottom:'10mm',left:'10mm'}});
    for(const format of ['A4','Letter'])await page.pdf({path:`${output}/sabana-headers-${format}.pdf`,format,preferCSSPageSize:true,printBackground:true,displayHeaderFooter:true,headerTemplate:'<div style="font-size:9px">QA-BROWSER-HEADER</div>',footerTemplate:'<div style="font-size:9px">QA-BROWSER-FOOTER</div>'});
    await page.emulateMedia({media:'print'});await page.screenshot({path:`${output}/print-preview.png`,fullPage:true});
+   await alignedHeader();
    assert.equal(await page.locator('.roster-print-help').isVisible(),false);
    for(const sheet of await page.locator('.photo-paper').all()){
     assert(await sheet.evaluate(element=>getComputedStyle(element).overflow==='visible'));
