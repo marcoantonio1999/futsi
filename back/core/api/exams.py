@@ -103,6 +103,8 @@ def attempt_data(a, private=False):
         result.update(id=a.id, name=a.name, email=a.email, phone=a.phone,
                       grading_status=a.grading_status, grading=a.grading,
                       graded_at=a.graded_at.isoformat() if a.graded_at else None)
+        if hasattr(a, 'skill_score'):
+            result['skill_score'] = a.skill_score
         offline = a.snapshot.get('offline_import', {})
         if isinstance(offline, dict) and offline.get('source') in {'pdf_manual', 'xlsx_results'}:
             # Date-only anchors support historical day filters, not invented clocks.

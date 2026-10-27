@@ -40,6 +40,10 @@ try {
   assert.deepEqual(exported,['','?exam=2&ordering=newest']);
   await page.getByRole('button',{name:'Filtros',exact:true}).click();
   await page.getByLabel('Buscar participante',{exact:true}).fill('Persona & prueba');
+  await page.getByLabel('Habilidad',{exact:true}).selectOption('sales');
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert(await page.getByLabel('Habilidad',{exact:true}).evaluate(el=>el.getBoundingClientRect().height>=44));
+  await page.screenshot({path:fileURLToPath(new URL(`filters-${width}.png`,output)),fullPage:true});
   await page.getByLabel('Ordenar por',{exact:true}).selectOption('score_desc');
   await page.getByLabel('Selección',{exact:true}).selectOption('10');
   await page.getByLabel('Estado',{exact:true}).selectOption('graded');
@@ -49,7 +53,7 @@ try {
   await page.getByRole('dialog',{name:'Filtros de evaluaciones',exact:true}).waitFor({state:'hidden'});
   download=page.waitForEvent('download');await button.click();await download;
   const selected=new URLSearchParams(exported.at(-1));
-  assert.deepEqual(Object.fromEntries(selected),{exam:'2',ordering:'score_desc',top:'10',q:'Persona & prueba',status:'graded',min_score:'7',max_score:'10'});
+  assert.deepEqual(Object.fromEntries(selected),{exam:'2',skill:'sales',ordering:'score_desc',top:'10',q:'Persona & prueba',status:'graded',min_score:'7',max_score:'10'});
   assert(!selected.has('page'));
   // Draft edits do not change the exported selection until applied.
   await page.getByRole('button',{name:'Filtros',exact:true}).click();

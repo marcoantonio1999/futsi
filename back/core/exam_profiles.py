@@ -35,6 +35,23 @@ def score_rows(rows):
 
 def filtered_attempts(rows, params, profiles=False):
     rows = score_rows(rows)
+    skill = params.get('skill', '')
+    if skill:
+        from core.exam_skills import SKILLS, attempt_skills
+        if skill not in SKILLS:
+            raise ValidationError({'detail': 'Habilidad inválida.'})
+        # Snapshots can contain renumbered questions. Match content, never IDs alone.
+        matched_ids, by_score = [], {}
+        for row in rows.values('id', 'submitted_at', 'snapshot__questions', 'grading_status', 'grading__questions').iterator(chunk_size=200):
+            areas = attempt_skills(row['snapshot__questions'], row['grading_status'], row['grading__questions'])
+            if skill in areas:
+                matched_ids.append(row['id'])
+                score = areas[skill][0] if row['submitted_at'] else None
+                if score is not None:
+                    by_score.setdefault(score, []).append(row['id'])
+        rows = rows.filter(pk__in=matched_ids).annotate(skill_score=Case(
+            *[When(pk__in=ids, then=Value(score)) for score, ids in by_score.items()],
+            default=Value(None), output_field=FloatField())).annotate(profile_score=F('skill_score'))
     cohort = rows.filter(profile_score__isnull=False)
     graded_count = cohort.count()
     threshold = None
@@ -94,7 +111,7 @@ def filtered_attempts(rows, params, profiles=False):
     if ordering not in order:
         raise ValidationError({'detail': 'Orden inválido.'})
     rows = rows.order_by(order['score_desc'] if params.get('top') == '10' else order[ordering], 'id')
-    return rows, {'graded_count': graded_count, 'top_threshold': threshold, 'matched_keywords': terms}
+    return rows, {'graded_count': graded_count, 'top_threshold': threshold, 'matched_keywords': terms, 'skill': skill, 'skill_label': SKILLS[skill][0] if skill else ''}
 
 
 def clean_string(value, limit, label):

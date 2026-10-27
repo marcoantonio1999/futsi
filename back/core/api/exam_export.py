@@ -72,7 +72,7 @@ class ExamExportView(APIView):
     permission_classes = [CanManageExams]
 
     def get(self, request):
-        if set(request.query_params) - {'exam', 'ordering', 'top', 'q', 'status', 'min_score', 'max_score'}:
+        if set(request.query_params) - {'exam', 'ordering', 'top', 'q', 'status', 'min_score', 'max_score', 'skill'}:
             raise ValidationError({'detail': 'Filtro de exportación no reconocido. La descarga incluye todas las páginas.'})
         exam_id = request.query_params.get('exam')
         if exam_id is not None:
@@ -95,9 +95,13 @@ class ExamExportView(APIView):
         result_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Correo', 'Teléfono', 'Fecha del examen (CDMX)',
             'Inicio (CDMX)', 'Entrega (CDMX)', 'Duración (min)', 'Tiempo de referencia (min)', 'Estado',
             'Calificación / 10', 'Requiere revisión', 'Observaciones', 'Origen']
+        skill = request.query_params.get('skill', '')
+        if skill:
+            from core.exam_skills import SKILLS
+            result_headers += ['Habilidad seleccionada', 'Calificación de habilidad / 10']
         answer_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Pregunta', 'Tipo', 'Enunciado',
             'Opciones', 'Respuesta del participante', 'Respuesta correcta / criterio', 'Puntos / 10', 'Requiere revisión', 'Comentario']
-        for sheet, headers, widths in [(results, result_headers, [14,34,32,36,20,24,24,24,20,24,28,22,22,65,24]),
+        for sheet, headers, widths in [(results, result_headers, [14,34,32,36,20,24,24,24,20,24,28,22,22,65,24] + ([36,30] if skill else [])),
                                       (answers, answer_headers, [14,34,32,14,20,65,65,65,65,18,22,65])]:
             sheet.freeze_panes = 'D2'
             sheet.row_dimensions[1].height = 34
@@ -129,7 +133,7 @@ class ExamExportView(APIView):
                 None if offline or not submitted else round(max(0,(attempt.submitted_at-attempt.started_at).total_seconds())/60,2),
                 None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado') if submitted else 'Sin entregar', score,
                 'Sí' if review else 'No', grading.get('error') or observations,
-                'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'])
+                'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'] + ([SKILLS[skill][0], attempt.skill_score] if skill else []))
             # Unsubmitted drafts are not delivered answers and must not be exported.
             if not submitted:
                 continue
@@ -150,7 +154,7 @@ class ExamExportView(APIView):
                     answer_text(question, attempt.grading_key.get(qid)) if qid in attempt.grading_key else 'Sin clave registrada',
                     points, 'Sí' if (marks and qid not in accepted) or grade.get('review') else 'No',
                     'Confirmar selección con Vero' if marks and qid not in accepted else grade.get('reason','')])
-        results.auto_filter.ref = f'A1:O{max(1,count+1)}'
+        results.auto_filter.ref = f'A1:{get_column_letter(len(result_headers))}{max(1,count+1)}'
         answers.auto_filter.ref = f'A1:L{max(1,detail_count+1)}'
         output = BytesIO()
         workbook.save(output)

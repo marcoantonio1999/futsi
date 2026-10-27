@@ -29,6 +29,22 @@ def question_skills():
     return {signature(q): by_id[q['id']] for q in template['questions']}
 
 
+def attempt_skills(questions, status, grades):
+    """Recognized areas and complete scores, shared by statistics and filters."""
+    matched = {}
+    for q in questions if isinstance(questions, list) else []:
+        if isinstance(q, dict):
+            skill = question_skills().get(signature(q))
+            if skill:
+                matched.setdefault(skill, []).append(str(q.get('id')))
+    result = {}
+    for skill, ids in matched.items():
+        points = [grades.get(i, {}).get('points') if isinstance(grades.get(i), dict) else None for i in ids] if isinstance(grades, dict) else []
+        valid = status == 'graded' and len(points) == len(ids) and all(type(p) in (int, float) and math.isfinite(p) and 0 <= p <= 10 for p in points)
+        result[skill] = (sum(points) / len(points) if valid else None, len(ids))
+    return result
+
+
 def skill_statistics(rows):
     """Stream private question/grade fragments only; never read contacts or answers."""
     groups = {key: dict(id=key, label=label, delivered=0, graded=0, without_breakdown=0,
@@ -42,27 +58,18 @@ def skill_statistics(rows):
         if not isinstance(questions, list):
             unclassified += 1
             continue
-        matched = {}
-        for q in questions:
-            if not isinstance(q, dict):
-                continue
-            skill = question_skills().get(signature(q))
-            if skill:
-                matched.setdefault(skill, []).append(str(q.get('id')))
+        matched = attempt_skills(questions, row['grading_status'], row['grading__questions'])
         if not matched:
             unclassified += 1
-        grades = row['grading__questions']
-        for skill, ids in matched.items():
+        for skill, (score, question_count) in matched.items():
             group = groups[skill]
             group['delivered'] += 1
-            points = [grades.get(i, {}).get('points') if isinstance(grades.get(i), dict) else None for i in ids] if isinstance(grades, dict) else []
-            if row['grading_status'] != 'graded' or len(points) != len(ids) or not all(type(p) in (int, float) and math.isfinite(p) and 0 <= p <= 10 for p in points):
+            if score is None:
                 group['without_breakdown'] += 1
                 continue
-            score = sum(points) / len(points)
             scores[skill].append(score)
             group['graded'] += 1
-            group['question_count'] += len(ids)
+            group['question_count'] += question_count
             entry = exam_scores[skill].setdefault(row['exam_id'], dict(exam_id=row['exam_id'], title=row['exam__title'], scores=[]))
             entry['scores'].append(score)
     for key, group in groups.items():
