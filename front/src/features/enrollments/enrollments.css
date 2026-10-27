@@ -6,3 +6,4 @@
 .enrollment-camera-dialog header,.enrollment-camera-dialog footer{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .enrollment-camera-dialog header h2{margin:0}.enrollment-camera-dialog footer{justify-content:flex-end;margin-top:20px}
 .enrollment-camera-dialog video{display:block;width:100%;max-height:60dvh;object-fit:contain;background:#111;border-radius:10px;margin-top:16px}
+.enrollment-camera-dialog video.enrollment-camera-mirrored{transform:scaleX(-1)}

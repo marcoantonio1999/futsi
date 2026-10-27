@@ -8,6 +8,7 @@ export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: 
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [mirrored, setMirrored] = useState(selfie);
   const [capturing, setCapturing] = useState(false);
   const [lighting, setLighting] = useState<LightingResult | null>(null);
   const [lightingUnavailable, setLightingUnavailable] = useState(false);
@@ -40,6 +41,10 @@ export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: 
         stream = await navigator.mediaDevices.getUserMedia({ audio: false,
           video: { facingMode: { ideal: selfie ? "user" : "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
         if (stopped) { stream.getTracks().forEach(track => track.stop()); return; }
+        const facing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+        // Mirror only the live front-camera preview. Capture keeps original pixels
+        // so documents and saved photographs are never reversed.
+        setMirrored(facing === 'user' || (facing !== 'environment' && selfie));
         if (video.current) { video.current.srcObject = stream; await video.current.play(); }
       } catch (err) {
         if (stopped) return;
@@ -79,7 +84,7 @@ export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: 
     <section className="enrollment-camera-dialog" role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label="Tomar foto">
       <header><h2>Tomar foto</h2><button ref={closeButton} type="button" onClick={onClose} aria-label="Cerrar cámara">✕</button></header>
       {selfie && <p className="camera-face-notice">Por favor, retira lentes, gorra, cubrebocas y cualquier objeto que tape tu cara. Mantén el rostro completo visible.</p>}
-      <video ref={video} autoPlay muted playsInline onLoadedData={() => setReady(true)} />
+      <video ref={video} className={mirrored ? 'enrollment-camera-mirrored' : undefined} autoPlay muted playsInline onLoadedData={() => setReady(true)} />
       {!error && (ready ? <LightingIndicator result={lightingUnavailable ? null : lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} /> : <p role="status">Esperando acceso a la cámara. Si el navegador solicita permiso, elige Permitir.</p>)}
       {error && <p className="error" role="alert">{error}</p>}
       <footer><button type="button" onClick={onClose}>Cancelar</button>
