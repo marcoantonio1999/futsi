@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 
 from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentExam, RecruitmentExamAttempt
+from core.exam_profiles import filtered_attempts
 
 CDMX = ZoneInfo('America/Mexico_City')
 STATUSES = {'graded': 'Calificado', 'review': 'Revisión manual', 'pending': 'Pendiente de calificar',
@@ -71,18 +72,23 @@ class ExamExportView(APIView):
     permission_classes = [CanManageExams]
 
     def get(self, request):
-        if set(request.query_params) - {'exam'}:
-            raise ValidationError({'detail': 'La exportación incluye todas las entregas, sin filtros ni paginación.'})
+        if set(request.query_params) - {'exam', 'ordering', 'top', 'q', 'status', 'min_score', 'max_score'}:
+            raise ValidationError({'detail': 'Filtro de exportación no reconocido. La descarga incluye todas las páginas.'})
         exam_id = request.query_params.get('exam')
         if exam_id is not None:
             if not exam_id.isdecimal() or int(exam_id) < 1:
                 raise ValidationError({'detail': 'Examen inválido.'})
             get_object_or_404(RecruitmentExam, pk=int(exam_id))
-        rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False)
+        if request.query_params.get('status', '') not in {'', 'graded', 'pending', 'unsubmitted'} or request.query_params.get('top', '') not in {'', '10'}:
+            raise ValidationError({'detail': 'Filtro de exportación inválido.'})
+        if not exam_id and set(request.query_params) - {'exam'}:
+            raise ValidationError({'detail': 'Selecciona un examen para exportar con filtros.'})
         if exam_id:
-            rows = rows.filter(exam_id=int(exam_id))
+            rows, _ = filtered_attempts(RecruitmentExamAttempt.objects.filter(exam_id=int(exam_id)), request.query_params)
+        else:
+            rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False).order_by('exam_id', 'id')
         rows = rows.select_related('exam').defer('access_token', 'start_key', 'identity_email', 'identity_phone',
-            'exam__public_token', 'exam__answer_key').order_by('exam_id', 'id')
+            'exam__public_token', 'exam__answer_key')
         workbook = Workbook(write_only=True)
         results = workbook.create_sheet('Evaluaciones')
         answers = workbook.create_sheet('Respuestas')
@@ -104,25 +110,29 @@ class ExamExportView(APIView):
             if count >= 1048576:
                 raise ValidationError({'detail': 'El archivo excede el límite de filas de Excel. Exporta por examen.'})
             snapshot, grading = attempt.snapshot or {}, attempt.grading or {}
+            submitted = attempt.submitted_at is not None
             metadata = snapshot.get('offline_import') or {}
             offline = metadata.get('source') in {'pdf_manual', 'xlsx_results'}
             totals_only = metadata.get('source') == 'xlsx_results'
             ambiguous = metadata.get('ambiguous_answers') or {}
             accepted = set(grading.get('accepted_multiple_answers') or []) if attempt.grading_status == 'graded' else set()
             title = snapshot.get('title') or attempt.exam.title
-            score = grading.get('score') if attempt.grading_status == 'graded' else None
+            score = grading.get('score') if submitted and attempt.grading_status == 'graded' else None
             if not numeric(score) or not 0 <= score <= 10:
                 score = None
             review = bool(grading.get('review') or (set(ambiguous) - accepted) or attempt.grading_status in {'review','error'}
                           or (attempt.grading_status == 'graded' and score is None))
-            completed = (date.fromisoformat(metadata['completed_on']) if metadata.get('completed_on') else None) if offline else attempt.submitted_at.astimezone(CDMX).date()
+            completed = (date.fromisoformat(metadata['completed_on']) if metadata.get('completed_on') else None) if offline else attempt.submitted_at.astimezone(CDMX).date() if submitted else None
             observations = (f"{metadata.get('correct_count')} aciertos de {metadata.get('question_count')}. Nota calculada con aciertos. Sin fecha, contactos, tiempos ni respuestas individuales en el archivo." if totals_only else 'Sin horas ni duración registradas' if offline else '')
             append_row(results, [attempt.id, title, attempt.name, attempt.email, attempt.phone, completed,
                 None if offline else local_clock(attempt.started_at), None if offline else local_clock(attempt.submitted_at),
-                None if offline else round(max(0,(attempt.submitted_at-attempt.started_at).total_seconds())/60,2),
-                None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado'), score,
+                None if offline or not submitted else round(max(0,(attempt.submitted_at-attempt.started_at).total_seconds())/60,2),
+                None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado') if submitted else 'Sin entregar', score,
                 'Sí' if review else 'No', grading.get('error') or observations,
                 'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'])
+            # Unsubmitted drafts are not delivered answers and must not be exported.
+            if not submitted:
+                continue
             for question in snapshot.get('questions', []):
                 detail_count += 1
                 if detail_count >= 1048576:

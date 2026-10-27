@@ -64,3 +64,20 @@ El claim `processing` se confirma en DB antes de consultar IA, sin mantener lock
 `POST /api/recruitment-exams/test-grading/` es una prueba limitada a 6/h por usuario autorizado con texto ficticio fijo, sin crear participantes. No se llama al entrar a la página.
 
 Pruebas: `test_exam_grading.py` cubre clave obligatoria/privacidad, calificación determinista/idempotente, notas abiertas, claims, errores, permisos y legado. `front/tests/exam-grading.browser.mjs` usa API/DB locales, importa JSON y realiza tres pequeñas consultas reales autorizadas con candidatos ficticios, comprobando notas y 320/390/1440 px; nunca ejecutar contra producción.
+
+
+## Exportación con filtros (2026-10-27)
+
+En Ver evaluaciones, Exportar Excel envía los filtros aplicados del examen:
+búsqueda de participante, estado, calificación mínima/máxima, orden y mejor 10 %
+con empates. Comparte `filtered_attempts` con la lista; no envía número de página.
+Las hojas Evaluaciones y Respuestas contienen el mismo conjunto seleccionado,
+con todas las páginas. Cambios todavía no aplicados en el modal no alteran la descarga.
+Los intentos sin entregar aparecen sin nota, fecha de entrega ni duración final;
+no se exportan respuestas de borrador. El reporte global desde la lista de exámenes
+conserva todas las entregas. La exportación no cierra ni califica intentos.
+
+Validación: 43 pruebas de exportación/perfiles; comparación de IDs y orden con la
+API paginada, empates, pendientes, filtros vacíos e inválidos, permisos y escritura
+segura de celdas. Navegador en 320, 390 y 1440 px verifica parámetros aplicados,
+descarga, errores y ausencia de desbordamiento.

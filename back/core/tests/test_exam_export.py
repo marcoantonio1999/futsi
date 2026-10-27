@@ -39,7 +39,7 @@ def test_all_pages_all_exams_and_read_only(auth_client):
     assert before==list(RecruitmentExamAttempt.objects.order_by('id').values())
     assert w['Evaluaciones']['L2'].value==0
     assert w['Evaluaciones']['L2'].data_type=='n'
-    assert book(c.get(URL,{'exam':first['id']}))['Evaluaciones'].max_row==66
+    assert book(c.get(URL,{'exam':first['id']}))['Evaluaciones'].max_row==67
     assert w['Evaluaciones'].freeze_panes=='D2' and w['Evaluaciones'].auto_filter.ref=='A1:O67'
     assert 'access_token' not in str(list(w['Evaluaciones'].values))
 
@@ -99,3 +99,43 @@ def test_anonymous_empty_and_bad_scope(auth_client):
     for params in [{'exam':'bad'},{'exam':'0'},{'page':'1'},{'status':'graded'}]:
         assert c.get(URL,params).status_code==400
     assert c.get(URL,{'exam':'999999'}).status_code==404
+
+
+@pytest.mark.parametrize('filters', [
+    {'ordering':'newest'}, {'ordering':'name'}, {'ordering':'score_desc'},
+    {'ordering':'score_asc'}, {'top':'10','q':'Persona'},
+    {'status':'pending'}, {'status':'unsubmitted'}, {'status':'graded','min_score':'8','max_score':'9'},
+    {'q':'persona1@example.invalid'}, {'q':'No existe'},
+])
+def test_export_matches_filtered_evaluation_list_across_pages(auth_client, filters):
+    c,_,_=auth_client();e=create_exam(c);other=create_exam(c)
+    for i in range(65):
+        a=attempt(e,i,10 if i<9 else 8)
+        RecruitmentExamAttempt.objects.filter(pk=a.pk).update(snapshot={'duration_minutes':60,'questions':e['questions']},answers={'1':0})
+    attempt(e,70,None)
+    pending=attempt(e,71,None,submitted=False)
+    RecruitmentExamAttempt.objects.filter(pk=pending.pk).update(snapshot={'duration_minutes':480,'questions':e['questions']},answers={'2':'PRIVATE UNSUBMITTED DRAFT'})
+    attempt(other,80,10)
+    expected=[]
+    page=1
+    while True:
+        response=c.get(f'/api/recruitment-exams/{e["id"]}/', {**filters,'page':page})
+        assert response.status_code==200,response.content
+        data=response.json();expected.extend(a['id'] for a in data['results'])
+        if len(expected)>=data['count']:break
+        page+=1
+    w=book(c.get(URL,{'exam':e['id'],**filters}))
+    ids=[r[0] for r in list(w['Evaluaciones'].values)[1:]]
+    assert ids==expected
+    assert all(r[0] in ids for r in list(w['Respuestas'].values)[1:])
+    assert 'PRIVATE UNSUBMITTED DRAFT' not in str([list(sheet.values) for sheet in w])
+    if filters.get('status')=='unsubmitted':
+        row=list(w['Evaluaciones'].values)[1]
+        assert row[10]=='Sin entregar' and row[7] is None and row[8] is None and row[11] is None
+        assert w['Respuestas'].max_row==1
+
+
+@pytest.mark.parametrize('filters',[{'ordering':'bad'},{'status':'bad'},{'top':'20'},{'min_score':'NaN'},{'max_score':'11'},{'page':'2'}])
+def test_filtered_export_rejects_invalid_inputs(auth_client,filters):
+    c,_,_=auth_client();e=create_exam(c)
+    assert c.get(URL,{'exam':e['id'],**filters}).status_code==400
