@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {mkdir} from 'node:fs/promises';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const direct=process.env.TEST_R2_DIRECT==='1';
+const adultCurp=process.env.TEST_ADULT_IDENTITY==='curp';
 const output=process.env.TEST_OUTPUT||'C:/Users/daniel/Documents/marco/mexprod/tmp/outputs/enrollment-local';
 await mkdir(output,{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
@@ -52,8 +53,14 @@ async function completeForm(page,minor=false){
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  await page.locator('[data-enrollment-field="birth_date"].enrollment-invalid').waitFor();
  await page.locator('input[type=date][name=birth_date]').fill(minor?'2015-01-01':'2000-01-01');
+ if(!minor&&adultCurp){
+  await page.locator('.enrollment-wizard-identity-fields select').selectOption('curp');
+  assert.equal(await page.locator('[data-enrollment-field="ine_front"] input').count(),0);
+  assert.equal(await page.locator('[data-enrollment-field="ine_back"] input').count(),0);
+  await page.screenshot({path:`${output}/curp-${page.viewportSize().width}.png`,fullPage:true});
+ }
  const pdf={name:'documento-ficticio.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nFICTICIO')};
- for(const field of (minor?['minor_credential','curp','guardian_ine_front','guardian_ine_back']:['ine_front','ine_back']))await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
+ for(const field of (minor?['minor_credential','curp','guardian_ine_front','guardian_ine_back']:adultCurp?['curp']:['ine_front','ine_back']))await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  // A synthetic PNG created locally, not a real player's photograph.
  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=1200;c.height=1200;const ctx=c.getContext('2d');ctx.fillStyle='#bbb';ctx.fillRect(0,0,1200,1200);return c.toDataURL().split(',')[1];});
@@ -93,10 +100,11 @@ try{
   const body=writes.at(-1).body;
   if(direct){
    const payload=JSON.parse(body);assert.equal(payload.given_names,'José');assert.equal(payload.birth_date,minor?'2015-01-01':'2000-01-01');
-   assert.equal(payload.uploaded_documents.length,minor?6:4);assert(!body.includes('base64'));assert(!body.includes('filename='));
+   assert.equal(payload.uploaded_documents.length,minor?6:adultCurp?3:4);assert(!body.includes('base64'));assert(!body.includes('filename='));
+   if(!minor&&adultCurp){assert.equal(payload.identity_type,'curp');assert(payload.uploaded_documents.includes('receipt:curp'));}
    assert(!payload.uploaded_documents.includes(`receipt:${minor?'player_signature':'guardian_signature'}`));
   }else{
-   for(const field of ['birth_date','accepted_terms','player_photo','given_names','paternal_surname','maternal_surname','phone',...(minor?['guardian_signature','guardian_name','minor_credential','curp','guardian_ine_front','guardian_ine_back']:['player_signature','ine_front','ine_back'])])assert(body.includes(`name="${field}"`),field);
+   for(const field of ['birth_date','accepted_terms','player_photo','given_names','paternal_surname','maternal_surname','phone',...(minor?['guardian_signature','guardian_name','minor_credential','curp','guardian_ine_front','guardian_ine_back']:adultCurp?['player_signature','curp']:['player_signature','ine_front','ine_back'])])assert(body.includes(`name="${field}"`),field);
    assert(!body.includes(`name="${minor?'player_signature':'guardian_signature'}"`));
   }
   assert.equal(writes.length,width===390?3:2);

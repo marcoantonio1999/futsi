@@ -98,6 +98,20 @@ class EnrollmentR2Tests(TestCase):
             result=self.client.post(url,{**data,'uploaded_documents':receipts},format='json');self.assertEqual(result.status_code,400,result.data)
         self.copy.assert_not_called();self.assertFalse(PlayerEnrollment.objects.exists())
 
+    def test_adult_curp_direct_upload_is_committed_and_keeps_document_kind(self):
+        data, files = self.metadata()
+        data['identity_type'] = 'curp'
+        del files['ine_front']; del files['ine_back']
+        files['curp'] = {'content': b'%PDF-1.4 synthetic CURP', 'mime': 'application/pdf'}
+        data['uploaded_documents'] = self.plan(files)
+        result = self.client.post(self.url, data, format='json')
+        self.assertEqual(result.status_code, 201, result.data)
+        row = PlayerEnrollment.objects.get()
+        self.assertEqual(row.identity_type, 'curp')
+        self.assertSetEqual(set(row.documents.values_list('kind', flat=True)), {'curp', 'player_photo', 'player_signature'})
+        self.assertTrue(row.documents.get(kind='curp').storage_path.startswith('r2://private-test/'))
+        self.upload_storage.assert_not_called()
+
     def test_mismatched_bytes_or_expired_tickets_do_not_create_records(self):
         data,files=self.metadata();tickets=self.plan(files)
         claim=signing.loads(tickets[0],salt=UPLOAD_SALT);self.objects[claim['path']]=b'changed'

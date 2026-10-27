@@ -229,7 +229,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   }
   const kind = minor ? "minor" : identity;
   const documentKinds = minor ? ["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back"]
-    : identity === "ine" ? ["ine_front", "ine_back"] : ["identity_document"];
+    : identity === "ine" ? ["ine_front", "ine_back"] : identity === "curp" ? ["curp"] : ["identity_document"];
   const signatureKind = minor ? 'guardian_signature' : 'player_signature';
   const required = ["player_photo", signatureKind, ...documentKinds];
   function navigate(next: number) { setError(""); setFieldErrors({}); setStep(next); if (content.current) content.current.scrollTop = 0; }
@@ -317,7 +317,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               <div className="enrollment-wizard-identity-fields">
               <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday forceNative={embedded} value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>
               {!minor && <label>Identificación<select value={identity} onChange={event => setIdentity(event.target.value)}>
-                <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option>
+                <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option><option value="curp">CURP</option>
               </select></label>}
               </div>
               <div className="enrollment-wizard-uploads">{documentKinds.map(item =>

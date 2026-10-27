@@ -697,6 +697,23 @@ class PlayerEnrollmentTests(TestCase):
             data["identity_document"] = image_file("documento.png")
             self.assertEqual(self.client.post(f"/api/player-enrollments/public/{invitation.token}/", data, format="multipart").status_code, 201)
 
+    def test_adult_curp_is_accepted_as_identity_without_ine(self):
+        data = self.payload(); data['identity_type'] = 'curp'
+        del data['ine_front']; del data['ine_back']
+        data['curp'] = SimpleUploadedFile('curp.pdf', b'%PDF-1.4 fixture', content_type='application/pdf')
+        response = self.client.post(self.url, data, format='multipart')
+        self.assertEqual(response.status_code, 201, response.data)
+        record = PlayerEnrollment.objects.get()
+        self.assertEqual(record.identity_type, 'curp')
+        self.assertSetEqual(set(record.documents.values_list('kind', flat=True)), {'curp', 'player_photo', 'player_signature'})
+
+    def test_adult_curp_requires_attachment_and_cannot_replace_minor_documents(self):
+        data = self.payload(); data['identity_type'] = 'curp'
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
+        data = self.payload(minor=True); data['identity_type'] = 'curp'
+        self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 400)
+        self.assertFalse(PlayerEnrollment.objects.exists())
+
     def test_player_photo_is_required_and_must_be_image(self):
         data = self.payload(); del data["player_photo"]
         self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)

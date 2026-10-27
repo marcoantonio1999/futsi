@@ -187,7 +187,7 @@ class EnrollmentInput(serializers.Serializer):
     paternal_surname = serializers.CharField(max_length=80, label="Apellido paterno")
     maternal_surname = serializers.CharField(max_length=80, label="Apellido materno")
     birth_date = serializers.DateField()
-    identity_type = serializers.ChoiceField(choices=["ine", "passport", "military_card", "minor"])
+    identity_type = serializers.ChoiceField(choices=["ine", "passport", "military_card", "curp", "minor"])
     phone = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$")
     phone_secondary = serializers.RegexField(r"^\+?[0-9 ()-]{8,30}$", required=False, allow_blank=True, default="")
     guardian_name = serializers.CharField(max_length=160, required=False, allow_blank=True, default="")
@@ -291,6 +291,8 @@ class PublicEnrollmentView(APIView):
             kinds.extend(["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back", "guardian_signature"])
         elif fields["identity_type"] == "ine":
             kinds.extend(["player_signature", "ine_front", "ine_back"])
+        elif fields["identity_type"] == "curp":
+            kinds.extend(["player_signature", "curp"])
         else:
             kinds.extend(["player_signature", "identity_document"])
         direct = request.data.get('uploaded_documents')
