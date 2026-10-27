@@ -1,3 +1,4 @@
+import { Button, Card } from '../../components/ui/enrollment-ui';
 import { useEffect, useRef, useState } from "react";
 import { sampleLighting, type LightingResult } from './photoLighting';
 import { LightingIndicator } from './LightingIndicator';
@@ -81,14 +82,14 @@ export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: 
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }
   }}>
-    <section className="enrollment-camera-dialog" role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label="Tomar foto">
-      <header><h2>Tomar foto</h2><button ref={closeButton} type="button" onClick={onClose} aria-label="Cerrar cámara">✕</button></header>
+    <Card as="section" className="enrollment-camera-dialog" role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label="Tomar foto">
+      <header><h2>Tomar foto</h2><Button ref={closeButton} type="button" onClick={onClose} aria-label="Cerrar cámara">✕</Button></header>
       {selfie && <p className="camera-face-notice">Por favor, retira lentes, gorra, cubrebocas y cualquier objeto que tape tu cara. Mantén el rostro completo visible.</p>}
       <video ref={video} className={mirrored ? 'enrollment-camera-mirrored' : undefined} autoPlay muted playsInline onLoadedData={() => setReady(true)} />
       {!error && (ready ? <LightingIndicator result={lightingUnavailable ? null : lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} /> : <p role="status">Esperando acceso a la cámara. Si el navegador solicita permiso, elige Permitir.</p>)}
       {error && <p className="error" role="alert">{error}</p>}
-      <footer><button type="button" onClick={onClose}>Cancelar</button>
-        <button type="button" className="primary" disabled={!ready || !!error || capturing} onClick={capture}>Tomar foto</button></footer>
-    </section>
+      <footer><Button type="button" onClick={onClose}>Cancelar</Button>
+        <Button type="button" className="primary" disabled={!ready || !!error || capturing} onClick={capture}>Tomar foto</Button></footer>
+    </Card>
   </div>;
 }

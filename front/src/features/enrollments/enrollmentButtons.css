@@ -13,7 +13,7 @@
     --enrollment-button-danger:#b42338;
   }
   :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
-  :is(button:not(:where(.enrollment-admin-sidebar *, .enrollment-menu-backdrop, .enrollment-menu-open, .enrollment-menu-close, .roster-player, .enrollment-roster-card)),.share-link a) {
+  :is(button:not(:where(.enrollment-date-popup *, .enrollment-admin-sidebar *, .enrollment-menu-backdrop, .enrollment-menu-open, .enrollment-menu-close, .roster-player, .enrollment-roster-card)),.share-link a) {
     display:inline-flex!important;
     align-items:center;
     justify-content:center;
@@ -40,7 +40,7 @@
     transition:background-color .15s,border-color .15s,color .15s,box-shadow .15s;
   }
   :is(.enrollment-page,body:has(.enrollment-page) .tournament-dialog,body:has(.enrollment-page) .student-delete-dialog)
-  :is(button:not(:where(.enrollment-admin-sidebar *, .enrollment-menu-backdrop, .enrollment-menu-open, .enrollment-menu-close, .roster-player, .enrollment-roster-card)),.share-link a):not(:disabled):hover {
+  :is(button:not(:where(.enrollment-date-popup *, .enrollment-admin-sidebar *, .enrollment-menu-backdrop, .enrollment-menu-open, .enrollment-menu-close, .roster-player, .enrollment-roster-card)),.share-link a):not(:disabled):hover {
     background:var(--enrollment-button-hover,#f0f5f2)!important;
     border-color:#c3d2c8!important;
   }

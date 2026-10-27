@@ -1,3 +1,4 @@
+import { Button, Dialog } from '../../components/ui/enrollment-ui';
 import {Fragment, useEffect, useRef, useState} from 'react';
 import {Download, X, UserRound} from 'lucide-react';
 import {API_URL} from '../../api';
@@ -38,8 +39,8 @@ export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: 
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo descargar la imagen.'); }
     finally { setBusy(false); }
   }
-  return <dialog ref={dialog} className="disciplinary-presentation no-print" aria-labelledby="disciplinary-presentation-title" onCancel={event => { event.preventDefault(); onClose(); }}>
-    <header className="disciplinary-presentation-toolbar"><h2 id="disciplinary-presentation-title">Sancionado</h2><button type="button" onClick={onClose} aria-label="Cerrar presentación"><X size={20}/></button></header>
+  return <Dialog ref={dialog} className="disciplinary-presentation no-print" aria-labelledby="disciplinary-presentation-title" onCancel={event => { event.preventDefault(); onClose(); }}>
+    <header className="disciplinary-presentation-toolbar"><h2 id="disciplinary-presentation-title">Sancionado</h2><Button type="button" onClick={onClose} aria-label="Cerrar presentación"><X size={20}/></Button></header>
     <div className="disciplinary-presentation-scroll"><article className="disciplinary-presentation-card" aria-label="Ficha de presentación">
       <div className="disciplinary-presentation-photo">
         {url ? <img ref={photo} src={url} alt={`Foto de ${row.player_name}`} onLoad={() => {setLoading(false); setPhotoReady(true);}} onError={() => {setLoading(false); setPhotoReady(false); setUrl('');}}/> : <UserRound size={100} aria-label={loading ? 'Cargando foto' : 'Foto no disponible'}/>}
@@ -49,7 +50,7 @@ export function DisciplinaryPresentation({row, token, endpoint, onClose}: {row: 
     <footer className="disciplinary-presentation-footer">
       {!loading && !photoReady && <p role="status">La foto no está disponible; la imagen usará una silueta.</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      <button type="button" className="primary" disabled={loading || busy} onClick={() => void download()}><Download size={18} aria-hidden="true"/>{loading ? 'Cargando foto…' : busy ? 'Generando imagen…' : 'Descargar imagen'}</button>
+      <Button type="button" className="primary" disabled={loading || busy} onClick={() => void download()}><Download size={18} aria-hidden="true"/>{loading ? 'Cargando foto…' : busy ? 'Generando imagen…' : 'Descargar imagen'}</Button>
     </footer>
-  </dialog>;
+  </Dialog>;
 }

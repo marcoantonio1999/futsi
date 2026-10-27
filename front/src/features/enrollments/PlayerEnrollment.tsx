@@ -1,3 +1,4 @@
+import { Button, Card, Dialog, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer, Menu, X } from "lucide-react";
 import { API_URL, apiRequest } from "../../api";
@@ -9,6 +10,7 @@ import "./enrollmentButtons.css";
 import "./enrollmentSelects.css";
 import "./enrollmentValidation.css";
 import "./localEnrollment.css";
+import "../../components/ui/enrollment-ui.css";
 import { birthDateError, documentErrors, playerFieldErrors, type EnrollmentErrors } from './enrollmentValidation';
 import { PrintableDelegate } from "./PrintableDelegate";
 import { EnrollmentBrand } from "./EnrollmentBrand";
@@ -63,12 +65,12 @@ export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: Us
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo iniciar sesión."); }
     finally { setBusy(false); }
   }
-  return <main className="enrollment-page"><form className="registration-sheet" style={{ maxWidth: 440, marginTop: 60 }} onSubmit={submit}>
+  return <main className="enrollment-page"><Card as="form" className="registration-sheet" style={{ maxWidth: 440, marginTop: 60 }} onSubmit={submit}>
     <h1 className="enrollment-login-brand"><EnrollmentBrand /></h1>{error && <p role="alert" className="error">{error}</p>}
-    <label>Usuario<input name="username" autoComplete="username" required /></label>
-    <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>
-    <button className="primary" disabled={busy}>{busy ? "Entrando…" : "Entrar"}</button>
-  </form></main>;
+    <Label>Usuario<Input name="username" autoComplete="username" required /></Label>
+    <Label>Contraseña<Input name="password" type="password" autoComplete="current-password" required /></Label>
+    <Button className="primary" disabled={busy}>{busy ? "Entrando…" : "Entrar"}</Button>
+  </Card></main>;
 }
 
 export function under18(date: string, today = new Date()) {
@@ -87,7 +89,7 @@ function Signature({ label, onChange }: { label: string; onChange: (blob: Blob |
     const bounds = event.currentTarget.getBoundingClientRect();
     return [(event.clientX - bounds.left) * 900 / bounds.width, (event.clientY - bounds.top) * 360 / bounds.height];
   }
-  return <section className="signature-box">
+  return <Card as="section" className="signature-box">
     <p>{label}</p>
     <canvas ref={canvas} width={900} height={360} aria-label={label}
       onPointerDown={event => {
@@ -107,10 +109,10 @@ function Signature({ label, onChange }: { label: string; onChange: (blob: Blob |
       onPointerUp={() => { drawing.current = false; if (hasInk.current) canvas.current?.toBlob(onChange, "image/png"); }}
       onPointerCancel={() => { drawing.current = false; if (hasInk.current) canvas.current?.toBlob(onChange, "image/png"); }}
     />
-    <button type="button" className="quiet" onClick={() => {
+    <Button type="button" className="quiet" onClick={() => {
       hasInk.current = false; canvas.current?.getContext("2d")?.clearRect(0, 0, 900, 360); onChange(null);
-    }}>Borrar firma</button>
-  </section>;
+    }}>Borrar firma</Button>
+  </Card>;
 }
 
 function Upload({ label, photo = false, onChange, onProcessing }: {
@@ -140,7 +142,7 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
     } catch (reason) { if (version === selection.current) setUploadError(reason instanceof Error ? reason.message : "No se pudo procesar la foto."); }
     finally { if (version === selection.current) { setProcessing(false); onProcessing?.(false); } }
   }
-  return <section className={"upload-box " + (photo ? "player-photo" : "")}>
+  return <Card as="section" className={"upload-box " + (photo ? "player-photo" : "")}>
     <p>{label}</p>
     {photo && <small>Sin lentes, gorras u objetos que tapen la cara.</small>}
     {preview && <img key={preview} src={preview} alt={label + " adjunta"} onLoad={event => {
@@ -152,17 +154,17 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
     }} onError={() => { if (previewRef.current === preview) setLightingUnavailable(true); }} />}
     {preview && <LightingIndicator result={lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} />}
     <div className="upload-actions">
-      <button type="button" onClick={() => upload.current?.click()}>Adjuntar</button>
-      <button type="button" onClick={() => setCameraOpen(true)}>Tomar foto</button>
+      <Button type="button" onClick={() => upload.current?.click()}>Adjuntar</Button>
+      <Button type="button" onClick={() => setCameraOpen(true)}>Tomar foto</Button>
     </div>
-    <input ref={upload} type="file" hidden accept={photo ? "image/jpeg,image/png" : "image/jpeg,image/png,application/pdf"}
+    <Input ref={upload} type="file" hidden accept={photo ? "image/jpeg,image/png" : "image/jpeg,image/png,application/pdf"}
       onChange={event => select(event.target.files?.[0] || null)} />
     {cameraOpen && <CameraCapture selfie={photo} onClose={() => setCameraOpen(false)}
       onCapture={file => { select(file); setCameraOpen(false); }} />}
     {processing && <small role="status">Comprimiendo foto…</small>}
     {uploadError && <p className="error" role="alert">{uploadError}</p>}
     <small>{name || (photo ? "JPG o PNG · compresión automática a máximo 3 MB" : "Fotos: compresión automática a máximo 3 MB · PDF: máximo 20 MB")}</small>
-  </section>;
+  </Card>;
 }
 
 function EnrollmentField({ name, error, children, full = false }: { name: string; error?: string; children: ReactNode; full?: boolean }) {
@@ -290,13 +292,13 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo guardar."); }
     finally { saving.current = false; setBusy(false); }
   }
-  const consent = <EnrollmentField name="accepted_terms" error={fieldErrors.accepted_terms}><label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><input type="checkbox" {...accessibility('accepted_terms')} checked={accepted} onChange={event => { setAccepted(event.target.checked); if (event.target.checked) clearIssue('accepted_terms'); }} />
+  const consent = <EnrollmentField name="accepted_terms" error={fieldErrors.accepted_terms}><Label className={`consent enrollment-consent-card${accepted ? " is-accepted" : ""}`}><Input type="checkbox" {...accessibility('accepted_terms')} checked={accepted} onChange={event => { setAccepted(event.target.checked); if (event.target.checked) clearIssue('accepted_terms'); }} />
     He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
-  </label></EnrollmentField>;
+  </Label></EnrollmentField>;
   return <main className={`enrollment-page public-enrollment-wizard${embedded ? ' enrollment-wizard-embedded' : ''}`}>
     <div className="enrollment-public-brand no-print"><EnrollmentBrand /></div>
-    {done ? <section className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></section> :
-      <form className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate onChange={event => {
+    {done ? <Card as="section" className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></Card> :
+      <Card as="form" className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate onChange={(event: React.FormEvent<HTMLFormElement>) => {
         const input = event.target;
         if (!(input instanceof HTMLInputElement) || !fieldErrors[input.name]) return;
         const values = Object.fromEntries([...new FormData(event.currentTarget)].map(([key, value]) => [key, String(value)]));
@@ -307,18 +309,18 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         <div ref={content} className="enrollment-wizard-content">
           {!defaults ? <p>{error ? "Solicita otro enlace si este ya no está disponible." : "Cargando…"}</p> : <>
             <section hidden={step !== 0}>
-              <EnrollmentField name="accepted_terms_top" error={fieldErrors.accepted_terms}><label className={`consent enrollment-consent-card${accepted ? ' is-accepted' : ''}`}><input type="checkbox" aria-invalid={!!fieldErrors.accepted_terms} aria-describedby={fieldErrors.accepted_terms ? 'enrollment-error-accepted_terms_top' : undefined} checked={accepted} onChange={event => { setAccepted(event.target.checked); if (event.target.checked) clearIssue('accepted_terms'); }} />
+              <EnrollmentField name="accepted_terms_top" error={fieldErrors.accepted_terms}><Label className={`consent enrollment-consent-card${accepted ? ' is-accepted' : ''}`}><Input type="checkbox" aria-invalid={!!fieldErrors.accepted_terms} aria-describedby={fieldErrors.accepted_terms ? 'enrollment-error-accepted_terms_top' : undefined} checked={accepted} onChange={event => { setAccepted(event.target.checked); if (event.target.checked) clearIssue('accepted_terms'); }} />
                 He leído y acepto los compromisos generales. Autorizo el resguardo privado de los datos, identificación, foto y firmas para gestionar mi inscripción.
-              </label></EnrollmentField>
+              </Label></EnrollmentField>
               <Terms items={defaults.terms} />
               {consent}
             </section>
             <section hidden={step !== 1}>
               <div className="enrollment-wizard-identity-fields">
               <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday forceNative={embedded} value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>
-              {!minor && <label>Identificación<select value={identity} onChange={event => setIdentity(event.target.value)}>
+              {!minor && <Label>Identificación<NativeSelect value={identity} onChange={event => setIdentity(event.target.value)}>
                 <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option><option value="curp">CURP</option>
-              </select></label>}
+              </NativeSelect></Label>}
               </div>
               <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
                 <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
@@ -328,16 +330,16 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               <div className="enrollment-wizard-player">
                 <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>
                 <div className="player-fields">
-                  <EnrollmentField name="given_names" full error={fieldErrors.given_names}><label>Nombre(s)<input {...accessibility('given_names')} name="given_names" required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></label></EnrollmentField>
-                  <EnrollmentField name="paternal_surname" error={fieldErrors.paternal_surname}><label>Apellido paterno<input {...accessibility('paternal_surname')} name="paternal_surname" required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></label></EnrollmentField>
-                  <EnrollmentField name="maternal_surname" error={fieldErrors.maternal_surname}><label>Apellido materno<input {...accessibility('maternal_surname')} name="maternal_surname" required maxLength={80} disabled={step !== 2} /></label></EnrollmentField>
+                  <EnrollmentField name="given_names" full error={fieldErrors.given_names}><Label>Nombre(s)<Input {...accessibility('given_names')} name="given_names" required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></Label></EnrollmentField>
+                  <EnrollmentField name="paternal_surname" error={fieldErrors.paternal_surname}><Label>Apellido paterno<Input {...accessibility('paternal_surname')} name="paternal_surname" required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></Label></EnrollmentField>
+                  <EnrollmentField name="maternal_surname" error={fieldErrors.maternal_surname}><Label>Apellido materno<Input {...accessibility('maternal_surname')} name="maternal_surname" required maxLength={80} disabled={step !== 2} /></Label></EnrollmentField>
                   {defaults.is_delegate && <p className="full">Esta es la primera inscripción del equipo. Esta persona quedará registrada como delegado.</p>}
-                  <label>Equipo<input readOnly value={defaults.team} /></label>
-                  <label>Torneo<input readOnly value={defaults.tournament} /></label>
-                  <label>Fecha de nacimiento<input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></label>
-                  <EnrollmentField name="phone" error={fieldErrors.phone}><label>Teléfono de contacto<input {...accessibility('phone')} name="phone" required type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></label></EnrollmentField>
-                  <EnrollmentField name="phone_secondary" error={fieldErrors.phone_secondary}><label>Teléfono de emergencia (opcional)<input {...accessibility('phone_secondary')} name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></label></EnrollmentField>
-                  {minor && <EnrollmentField name="guardian_name" full error={fieldErrors.guardian_name}><label>Nombre del padre o tutor<input {...accessibility('guardian_name')} name="guardian_name" required maxLength={160} disabled={step !== 2} /></label></EnrollmentField>}
+                  <Label>Equipo<Input readOnly value={defaults.team} /></Label>
+                  <Label>Torneo<Input readOnly value={defaults.tournament} /></Label>
+                  <Label>Fecha de nacimiento<Input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></Label>
+                  <EnrollmentField name="phone" error={fieldErrors.phone}><Label>Teléfono de contacto<Input {...accessibility('phone')} name="phone" required type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></Label></EnrollmentField>
+                  <EnrollmentField name="phone_secondary" error={fieldErrors.phone_secondary}><Label>Teléfono de emergencia (opcional)<Input {...accessibility('phone_secondary')} name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></Label></EnrollmentField>
+                  {minor && <EnrollmentField name="guardian_name" full error={fieldErrors.guardian_name}><Label>Nombre del padre o tutor<Input {...accessibility('guardian_name')} name="guardian_name" required maxLength={160} disabled={step !== 2} /></Label></EnrollmentField>}
                 </div>
               </div>
               <div className="enrollment-wizard-signatures"><EnrollmentField key={signatureKind} name={signatureKind} error={fieldErrors[signatureKind]}><Signature label={labels[signatureKind]} onChange={blob => attach(signatureKind, blob)} /></EnrollmentField></div>
@@ -348,12 +350,12 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         <div className="enrollment-wizard-footer">
         {error && <p className="error" role="alert">{error}</p>}
         {defaults && <footer className="enrollment-wizard-actions">
-          {step > 0 && <button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</button>}
-          {step < 2 ? <button type="button" className="primary" disabled={processingPhoto} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</button>
-            : <button className="primary" disabled={busy || processingPhoto}>{processingPhoto ? "Procesando foto…" : busy ? "Guardando…" : "Confirmar inscripción"}</button>}
+          {step > 0 && <Button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</Button>}
+          {step < 2 ? <Button type="button" className="primary" disabled={processingPhoto} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</Button>
+            : <Button className="primary" disabled={busy || processingPhoto}>{processingPhoto ? "Procesando foto…" : busy ? "Guardando…" : "Confirmar inscripción"}</Button>}
         </footer>}
         </div>
-      </form>}
+      </Card>}
   </main>;
 }
 
@@ -418,8 +420,8 @@ export function PublicPlayerWithdrawal({ invitation }: { invitation: string }) {
         <legend>Selecciona uno o más integrantes</legend><p>Los jugadores con sanciones pendientes no pueden darse de baja hasta cumplir su período.</p>
         <div className="withdrawal-player-list">{details.players.map(player => <WithdrawalPlayerCard key={player.id} player={player} endpoint={endpoint} selected={selected.includes(player.id)} onChange={() => togglePlayer(player.id)} />)}</div>
         {!details.players.length && <p>No hay integrantes activos para dar de baja.</p>}
-        {!!selected.length && <><p>{selected.length} integrante(s) seleccionado(s):</p><ul>{selectedPlayers.map(player => <li key={player.id}>{player.name}</li>)}</ul><label className="consent"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />Confirmo la baja de todos los integrantes seleccionados de este equipo. Mi firma aplica a todas estas bajas.</label><Signature key={selected.join(",")} label="Firma de las bajas seleccionadas" onChange={setSignature} /></>}
-        <button className="primary" disabled={!selected.length || !accepted || !signature || busy}>{busy ? "Guardando bajas…" : `Firmar y confirmar ${selected.length || ""} baja(s)`}</button>
+        {!!selected.length && <><p>{selected.length} integrante(s) seleccionado(s):</p><ul>{selectedPlayers.map(player => <li key={player.id}>{player.name}</li>)}</ul><Label className="consent"><Input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />Confirmo la baja de todos los integrantes seleccionados de este equipo. Mi firma aplica a todas estas bajas.</Label><Signature key={selected.join(",")} label="Firma de las bajas seleccionadas" onChange={setSignature} /></>}
+        <Button className="primary" disabled={!selected.length || !accepted || !signature || busy}>{busy ? "Guardando bajas…" : `Firmar y confirmar ${selected.length || ""} baja(s)`}</Button>
       </fieldset></form>}{!details && !error && <p role="status">Cargando integrantes…</p>}{error && <p className="error" role="alert">{error}</p>}
     </>}</section></main>;
 }
@@ -467,10 +469,10 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
   const pages = Array.from({ length: Math.max(1, Math.ceil(players.length / slots)) }, (_, page) => players.slice(page * slots, (page + 1) * slots));
   const formattedDate = date ? date.split("-").reverse().join("/") : "";
   return <section className="enrollment-team-roster-view">
-    <div className="operator-controls no-print"><div className="enrollment-delegate-toolbar"><div className="enrollment-delegate-actions"><button type="button" onClick={onBack}>Volver</button>
-      {!alignment && <button type="button" disabled={busy || Boolean(error) || !players.some(row => !row.is_delegate)} onClick={() => { setDelegateMessage(""); setChangingDelegate(true); }}>Cambiar delegado</button>}</div>
+    <div className="operator-controls no-print"><div className="enrollment-delegate-toolbar"><div className="enrollment-delegate-actions"><Button type="button" onClick={onBack}>Volver</Button>
+      {!alignment && <Button type="button" disabled={busy || Boolean(error) || !players.some(row => !row.is_delegate)} onClick={() => { setDelegateMessage(""); setChangingDelegate(true); }}>Cambiar delegado</Button>}</div>
       {!alignment && <p>Delegado: <strong>{players.find(row => row.is_delegate)?.name || "Sin delegado"}</strong></p>}</div>
-      <div className="control-grid"><label>Fecha<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><label>Horario<input type="time" value={time} onChange={event => setTime(event.target.value)} /></label>{!alignment && <label>Jornada<input value={round} maxLength={30} onChange={event => setRound(event.target.value)} /></label>}<button type="button" disabled={busy || Boolean(error) || !photosReady} onClick={() => window.print()}>Imprimir / guardar PDF</button></div>
+      <div className="control-grid"><Label>Fecha<Input type="date" value={date} onChange={event => setDate(event.target.value)} /></Label><Label>Horario<Input type="time" value={time} onChange={event => setTime(event.target.value)} /></Label>{!alignment && <Label>Jornada<Input value={round} maxLength={30} onChange={event => setRound(event.target.value)} /></Label>}<Button type="button" disabled={busy || Boolean(error) || !photosReady} onClick={() => window.print()}>Imprimir / guardar PDF</Button></div>
     </div>
     {!alignment && <p className="roster-print-help no-print">Al imprimir, selecciona papel A4 y desactiva «Encabezados y pies de página» en Más ajustes para quitar la fecha, el título y el enlace del navegador.</p>}
     {busy && <p role="status">Cargando plantilla…</p>}{error && <p className="error" role="alert">{error}</p>}
@@ -658,42 +660,42 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
     setPrintRoster(print);
   }
   return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" || (tournamentSection === null && enrollmentSection === "history") ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}`}>
-    {mobileMenuOpen && <button type="button" className="enrollment-menu-backdrop no-print" aria-label="Cerrar menú de inscripciones" onClick={() => setMobileMenuOpen(false)} />}
+    {mobileMenuOpen && <Button type="button" className="enrollment-menu-backdrop no-print" aria-label="Cerrar menú de inscripciones" onClick={() => setMobileMenuOpen(false)} />}
     <aside ref={sidebarRef} id="enrollment-sections-menu" className={`enrollment-admin-sidebar no-print${mobileMenuOpen ? " is-open" : ""}`} role={mobileViewport && mobileMenuOpen ? "dialog" : undefined} aria-modal={mobileViewport && mobileMenuOpen ? true : undefined} aria-label="Secciones de inscripciones" aria-hidden={mobileViewport && !mobileMenuOpen ? true : undefined}>
-      <button type="button" className="enrollment-menu-close" aria-label="Cerrar secciones" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button>
+      <Button type="button" className="enrollment-menu-close" aria-label="Cerrar secciones" onClick={() => setMobileMenuOpen(false)}><X size={20} /></Button>
       <h2 className="enrollment-sidebar-brand"><EnrollmentBrand /></h2><p>Administración de inscripciones</p>
       <nav aria-label="Administración de inscripciones" onClickCapture={() => { setPrintRoster(false); setMobileMenuOpen(false); }}>
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Inscripciones</div>
         <div className="enrollment-sidebar-submenu">
-          <button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Registrar</button>
-          <button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Sábana</button>
+          <Button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Registrar</Button>
+          <Button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Sábana</Button>
         </div>
         <div className="enrollment-sidebar-heading"><LogOut size={18} aria-hidden="true" />Bajas</div>
         <div className="enrollment-sidebar-submenu">
-          <button aria-current={tournamentSection === null && enrollmentSection === "withdraw" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw"); setLink(""); setError(""); setMessage(""); }}><UserPlus size={16} aria-hidden="true" />Nueva baja</button>
-          <button aria-current={tournamentSection === null && enrollmentSection === "withdraw-history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw-history"); setError(""); setMessage(""); }}><ListChecks size={16} aria-hidden="true" />Histórico de bajas</button>
+          <Button aria-current={tournamentSection === null && enrollmentSection === "withdraw" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw"); setLink(""); setError(""); setMessage(""); }}><UserPlus size={16} aria-hidden="true" />Nueva baja</Button>
+          <Button aria-current={tournamentSection === null && enrollmentSection === "withdraw-history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw-history"); setError(""); setMessage(""); }}><ListChecks size={16} aria-hidden="true" />Histórico de bajas</Button>
         </div>
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} />Sanciones</div>
-        <div className="enrollment-sidebar-submenu">{([['commission','Comisión disciplinaria'],['sanction-new','Nueva sanción'],['blacklist','Lista negra']] as const).map(([section,label])=><button key={section} aria-current={tournamentSection===null&&enrollmentSection===section?'page':undefined} onClick={()=>{setTournamentSection(null);setEnrollmentSection(section);setError('');setMessage('')}}>{label}</button>)}</div>
+        <div className="enrollment-sidebar-submenu">{([['commission','Comisión disciplinaria'],['sanction-new','Nueva sanción'],['blacklist','Lista negra']] as const).map(([section,label])=><Button key={section} aria-current={tournamentSection===null&&enrollmentSection===section?'page':undefined} onClick={()=>{setTournamentSection(null);setEnrollmentSection(section);setError('');setMessage('')}}>{label}</Button>)}</div>
         <div className="enrollment-sidebar-heading"><Trophy size={18} />Torneos</div>
         <div className="enrollment-sidebar-submenu">
-          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}><ListChecks size={16} aria-hidden="true" />Torneos activos</button>
-          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}><CirclePlus size={16} aria-hidden="true" />Crear torneo</button>
-          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}><UsersRound size={16} />Equipos</button>
-          <button aria-current={enrollmentSection === "players" ? "page" : undefined} onClick={() => setEnrollmentSection("players")}><UsersRound size={16} aria-hidden="true" />Jugadores</button>
-          <button disabled={catalogBusy || busy} aria-current={tournamentSection === "team-create" ? "page" : undefined} onClick={() => setTournamentSection("team-create")}><UserPlus size={16} aria-hidden="true" />Crear equipo</button>
+          <Button disabled={catalogBusy || busy} aria-current={tournamentSection === "overview" ? "page" : undefined} onClick={() => setTournamentSection("overview")}><ListChecks size={16} aria-hidden="true" />Torneos activos</Button>
+          <Button disabled={catalogBusy || busy} aria-current={tournamentSection === "create" ? "page" : undefined} onClick={() => setTournamentSection("create")}><CirclePlus size={16} aria-hidden="true" />Crear torneo</Button>
+          <Button disabled={catalogBusy || busy} aria-current={tournamentSection === "teams" ? "page" : undefined} onClick={() => setTournamentSection("teams")}><UsersRound size={16} />Equipos</Button>
+          <Button aria-current={enrollmentSection === "players" ? "page" : undefined} onClick={() => setEnrollmentSection("players")}><UsersRound size={16} aria-hidden="true" />Jugadores</Button>
+          <Button disabled={catalogBusy || busy} aria-current={tournamentSection === "team-create" ? "page" : undefined} onClick={() => setTournamentSection("team-create")}><UserPlus size={16} aria-hidden="true" />Crear equipo</Button>
         </div>
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print"><button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></button><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
-        <button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { setPrintRoster(false); setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></button>
-        <button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></button>
+      <header className="operator-header enrollment-admin-header no-print"><Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
+        <Button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { setPrintRoster(false); setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></Button>
+        <Button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></Button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
-      {catalogError && <p className="error no-print" role="alert">{catalogError} <button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</button></p>}
-      {catalogBusy && navigation.screen.roster && !rosterTeam ? <p role="status">Cargando equipo…</p> : rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { navigation.back(); setPrintRoster(false); }} /> : tournamentSection !== null ? <section className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
+      {catalogError && <p className="error no-print" role="alert">{catalogError} <Button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</Button></p>}
+      {catalogBusy && navigation.screen.roster && !rosterTeam ? <p role="status">Cargando equipo…</p> : rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { navigation.back(); setPrintRoster(false); }} /> : tournamentSection !== null ? <Card as="section" className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           onTeamsReused={async () => { await loadCatalog(); }}
           deletionCollectionPath="player-enrollments/tournaments"
@@ -709,38 +711,38 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
           onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </section> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
-      <section className="operator-controls no-print">
+      </Card> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
+      <Card as="section" className="operator-controls no-print">
         <h2>{enrollmentSection === "withdraw" ? "Nueva baja" : "Registrar"}</h2>
         <form onSubmit={invite} className="control-grid">
-          <label>Torneo<select required value={inviteTournament} disabled={catalogBusy || busy}
+          <Label>Torneo<NativeSelect required value={inviteTournament} disabled={catalogBusy || busy}
             onChange={event => chooseTournament(event.target.value)}><option value="">Selecciona un torneo</option>
-            {catalog.tournaments.filter(item => item.is_active).map(item => <option key={item.id} value={item.id}>{item.name} · {catalog.sites.find(site => site.id === item.site)?.name}</option>)}</select></label>
-          <label>Equipo del torneo<select required value={inviteTeam} disabled={catalogBusy || busy || !inviteTournament}
+            {catalog.tournaments.filter(item => item.is_active).map(item => <option key={item.id} value={item.id}>{item.name} · {catalog.sites.find(site => site.id === item.site)?.name}</option>)}</NativeSelect></Label>
+          <Label>Equipo del torneo<NativeSelect required value={inviteTeam} disabled={catalogBusy || busy || !inviteTournament}
             onChange={event => { setInviteTeam(event.target.value); setLink(""); }}><option value="">Selecciona un equipo</option>
-            {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</button>
-          {enrollmentSection === "send" && <button ref={localButtonRef} type="button" disabled={busy || catalogBusy || !inviteTeam} onClick={() => void createInvitation(true)}><UserPlus size={18} aria-hidden="true" />Registro local</button>}
+            {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></Label>
+          <Button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</Button>
+          {enrollmentSection === "send" && <Button ref={localButtonRef} type="button" disabled={busy || catalogBusy || !inviteTeam} onClick={() => void createInvitation(true)}><UserPlus size={18} aria-hidden="true" />Registro local</Button>}
         </form>
         {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» del menú izquierdo.</p>}
         {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos.</p>}
-        {link && <div className="share-link"><input readOnly value={link} aria-label={enrollmentSection === "withdraw" ? "Enlace de baja" : "Enlace de inscripción"} /><div>
-          <button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</button>
+        {link && <div className="share-link"><Input readOnly value={link} aria-label={enrollmentSection === "withdraw" ? "Enlace de baja" : "Enlace de inscripción"} /><div>
+          <Button onClick={() => { void navigator.clipboard.writeText(link).then(() => setMessage("Enlace copiado."), () => setError("Copia el enlace manualmente.")); }}>Copiar enlace</Button>
           <a className="enrollment-whatsapp-share" href={"https://wa.me/?text=" + encodeURIComponent((enrollmentSection === "withdraw" ? "Completa y firma la baja del equipo aquí: " : "Hola, completa y firma tu inscripción aquí: ") + link)} target="_blank" rel="noreferrer"><WhatsAppIcon /><span>Compartir por WhatsApp</span></a>
           <a href={link} target="_blank" rel="noreferrer">Ver formulario</a>
         </div></div>}
-      </section> : <section className="enrollment-sabana-directory">
-        <section className="operator-controls no-print">
+      </Card> : <section className="enrollment-sabana-directory">
+        <Card as="section" className="operator-controls no-print">
           <div className="control-grid enrollment-sabana-filters">
-            <label>Torneo<select value={tournament} disabled={catalogBusy} onChange={event => { setTournament(event.target.value); setTeam(""); }}>
+            <Label>Torneo<NativeSelect value={tournament} disabled={catalogBusy} onChange={event => { setTournament(event.target.value); setTeam(""); }}>
               <option value="">Todos los torneos</option>{catalog.tournaments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select></label>
-            <label>Equipo<select value={team} disabled={catalogBusy} onChange={event => setTeam(event.target.value)}>
+            </NativeSelect></Label>
+            <Label>Equipo<NativeSelect value={team} disabled={catalogBusy} onChange={event => setTeam(event.target.value)}>
               <option value="">Todos los equipos</option>{catalog.teams.filter(item => !tournament || String(item.tournament) === tournament).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select></label>
-            <label>Buscar equipo<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+            </NativeSelect></Label>
+            <Label>Buscar equipo<Input type="search" value={search} onChange={event => setSearch(event.target.value)} /></Label>
           </div>
-        </section>
+        </Card>
         <p className="enrollment-sabana-count" role="status">{catalogBusy ? "Cargando equipos…" : `${filteredTeams.length} equipos`}</p>
         <div className="tournament-directory-scroll" tabIndex={0} role="region" aria-label="Equipos y sábanas">
           <table className="tournament-directory-table enrollment-sabana-table">
@@ -750,8 +752,8 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
               return <tr key={item.id}><th scope="row">{item.name}</th><td>{tournamentRow?.name || "Sin torneo"}</td>
                 <td>{catalog.sites.find(site => site.id === tournamentRow?.site)?.name || "—"}</td>
                 <td>{item.is_active ? "Activo" : "Inactivo"}</td>
-                <td><button type="button" className="enrollment-sabana-action" aria-label={`Ver sábana de ${item.name}`} onClick={() => openRoster(item)}><Eye size={16} aria-hidden="true" />Ver sábana</button></td>
-                <td><button type="button" className="enrollment-sabana-action" aria-label={`Imprimir o guardar PDF de ${item.name}`} onClick={() => openRoster(item, true)}><Printer size={16} aria-hidden="true" />Imprimir / PDF</button></td>
+                <td><Button type="button" className="enrollment-sabana-action" aria-label={`Ver sábana de ${item.name}`} onClick={() => openRoster(item)}><Eye size={16} aria-hidden="true" />Ver sábana</Button></td>
+                <td><Button type="button" className="enrollment-sabana-action" aria-label={`Imprimir o guardar PDF de ${item.name}`} onClick={() => openRoster(item, true)}><Printer size={16} aria-hidden="true" />Imprimir / PDF</Button></td>
               </tr>;
             })}
             {!catalogBusy && !filteredTeams.length && <tr><td colSpan={6} className="tournament-directory-empty">No hay equipos con estos filtros.</td></tr>}
@@ -760,8 +762,8 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
         </div>
       </section>}
     </div>
-    <dialog ref={localDialogRef} className="local-enrollment-dialog no-print" aria-labelledby="local-enrollment-title" onCancel={event => { event.preventDefault(); closeLocalRegistration(); }}>
-      {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">Registro local</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div><button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localCompleted ? 'Finalizar registro local' : 'Cerrar registro local'}</button></header><div className="local-enrollment-content"><PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /></div></>}
-    </dialog>
+    <Dialog ref={localDialogRef} className="local-enrollment-dialog no-print" aria-labelledby="local-enrollment-title" onCancel={event => { event.preventDefault(); closeLocalRegistration(); }}>
+      {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">Registro local</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div><Button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localCompleted ? 'Finalizar registro local' : 'Cerrar registro local'}</Button></header><div className="local-enrollment-content"><PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /></div></>}
+    </Dialog>
   </main>;
 }

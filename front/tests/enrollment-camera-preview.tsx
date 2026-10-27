@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {CameraCapture} from '../src/features/enrollments/CameraCapture';
 import '../src/styles.css';
 import '../src/features/enrollments/enrollments.css';
+import '../src/components/ui/enrollment-ui.css';
 if (!import.meta.env.DEV) throw new Error('Development fixture only');
 function Preview(){
   const [file,setFile]=useState('');

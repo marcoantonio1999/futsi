@@ -1,3 +1,4 @@
+import { Button } from '../../components/ui/enrollment-ui';
 import { useRef, useState, type FormEvent } from "react";
 import type { AppData, StudentTournamentRegistration, Team, Tournament } from "../../types";
 import { SelectInput, TextInput } from "../../components/views/shared";
@@ -43,11 +44,11 @@ export function CreateTeamPage({ tournaments, sites, adult, onSave, onBack }: { 
       <SelectInput label="Torneo" required value={tournamentId} onChange={event => setTournamentId(event.target.value)}><option value="">Selecciona un torneo</option>{available.map(row => <option key={row.id} value={row.id}>{row.name} · {sites.find(site => site.id === row.site)?.name}</option>)}</SelectInput>
       {!available.length && <p className="tournament-info">No hay torneos disponibles. Crea uno desde «Crear torneo».</p>}
     </> : <>
-      <div className="tournament-context"><strong>{tournament.name}</strong><span>{sites.find(site => site.id === tournament.site)?.name}</span><button type="button" className="tournament-text-button" onClick={() => { setDetails(false); setError(""); }}>Cambiar torneo</button></div>
+      <div className="tournament-context"><strong>{tournament.name}</strong><span>{sites.find(site => site.id === tournament.site)?.name}</span><Button type="button" className="tournament-text-button" onClick={() => { setDetails(false); setError(""); }}>Cambiar torneo</Button></div>
       <CreateTeamFields adult={adult} />
     </>}
     {error && <p className="tournament-feedback error" role="alert">{error}</p>}
-    <footer className="tournament-create-footer"><button type="button" className="tournament-button secondary" onClick={onBack}>Cancelar</button>{details && tournament ? <button className="tournament-button primary" disabled={busy}>{busy ? "Guardando…" : "Confirmar y crear equipo"}</button> : <button type="button" className="tournament-button primary" disabled={!tournament || busy} onClick={() => setDetails(true)}>Continuar</button>}</footer>
+    <footer className="tournament-create-footer"><Button type="button" className="tournament-button secondary" onClick={onBack}>Cancelar</Button>{details && tournament ? <Button className="tournament-button primary" disabled={busy}>{busy ? "Guardando…" : "Confirmar y crear equipo"}</Button> : <Button type="button" className="tournament-button primary" disabled={!tournament || busy} onClick={() => setDetails(true)}>Continuar</Button>}</footer>
   </fieldset></form>;
 }
 

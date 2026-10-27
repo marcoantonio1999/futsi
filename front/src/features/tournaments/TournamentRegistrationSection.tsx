@@ -1,3 +1,4 @@
+import { Button } from '../../components/ui/enrollment-ui';
 import { FormEvent } from "react";
 import { ClipboardList, UserPlus } from "lucide-react";
 import type { AppData, Team, Tournament } from "../../types";
@@ -58,7 +59,7 @@ export function TournamentRegistrationSection({
             <TextInput label="Monto torneo completo" name="full_amount" type="number" min="0" step="0.01" defaultValue="7800" />
             <TextInput label="Inicio de cobro" name="billing_starts_on" type="date" defaultValue={selectedTournament?.starts_on || today()} />
             <TextInput label="Notas" name="notes" placeholder="Permiso, categoria, observaciones" />
-            <button className="self-end rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Registrar alumno</button>
+            <Button className="self-end rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Registrar alumno</Button>
           </form>
         )}
       </div>

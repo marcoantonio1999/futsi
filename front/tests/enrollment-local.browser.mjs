@@ -52,7 +52,17 @@ async function completeForm(page,minor=false){
  await consent(page);
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  await page.locator('[data-enrollment-field="birth_date"].enrollment-invalid').waitFor();
- await page.locator('input[type=date][name=birth_date]').fill(minor?'2015-01-01':'2000-01-01');
+ if(page.viewportSize().width<768)await page.locator('input[type=date][name=birth_date]').fill(minor?'2015-01-01':'2000-01-01');
+ else {
+  await page.locator('.enrollment-date-trigger').click();
+  const calendar=page.locator('.enrollment-date-popup');await calendar.waitFor();
+  assert(await calendar.evaluate(el=>!!el.closest('dialog[open]')),'Calendar must be in the local dialog top layer');
+  await calendar.locator('.rdp-years_dropdown').selectOption(minor?'2015':'2000');
+  await calendar.locator('.rdp-months_dropdown').selectOption('0');
+  await page.screenshot({path:`${output}/calendar-${minor?'minor':'adult'}-1440.png`,fullPage:true});
+  await calendar.locator(`[data-day="${minor?'2015':'2000'}-01-01"] button`).click();
+  await calendar.waitFor({state:'hidden'});
+ }
  if(!minor&&adultCurp){
   await page.locator('.enrollment-wizard-identity-fields select').selectOption('curp');
   assert.equal(await page.locator('[data-enrollment-field="ine_front"] input').count(),0);
@@ -61,6 +71,9 @@ async function completeForm(page,minor=false){
  }
  const pdf={name:'documento-ficticio.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nFICTICIO')};
  for(const field of (minor?['minor_credential','curp','guardian_ine_front','guardian_ine_back']:adultCurp?['curp']:['ine_front','ine_back']))await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
+ assert.equal(await page.locator('.upload-box').first().getAttribute('data-slot'),'card');
+ assert.equal(await page.locator('.upload-box button').first().getAttribute('data-slot'),'button');
+ await page.screenshot({path:`${output}/documents-${minor?'minor':'adult'}-${page.viewportSize().width}.png`,fullPage:true});
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  // A synthetic PNG created locally, not a real player's photograph.
  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=1200;c.height=1200;const ctx=c.getContext('2d');ctx.fillStyle='#bbb';ctx.fillRect(0,0,1200,1200);return c.toDataURL().split(',')[1];});

@@ -1,3 +1,4 @@
+import { Button, Input, Label, Textarea } from '../../components/ui/enrollment-ui';
 import {useEffect,useRef,useState} from 'react';
 import {API_URL,apiRequest,apiFormRequestWithProgress} from '../../api';
 import {fetchEnrollmentDocument} from './fetchEnrollmentDocument';
@@ -17,9 +18,9 @@ export function SanctionActions({row,token,admin,onSaved}:{row:AppealRow;token:s
   async function choose(photo?:File){if(!photo)return;setCompressing(true);setError('');try{setFile(await compressEnrollmentPhoto(photo))}catch(reason){setError(reason instanceof Error?reason.message:'No se pudo preparar la foto.')}finally{setCompressing(false)}}
   const titles={appeal:'Apelar sanción',accepted:'Aceptar apelación',rejected:'No aceptar apelación',payment:'Registrar folio de pago'};
   return <div className="sanction-actions">
-    {(row.appeal_status||'none')==='none'&&<button type="button" onClick={()=>{setFile(null);setError('');setAction('appeal')}}>Apelar sanción</button>}
-    {admin&&row.appeal_status==='pending'&&<><button type="button" onClick={()=>setAction('accepted')}>Aceptar apelación</button><button type="button" onClick={()=>setAction('rejected')}>No aceptar apelación</button></>}
-    {admin&&row.payment_required&&!row.payment_folio&&<button type="button" onClick={()=>setAction('payment')}>Registrar folio de pago</button>}
+    {(row.appeal_status||'none')==='none'&&<Button type="button" onClick={()=>{setFile(null);setError('');setAction('appeal')}}>Apelar sanción</Button>}
+    {admin&&row.appeal_status==='pending'&&<><Button type="button" onClick={()=>setAction('accepted')}>Aceptar apelación</Button><Button type="button" onClick={()=>setAction('rejected')}>No aceptar apelación</Button></>}
+    {admin&&row.payment_required&&!row.payment_folio&&<Button type="button" onClick={()=>setAction('payment')}>Registrar folio de pago</Button>}
     {action&&<TournamentDialog title={titles[action]} description={row.player_name} submitLabel={titles[action]} submitDisabled={cameraOpen||compressing} onClose={()=>{setCameraOpen(false);setAction(null)}} onSubmit={async form=>{
       if(compressing)throw new Error('Espera a que termine la compresión de la foto.');
       if(action==='appeal'){
@@ -29,11 +30,11 @@ export function SanctionActions({row,token,admin,onSaved}:{row:AppealRow;token:s
       }else await apiRequest(`/player-enrollments/sanctions/${row.id}/decision/`,token,{method:'POST',body:JSON.stringify({action,reason:form.get('reason'),folio:form.get('folio')})});
       onSaved();
     }}>
-      {action==='appeal'?<><div hidden={cameraOpen}><p>Fotografía la carta redactada por la persona sancionada explicando los motivos de su apelación. La imagen será privada.</p><label>Motivos de la apelación<textarea name="reason" required minLength={10} maxLength={4000} rows={4}/></label>
-        <input ref={attachment} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>void choose(event.target.files?.[0])}/>
-        <div className="sanction-actions"><button type="button" disabled={compressing} onClick={()=>setCameraOpen(true)}>Tomar foto de la carta</button><button type="button" disabled={compressing} onClick={()=>attachment.current?.click()}>Adjuntar foto</button></div>
+      {action==='appeal'?<><div hidden={cameraOpen}><p>Fotografía la carta redactada por la persona sancionada explicando los motivos de su apelación. La imagen será privada.</p><Label>Motivos de la apelación<Textarea name="reason" required minLength={10} maxLength={4000} rows={4}/></Label>
+        <Input ref={attachment} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>void choose(event.target.files?.[0])}/>
+        <div className="sanction-actions"><Button type="button" disabled={compressing} onClick={()=>setCameraOpen(true)}>Tomar foto de la carta</Button><Button type="button" disabled={compressing} onClick={()=>attachment.current?.click()}>Adjuntar foto</Button></div>
         {compressing&&<p role="status">Preparando foto…</p>}{error&&<p role="alert" className="error">{error}</p>}{preview&&<img className="sanction-appeal-letter" src={preview} alt="Vista previa de la carta de apelación"/>}
-      </div>{cameraOpen&&<CameraCapture embedded selfie={false} onClose={()=>setCameraOpen(false)} onCapture={photo=>{setCameraOpen(false);void choose(photo)}}/>}</>:action==='payment'?<><p>El folio acredita el pago registrado por administración. La sanción seguirá vigente hasta que también termine el periodo completo, incluido su último día. Una sanción sin término no se libera solo con el pago.</p><label className="sanction-payment-field">Folio de pago<input type="text" name="folio" required maxLength={100} autoComplete="off" placeholder="Ej. PAGO-000123"/></label></>:<><p>Esta decisión se conserva en el historial y no levanta la sanción. Para cumplirla se requieren el periodo completo y el folio de pago.</p><label>Motivo de la decisión<textarea name="reason" required minLength={3} maxLength={2000} rows={4}/></label></>}
+      </div>{cameraOpen&&<CameraCapture embedded selfie={false} onClose={()=>setCameraOpen(false)} onCapture={photo=>{setCameraOpen(false);void choose(photo)}}/>}</>:action==='payment'?<><p>El folio acredita el pago registrado por administración. La sanción seguirá vigente hasta que también termine el periodo completo, incluido su último día. Una sanción sin término no se libera solo con el pago.</p><Label className="sanction-payment-field">Folio de pago<Input type="text" name="folio" required maxLength={100} autoComplete="off" placeholder="Ej. PAGO-000123"/></Label></>:<><p>Esta decisión se conserva en el historial y no levanta la sanción. Para cumplirla se requieren el periodo completo y el folio de pago.</p><Label>Motivo de la decisión<Textarea name="reason" required minLength={3} maxLength={2000} rows={4}/></Label></>}
     </TournamentDialog>}
   </div>;
 }
@@ -48,5 +49,5 @@ export function SanctionAppealDetails({row,token}:{row:AppealRow;token:string}){
     <div><dt>Motivos</dt><dd>{row.appeal_reason||'—'}</dd></div><div><dt>Registrada por</dt><dd>{row.appeal_submitted_by||'—'} {row.appeal_submitted_at&&new Date(row.appeal_submitted_at).toLocaleString('es-MX')}</dd></div>
     <div><dt>Decisión</dt><dd>{row.appeal_decision_reason||'Sin decisión'} · {row.appeal_decided_by||'—'} {row.appeal_decided_at&&new Date(row.appeal_decided_at).toLocaleString('es-MX')}</dd></div>
     <div><dt>Sanción económica</dt><dd>{row.fine_amount?`$${row.fine_amount} MXN`:'Importe no especificado'}</dd></div><div><dt>Folio de pago</dt><dd>{row.payment_folio|| (row.payment_required?'Pendiente':'No requerido (sanción histórica)')}</dd></div><div><dt>Pago registrado por</dt><dd>{row.payment_recorded_by||'—'} {row.payment_recorded_at&&new Date(row.payment_recorded_at).toLocaleString('es-MX')}</dd></div>
-  </dl>{row.has_appeal_letter&&!letter&&<button type="button" disabled={loading} onClick={()=>void load()}>{loading?'Cargando carta…':'Ver foto de la carta'}</button>}{error&&<p role="alert">{error}</p>}{letter&&<img className="sanction-appeal-letter" src={letter} alt={`Carta de apelación de ${row.player_name}`}/>}</section>;
+  </dl>{row.has_appeal_letter&&!letter&&<Button type="button" disabled={loading} onClick={()=>void load()}>{loading?'Cargando carta…':'Ver foto de la carta'}</Button>}{error&&<p role="alert">{error}</p>}{letter&&<img className="sanction-appeal-letter" src={letter} alt={`Carta de apelación de ${row.player_name}`}/>}</section>;
 }

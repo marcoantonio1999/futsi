@@ -20,8 +20,8 @@ test("history renders automatic player, tournament, team and date filters", () =
 test("history is a separate subsection and requests only withdrawals with server pagination", () => {
   const dashboard = readFileSync(new URL("../src/features/enrollments/PlayerEnrollment.tsx", import.meta.url), "utf8");
   assert.match(dashboard, />Bajas<\/div>/);
-  assert.match(dashboard, />Nueva baja<\/button>/);
-  assert.match(dashboard, />Histórico de bajas<\/button>/);
+  assert.match(dashboard, />Nueva baja<\/Button>/);
+  assert.match(dashboard, />Histórico de bajas<\/Button>/);
   const source = readFileSync(new URL("../src/features/enrollments/WithdrawalHistory.tsx", import.meta.url), "utf8");
   assert.match(source, /withdrawn_only: "true"/);
   assert.match(source, /page: String\(page\)/);

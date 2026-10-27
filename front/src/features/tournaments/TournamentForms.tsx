@@ -1,3 +1,4 @@
+import { Button } from '../../components/ui/enrollment-ui';
 import { FormEvent } from "react";
 import { Plus, Shield } from "lucide-react";
 import type { AppData } from "../../types";
@@ -39,7 +40,7 @@ export function TournamentForms({ isCoachView, data, onSubmitTournament }: Tourn
             </SelectInput>
             <TextInput label="Inicio" name="starts_on" type="date" defaultValue={today()} />
             <TextInput label="Semanas esperadas" name="expected_weeks" type="number" min="1" defaultValue={12} />
-            <button className="self-end rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Crear torneo</button>
+            <Button className="self-end rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Crear torneo</Button>
           </form>
         </div>
       )}

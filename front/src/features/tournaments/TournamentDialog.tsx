@@ -1,3 +1,4 @@
+import { Button, Dialog } from '../../components/ui/enrollment-ui';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -20,8 +21,8 @@ export function TournamentDialog({ title, description, submitLabel, onSubmit, on
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar. Revisa los datos e inténtalo otra vez."); }
     finally { saving.current = false; setBusy(false); }
   }
-  return createPortal(<dialog ref={dialog} className="tournament-ui tournament-dialog" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!saving.current) onClose(); }}>
-    <header><div><h2 id={titleId}>{title}</h2>{description && <p>{description}</p>}</div><button type="button" className="tournament-icon-button" aria-label="Cerrar formulario" disabled={busy} onClick={onClose}><X size={18} /></button></header>
-    <form onSubmit={submit}><fieldset disabled={busy}><legend className="sr-only">{title}</legend><div className="tournament-dialog-body">{children}{error && <p className="tournament-feedback error" role="alert">{error}</p>}</div><footer><button autoFocus type="button" className="tournament-button secondary" onClick={onClose}>Cancelar</button><button className={`tournament-button ${danger ? "danger" : "primary"}`} disabled={busy || submitDisabled}>{busy ? "Guardando…" : submitLabel}</button></footer></fieldset></form>
-  </dialog>, document.body);
+  return createPortal(<Dialog ref={dialog} className="tournament-ui tournament-dialog" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!saving.current) onClose(); }}>
+    <header><div><h2 id={titleId}>{title}</h2>{description && <p>{description}</p>}</div><Button type="button" className="tournament-icon-button" aria-label="Cerrar formulario" disabled={busy} onClick={onClose}><X size={18} /></Button></header>
+    <form onSubmit={submit}><fieldset disabled={busy}><legend className="sr-only">{title}</legend><div className="tournament-dialog-body">{children}{error && <p className="tournament-feedback error" role="alert">{error}</p>}</div><footer><Button autoFocus type="button" className="tournament-button secondary" onClick={onClose}>Cancelar</Button><Button className={`tournament-button ${danger ? "danger" : "primary"}`} disabled={busy || submitDisabled}>{busy ? "Guardando…" : submitLabel}</Button></footer></fieldset></form>
+  </Dialog>, document.body);
 }

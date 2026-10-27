@@ -1,3 +1,4 @@
+import { Button, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import type { Site, Team, Tournament } from "../../types";
 import { StatusPill } from "../../components/views/shared";
@@ -66,29 +67,29 @@ export function TournamentCardsSection({
       </div>
 
       <div className="grid min-w-0 gap-2 border-b border-zinc-100 px-4 py-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(0,150px)_minmax(0,130px)_minmax(0,160px)]">
-        <label className="relative block">
+        <Label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={15} />
-          <input className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-600" placeholder="Buscar torneo o sede" value={search} onChange={(event) => onSearchChange(event.target.value)} />
-        </label>
-        <select className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={siteFilter} onChange={(event) => onSiteFilterChange(event.target.value)}>
+          <Input className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-600" placeholder="Buscar torneo o sede" value={search} onChange={(event) => onSearchChange(event.target.value)} />
+        </Label>
+        <NativeSelect className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={siteFilter} onChange={(event) => onSiteFilterChange(event.target.value)}>
           <option value="all">Todas las sedes</option>
           {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
-        </select>
-        <select className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
+        </NativeSelect>
+        <NativeSelect className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
           <option value="active">Activos</option>
           <option value="inactive">Cerrados</option>
           <option value="all">Todos</option>
-        </select>
-        <select className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={billingFilter} onChange={(event) => onBillingFilterChange(event.target.value)}>
+        </NativeSelect>
+        <NativeSelect className="h-10 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-600" value={billingFilter} onChange={(event) => onBillingFilterChange(event.target.value)}>
           <option value="all">Todos los cobros</option>
           <option value="weekly_match">Pago semanal</option>
           <option value="full_tournament">Torneo completo</option>
-        </select>
+        </NativeSelect>
       </div>
 
       <div className="grid gap-3 p-4 md:grid-cols-2">
         {visibleTournamentCards.map(({ tournament, teams, registrations, matches, liveCount, top }) => (
-          <button key={tournament.id} className={`min-h-[158px] rounded-md border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${selectedTournamentId === tournament.id ? "border-emerald-700 bg-emerald-50" : "border-zinc-200 bg-white"}`} onClick={() => onSelectTournament(String(tournament.id))} type="button">
+          <Button key={tournament.id} className={`min-h-[158px] rounded-md border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${selectedTournamentId === tournament.id ? "border-emerald-700 bg-emerald-50" : "border-zinc-200 bg-white"}`} onClick={() => onSelectTournament(String(tournament.id))} type="button">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase text-zinc-500">{tournament.starts_on || "sin fecha"} - {billingLabel(tournament.billing_type)}</p>
@@ -103,7 +104,7 @@ export function TournamentCardsSection({
               <CardMetric label="Act." value={liveCount} />
             </div>
             <p className="mt-2 truncate text-xs text-zinc-500">Lider: <span className="font-medium text-zinc-900">{top?.team_name || "pendiente"}</span></p>
-          </button>
+          </Button>
         ))}
         {visibleTournamentCards.length === 0 && <p className="col-span-full text-sm text-zinc-500">No hay torneos con esos filtros.</p>}
       </div>
@@ -112,7 +113,7 @@ export function TournamentCardsSection({
 }
 
 function PageButton({ children, disabled, label, onClick }: { children: React.ReactNode; disabled: boolean; label: string; onClick: () => void }) {
-  return <button className="grid size-8 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40" disabled={disabled} onClick={onClick} type="button" aria-label={label}>{children}</button>;
+  return <Button className="grid size-8 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40" disabled={disabled} onClick={onClick} type="button" aria-label={label}>{children}</Button>;
 }
 
 function CardMetric({ label, value }: { label: string; value: number }) {

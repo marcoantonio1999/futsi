@@ -26,7 +26,7 @@ try {for(const width of [320,390,1440]) {for(const minor of [false,true]){
   if(url.searchParams.has('enrollment_id')) {assert.equal(url.searchParams.get('enrollment_id'),'102');return route.fulfill({json:{results:[{id:102,identity_type:minor?'minor':'ine',name:'Jugador ficticio',team:'Equipo 102',tournament:'Liga ficticia',birth_date:'2000-01-01',phone:'5500000000',phone_secondary:'',guardian_name:'',signed_at:'2026-10-20T12:00:00Z',terms_text:['Compromiso de ejemplo.'],documents:[{id:1,kind:'ine_front'},{id:2,kind:'ine_back'},{id:3,kind:'player_photo'},{id:4,kind:'player_signature'},{id:5,kind:'guardian_signature'}]}]}});}
   return route.fulfill({json:{sites:[],tournaments:[],teams:[],results:[],count:0}});
  });
- await page.goto('http://127.0.0.1:5212/tests/enrollment-register-preview.html#/admin/inscripciones/players');
+ await page.goto((process.env.TEST_ENROLLMENT_ORIGIN||'http://127.0.0.1:5212')+'/tests/enrollment-register-preview.html#/admin/inscripciones/players');
  const button=page.getByRole('button',{name:'Ver hoja de inscripción de Jugador ficticio, Equipo 102, Liga ficticia',exact:true});
  await button.waitFor();assert.equal(documents.length,0);assert((await button.boundingBox()).height>=44);
  assert(await page.getByText('Ficha anterior sin hoja de inscripción firmada.',{exact:true}).isVisible());

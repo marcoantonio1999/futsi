@@ -1,3 +1,4 @@
+import { Button } from '../../components/ui/enrollment-ui';
 import { FormEvent } from "react";
 import { Shield, UsersRound } from "lucide-react";
 import type { Team, Tournament } from "../../types";
@@ -43,7 +44,7 @@ export function TournamentTeamsSection({
                 <TextInput label="Telefono" name="representative_phone" placeholder="55..." required />
               </>
             )}
-            <button className="self-end rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Crear equipo</button>
+            <Button className="self-end rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white">Crear equipo</Button>
           </form>
         )}
       </div>

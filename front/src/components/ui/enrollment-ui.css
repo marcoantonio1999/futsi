@@ -1,0 +1,71 @@
+/* shadcn/ui Nova anatomy and tokens, isolated from other Futsi modules.
+   No screen rule participates in A4 print or changes stored documents. */
+@media screen {
+  .enrollment-page,.enrollment-camera-overlay,.enrollment-date-popup {
+    --background:#fff;--foreground:#17241e;--card:#fff;--card-foreground:#17241e;
+    --primary:#246343;--primary-foreground:#fff;--secondary:#edf3ef;
+    --muted:#f5f7f6;--muted-foreground:#627269;--border:#dce5df;
+    --input:#d4dfd7;--ring:#7baa8d;--destructive:#b42338;--radius:.75rem;
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .enrollment-page [data-slot=card]:not(.roster-sheet):not(.signed-sheet),
+  .enrollment-camera-overlay [data-slot=card] {
+    border:1px solid var(--border);border-radius:var(--radius);background:var(--card);
+    color:var(--card-foreground);box-shadow:0 1px 3px #10221808;
+  }
+  .enrollment-page [data-slot=card].upload-box {
+    margin:0;padding:20px;min-width:0;border:1px solid var(--border);border-radius:12px;
+    background:var(--card);box-shadow:0 1px 3px #10221808;
+  }
+  .enrollment-page .upload-box>p {margin:0 0 8px;text-transform:none;font-size:14px;font-weight:600;line-height:1.5;}
+  .enrollment-page .upload-box>small {font-size:12px;line-height:1.6;color:var(--muted-foreground);}
+  .enrollment-page .upload-actions {gap:8px;margin:16px 0 12px;}
+  .enrollment-page [data-slot=card].signature-box {padding:18px;text-align:left;}
+  .enrollment-page .signature-box canvas {border:1px dashed var(--input);border-radius:8px;margin:12px 0;}
+  .enrollment-page [data-slot=label] {font-size:14px;font-weight:500;line-height:1.5;}
+  .enrollment-page [data-slot=input]:not([type=hidden]):not([type=file]),
+  .enrollment-page [data-slot=native-select],.enrollment-page [data-slot=textarea] {
+    box-sizing:border-box;width:100%;min-width:0;min-height:44px;margin-top:6px;
+    padding:10px 12px;border:1px solid var(--input)!important;border-radius:8px!important;
+    background:var(--background)!important;color:var(--foreground)!important;
+    box-shadow:0 1px 2px #10221805;font-family:inherit;font-size:14px;font-weight:400;line-height:1.5;
+    transition:border-color .15s,box-shadow .15s;outline:none;
+  }
+  .enrollment-page [data-slot=textarea] {min-height:100px;resize:vertical;}
+  .enrollment-page [data-slot=checkbox] {width:18px;height:18px;flex-shrink:0;accent-color:var(--primary);border-radius:4px;}
+  .enrollment-page :is([data-slot=input],[data-slot=native-select],[data-slot=textarea]):focus-visible {
+    border-color:var(--ring)!important;box-shadow:0 0 0 3px #7baa8d40;
+  }
+  .enrollment-page :is([data-slot=input],[data-slot=native-select],[data-slot=textarea])[aria-invalid=true] {border-color:var(--destructive)!important;}
+  :is(.enrollment-page,.enrollment-camera-overlay) [data-slot=button]:not(:where(.enrollment-admin-sidebar *, .enrollment-menu-backdrop, .roster-player, .enrollment-roster-card)) {
+    display:inline-flex!important;align-items:center;justify-content:center;gap:8px;min-height:44px!important;
+    max-width:100%;padding:10px 16px!important;border:1px solid var(--border)!important;
+    border-radius:8px!important;background:var(--background)!important;color:var(--foreground)!important;
+    font:500 14px/20px Inter,ui-sans-serif,system-ui,sans-serif!important;
+    box-shadow:0 1px 2px #10221808;cursor:pointer;transition:background .15s,box-shadow .15s;
+  }
+  :is(.enrollment-page,.enrollment-camera-overlay) [data-slot=button][data-variant=default] {background:var(--primary)!important;border-color:var(--primary)!important;color:var(--primary-foreground)!important;}
+  :is(.enrollment-page,.enrollment-camera-overlay) [data-slot=button][data-variant=destructive] {background:var(--destructive)!important;border-color:var(--destructive)!important;color:#fff!important;}
+  :is(.enrollment-page,.enrollment-camera-overlay) [data-slot=button][data-variant=ghost] {background:transparent!important;border-color:transparent!important;box-shadow:none;}
+  :is(.enrollment-page,.enrollment-camera-overlay) [data-slot=button]:not(:disabled):hover {filter:brightness(.97);}
+  :is(.enrollment-page,.enrollment-camera-overlay) [data-slot=button]:focus-visible {outline:3px solid #7baa8d80;outline-offset:2px;}
+  :is(.enrollment-page,.enrollment-camera-overlay) [data-slot=button]:disabled {opacity:.5;cursor:not-allowed;}
+  .enrollment-page [data-slot=dialog-content],.enrollment-page .enrollment-detail-dialog,
+  .enrollment-page .disciplinary-dialog,.enrollment-camera-dialog {border:1px solid var(--border);border-radius:16px;box-shadow:0 20px 70px #0b211e33;}
+  .enrollment-page .enrollment-wizard-header {background:var(--card);padding:24px 28px;}
+  .enrollment-page .enrollment-wizard-header h1 {letter-spacing:-.025em;line-height:1.25;}
+  .enrollment-page .enrollment-wizard-header>span {color:var(--muted-foreground);font-size:12px;font-weight:500;}
+  .enrollment-page .enrollment-wizard-uploads {gap:16px;padding-top:12px;}
+  .enrollment-page .enrollment-wizard-actions {border-top:1px solid var(--border);padding-top:16px;}
+  .enrollment-page .error {border-radius:8px;font-size:14px;line-height:1.5;}
+  .enrollment-page :is(.operator-controls,.enrollment-roster-card,.withdrawal-player-card) {border-radius:12px;border-color:var(--border);}
+  .enrollment-page table {font-size:14px;}
+  .enrollment-page th {background:var(--muted);color:var(--muted-foreground);font-weight:500;}
+  .enrollment-page td {border-color:var(--border);}
+  @media(max-width:600px){
+    .enrollment-page .enrollment-wizard-header{padding:20px 18px;}
+    .enrollment-page [data-slot=card].upload-box{padding:16px;}
+    .enrollment-page :is([data-slot=input],[data-slot=native-select],[data-slot=textarea]){font-size:16px!important;}
+    .enrollment-page .enrollment-wizard-uploads{grid-template-columns:minmax(0,1fr);gap:12px;}
+  }
+}

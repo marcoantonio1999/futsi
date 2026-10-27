@@ -1,3 +1,4 @@
+import { Button } from '../../components/ui/enrollment-ui';
 import { Shield } from "lucide-react";
 
 export type TournamentNotice = {
@@ -31,9 +32,9 @@ export function TournamentNoticeModal({
         <h3 className="mt-3 text-xl font-semibold text-zinc-950">{notice.title}</h3>
         <p className="mt-2 text-sm text-zinc-600">{notice.detail}</p>
         <div className="mt-5 flex justify-end">
-          <button type="button" className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${buttonClass}`} onClick={onClose}>
+          <Button type="button" className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${buttonClass}`} onClick={onClose}>
             Entendido
-          </button>
+          </Button>
         </div>
       </div>
     </div>

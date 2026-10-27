@@ -1,3 +1,4 @@
+import { Button } from '../../components/ui/enrollment-ui';
 import { useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, Trophy } from "lucide-react";
 import type { AppData, Tournament } from "../../types";
@@ -19,7 +20,7 @@ export function TournamentCreatePage({ sites, onBack, onCreate, onCreated }: { s
     finally { saving.current = false; setBusy(false); }
   }
   return <div className="tournament-create" data-testid="tournament-create-page">
-    <button type="button" className="tournament-back" disabled={busy} onClick={onBack}><ArrowLeft size={16} />Torneos activos</button>
+    <Button type="button" className="tournament-back" disabled={busy} onClick={onBack}><ArrowLeft size={16} />Torneos activos</Button>
     <form onSubmit={submit} className="tournament-create-card">
       <fieldset disabled={busy || !sites.length}>
         <legend className="sr-only">Datos del nuevo torneo</legend>
@@ -45,8 +46,8 @@ export function TournamentCreatePage({ sites, onBack, onCreate, onCreated }: { s
         {error && <p className="tournament-feedback error" role="alert">{error}</p>}
         {!sites.length && <p className="tournament-feedback warning">Primero necesitas una sede registrada para crear el torneo.</p>}
         <footer className="tournament-actions">
-          <button type="button" className="tournament-button secondary" onClick={onBack}>Cancelar</button>
-          <button type="submit" className="tournament-button primary" disabled={busy || !sites.length}>{busy ? "Creando torneo…" : "Crear torneo"}</button>
+          <Button type="button" className="tournament-button secondary" onClick={onBack}>Cancelar</Button>
+          <Button type="submit" className="tournament-button primary" disabled={busy || !sites.length}>{busy ? "Creando torneo…" : "Crear torneo"}</Button>
         </footer>
       </fieldset>
     </form>

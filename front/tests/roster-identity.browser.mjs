@@ -29,7 +29,7 @@ try{
  for(const width of [320,390,1440]){
   const slots=width===320?12:width===390?14:16;
   const page=await browser.newPage({viewport:{width,height:950}}),errors=await setup(page,{delayPhoto:true,slots});
-  await page.goto('http://127.0.0.1:5218/tests/enrollment-register-preview.html#/admin/inscripciones/history?equipo=11');
+  await page.goto((process.env.TEST_ENROLLMENT_ORIGIN||'http://127.0.0.1:5218')+'/tests/enrollment-register-preview.html#/admin/inscripciones/history?equipo=11');
   const print=page.getByRole('button',{name:'Imprimir / guardar PDF',exact:true});
   await print.waitFor();assert(await print.isDisabled());await page.waitForFunction(()=>!Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Imprimir / guardar PDF')?.disabled);
   assert.equal(await page.locator('.photo-paper').count(),2);
@@ -66,7 +66,7 @@ try{
   assert.deepEqual(errors,[]);console.log(JSON.stringify({width,photos:17,storedSignatures:0,blankSignatureSpaces:true,pages:2,noPageOverflow:true,noTools:true}));await page.close();
  }
  const page=await browser.newPage();await setup(page,{failPhoto:true});
- await page.goto('http://127.0.0.1:5218/tests/enrollment-register-preview.html#/admin/inscripciones/tools?equipo=11&hoja=alineacion');
+ await page.goto((process.env.TEST_ENROLLMENT_ORIGIN||'http://127.0.0.1:5218')+'/tests/enrollment-register-preview.html#/admin/inscripciones/tools?equipo=11&hoja=alineacion');
  await page.getByRole('alert').filter({hasText:'No se pudieron cargar todas'}).waitFor();
  assert(await page.getByRole('button',{name:'Imprimir / guardar PDF',exact:true}).isDisabled());
  assert.equal(await page.locator('.photo-paper').count(),2);

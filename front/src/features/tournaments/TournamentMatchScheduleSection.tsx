@@ -1,3 +1,4 @@
+import { Button, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
 import { FormEvent } from "react";
 import { CalendarDays } from "lucide-react";
 import type { Match, Team, Tournament } from "../../types";
@@ -45,14 +46,14 @@ export function TournamentMatchScheduleSection({
             </div>
           </div>
 
-          <label className="mt-4 grid gap-1 text-sm">
+          <Label className="mt-4 grid gap-1 text-sm">
             <span className="font-medium text-zinc-700">Torneo</span>
-            <select className="rounded-md border border-zinc-300 bg-white px-3 py-2" value={selectedTournamentId} onChange={(event) => onSelectTournament(event.target.value)} required>
+            <NativeSelect className="rounded-md border border-zinc-300 bg-white px-3 py-2" value={selectedTournamentId} onChange={(event) => onSelectTournament(event.target.value)} required>
               {visibleTournaments.map((tournament) => (
                 <option key={tournament.id} value={tournament.id}>{tournament.name}</option>
               ))}
-            </select>
-          </label>
+            </NativeSelect>
+          </Label>
 
           {tournamentTeams.length < 2 ? (
             <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
@@ -61,7 +62,7 @@ export function TournamentMatchScheduleSection({
           ) : null}
 
           <form className="mt-3 grid gap-3" onSubmit={onSubmitMatch}>
-            <input name="tournament" type="hidden" value={selectedTournamentId} />
+            <Input name="tournament" type="hidden" value={selectedTournamentId} />
             <TeamSelect label="Local" name="home_team" teams={tournamentTeams} disabled={tournamentTeams.length < 2} />
             <TeamSelect label="Visitante" name="away_team" teams={tournamentTeams} disabled={tournamentTeams.length < 2} />
             <div className="grid gap-3 sm:grid-cols-3">
@@ -69,9 +70,9 @@ export function TournamentMatchScheduleSection({
               <TextInput label="Hora inicio" name="starts_at" type="time" defaultValue="20:00" required />
               <TextInput label="Hora fin" name="ends_at" type="time" defaultValue="22:00" required />
             </div>
-            <button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={tournamentTeams.length < 2}>
+            <Button className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={tournamentTeams.length < 2}>
               Agendar
-            </button>
+            </Button>
           </form>
         </section>
       )}
