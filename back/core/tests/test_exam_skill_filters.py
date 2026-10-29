@@ -84,3 +84,42 @@ def test_export_always_includes_all_skills_without_filter(auth_client, scope):
         assert by_id[unfinished.id][15:] == (None,) * 6
     else:
         assert unfinished.id not in by_id
+
+
+@pytest.mark.parametrize('invalid', ['not-json', '[]', '{"unknown":{}}', '{"sales":{"min":8,"max":3}}', '{"sales":{"min":true}}', '{"sales":{"min":"nan"}}', '{"sales":{"max":11}}'])
+def test_invalid_multi_skill_ranges(auth_client, invalid):
+    c, _, _ = auth_client(); exam = create_exam(c)
+    params = {'skill_ranges':invalid}
+    assert c.get(f'/api/recruitment-exams/{exam["id"]}/', params).status_code == 400
+    assert c.get('/api/recruitment-exams/export/', {**params,'exam':exam['id']}).status_code == 400
+
+
+def test_multiple_skills_require_all_ranges_and_export_all_pages(auth_client):
+    from core.exam_skills import SKILLS
+    c, _, _ = auth_client(); exam = create_exam(c)
+    qs = json.loads(Path(__file__).parents[1].joinpath('exam_template.json').read_text(encoding='utf-8'))['questions']
+    ids = []
+    for i in range(55):
+        a = attempt(exam, i, 7)
+        a.snapshot = {'duration_minutes':60, 'questions':qs}
+        a.grading = {'score':7,'questions':{q['id']:{'points':8} for q in qs}}
+        a.save(); ids.append(a.id)
+    # High total and sales score cannot compensate for mathematics outside its range.
+    bad = attempt(exam, 60, 10)
+    bad.snapshot = a.snapshot
+    bad.grading = {'score':10,'questions':{q['id']:{'points':4 if int(q['id']) in SKILLS['mathematics'][1] else 10} for q in qs}}
+    bad.save()
+    attempt(exam, 61, 10)  # totals-only: never interpreted as zero or full skill score
+    params = {'skill_ranges':json.dumps({'mathematics':{'min':7,'max':9},'sales':{'min':8,'max':10}}),'ordering':'score_desc'}
+    url = f'/api/recruitment-exams/{exam["id"]}/'
+    data = c.get(url, params).json()
+    assert data['count'] == 55 and len(data['results']) == 50
+    assert data['results'][0]['skill_scores'] == {'mathematics':8,'sales':8}
+    assert len(c.get(url,{**params,'page':2}).json()['results']) == 5
+    top = c.get(url,{**params,'top':'10'}).json()
+    assert top['count'] == 55 and top['filters']['top_threshold'] == 7
+    rows = list(book(c.get('/api/recruitment-exams/export/',{**params,'exam':exam['id']}))['Evaluaciones'].values)
+    assert len(rows) == 56 and {r[0] for r in rows[1:]} == set(ids)
+    assert all(r[15:21] == (8,)*6 for r in rows[1:])
+    assert c.get(url,{'skill_ranges':json.dumps({'sales':{}})}).json()['count'] == 56
+    assert c.get(url,{**params,'skill':'sales'}).status_code == 400

@@ -103,6 +103,8 @@ def attempt_data(a, private=False):
         result.update(id=a.id, name=a.name, email=a.email, phone=a.phone,
                       grading_status=a.grading_status, grading=a.grading,
                       graded_at=a.graded_at.isoformat() if a.graded_at else None)
+        from core.exam_skills import SKILLS
+        result['skill_scores'] = {key: getattr(a, f'skill_{key}') for key in SKILLS if hasattr(a, f'skill_{key}')}
         if hasattr(a, 'skill_score'):
             result['skill_score'] = a.skill_score
         offline = a.snapshot.get('offline_import', {})

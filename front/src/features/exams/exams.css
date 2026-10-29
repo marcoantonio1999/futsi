@@ -19,3 +19,12 @@
 .exam-filter-modal .exam-filter-panel{margin:0;padding:0;border:0;background:white}
 .exam-filter-modal .exam-filter-actions{position:sticky;bottom:0;background:white;padding:12px 0 2px;margin-top:12px}
 @media(max-width:600px){.exam-filter-modal{width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);padding:16px 12px;border-radius:12px}.exam-filter-modal .exam-filter-grid{grid-template-columns:minmax(0,1fr)}.exam-filter-modal .exam-filter-actions>*{flex:1}}
+
+.exam-skill-ranges{min-width:0;border:1px solid var(--exam-line);border-radius:12px;padding:16px;margin-top:20px}
+.exam-skill-ranges legend{font-weight:650;padding:0 6px}
+.exam-skill-range{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,280px);align-items:center;gap:12px;border-top:1px solid var(--exam-line);padding:8px 0}
+.exam-app label.exam-skill-toggle{display:flex;align-items:center;gap:12px;min-height:44px;margin:0;cursor:pointer}
+.exam-skill-toggle input{width:22px;height:22px;flex-shrink:0;accent-color:var(--exam-blue)}
+.exam-skill-bounds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.exam-skill-bounds label{margin:0!important}
+@media(max-width:600px){.exam-skill-range{grid-template-columns:minmax(0,1fr);gap:4px}.exam-skill-ranges{padding:12px}}

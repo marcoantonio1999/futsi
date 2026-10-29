@@ -1,4 +1,5 @@
 """Literal, explainable profile filters and conservative contact matching. No AI."""
+import json
 import math
 import re
 import unicodedata
@@ -33,8 +34,61 @@ def score_rows(rows):
              then=Cast('grading__score', FloatField())), default=Value(None), output_field=FloatField()))
 
 
+def skill_ranges(params):
+    from core.exam_skills import SKILLS
+    raw = params.get('skill_ranges', '')
+    if not raw:
+        return {}
+    try:
+        if len(raw) > 2000 or params.get('skill'):
+            raise ValueError
+        ranges = json.loads(raw)
+        if not isinstance(ranges, dict) or len(ranges) > len(SKILLS):
+            raise ValueError
+        result = {}
+        for key, bounds in ranges.items():
+            if key not in SKILLS or not isinstance(bounds, dict) or set(bounds) - {'min', 'max'}:
+                raise ValueError
+            values = []
+            for field, default in [('min', 0), ('max', 10)]:
+                value = bounds.get(field, '')
+                if isinstance(value, bool):
+                    raise ValueError
+                number = default if value in ('', None) else float(value)
+                if not math.isfinite(number) or not 0 <= number <= 10:
+                    raise ValueError
+                values.append(number)
+            if values[0] > values[1]:
+                raise ValueError
+            result[key] = values
+        return result
+    except (ValueError, TypeError):
+        raise ValidationError({'detail': 'Revisa los rangos de habilidades: mínimo y máximo entre 0 y 10, con mínimo menor o igual al máximo.'})
+
+
+def filter_skill_ranges(rows, ranges):
+    from core.exam_skills import attempt_skills
+    matched, scores = [], {key: {} for key in ranges}
+    for row in rows.values('id', 'submitted_at', 'snapshot__questions', 'grading_status', 'grading__questions').iterator(chunk_size=200):
+        if not row['submitted_at']:
+            continue
+        areas = attempt_skills(row['snapshot__questions'], row['grading_status'], row['grading__questions'])
+        values = {key: areas.get(key, (None, 0))[0] for key in ranges}
+        if all(values[key] is not None and low <= values[key] <= high for key, (low, high) in ranges.items()):
+            matched.append(row['id'])
+            for key, score in values.items():
+                scores[key].setdefault(score, []).append(row['id'])
+    return rows.filter(pk__in=matched).annotate(**{
+        f'skill_{key}': Case(*[When(pk__in=ids, then=Value(score)) for score, ids in groups.items()],
+                            default=Value(None), output_field=FloatField())
+        for key, groups in scores.items()})
+
+
 def filtered_attempts(rows, params, profiles=False):
     rows = score_rows(rows)
+    ranges = skill_ranges(params)
+    if ranges:
+        rows = filter_skill_ranges(rows, ranges)
     skill = params.get('skill', '')
     if skill:
         from core.exam_skills import SKILLS, attempt_skills
@@ -111,7 +165,7 @@ def filtered_attempts(rows, params, profiles=False):
     if ordering not in order:
         raise ValidationError({'detail': 'Orden inválido.'})
     rows = rows.order_by(order['score_desc'] if params.get('top') == '10' else order[ordering], 'id')
-    return rows, {'graded_count': graded_count, 'top_threshold': threshold, 'matched_keywords': terms, 'skill': skill, 'skill_label': SKILLS[skill][0] if skill else ''}
+    return rows, {'graded_count': graded_count, 'top_threshold': threshold, 'matched_keywords': terms, 'skill_ranges': ranges, 'skill': skill, 'skill_label': SKILLS[skill][0] if skill else ''}
 
 
 def clean_string(value, limit, label):
