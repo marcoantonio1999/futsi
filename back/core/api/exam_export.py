@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentExam, RecruitmentExamAttempt
 from core.exam_profiles import filtered_attempts
+from core.exam_skills import SKILLS, attempt_skills
 
 CDMX = ZoneInfo('America/Mexico_City')
 STATUSES = {'graded': 'Calificado', 'review': 'Revisión manual', 'pending': 'Pendiente de calificar',
@@ -95,13 +96,13 @@ class ExamExportView(APIView):
         result_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Correo', 'Teléfono', 'Fecha del examen (CDMX)',
             'Inicio (CDMX)', 'Entrega (CDMX)', 'Duración (min)', 'Tiempo de referencia (min)', 'Estado',
             'Calificación / 10', 'Requiere revisión', 'Observaciones', 'Origen']
+        result_headers += [f'{label} / 10' for label, _ in SKILLS.values()]
         skill = request.query_params.get('skill', '')
         if skill:
-            from core.exam_skills import SKILLS
             result_headers += ['Habilidad seleccionada', 'Calificación de habilidad / 10']
         answer_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Pregunta', 'Tipo', 'Enunciado',
             'Opciones', 'Respuesta del participante', 'Respuesta correcta / criterio', 'Puntos / 10', 'Requiere revisión', 'Comentario']
-        for sheet, headers, widths in [(results, result_headers, [14,34,32,36,20,24,24,24,20,24,28,22,22,65,24] + ([36,30] if skill else [])),
+        for sheet, headers, widths in [(results, result_headers, [14,34,32,36,20,24,24,24,20,24,28,22,22,65,24] + [32] * len(SKILLS) + ([36,30] if skill else [])),
                                       (answers, answer_headers, [14,34,32,14,20,65,65,65,65,18,22,65])]:
             sheet.freeze_panes = 'D2'
             sheet.row_dimensions[1].height = 34
@@ -128,12 +129,14 @@ class ExamExportView(APIView):
                           or (attempt.grading_status == 'graded' and score is None))
             completed = (date.fromisoformat(metadata['completed_on']) if metadata.get('completed_on') else None) if offline else attempt.submitted_at.astimezone(CDMX).date() if submitted else None
             observations = (f"{metadata.get('correct_count')} aciertos de {metadata.get('question_count')}. Nota calculada con aciertos. Sin fecha, contactos, tiempos ni respuestas individuales en el archivo." if totals_only else 'Sin horas ni duración registradas' if offline else '')
+            areas = attempt_skills(snapshot.get('questions'), attempt.grading_status, grading.get('questions')) if submitted else {}
+            skill_scores = [areas.get(key, (None, 0))[0] for key in SKILLS]
             append_row(results, [attempt.id, title, attempt.name, attempt.email, attempt.phone, completed,
                 None if offline else local_clock(attempt.started_at), None if offline else local_clock(attempt.submitted_at),
                 None if offline or not submitted else round(max(0,(attempt.submitted_at-attempt.started_at).total_seconds())/60,2),
                 None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado') if submitted else 'Sin entregar', score,
                 'Sí' if review else 'No', grading.get('error') or observations,
-                'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'] + ([SKILLS[skill][0], attempt.skill_score] if skill else []))
+                'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'] + skill_scores + ([SKILLS[skill][0], attempt.skill_score] if skill else []))
             # Unsubmitted drafts are not delivered answers and must not be exported.
             if not submitted:
                 continue

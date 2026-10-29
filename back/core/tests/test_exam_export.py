@@ -40,7 +40,7 @@ def test_all_pages_all_exams_and_read_only(auth_client):
     assert w['Evaluaciones']['L2'].value==0
     assert w['Evaluaciones']['L2'].data_type=='n'
     assert book(c.get(URL,{'exam':first['id']}))['Evaluaciones'].max_row==67
-    assert w['Evaluaciones'].freeze_panes=='D2' and w['Evaluaciones'].auto_filter.ref=='A1:O67'
+    assert w['Evaluaciones'].freeze_panes=='D2' and w['Evaluaciones'].auto_filter.ref=='A1:U67'
     assert 'access_token' not in str(list(w['Evaluaciones'].values))
 
 

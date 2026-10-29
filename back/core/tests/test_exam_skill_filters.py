@@ -34,8 +34,9 @@ def test_skill_order_range_top_export_and_missing_breakdown(auth_client):
     w = book(c.get('/api/recruitment-exams/export/', {**params, 'exam':exam['id'], 'top':'10'}))
     rows = list(w['Evaluaciones'].values)
     assert [r[0] for r in rows[1:]] == [ids[1], ids[2]]
-    assert rows[1][11] == 4 and rows[1][15:] == ('Ventas y marketing', 9)
-    assert w['Evaluaciones'].auto_filter.ref == 'A1:Q3'
+    assert rows[1][11] == 4 and rows[1][21:] == ('Ventas y marketing', 9)
+    assert w['Evaluaciones'].auto_filter.ref == 'A1:W3'
+    assert rows[1][15:21] == (9,) * 6
     assert c.get(endpoint, {'skill':'invented'}).status_code == 400
     assert c.get('/api/recruitment-exams/export/', {'exam':exam['id'], 'skill':'invented'}).status_code == 400
     assert c.get(endpoint).json()['count'] == 5
@@ -49,3 +50,37 @@ def test_incomplete_invalid_and_unsubmitted_are_not_skill_zero():
         assert attempt_skills(qs, 'graded', {'5':{'points':0}, '20':{'points':points}})['sales'][0] is None
     assert attempt_skills(qs, 'pending', {'5':{'points':10}, '20':{'points':10}})['sales'][0] is None
     assert attempt_skills(qs, 'graded', {'5':{'points':0}, '20':{'points':0}})['sales'][0] == 0
+
+
+@pytest.mark.parametrize('scope', ['global', 'exam'])
+def test_export_always_includes_all_skills_without_filter(auth_client, scope):
+    from core.exam_skills import SKILLS
+    c, _, _ = auth_client()
+    exam = create_exam(c)
+    questions = json.loads(Path(__file__).parents[1].joinpath('exam_template.json').read_text(encoding='utf-8'))['questions']
+    a = attempt(exam, 1, 7)
+    a.snapshot = {'duration_minutes':60, 'questions':questions}
+    grades = {str(qid):{'points':index} for index, (_, ids) in enumerate(SKILLS.values()) for qid in ids}
+    a.grading = {'score':7, 'questions':grades}; a.save()
+    total_only = attempt(exam, 2, 8)
+    partial = attempt(exam, 3, 8)
+    partial.snapshot = a.snapshot
+    partial.grading = {'score':8, 'questions':{k:v for k,v in grades.items() if k != '5'}}; partial.save()
+    pending = attempt(exam, 4, None)
+    pending.snapshot = a.snapshot; pending.save()
+    unfinished = attempt(exam, 5, 10, submitted=False)
+    unfinished.snapshot = a.snapshot; unfinished.grading = a.grading; unfinished.save()
+    params = {'exam':exam['id']} if scope == 'exam' else {}
+    w = book(c.get('/api/recruitment-exams/export/', params))
+    rows = list(w['Evaluaciones'].values)
+    assert rows[0][15:] == tuple(f'{label} / 10' for label, _ in SKILLS.values())
+    by_id = {row[0]: row for row in rows[1:]}
+    assert by_id[a.id][11] == 7
+    assert by_id[a.id][15:] == (0,1,2,3,4,5)
+    assert by_id[total_only.id][15:] == (None,) * 6
+    assert by_id[partial.id][15:] == (0,None,2,3,4,5)
+    assert by_id[pending.id][15:] == (None,) * 6
+    if scope == 'exam':
+        assert by_id[unfinished.id][15:] == (None,) * 6
+    else:
+        assert unfinished.id not in by_id
