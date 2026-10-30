@@ -4,7 +4,7 @@ import { ExamFiltersModal } from './ExamFiltersModal';
 export const skillOptions = [{id:"mathematics",label:"Matemáticas y análisis numérico"},{id:"sales",label:"Ventas y marketing"},{id:"ai",label:"Uso de IA"},{id:"processes",label:"Procesos y automatización"},{id:"management",label:"Gestión y prioridades"},{id:"information",label:"Análisis de información"}];
 type SkillRanges = Record<string, {min:string;max:string}>;
 export type ResultFilter = { skill_ranges: string; skill: string; ordering: string; top: string; q: string; status: string; min_score: string; max_score: string };
-export const emptyFilters: ResultFilter = { skill_ranges: '', skill: '', ordering: 'newest', top: '', q: '', status: '', min_score: '', max_score: '' };
+export const emptyFilters: ResultFilter = { skill_ranges: '', skill: '', ordering: 'score_desc', top: '', q: '', status: '', min_score: '', max_score: '' };
 export const filterQuery = (values: object) => new URLSearchParams(Object.entries(values).filter(([,v]) => v !== '').map(([k,v]) => [k,String(v)])).toString();
 
 export function ExamResultFilters({ onApply, busy, error, initialFilters = emptyFilters }: { onApply: (f: ResultFilter) => Promise<boolean>; busy: boolean; error?: string; initialFilters?: ResultFilter }) {
@@ -25,7 +25,7 @@ export function ExamResultFilters({ onApply, busy, error, initialFilters = empty
     <div className="exam-filter-grid">
       <label>Buscar participante<input value={filters.q} onChange={e => change('q', e.target.value)} placeholder="Nombre, correo o teléfono" /></label>
 
-      <label>Ordenar por<select aria-label="Ordenar por" value={filters.ordering} onChange={e => change('ordering',e.target.value)}><option value="newest">Más recientes</option><option value="score_desc">Calificación general más alta</option><option value="score_asc">Calificación general más baja</option><option value="name">Nombre</option></select></label>
+      <label>Ordenar por<select aria-label="Ordenar por" value={filters.ordering} onChange={e => change('ordering',e.target.value)}><option value="score_desc">Calificación general más alta</option><option value="score_asc">Calificación general más baja</option><option value="newest">Más recientes</option><option value="name">Nombre</option></select></label>
       <label>Selección<select aria-label="Selección" value={filters.top} onChange={e => change('top',e.target.value)}><option value="">Todos</option><option value="10">Mejor 10 % (incluye empates)</option></select></label>
       <label>Estado<select aria-label="Estado" value={filters.status} onChange={e => change('status',e.target.value)}><option value="">Todos</option><option value="graded">Calificados</option><option value="pending">Entregados por calificar</option><option value="unsubmitted">Sin entregar</option></select></label>
       <label>Calificación general mínima<input type="number" min="0" max="10" step="0.01" value={filters.min_score} onChange={e => change('min_score',e.target.value)} /></label>

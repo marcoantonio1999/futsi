@@ -35,6 +35,7 @@ try {
   const toggle=page.getByRole('button',{name:'Filtros',exact:true});
   const modal=page.locator('dialog.exam-filter-modal');
   await toggle.waitFor();assert.equal(await modal.isVisible(),false);
+  assert.equal(queries.at(-1).ordering,'score_desc','highest grade must be the default on initial load');
   assert.equal(await toggle.getAttribute('aria-haspopup'),'dialog');
   assert.equal(await toggle.getAttribute('aria-controls'),await modal.getAttribute('id'));
   assert((await toggle.boundingBox()).height>=44);
@@ -93,7 +94,7 @@ try {
   await toggle.click();
   await modal.getByRole('button',{name:profiles?'Limpiar filtros de perfiles':'Limpiar filtros',exact:true}).click();
   await modal.waitFor({state:'hidden'});
-  assert.deepEqual(queries.at(-1),profiles?{keyword_mode:'all',ordering:'score_desc',page:'1'}:{ordering:'newest',page:'1'});
+  assert.deepEqual(queries.at(-1),profiles?{keyword_mode:'all',ordering:'score_desc',page:'1'}:{ordering:'score_desc',page:'1'});
   assert.equal(await page.getByText('Filtros aplicados',{exact:true}).count(),0);
   assert.equal(await page.evaluate(()=>document.body.style.overflow),previousOverflow);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
