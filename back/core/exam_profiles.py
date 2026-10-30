@@ -3,8 +3,9 @@ import json
 import math
 import re
 import unicodedata
+from datetime import timedelta
 
-from django.db.models import Case, When, FloatField, BooleanField, F, Value, Q
+from django.db.models import Case, When, FloatField, BooleanField, F, Value, Q, DurationField, ExpressionWrapper
 from django.db.models.functions import Cast
 from rest_framework.exceptions import ValidationError
 
@@ -137,6 +138,29 @@ def filtered_attempts(rows, params, profiles=False):
             except (ValueError, TypeError):
                 raise ValidationError({'detail': 'La calificación debe estar entre 0 y 10.'})
             rows = rows.filter(**{f'profile_score__{operator}': number})
+    duration_bounds = {}
+    for field in ('min_minutes', 'max_minutes'):
+        value = params.get(field)
+        if value not in (None, ''):
+            try:
+                number = float(value)
+                if not math.isfinite(number) or not 0 <= number <= 525600:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise ValidationError({'detail': 'El tiempo debe ser un número de minutos entre 0 y 525600.'})
+            duration_bounds[field] = number
+    if duration_bounds.get('min_minutes', 0) > duration_bounds.get('max_minutes', 525600):
+        raise ValidationError({'detail': 'El tiempo mínimo no puede ser mayor que el máximo.'})
+    if duration_bounds:
+        # Offline imports have upload timestamps, not actual exam times.
+        offline = Q(snapshot__offline_import__source__in=['pdf_manual', 'xlsx_results'])
+        rows = rows.filter(submitted_at__isnull=False).filter(
+            Q(snapshot__offline_import__source__isnull=True) | ~offline,
+        ).annotate(exam_elapsed=ExpressionWrapper(F('submitted_at') - F('started_at'), output_field=DurationField()))
+        rows = rows.filter(exam_elapsed__gte=timedelta(0))
+        for field, operator in [('min_minutes', 'gte'), ('max_minutes', 'lte')]:
+            if field in duration_bounds:
+                rows = rows.filter(**{f'exam_elapsed__{operator}': timedelta(minutes=duration_bounds[field])})
     terms = keywords(params.get('keywords', '')) if profiles else []
     if terms:
         conditions = [Q(profile__cv_search__regex=keyword_pattern(t)) for t in terms]

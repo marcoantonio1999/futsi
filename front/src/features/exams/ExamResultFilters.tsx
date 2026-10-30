@@ -3,8 +3,8 @@ import { ExamFiltersModal } from './ExamFiltersModal';
 
 export const skillOptions = [{id:"mathematics",label:"Matemáticas y análisis numérico"},{id:"sales",label:"Ventas y marketing"},{id:"ai",label:"Uso de IA"},{id:"processes",label:"Procesos y automatización"},{id:"management",label:"Gestión y prioridades"},{id:"information",label:"Análisis de información"}];
 type SkillRanges = Record<string, {min:string;max:string}>;
-export type ResultFilter = { skill_ranges: string; skill: string; ordering: string; top: string; q: string; status: string; min_score: string; max_score: string };
-export const emptyFilters: ResultFilter = { skill_ranges: '', skill: '', ordering: 'score_desc', top: '', q: '', status: '', min_score: '', max_score: '' };
+export type ResultFilter = { skill_ranges: string; skill: string; ordering: string; top: string; q: string; status: string; min_score: string; max_score: string; min_minutes: string; max_minutes: string };
+export const emptyFilters: ResultFilter = { skill_ranges: '', skill: '', ordering: 'score_desc', top: '', q: '', status: '', min_score: '', max_score: '', min_minutes: '', max_minutes: '' };
 export const filterQuery = (values: object) => new URLSearchParams(Object.entries(values).filter(([,v]) => v !== '').map(([k,v]) => [k,String(v)])).toString();
 
 export function ExamResultFilters({ onApply, busy, error, initialFilters = emptyFilters }: { onApply: (f: ResultFilter) => Promise<boolean>; busy: boolean; error?: string; initialFilters?: ResultFilter }) {
@@ -30,7 +30,10 @@ export function ExamResultFilters({ onApply, busy, error, initialFilters = empty
       <label>Estado<select aria-label="Estado" value={filters.status} onChange={e => change('status',e.target.value)}><option value="">Todos</option><option value="graded">Calificados</option><option value="pending">Entregados por calificar</option><option value="unsubmitted">Sin entregar</option></select></label>
       <label>Calificación general mínima<input type="number" min="0" max="10" step="0.01" value={filters.min_score} onChange={e => change('min_score',e.target.value)} /></label>
       <label>Calificación general máxima<input type="number" min="0" max="10" step="0.01" value={filters.max_score} onChange={e => change('max_score',e.target.value)} /></label>
+      <label>Tiempo mínimo (minutos)<input type="number" min="0" max={filters.max_minutes || '525600'} step="any" value={filters.min_minutes} onChange={e => change('min_minutes',e.target.value)} /></label>
+      <label>Tiempo máximo (minutos)<input type="number" min={filters.min_minutes || '0'} max="525600" step="any" value={filters.max_minutes} onChange={e => change('max_minutes',e.target.value)} /></label>
     </div>
+    <p className="exam-muted">El tiempo es lo que tardaron en resolver y entregar. Al filtrar por tiempo, no se incluyen exámenes sin entregar ni cargas externas sin tiempo registrado.</p>
     <fieldset className="exam-skill-ranges"><legend>Habilidades y rangos de nota</legend>
       <p className="exam-muted">Selecciona una o varias habilidades. Cada participante debe cumplir todos los rangos marcados. Las notas son sobre 10; sin desglose de una habilidad seleccionada, no aparece en los resultados.</p>
       {skillOptions.map(({id,label}) => <div className="exam-skill-range" key={id}>
