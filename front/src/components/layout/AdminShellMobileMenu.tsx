@@ -90,7 +90,7 @@ export function AdminShellMobileMenu({
         <nav className="mt-5 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto pr-1">
           {sidebarTabs.map((tab) => (
             <div key={tab.key}>
-              <button
+              {!(isSoccerWa && tab.key === "communications") && <button
                 data-testid={`menu-tab-${tab.key}`}
                 aria-expanded={tab.key === "coaches" ? effectiveActiveTab === "coaches" && coachesMenuExpanded : tab.key === "tournaments" ? effectiveActiveTab === "tournaments" && tournamentsMenuExpanded : tab.key === "students" ? effectiveActiveTab === "students" && studentsMenuExpanded : tab.key === "guardians" ? effectiveActiveTab === "guardians" && guardiansMenuExpanded : tab.key === "communications" ? effectiveActiveTab === "communications" && communicationsMenuExpanded : undefined}
                 aria-controls={tab.key === "coaches" ? "coaches-mobile-submenu" : tab.key === "tournaments" ? "tournaments-mobile-submenu" : tab.key === "students" ? "students-mobile-submenu" : tab.key === "guardians" ? "guardians-mobile-submenu" : tab.key === "communications" ? "communications-mobile-submenu" : undefined}
@@ -108,7 +108,7 @@ export function AdminShellMobileMenu({
 {tab.key === "guardians" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {tab.key === "students" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "students" && studentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {tab.key === "tournaments" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
-              </button>
+              </button>}
         {tab.key === "coaches" && <div id="coaches-mobile-submenu" hidden={effectiveActiveTab !== "coaches" || !coachesMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           {coachSections.filter(item => item.key !== "create" || canManageCoaches).map(item => <StudentsMobileSubButton key={item.key} active={coachesSection === item.key} label={item.label} onClick={() => onSelectCoachesSection(item.key)} />)}
         </div></div>}
@@ -117,7 +117,7 @@ export function AdminShellMobileMenu({
           <StudentsMobileSubButton active={guardiansSection !== "create"} label="Gestionar tutores" onClick={() => onSelectGuardiansSection("registered")} />
           <StudentsMobileSubButton active={guardiansSection === "create"} label="Crear tutor" onClick={() => onSelectGuardiansSection("create")} />
         </div></div>}
-        {tab.key === "communications" && <div id="communications-mobile-submenu" hidden={effectiveActiveTab !== "communications" || !communicationsMenuExpanded}><CommunicationsNav section={communicationsSection} canReview={canReviewCommunicationCalls} onSelect={onSelectCommunicationsSection} /></div>}
+        {tab.key === "communications" && <div id="communications-mobile-submenu" className={isSoccerWa ? "soccerwa-direct-navigation" : undefined} hidden={!isSoccerWa && (effectiveActiveTab !== "communications" || !communicationsMenuExpanded)}><CommunicationsNav section={communicationsSection} canReview={canReviewCommunicationCalls} onSelect={onSelectCommunicationsSection} /></div>}
               {tab.key === "tournaments" && <div id="tournaments-mobile-submenu" hidden={effectiveActiveTab !== "tournaments" || !tournamentsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           <TournamentMobileSubButton active={tournamentSection === "overview" || tournamentSection === "detail"} label="Torneos activos" onClick={() => onSelectTournamentSection("overview")} />
           <TournamentMobileSubButton active={tournamentSection === "create"} label="Crear torneo" onClick={() => onSelectTournamentSection("create")} />

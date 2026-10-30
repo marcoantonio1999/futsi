@@ -99,6 +99,8 @@
 .comm-nav-subgroup .comm-nav-children{margin-left:9px;padding-left:9px}
 .dark .comm-nav-subgroup-toggle{color:#e3eae6!important}
 .comm-nav.comm-court-flat{margin-left:18px;gap:0}
+.soccerwa-direct-navigation>.comm-nav{margin-left:0}
+.soccerwa-direct-navigation .comm-court-flat-list>li>button{min-height:44px}
 .comm-nav .comm-court-flat-list{margin:0;padding:0;border:0;gap:4px}
 .comm-section-map{display:none}
 @media(max-width:1023px){

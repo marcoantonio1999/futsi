@@ -142,7 +142,7 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
     <>
       {tabs.map((tab) => (
         <div key={tab.key}>
-        <button
+        {!(isSoccerWa && sidebarExpanded && tab.key === "communications") && <button
           data-testid={`menu-tab-${tab.key}`}
           className={`relative flex w-full items-center rounded-md py-2.5 text-sm font-medium transition ${sidebarExpanded ? "gap-3 px-3 text-left" : "justify-center px-0"} ${
             effectiveActiveTab === tab.key ? shellTone.activeClass : `text-zinc-600 ${shellTone.hoverClass}`
@@ -162,7 +162,7 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
 {sidebarExpanded && tab.key === "guardians" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "guardians" && guardiansMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "students" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "students" && studentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
           {sidebarExpanded && tab.key === "tournaments" && <ChevronDown aria-hidden="true" size={15} className={`ml-auto shrink-0 transition-transform duration-200 motion-reduce:transition-none ${effectiveActiveTab === "tournaments" && tournamentsMenuExpanded ? "rotate-0" : "-rotate-90"}`} />}
-        </button>
+        </button>}
         {tab.key === "sites" && sidebarExpanded && effectiveActiveTab === "sites" && <SitesSubmenu onSelect={() => onSelectTab("sites")} />}
         {tab.key === "coaches" && <div id="coaches-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "coaches" || !coachesMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           {coachSections.filter(item => item.key !== "create" || canManageCoaches).map(item => <StudentsSubButton key={item.key} active={coachesSection === item.key} label={item.label} onClick={() => onSelectCoachesSection(item.key)} />)}
@@ -171,7 +171,7 @@ function SidebarTabButtons({ tabs, sidebarExpanded, effectiveActiveTab, billingS
           <StudentsSubButton active={guardiansSection !== "create"} label="Gestionar tutores" onClick={() => onSelectGuardiansSection("registered")} />
           <StudentsSubButton active={guardiansSection === "create"} label="Crear tutor" onClick={() => onSelectGuardiansSection("create")} />
         </div></div>}
-        {tab.key === "communications" && <div id="communications-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "communications" || !communicationsMenuExpanded}><CommunicationsNav section={communicationsSection} canReview={canReviewCommunicationCalls} onSelect={onSelectCommunicationsSection} /></div>}
+        {tab.key === "communications" && <div id="communications-sidebar-submenu" className={isSoccerWa ? "soccerwa-direct-navigation" : undefined} hidden={!sidebarExpanded || (!isSoccerWa && (effectiveActiveTab !== "communications" || !communicationsMenuExpanded))}><CommunicationsNav section={communicationsSection} canReview={canReviewCommunicationCalls} onSelect={onSelectCommunicationsSection} /></div>}
         {tab.key === "tournaments" && <div id="tournaments-sidebar-submenu" hidden={!sidebarExpanded || effectiveActiveTab !== "tournaments" || !tournamentsMenuExpanded}><div className="ml-8 mt-1 grid gap-1">
           <TournamentSubButton active={tournamentSection === "overview" || tournamentSection === "detail"} label="Torneos activos" onClick={() => onSelectTournamentSection("overview")} />
           <TournamentSubButton active={tournamentSection === "create"} label="Crear torneo" onClick={() => onSelectTournamentSection("create")} />
