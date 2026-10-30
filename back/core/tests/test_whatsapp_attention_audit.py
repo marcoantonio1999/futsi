@@ -11,6 +11,54 @@ from core.services.whatsapp_attention_audit import message_version, ignored_requ
 
 @override_settings(ALLOWED_HOSTS=['testserver'], MIGRATION_MODULES={'core':None}, FUTSI_ENV='test')
 class AttentionAuditReadTests(TransactionTestCase):
+    def test_notification_only_reopens_after_explicit_verified_ai_rejection(self):
+        from unittest.mock import patch
+        self.now=timezone.now().replace(hour=18,minute=0,second=0,microsecond=0)
+        first=self.message('¿Cuál es el costo?',240)
+        reaction=self.message('[reaction]',200,'outbound','human_whatsapp')
+        self.chat.context={'automation_paused_by_human':True,'human_last_reply_at':reaction.created_at.isoformat()}
+        self.chat.save()
+        row=self.audit([first,reaction],[],state='uncertain')
+        row.result['human_last_reply_at']=reaction.created_at.isoformat();row.save()
+        def pending():
+            with patch('core.api.whatsapp_notifications.timezone.now',return_value=self.now):
+                response=self.client.get('/api/whatsapp-conversations/attention-notifications/?scope=all')
+            self.assertEqual(response.status_code,200,response.content)
+            return [r for r in response.json()['items'] if r['kind']=='pending']
+        self.assertEqual(pending(),[])
+        row.result.update(current_state='pending',reaction_policy='human_reaction_v1',insufficient_reaction_ids=[reaction.pk]);row.save()
+        self.assertEqual(len(pending()),1)
+        # The immutable reaction and real timestamp are still present.
+        reaction.refresh_from_db();self.assertEqual(reaction.body,'[reaction]')
+
+    def test_only_verified_new_explicit_ai_evidence_revokes_reaction(self):
+        first=self.message('¿Cuánto cuesta?',40)
+        reaction=self.message('[reaction]',30,'outbound','human_whatsapp')
+        row=self.audit([first,reaction],[],state='pending')
+        self.assertEqual(self.report()['summary']['answered'],1)
+        row.result.update(reaction_policy='human_reaction_v1',insufficient_reaction_ids=[reaction.pk])
+        row.save()
+        self.assertEqual(self.report()['summary']['unanswered'],1)
+        self.assertEqual(self.report()['summary']['answered'],0)
+        # Uncertain/old evidence never removes the provisional human reply.
+        row.result['current_state']='uncertain';row.save()
+        self.assertEqual(self.report()['summary']['answered'],1)
+        row.result['current_state']='pending';row.result['message_versions'][str(first.pk)]='wrong';row.save()
+        self.assertEqual(self.report()['summary']['answered'],1)
+
+    def test_ai_revocation_changes_only_report_and_later_text_answers_normally(self):
+        first=self.message('¿Cuánto cuesta?',40)
+        reaction=self.message('[reaction]',30,'outbound','human_whatsapp')
+        event=WhatsAppHumanResponseEvent.objects.create(conversation=self.chat,first_inbound_message=first,
+            first_inbound_at=first.created_at,responded_at=reaction.created_at,response_message=reaction,response_seconds=600)
+        row=self.audit([first,reaction],[],state='pending')
+        row.result.update(reaction_policy='human_reaction_v1',insufficient_reaction_ids=[reaction.pk]);row.save()
+        self.assertEqual(self.report()['summary']['unanswered'],1)
+        event.refresh_from_db();self.assertEqual(event.response_message_id,reaction.pk)
+        self.assertEqual(event.response_seconds,600)
+        self.message('Cuesta cien pesos',20,'outbound','human_whatsapp')
+        self.assertEqual(self.report()['summary']['answered'],1)
+        self.assertEqual(self.report()['summary']['average_response_seconds'],1200)
     def setUp(self):
         assert settings.FUTSI_ENV == 'test' and (connection.vendor == 'sqlite' or str(connection.settings_dict['NAME']).startswith('test_'))
         self.created_private_table = QualityAudit._meta.db_table not in connection.introspection.table_names()

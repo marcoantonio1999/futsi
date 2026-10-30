@@ -141,6 +141,21 @@ test("suspicious names are flagged without classifying legitimate names as inval
 const msg = (id, direction, source, hour, extra = {}) => ({ id, direction, response_source: source, created_at: `2026-09-05T${hour}:00:00Z`, event_type: "message", body: "Mensaje", routing_decision: "unclassified", ...extra });
 const chat = (messages, extra = {}) => ({ id: 1, messages, status: "active", human_takeover_active: false, human_last_reply_at: null, follow_up_required: false, follow_up_assigned_to: null, follow_up_updated_at: null, bot_response_pending: false, created_at: "2026-09-05T09:00:00Z", last_message_at: messages.at(-1)?.created_at ?? null, ...extra });
 
+test('team reaction immediately answers, later verified AI can reopen, new messages invalidate it',()=>{
+  const c=chat([msg(1,'inbound','unknown','10',{body:'¿Cuál es el precio?'}),
+    msg(2,'outbound','human_whatsapp','11',{body:'[reaction]'})],{human_takeover_active:true});
+  assert.equal(conversationAttention(c).key,'waiting_client');
+  assert.equal(Date.parse(conversationAttention(c).since),Date.parse(c.messages[1].created_at));
+  const review={current_state:'pending',last_message_id:2,analyzed_until:'2026-09-05T12:00:00Z'};
+  assert.equal(conversationAttention({...c,attention_analysis:review}).key,'needs_reply');
+  assert.equal(conversationAttention({...c,attention_analysis:review,messages:[...c.messages,
+    msg(3,'outbound','human_dashboard','12',{body:'Cuesta cien pesos'})]}).key,'waiting_client');
+  assert.equal(conversationAttention({...c,messages:[...c.messages,
+    msg(3,'inbound','unknown','12',{body:'¿Y la inscripción?'})]}).key,'needs_reply');
+  assert.equal(conversationAttention({...c,messages:[c.messages[0],
+    msg(2,'inbound','unknown','11',{body:'[reaction]'})]}).key,'needs_reply');
+});
+
 test('weekly contextual closure changes existing status without inventing a reply', () => {
   const messages=[msg(1,'outbound','human_whatsapp','10',{body:'Te esperamos mañana'}),msg(2,'inbound','unknown','11',{body:'Sí, nos vemos'})];
   const c=chat(messages,{attention_analysis:{current_state:'closed',last_message_id:2,analyzed_until:'2026-09-05T12:00:00Z'}});

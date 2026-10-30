@@ -42,6 +42,35 @@ class CourtesyResponseReportTests(TestCase):
                      'Gracias mi hijo tiene 7 años','Adiós me confirman la inscripción','[audio]','[image]','你好','1234','']:
             with self.subTest(text=text): self.assertFalse(closing_acknowledgement(text))
 
+    def test_team_reaction_answers_manual_image_at_actual_time(self):
+        self.message('[image]',40,routing='unclassified')
+        reaction=self.message('[reaction]',27,'outbound','human_whatsapp')
+        data=self.report()
+        self.assertEqual(data['summary']['answered'],1)
+        self.assertEqual(data['summary']['unanswered'],0)
+        self.assertEqual(data['longest_waits'][0]['response_seconds'],13*60)
+        self.assertEqual(data['longest_waits'][0]['responded_at'],reaction.created_at.isoformat())
+        self.assertEqual(WhatsAppHumanResponseEvent.objects.count(),0)
+
+    def test_historical_event_uses_earliest_reaction_without_writing_history(self):
+        first=self.message('¿Qué horarios tienen?',40)
+        reaction=self.message('[reaction]',27,'outbound','human_whatsapp')
+        text=self.message('Te confirmo enseguida',20,'outbound','human_whatsapp')
+        event=self.event(first,text)
+        self.assertEqual(self.report()['longest_waits'][0]['responded_at'],reaction.created_at.isoformat())
+        event.refresh_from_db()
+        self.assertEqual(event.response_message_id,text.pk)
+        self.assertEqual(event.responded_at,text.created_at)
+
+    def test_reaction_does_not_answer_a_later_request_or_a_group(self):
+        self.message('Necesito el horario',45,routing='unclassified')
+        self.message('[reaction]',40,'outbound','human_dashboard')
+        self.message('¿Cuál es el precio?',10,routing='unclassified')
+        data=self.report()['summary']
+        self.assertEqual((data['answered'],data['unanswered']),(1,1))
+        self.conversation.context={'is_group':True};self.conversation.save()
+        self.assertEqual(self.report()['summary']['total'],0)
+
     def test_groups_never_contribute_response_events_or_waits(self):
         first=self.message('Necesitamos información',30)
         self.event(first)

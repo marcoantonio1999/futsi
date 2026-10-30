@@ -922,7 +922,7 @@ def test_weekly_whatsapp_stats_recovers_manual_channel_without_events(auth_clien
 
 @pytest.mark.parametrize('pending_question', [False, True])
 @pytest.mark.parametrize('reaction_direction', ['inbound', 'outbound'])
-def test_weekly_whatsapp_stats_ignores_reactions_without_closing_questions(auth_client, pending_question, reaction_direction):
+def test_weekly_whatsapp_stats_only_team_reactions_close_questions(auth_client, pending_question, reaction_direction):
     conversation = WhatsAppConversation.objects.create(
         contact_phone='+525500000113', from_address='whatsapp:+525500000113',
         to_address=f'whatsapp:{WHATSAPP_NUMBER}', status='active', current_step='faq',
@@ -938,8 +938,8 @@ def test_weekly_whatsapp_stats_ignores_reactions_without_closing_questions(auth_
     response = client.get('/api/whatsapp-conversations/weekly-stats/')
     assert response.status_code == 200
     assert response.json()['summary']['total'] == int(pending_question)
-    assert response.json()['summary']['unanswered'] == int(pending_question)
-    assert response.json()['summary']['answered'] == 0
+    assert response.json()['summary']['unanswered'] == int(pending_question and reaction_direction == 'inbound')
+    assert response.json()['summary']['answered'] == int(pending_question and reaction_direction == 'outbound')
 
 
 def test_weekly_whatsapp_stats_does_not_recover_bot_handled_message(auth_client):

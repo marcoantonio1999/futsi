@@ -52,7 +52,7 @@ from core.api.manual_message_transport import (
     send_text_for_channel,
 )
 from core.veronica_access import court_communications_allowed_channels, is_court_communications_only
-from core.whatsapp.attention import closing_acknowledgement
+from core.whatsapp.attention import closing_acknowledgement, is_human_reaction, reportable_messages_q
 from core.whatsapp.conversation_scope import individual_conversations
 
 
@@ -87,7 +87,39 @@ def _response_event_summary(events):
     }
 
 
-def _reportable_response_events(events, start_at, end_at, ignored_ids=None):
+def _reaction_response_events(events, end_at, invalid_reactions=None):
+    """Repair the read model using actual human replies; never write timestamps."""
+    invalid_reactions = invalid_reactions or set()
+    if not events:
+        return events
+    replies = WhatsAppMessage.objects.filter(reportable_messages_q(),
+        conversation_id__in={e.conversation_id for e in events}, direction='outbound',
+        response_source__in=('human_whatsapp','human_dashboard'),
+        created_at__gte=min(e.first_inbound_at for e in events), created_at__lt=end_at,
+    ).exclude(pk__in=invalid_reactions).select_related('sent_by').order_by('created_at','id')
+    by_chat = {}
+    for reply in replies:
+        by_chat.setdefault(reply.conversation_id,[]).append(reply)
+    result = []
+    for event in events:
+        rejected = getattr(event,'response_message_id',None) in invalid_reactions
+        first = next((m for m in by_chat.get(event.conversation_id,[]) if
+            (m.created_at,m.pk) > (event.first_inbound_at,event.first_inbound_message_id)),None)
+        earlier_reaction = first and is_human_reaction(first.direction, first.response_source, first.body) and (
+            event.responded_at is None or first.created_at < event.responded_at)
+        if rejected or earlier_reaction:
+            event = copy(event)
+            event.responded_at = first.created_at if first else None
+            event.response_seconds = max(0,int((first.created_at-event.first_inbound_at).total_seconds())) if first else None
+            event.response_message_id = first.pk if first else None
+            event.responder_user_id = first.sent_by_id if first else None
+            event.responder_user = first.sent_by if first else None
+            event.response_channel = ('dashboard' if first.response_source == 'human_dashboard' else 'whatsapp_business') if first else 'none'
+        result.append(event)
+    return result
+
+
+def _reportable_response_events(events, start_at, end_at, ignored_ids=None, invalid_reactions=None):
     """Correct old courtesy-started events on read, without rewriting history.
 
     If a real request followed the courtesy, start its clock at that request.
@@ -96,7 +128,7 @@ def _reportable_response_events(events, start_at, end_at, ignored_ids=None):
     ignored_ids = ignored_ids or set()
     courtesy = [event for event in events if event.first_inbound_message_id in ignored_ids or closing_acknowledgement(event.first_inbound_message.body)]
     if not courtesy:
-        return events
+        return _reaction_response_events(events, end_at, invalid_reactions)
     messages = WhatsAppMessage.objects.filter(
         conversation_id__in={event.conversation_id for event in courtesy}, direction='inbound',
         created_at__gte=min(event.first_inbound_at for event in courtesy), created_at__lt=end_at,
@@ -119,15 +151,16 @@ def _reportable_response_events(events, start_at, end_at, ignored_ids=None):
             continue
         event = copy(event)
         event.first_inbound_at = request['created_at']
+        event.first_inbound_message_id = request['id']
         event.within_business_hours = request['within_business_hours']
         event.contact_type = request['contact_type']
         if event.responded_at:
             event.response_seconds = max(0,int((event.responded_at-event.first_inbound_at).total_seconds()))
         corrected.append(event)
-    return corrected
+    return _reaction_response_events(corrected, end_at, invalid_reactions)
 
 
-def _manual_response_events(conversations, recorded_events, start_at, end_at, ignored_ids=None):
+def _manual_response_events(conversations, recorded_events, start_at, end_at, ignored_ids=None, invalid_reactions=None):
     """Recover manual-only conversations that predate response-event tracking.
 
     Consecutive incoming messages are one request; the first human reply closes it.
@@ -142,7 +175,7 @@ def _manual_response_events(conversations, recorded_events, start_at, end_at, ig
             created_at__lt=end_at,
         )
         .exclude(conversation_id__in=recorded_conversations)
-        .exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$')
+        .filter(reportable_messages_q()).exclude(pk__in=invalid_reactions or set())
         .select_related("conversation", "conversation__booking", "sent_by")
         .defer("classification_evidence")
         .order_by("conversation_id", "created_at", "id")
@@ -979,10 +1012,11 @@ class WhatsAppConversationViewSet(
             )
             .order_by("first_inbound_at", "id")
         )
-        from core.services.whatsapp_attention_audit import ignored_request_ids
+        from core.services.whatsapp_attention_audit import ignored_request_ids, invalid_reaction_ids
         ignored_ids = ignored_request_ids(conversations.order_by().values('pk'), start_at, now)
-        events = _reportable_response_events(events, start_at, end_at, ignored_ids)
-        events.extend(_manual_response_events(conversations, events, start_at, end_at, ignored_ids))
+        invalid_reactions = invalid_reaction_ids(conversations.order_by().values('pk'), start_at, now)
+        events = _reportable_response_events(events, start_at, end_at, ignored_ids, invalid_reactions)
+        events.extend(_manual_response_events(conversations, events, start_at, end_at, ignored_ids, invalid_reactions))
 
         responder_groups = {}
         for event in events:

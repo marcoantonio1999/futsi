@@ -146,7 +146,8 @@ export function acknowledgementIds(c: WhatsAppConversation): Set<number> {
 export function conversationAttention(c: WhatsAppConversation): ConversationAttention {
   const nonRevokedMessages = orderedMessages(c).filter(m => m.event_type !== "revoked");
   const latestEvent = nonRevokedMessages.at(-1);
-  const messages = nonRevokedMessages.filter(m => m.body.trim().toLowerCase() !== "[reaction]");
+  const messages = nonRevokedMessages.filter(m => m.body.trim().toLowerCase() !== "[reaction]"
+    || (m.direction === "outbound" && ["human_dashboard", "human_whatsapp"].includes(m.response_source)));
   const last = messages.at(-1);
   const inbound = messages.filter(m => m.direction === "inbound").at(-1);
   const human = messages.filter(m => m.direction === "outbound" && ["human_dashboard", "human_whatsapp"].includes(m.response_source)).at(-1);

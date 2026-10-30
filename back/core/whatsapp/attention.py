@@ -7,6 +7,17 @@ import re
 import unicodedata
 
 
+def is_human_reaction(direction, source, body):
+    return direction == 'outbound' and source in ('human_whatsapp', 'human_dashboard') and str(body or '').strip().lower() == '[reaction]'
+
+
+def reportable_messages_q():
+    from django.db.models import Q
+    return ~Q(body__iregex=r'^\s*\[revoke\]\s*$') & (
+        ~Q(body__iregex=r'^\s*\[reaction\]\s*$') |
+        Q(direction='outbound', response_source__in=('human_whatsapp','human_dashboard')))
+
+
 _CLOSING = re.compile(
     r"(?:muchas? |muchisimas? |mil |muchisisimas? )?gracia+s+"
     r"(?: (?:por (?:todo|la (?:informacion|info|ayuda|atencion|respuesta)|el (?:apoyo|dato)|confirmar|avisar)|a ti|a usted|a ustedes))?"

@@ -6,7 +6,7 @@ from django.db import models
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from core.models import WhatsAppHumanResponseEvent, WhatsAppMessage
-from core.whatsapp.attention import closing_acknowledgement
+from core.whatsapp.attention import closing_acknowledgement, reportable_messages_q
 from core.whatsapp.conversation_scope import individual_conversations
 
 MEXICO = ZoneInfo("America/Mexico_City")
@@ -44,10 +44,11 @@ def attention_notifications(conversations, now=None):
         conversation__in=conversations, human_attention_expected=True,
         first_inbound_at__gte=start, first_inbound_at__lte=now,
     ).select_related("conversation", "responder_user", "first_inbound_message").order_by("first_inbound_at"))
-    from core.services.whatsapp_attention_audit import ignored_request_ids
+    from core.services.whatsapp_attention_audit import ignored_request_ids, invalid_reaction_ids
     ignored_ids = ignored_request_ids(conversations.values('pk'), start, now)
-    events = _reportable_response_events(events, start, now, ignored_ids)
-    events.extend(_manual_response_events(conversations, events, start, now, ignored_ids))
+    invalid_reactions = invalid_reaction_ids(conversations.values('pk'), start, now)
+    events = _reportable_response_events(events, start, now, ignored_ids, invalid_reactions)
+    events.extend(_manual_response_events(conversations, events, start, now, ignored_ids, invalid_reactions))
     groups = {}
     for event in events:
         if event.response_seconds is None:
@@ -67,13 +68,14 @@ def attention_notifications(conversations, now=None):
                 "sample_count": len(durations), "week_start": str(monday),
                 **labels.get(address, {})})
     if 8 <= local.hour < 22:
-        meaningful = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef("pk")).exclude(
-            body__iregex=r'^\s*\[(reaction|revoke)\]\s*$')
+        meaningful = WhatsAppMessage.objects.filter(reportable_messages_q(),conversation_id=models.OuterRef("pk")).exclude(pk__in=invalid_reactions)
+        rejected = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef('pk'),pk__in=invalid_reactions).order_by('-created_at','-id')
         last_out = meaningful.filter(direction="outbound").order_by("-created_at", "-id")
         latest = meaningful.order_by("-created_at", "-id")
         inbound = meaningful.filter(direction="inbound").exclude(pk__in=ignored_ids).order_by("-created_at", "-id")
         human = meaningful.filter(direction="outbound", response_source__in=("human_whatsapp", "human_dashboard")).order_by("-created_at", "-id")
         pending = conversations.annotate(
+            alert_rejected_human_at=models.Subquery(rejected.values('created_at')[:1]),
             alert_last_direction=models.Subquery(latest.values("direction")[:1]),
             alert_last_id=models.Subquery(latest.values("id")[:1]),
             alert_last_at=models.Subquery(latest.values("created_at")[:1]),
@@ -91,7 +93,7 @@ def attention_notifications(conversations, now=None):
             )).order_by("created_at", "id")
         first_human_wait = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef("pk"), direction="inbound").exclude(pk__in=ignored_ids).exclude(body__iregex=r'^\s*\[(reaction|revoke)\]\s*$').filter(created_at__gt=Coalesce(models.OuterRef("alert_human_at"), models.Value(datetime(1970, 1, 1, tzinfo=MEXICO)), output_field=models.DateTimeField())).order_by("created_at", "id")
         pending_rows = list(pending.annotate(alert_started_at=models.Subquery(first.values("created_at")[:1]), alert_human_started_at=models.Subquery(first_human_wait.values("created_at")[:1])).values(
-            "id", "to_address", "contact_phone", "context", "channel_site_id", "channel_site_name", "channel_label", "alert_started_at", "alert_last_id", "alert_last_at", "alert_last_out", "alert_inbound_at", "alert_inbound_body", "alert_inbound_routing", "alert_human_at", "alert_human_started_at", "alert_last_direction",
+            "id", "to_address", "contact_phone", "context", "channel_site_id", "channel_site_name", "channel_label", "alert_started_at", "alert_last_id", "alert_last_at", "alert_last_out", "alert_inbound_at", "alert_inbound_body", "alert_inbound_routing", "alert_human_at", "alert_human_started_at", "alert_last_direction", "alert_rejected_human_at",
         ))
         # Inspect the open incoming turn, not just its last emoji. One bounded
         # read for the visible candidates; no per-chat lookup, model or timer.
@@ -112,7 +114,8 @@ def attention_notifications(conversations, now=None):
             human_at = chat["alert_human_at"]
             try:
                 recorded = datetime.fromisoformat(str(context.get("human_last_reply_at", "")).replace("Z", "+00:00"))
-                if recorded.tzinfo and (human_at is None or recorded > human_at):
+                rejected_at=chat['alert_rejected_human_at']
+                if recorded.tzinfo and (not rejected_at or recorded > rejected_at+timedelta(seconds=2)) and (human_at is None or recorded > human_at):
                     human_at = recorded
             except ValueError:
                 pass

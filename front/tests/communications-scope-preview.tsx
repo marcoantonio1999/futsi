@@ -32,6 +32,15 @@ if (new URLSearchParams(location.search).has('closing-regression')) {
     if(index===1) conversation.messages[2].body='¿Y cuánto cuesta la inscripción?';
   });
 }
+if (new URLSearchParams(location.search).has('team-reaction')) {
+  conversations.forEach((conversation,index)=>{
+    conversation.messages=[
+      {id:index*100+1,body:'¿Cuál es el costo?',direction:'inbound',response_source:'unknown',routing_decision:'unclassified',event_type:'message',created_at:new Date(Date.now()-20*60000).toISOString()},
+      {id:index*100+2,body:'[reaction]',direction:'outbound',response_source:'human_whatsapp',routing_decision:'unclassified',event_type:'message',created_at:new Date(Date.now()-7*60000).toISOString()},
+    ] as WhatsAppConversation['messages'];
+    if(index===1) conversation.messages.push({id:index*100+3,body:'¿Y la inscripción?',direction:'inbound',response_source:'unknown',routing_decision:'unclassified',event_type:'message',created_at:now} as WhatsAppConversation['messages'][number]);
+  });
+}
 // Saved weekly snapshots exercise existing counters without new UI or AI calls.
 if (new URLSearchParams(location.search).has('weekly-attention')) {
   conversations.forEach((conversation,index) => {
