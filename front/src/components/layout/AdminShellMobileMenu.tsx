@@ -77,11 +77,11 @@ export function AdminShellMobileMenu({
       >
         <div className="flex shrink-0 items-center justify-between">
           <div className="flex items-center gap-2">
-            <img className={isSoccerWa ? "h-10 w-10 object-contain" : "h-10 w-10 rounded-full object-cover"} src={isSoccerWa ? "./soccer-wa-logo.png" : "./favicon.png"} alt={isSoccerWa ? "Soccer WA" : "Futsi"} />
-            <div>
+            <img className={isSoccerWa ? "h-auto w-36 object-contain" : "h-10 w-10 rounded-full object-cover"} src={isSoccerWa ? "./soccer-wa-logo.png" : "./favicon.png"} alt={isSoccerWa ? "Soccer WA" : "Futsi"} />
+            {!isSoccerWa && <div>
               <p className="font-semibold">{shellTone.appName}</p>
               <p className="text-xs text-zinc-500">{shellTone.subtitle}</p>
-            </div>
+            </div>}
           </div>
           <button className="grid size-9 place-items-center rounded-md border border-zinc-200" onClick={onClose} type="button">
             <X size={16} />
