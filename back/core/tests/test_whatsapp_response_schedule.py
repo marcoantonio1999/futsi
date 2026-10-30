@@ -36,7 +36,7 @@ def test_default_and_admin_update_are_separate_from_bot(auth_client):
     site=make_site(); url=f'{URL}?site={site.id}'
     bot=WhatsAppAutomationSettings.objects.create(business_address='meta:123456789',business_hours_end=time(18))
     defaults=client.get(url).json()
-    assert defaults=={'days':list(range(7)),'starts_at':'09:00','ends_at':'20:00','timezone':str(ZONE),'can_edit':True,'site':site.id,'site_name':site.name}
+    assert defaults=={'days':list(range(7)),'starts_at':'09:00','ends_at':'20:00','weekly_hours':{str(d):[{'start':'09:00','end':'20:00'}] for d in range(7)},'timezone':str(ZONE),'can_edit':True,'site':site.id,'site_name':site.name}
     saved=client.patch(url,{'days':[4,0],'starts_at':'10:00','ends_at':'19:00'},format='json')
     assert saved.status_code==200 and saved.json()['days']==[0,4]
     assert client.get(url).json()['starts_at']=='10:00'

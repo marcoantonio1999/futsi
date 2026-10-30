@@ -4,10 +4,13 @@ Cada cancha tiene su horario independiente en Soccer WA → Configurar horario l
 Inicial: todos los días, 09:00–20:00, America/Mexico_City. Los botones de días repiten cada semana.
 
 - GET/PATCH `/api/whatsapp-conversations/response-schedule/?site=<id>`; la API valida la sede del usuario en lectura y escritura. En cuentas de cancha, omitir `site` usa su sede principal. Un ID de otra sede recibe 403, aunque se manipule la URL.
-- PATCH exige días únicos 0–6 (lunes=0), al menos uno, y horas HH:MM con cierre posterior a apertura. No admite turnos nocturnos.
+- PATCH nuevo: `{"weekly_hours":{"0":[{"start":"09:00","end":"20:00"}],... ,"6":[]}}`. Las siete claves 0–6 representan lunes–domingo; hasta cuatro tramos por día, sin cruces, con horas HH:MM y apertura anterior al cierre. Lista vacía = día sin atención. Al menos un tramo semanal. No admite turnos que crucen medianoche.
 - Tabla privada `whatsapp_site_response_schedules`, una fila por sede. Migración 0078 habilita RLS y revoca acceso público/anon/authenticated. Cambios auditados con sede y autor. La tabla singleton 0077 se conserva intacta como legado y ya no participa en lecturas ni escrituras de la función.
 - Histórico, promedios por responsable y notificaciones resuelven el horario de cada conversación según la sede del número empresarial; solo si no hay asociación usan la sede de la conversación. No se aplica un horario único a un reporte consolidado. Solicitudes fuera de horario siguen pendientes, pero acumulan cero tiempo hasta abrir.
 - Se recalculan los periodos consultados con el horario vigente de cada sede. No se reescriben eventos, mensajes, respuestas ni sus fechas; cambiar horario puede cambiar métricas históricas mostradas solo de esa cancha. Sedes sin horario guardado usan 09:00–20:00 todos los días; no heredan ajustes de otras sedes.
 - No cambia `WhatsAppAutomationSettings` ni las respuestas del bot. No añade cron, IA ni sondeo. Cómputo por intervalo con semanas completas y hasta seis días restantes.
+
+- Migración 0079 añade `weekly_hours` nullable. `null` conserva exactamente los días y horas del editor anterior hasta que se guarde el formato diario; no se borran horarios existentes. Las pantallas antiguas no pueden sobrescribir un horario diario con uno uniforme: reciben 400 y deben recargar.
+- Cada día tiene botón verde/marca de selección, horas propias y «Agregar horario»; día sin atención se muestra con botón de contorno. El cálculo suma solo la intersección con cada tramo, nunca los descansos.
 
 Pruebas: `test_whatsapp_response_schedule.py`, notificaciones, cortesías, reacciones y acceso por sede. Fixture local `communications-scope-preview.html?section=weekly-stats&history-phone` permite probar el modal sin datos reales.

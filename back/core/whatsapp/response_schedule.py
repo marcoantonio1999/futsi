@@ -53,13 +53,52 @@ class ResponseScheduleSerializer(serializers.ModelSerializer):
         return attrs
 
 
+def weekly_hours(schedule):
+    saved = getattr(schedule, 'weekly_hours', None)
+    if saved is not None:
+        return saved
+    return {str(day):[{'start':schedule.starts_at.strftime('%H:%M'),'end':schedule.ends_at.strftime('%H:%M')}]
+            if day in schedule.days else [] for day in range(7)}
+
+
+class WeeklyHoursSerializer(serializers.Serializer):
+    weekly_hours = serializers.JSONField()
+
+    def validate_weekly_hours(self, value):
+        import re
+        if not isinstance(value, dict) or set(value) != {str(d) for d in range(7)}:
+            raise serializers.ValidationError('Incluye los siete días, de lunes a domingo.')
+        result = {}
+        count = 0
+        for day, slots in value.items():
+            if not isinstance(slots, list) or len(slots)>4:
+                raise serializers.ValidationError('Se admiten hasta cuatro horarios por día.')
+            cleaned = []
+            for slot in slots:
+                if not isinstance(slot, dict) or set(slot) != {'start','end'} or any(
+                    not isinstance(slot[k],str) or not re.fullmatch(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]',slot[k]) for k in ('start','end')):
+                    raise serializers.ValidationError('Usa horas válidas en formato HH:MM.')
+                if slot['start'] >= slot['end']:
+                    raise serializers.ValidationError('Cada cierre debe ser posterior a su apertura.')
+                cleaned.append({'start':slot['start'],'end':slot['end']})
+            cleaned.sort(key=lambda s:s['start'])
+            if any(a['end']>b['start'] for a,b in zip(cleaned,cleaned[1:])):
+                raise serializers.ValidationError('Los horarios de un mismo día no deben superponerse.')
+            result[day] = cleaned
+            count += len(cleaned)
+        if not count:
+            raise serializers.ValidationError('Agrega al menos un horario laboral.')
+        return result
+
+
 def schedule_data(schedule):
-    return {**ResponseScheduleSerializer(schedule).data, 'timezone': str(MEXICO), 'site':schedule.site_id}
+    return {**ResponseScheduleSerializer(schedule).data, 'weekly_hours':weekly_hours(schedule), 'timezone': str(MEXICO), 'site':schedule.site_id}
 
 
 def is_working(at, schedule):
     local = at.astimezone(MEXICO)
-    return local.weekday() in schedule.days and schedule.starts_at <= local.time() < schedule.ends_at
+    return any(time.fromisoformat(s['start']) <= local.time() < time.fromisoformat(s['end'])
+               for s in weekly_hours(schedule)[str(local.weekday())])
 
 
 def working_seconds(start, end, schedule=None):
@@ -67,12 +106,14 @@ def working_seconds(start, end, schedule=None):
     if not start or not end or end <= start:
         return 0
     start, end = start.astimezone(MEXICO), end.astimezone(MEXICO)
+    hours = weekly_hours(schedule)
     def part(day, lower, upper):
-        if day.weekday() not in schedule.days:
-            return 0
-        opening = datetime.combine(day, schedule.starts_at, MEXICO)
-        closing = datetime.combine(day, schedule.ends_at, MEXICO)
-        return max(0, int((min(upper, closing) - max(lower, opening)).total_seconds()))
+        total = 0
+        for slot in hours[str(day.weekday())]:
+            opening = datetime.combine(day, time.fromisoformat(slot['start']), MEXICO)
+            closing = datetime.combine(day, time.fromisoformat(slot['end']), MEXICO)
+            total += max(0,int((min(upper,closing)-max(lower,opening)).total_seconds()))
+        return total
     if start.date() == end.date():
         return part(start.date(), start, end)
     total = part(start.date(), start, datetime.combine(start.date(), time.max, MEXICO))
@@ -80,7 +121,8 @@ def working_seconds(start, end, schedule=None):
     # At most six individual dates, regardless of how old a request is.
     full_days = (end.date() - start.date()).days - 1
     weeks, remaining = divmod(full_days, 7)
-    duration = (datetime.combine(start.date(), schedule.ends_at) - datetime.combine(start.date(), schedule.starts_at)).total_seconds()
-    count = weeks * len(schedule.days)
-    count += sum((start.date() + timedelta(days=i+1)).weekday() in schedule.days for i in range(remaining))
-    return total + int(count * duration)
+    daily = {d:sum((datetime.combine(start.date(),time.fromisoformat(s['end'])) - datetime.combine(start.date(),time.fromisoformat(s['start']))).total_seconds()
+                   for s in hours[str(d)]) for d in range(7)}
+    total += weeks * sum(daily.values())
+    total += sum(daily[(start.date()+timedelta(days=i+1)).weekday()] for i in range(remaining))
+    return int(total)

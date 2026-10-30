@@ -1711,6 +1711,7 @@ class WhatsAppSiteResponseSchedule(TimestampedModel):
     days = models.JSONField(default=list)
     starts_at = models.TimeField(default=time(9))
     ends_at = models.TimeField(default=time(20))
+    weekly_hours = models.JSONField(null=True, blank=True, default=None)
 
     class Meta:
         db_table = 'whatsapp_site_response_schedules'

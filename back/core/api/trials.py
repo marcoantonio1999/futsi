@@ -490,7 +490,7 @@ class WhatsAppConversationViewSet(
 ):
     @action(detail=False, methods=['get', 'patch'], url_path='response-schedule', permission_classes=[CanViewWhatsAppWeeklyStats])
     def response_schedule(self, request):
-        from core.whatsapp.response_schedule import get_schedule, schedule_data, ResponseScheduleSerializer
+        from core.whatsapp.response_schedule import get_schedule, schedule_data, ResponseScheduleSerializer, WeeklyHoursSerializer
         from core.models import WhatsAppSiteResponseSchedule, Site
         unrestricted = request.user.role in ADMIN_ROLES and not request.user.section_permissions
         raw_site = request.query_params.get('site') or (str(request.user.primary_site_id) if request.user.primary_site_id else '')
@@ -505,16 +505,20 @@ class WhatsAppConversationViewSet(
             raise ValidationError('Cancha inválida.')
         if request.method in {'GET', 'HEAD'}:
             return Response({**schedule_data(get_schedule(site_id)), 'site_name':site.name, 'can_edit':True})
-        if not isinstance(request.data, dict) or set(request.data) != {'days', 'starts_at', 'ends_at'}:
-            raise ValidationError('Envía los días, apertura y cierre.')
-        serializer = ResponseScheduleSerializer(data=request.data)
+        if not isinstance(request.data, dict) or set(request.data) not in ({'weekly_hours'}, {'days','starts_at','ends_at'}):
+            raise ValidationError('Envía los horarios de la semana.')
+        serializer = WeeklyHoursSerializer(data=request.data) if 'weekly_hours' in request.data else ResponseScheduleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
             schedule, _ = WhatsAppSiteResponseSchedule.objects.get_or_create(site_id=site_id, defaults={'days':list(range(7))})
             schedule = WhatsAppSiteResponseSchedule.objects.select_for_update().get(site_id=site_id)
+            if schedule.weekly_hours is not None and 'weekly_hours' not in serializer.validated_data:
+                raise ValidationError('Recarga la página para editar los horarios por día sin reemplazarlos por uno único.')
             before = schedule_data(schedule)
             for key, value in serializer.validated_data.items():
                 setattr(schedule, key, value)
+            if 'weekly_hours' not in serializer.validated_data:
+                schedule.weekly_hours = None  # compatibility with an already-open older editor
             schedule.save()
             AuditLog.objects.create(actor=request.user, action='whatsapp_response_schedule_updated',
                 table_name='whatsapp_site_response_schedules', record_id=str(site_id), previous_values=before,
