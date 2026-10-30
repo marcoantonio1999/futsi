@@ -98,13 +98,17 @@ window.fetch = async (input, init) => {
     const scoped = filterCommunications(data, { site: url.searchParams.get("site") || "all", address: url.searchParams.get("business_address") || "all" });
     const count = scoped.whatsappConversations.length;
     const summary = { total: count, answered: 0, unanswered: count, average_response_seconds: null, median_response_seconds: null, within_5_minutes_percent: 0, within_10_minutes_percent: 0, within_30_minutes_percent: 0, within_60_minutes_percent: 0 };
-    return Response.json({ week_start: url.searchParams.get("week_start"), week_end: now.slice(0, 10), generated_at: now, summary, business_hours: summary, outside_business_hours: { ...summary, total: 0, unanswered: 0 }, classifications: { prospect: count, current_client: 0, ambiguous: 0 }, by_responder: [], longest_waits: [] });
+    const longest_waits = new URLSearchParams(location.search).has('history-phone') ? [
+      { id: 1, conversation_id: 1, contact_name: 'Contacto de prueba', contact_phone: '+525500001234', first_inbound_at: now, responded_at: null, response_seconds: 1800 },
+      { id: 2, conversation_id: 2, contact_name: 'Sin teléfono', contact_phone: '', first_inbound_at: now, responded_at: now, response_seconds: 763 },
+    ] : [];
+    return Response.json({ week_start: url.searchParams.get("week_start"), week_end: now.slice(0, 10), generated_at: now, summary, business_hours: summary, outside_business_hours: { ...summary, total: 0, unanswered: 0 }, classifications: { prospect: count, current_client: 0, ambiguous: 0 }, by_responder: [], longest_waits });
   }
   throw new Error("QA blocks requests outside its fixture");
 };
 function Preview() {
   const requested = new URLSearchParams(location.search).get("section");
-  const [section, setSection] = useState<VoiceDashboardSection>(requested === "collections" ? "collections" : requested === "whatsapp" ? "whatsapp" : "summary");
+  const [section, setSection] = useState<VoiceDashboardSection>(requested === "collections" ? "collections" : requested === "whatsapp" ? "whatsapp" : requested === "weekly-stats" ? "weekly-stats" : "summary");
   const blocked = async (): Promise<never> => { throw new Error("No se envían mensajes ni se editan datos reales en esta prueba"); };
   return <main className="p-5"><p>Prueba local · datos ficticios · no envía mensajes</p><VoiceDashboardPanel user={{ role: "admin" } as User} token="qa-only" section={section} onSelectSection={setSection} data={data} onCreateRecord={blocked} onUpdateRecord={blocked} onCreateAndReturn={blocked} /></main>;
 }
