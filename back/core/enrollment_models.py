@@ -152,3 +152,41 @@ class PlayerBlacklistEntry(models.Model):
         db_table = 'player_blacklist_entries'
         ordering = ['-created_at','-pk']
         constraints = [models.UniqueConstraint(fields=['identity_key'], condition=models.Q(is_active=True), name='uq_active_blacklist_identity')]
+
+
+class PlayerPermitInvitation(models.Model):
+    token = models.CharField(max_length=64, unique=True, default=invitation_token)
+    team = models.ForeignKey('core.Team', on_delete=models.CASCADE)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'player_permit_invitations'
+
+
+class PlayerTemporaryPermit(models.Model):
+    request_id = models.UUIDField(unique=True)
+    name = models.CharField(max_length=160)
+    team = models.ForeignKey('core.Team', null=True, on_delete=models.SET_NULL, related_name='temporary_permits')
+    site = models.ForeignKey('core.Site', on_delete=models.PROTECT)
+    team_name = models.CharField(max_length=140)
+    tournament_name = models.CharField(max_length=140)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    issued_at = models.DateTimeField()
+    expires_at = models.DateTimeField(db_index=True)
+    photo_storage_path = models.CharField(max_length=500)
+    photo_content_type = models.CharField(max_length=40)
+    photo_sha256 = models.CharField(max_length=64)
+    signature_storage_path = models.CharField(max_length=500)
+    signature_content_type = models.CharField(max_length=40)
+    signature_sha256 = models.CharField(max_length=64)
+    terms_version = models.CharField(max_length=80)
+    terms_text = models.JSONField(default=list)
+    invitation = models.OneToOneField(PlayerPermitInvitation, null=True, blank=True, on_delete=models.SET_NULL)
+    source = models.CharField(max_length=12, choices=[('local', 'Ventanilla'), ('online', 'En línea')])
+
+    class Meta:
+        db_table = 'player_temporary_permits'
+        ordering = ['-issued_at', '-id']

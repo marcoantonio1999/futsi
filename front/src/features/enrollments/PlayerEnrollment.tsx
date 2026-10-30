@@ -1,6 +1,8 @@
+import { Signature } from './EnrollmentSignaturePad';
+import { EnrollmentPermits } from './EnrollmentPermits';
 import { Button, Card, Dialog, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { RefreshCw, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer, Menu, X } from "lucide-react";
+import { LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer, Menu, X } from "lucide-react";
 import { API_URL, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
@@ -80,40 +82,6 @@ export function under18(date: string, today = new Date()) {
     (today.getMonth() + 1 === month && today.getDate() < day) ? 1 : 0) < 18;
 }
 
-function Signature({ label, onChange }: { label: string; onChange: (blob: Blob | null) => void }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-  const hasInk = useRef(false);
-  const previous = useRef<[number, number] | null>(null);
-  function point(event: React.PointerEvent<HTMLCanvasElement>): [number, number] {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    return [(event.clientX - bounds.left) * 900 / bounds.width, (event.clientY - bounds.top) * 360 / bounds.height];
-  }
-  return <Card as="section" className="signature-box">
-    <p>{label}</p>
-    <canvas ref={canvas} width={900} height={360} aria-label={label}
-      onPointerDown={event => {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        drawing.current = true; previous.current = point(event);
-      }}
-      onPointerMove={event => {
-        if (!drawing.current || !previous.current) return;
-        const ctx = event.currentTarget.getContext("2d"), next = point(event);
-        if (ctx) {
-          ctx.strokeStyle = "#111"; ctx.lineWidth = 3; ctx.lineCap = "round";
-          ctx.beginPath(); ctx.moveTo(...previous.current); ctx.lineTo(...next); ctx.stroke();
-          hasInk.current = true;
-        }
-        previous.current = next;
-      }}
-      onPointerUp={() => { drawing.current = false; if (hasInk.current) canvas.current?.toBlob(onChange, "image/png"); }}
-      onPointerCancel={() => { drawing.current = false; if (hasInk.current) canvas.current?.toBlob(onChange, "image/png"); }}
-    />
-    <Button type="button" className="quiet" onClick={() => {
-      hasInk.current = false; canvas.current?.getContext("2d")?.clearRect(0, 0, 900, 360); onChange(null);
-    }}>Borrar firma</Button>
-  </Card>;
-}
 
 function Upload({ label, photo = false, onChange, onProcessing }: {
   label: string; photo?: boolean; onChange: (file: File | null) => void; onProcessing?: (busy: boolean) => void;
@@ -673,6 +641,8 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
           <Button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Registrar</Button>
           <Button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Sábana</Button>
         </div>
+        <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Permisos</div>
+        <div className="enrollment-sidebar-submenu"><Button aria-current={enrollmentSection === "permits" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("permits"); }}>Permisos de 24 horas</Button></div>
         <div className="enrollment-sidebar-heading"><LogOut size={18} aria-hidden="true" />Bajas</div>
         <div className="enrollment-sidebar-submenu">
           <Button aria-current={tournamentSection === null && enrollmentSection === "withdraw" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("withdraw"); setLink(""); setError(""); setMessage(""); }}><UserPlus size={16} aria-hidden="true" />Nueva baja</Button>
@@ -691,8 +661,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print"><Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
-        <Button aria-label="Actualizar" title="Actualizar" disabled={busy || catalogBusy} onClick={() => { setPrintRoster(false); setRosterRevision(value => value + 1); void loadCatalog().catch(() => undefined); }}><RefreshCw size={19} /><span>Actualizar</span></Button>
+      <header className="operator-header enrollment-admin-header no-print"><Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button><h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "permits" ? "Permisos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
         <Button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></Button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
@@ -714,7 +683,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
           onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </Card> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
+      </Card> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <Card as="section" className="operator-controls no-print">
         <h2>{enrollmentSection === "withdraw" ? "Nueva baja" : "Registrar"}</h2>
         <form onSubmit={invite} className="control-grid">

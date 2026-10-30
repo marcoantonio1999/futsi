@@ -1,3 +1,4 @@
+from core.api.enrollment_permits import EnrollmentPermitView, EnrollmentPermitPhotoView, EnrollmentPermitInvitationView, PublicEnrollmentPermitView
 from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView, VeronicaWeeklyStatsView
@@ -99,6 +100,11 @@ urlpatterns = [
     path('api/public-exams/attempt/', ExamAttemptView.as_view()),
     path('api/public-exams/<str:token>/', PublicExamView.as_view()),
     path("api/player-enrollments/", EnrollmentAdminView.as_view()),
+    path("api/player-enrollments/permits/", EnrollmentPermitView.as_view()),
+    path("api/player-enrollments/permits/invitations/", EnrollmentPermitInvitationView.as_view()),
+    path("api/player-enrollments/permits/public/<str:token>/", PublicEnrollmentPermitView.as_view()),
+    path("api/player-enrollments/permits/<int:pk>/signature/", EnrollmentPermitPhotoView.as_view(), {"kind": "signature"}),
+    path("api/player-enrollments/permits/<int:pk>/photo/", EnrollmentPermitPhotoView.as_view()),
     path("api/player-enrollments/catalog/", EnrollmentCatalogView.as_view()),
     path("api/player-enrollments/players/", EnrollmentPlayersView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/deletion-preview/", EnrollmentTeamDeletionView.as_view()),

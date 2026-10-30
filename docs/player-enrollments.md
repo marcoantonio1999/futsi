@@ -166,3 +166,17 @@ Los sancionados siguen visibles en la plantilla, sábana y alineación, con marc
 En Bajas > Nueva baja, seleccionar torneo y equipo habilita Baja local junto a Crear enlace. Abre el mismo formulario firmado dentro de un diálogo, sin navegar fuera del panel. La invitación conserva purpose=withdraw y el servidor mantiene permisos de sede, sanciones y validación de integrantes. Reutiliza la carga directa a R2 cuando está habilitada.
 
 Al confirmar se refrescan catálogo e histórico; cerrar antes de terminar pide confirmación y durante el envío permanece bloqueado. No cambia la baja pública por enlace ni el formato de impresión. Validación local: TypeScript, compilación, pruebas de bajas y flujo simulado de firma/error/guardado con y sin R2 en 320, 390 y 1440 px. No se ejecutaron bajas reales.
+
+## Permisos firmados de 24 horas (implementación local)
+
+Nueva sección Permisos > Permisos de 24 horas. Después de elegir torneo y equipo hay dos opciones: Permiso en línea crea un enlace de un solo uso válido por 7 días; Permiso local abre el mismo formulario en un diálogo dentro del panel. Ambos piden nombre, foto JPG/PNG, aceptación de condiciones y firma obligatoria. No piden INE ni CURP.
+
+Las 24 horas comienzan al completar y firmar el formulario, no al crear el enlace. El servidor asigna folio P-000001, emisión y vencimiento exactos. El comprobante conserva el aviso bajo protesta y el texto de aceptación del formato, incluye foto y firma y se puede imprimir en A4 desde la página pública, ventanilla o historial. Horario de Ciudad de México.
+
+API privada: GET/POST `/api/player-enrollments/permits/`, POST `/api/player-enrollments/permits/invitations/` y GET `/api/player-enrollments/permits/<id>/photo/` o `signature/`. Consulta protegida por sede/operador. El enlace público `#/permiso/<token>` usa GET/POST `/api/player-enrollments/permits/public/<token>/`. Un enlace usado no muestra datos personales ni vuelve a emitir otro permiso; un reintento con el mismo request_id devuelve el permiso original sin ampliar vigencia. Se verifican vigencia del enlace, equipo/torneo activos y permisos actuales de su creador.
+
+Foto y firma se validan antes de subir cualquier archivo. La firma vacía se rechaza en servidor y se guardan ambos archivos privados con SHA256, texto/versión de condiciones, origen local/en línea y autor. Se reutiliza el almacenamiento privado configurado (R2 en producción). La lectura autorizada ofrece entrega temporal directa a R2 sin reenviar el token de la aplicación. La creación envía las dos imágenes a la API para validarlas; no emite URLs de subida públicas. El historial está paginado con filtro de vigentes/vencidos. No usa cron ni sondeo de red.
+
+Los permisos no crean una inscripción, no cambian cupos ni cancelan sanciones/lista negra. No se implementa identificación por foto para comprobar sanciones. No se emitieron permisos reales durante las pruebas.
+
+Requiere publicar API/frontend y aplicar `0076_player_temporary_permits`. Crea tablas privadas de invitaciones y permisos, con RLS y sin permisos PUBLIC/anon/authenticated en PostgreSQL. La migración se comprobó en SQLite aislado y no se aplicó en producción. Trece pruebas de API verifican autorización, alcance, firmas/aceptación obligatorias, enlace público sin sesión, uso único, vencimiento y reintentos. Flujos de navegador local/en línea en 320/390/1440 px verifican firma, error recuperable, cierre protegido, navegación móvil y comprobante impreso con firma.
