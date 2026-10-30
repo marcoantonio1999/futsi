@@ -14,7 +14,7 @@ const sites = [1, 2, 3].map(id => ({ id, name: ["Norte", "Sur", "Sin actividad"]
 const channels = [1, 2].map(site => ({ site, site_name: sites[site - 1].name, business_address: `whatsapp:+52550000010${site}` }));
 let settings = channels.map((channel, i) => ({ ...channel, id: i + 1, openai_model: "modelo-prueba", effective_model: "modelo-prueba", human_first_enabled: true, business_days: [0, 1, 2, 3, 4], business_hours_start: "09:00", business_hours_end: "18:00", human_response_delay_seconds: 600, welcome_message: `Hola de ${channel.site_name}`, assistant_instructions: `Información exclusiva de ${channel.site_name}`, contact_classification_enabled: true, classification_confidence_threshold: 80, out_of_hours_acknowledgement: "Escribe HUMANO si necesitas ayuda del equipo.", created_at: null, updated_at: null })) as WhatsAppAutomationSettings[];
 const now = new Date().toISOString();
-let responseSchedule={days:[0,1,2,3,4,5,6],starts_at:'09:00',ends_at:'20:00',timezone:'America/Mexico_City',can_edit:!new URLSearchParams(location.search).has('court-only')};
+const responseSchedules=new Map<number,{days:number[];starts_at:string;ends_at:string}>();
 const manualAttempts: Record<number, { stage: number; state: string; created_at: string; detail: string; template_name: string }> = {};
 let manualPreview: { charge: number; stage: number; body: string; address: string } | null = null;
 const conversations = Array.from({ length: 30 }, (_, index) => (index % 2) + 1).map((site, index) => ({
@@ -57,8 +57,11 @@ if (new URLSearchParams(location.search).has('weekly-attention')) {
 window.fetch = async (input, init) => {
   const url = new URL(String(input), location.origin);
   if(url.pathname.endsWith('/response-schedule/')) {
-    if(init?.method==='PATCH')responseSchedule={...responseSchedule,...JSON.parse(String(init.body))};
-    return Response.json(responseSchedule);
+    const site=Number(url.searchParams.get('site'));
+    if(!sites.some(s=>s.id===site))return Response.json({detail:'Selecciona una cancha'},{status:400});
+    if(new URLSearchParams(location.search).has('court-only')&&site!==1)return Response.json({detail:'Solo tu cancha'},{status:403});
+    if(init?.method==='PATCH')responseSchedules.set(site,JSON.parse(String(init.body)));
+    return Response.json({...responseSchedules.get(site)||{days:[0,1,2,3,4,5,6],starts_at:'09:00',ends_at:'20:00'},site,site_name:sites[site-1].name,timezone:'America/Mexico_City',can_edit:true});
   }
   if (url.pathname.endsWith("/manual-whatsapp/")) {
     const charge = Number(url.pathname.split("/").at(-3));

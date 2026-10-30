@@ -1704,6 +1704,18 @@ class WhatsAppResponseSchedule(TimestampedModel):
         constraints = [models.CheckConstraint(condition=Q(id=1), name='wa_response_schedule_singleton')]
 
 
+class WhatsAppSiteResponseSchedule(TimestampedModel):
+    """Reporting hours owned by one cancha, never by the bot or all sites."""
+    site = models.OneToOneField(Site, primary_key=True, on_delete=models.PROTECT,
+                               related_name='whatsapp_response_schedule')
+    days = models.JSONField(default=list)
+    starts_at = models.TimeField(default=time(9))
+    ends_at = models.TimeField(default=time(20))
+
+    class Meta:
+        db_table = 'whatsapp_site_response_schedules'
+
+
 class WhatsAppAutomationSettings(TimestampedModel):
     site = models.ForeignKey(
         Site, null=True, blank=True, on_delete=models.PROTECT,

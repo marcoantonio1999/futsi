@@ -2,14 +2,37 @@
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from rest_framework import serializers
-from core.models import WhatsAppResponseSchedule
+from core.models import WhatsAppSiteResponseSchedule, WhatsAppAutomationSettings
 
 MEXICO = ZoneInfo('America/Mexico_City')
 
 
-def get_schedule():
-    return WhatsAppResponseSchedule.objects.filter(pk=1).first() or WhatsAppResponseSchedule(
-        days=list(range(7)), starts_at=time(9), ends_at=time(20))
+def default_schedule(site_id=None):
+    return WhatsAppSiteResponseSchedule(site_id=site_id, days=list(range(7)), starts_at=time(9), ends_at=time(20))
+
+
+def get_schedule(site_id=None):
+    return (WhatsAppSiteResponseSchedule.objects.filter(site_id=site_id).first() if site_id else None) or default_schedule(site_id)
+
+
+class ScheduleResolver:
+    """Two bounded reads per report; never one database query per chat."""
+    def __init__(self):
+        self.schedules = {s.site_id:s for s in WhatsAppSiteResponseSchedule.objects.all()}
+        self.channel_sites = dict(WhatsAppAutomationSettings.objects.exclude(site_id=None).values_list('business_address','site_id'))
+        self.default = default_schedule()
+
+    def for_site(self, site_id):
+        return self.schedules.get(site_id, self.default)
+
+    def site_of(self, conversation):
+        return getattr(conversation, 'channel_site_id', None) or self.channel_sites.get(conversation.to_address) or conversation.site_id
+
+    def for_conversation(self, conversation):
+        return self.for_site(self.site_of(conversation))
+
+    def any_open(self, at):
+        return any(is_working(at,s) for s in [self.default,*self.schedules.values()])
 
 
 class ResponseScheduleSerializer(serializers.ModelSerializer):
@@ -18,7 +41,7 @@ class ResponseScheduleSerializer(serializers.ModelSerializer):
     days = serializers.ListField(child=serializers.IntegerField(min_value=0, max_value=6), allow_empty=False, max_length=7)
 
     class Meta:
-        model = WhatsAppResponseSchedule
+        model = WhatsAppSiteResponseSchedule
         fields = ['days', 'starts_at', 'ends_at']
 
     def validate(self, attrs):
@@ -31,7 +54,7 @@ class ResponseScheduleSerializer(serializers.ModelSerializer):
 
 
 def schedule_data(schedule):
-    return {**ResponseScheduleSerializer(schedule).data, 'timezone': str(MEXICO)}
+    return {**ResponseScheduleSerializer(schedule).data, 'timezone': str(MEXICO), 'site':schedule.site_id}
 
 
 def is_working(at, schedule):

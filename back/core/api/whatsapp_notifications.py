@@ -8,7 +8,7 @@ from django.utils import timezone
 from core.models import WhatsAppHumanResponseEvent, WhatsAppMessage
 from core.whatsapp.attention import closing_acknowledgement, reportable_messages_q
 from core.whatsapp.conversation_scope import individual_conversations
-from core.whatsapp.response_schedule import working_seconds, get_schedule, is_working
+from core.whatsapp.response_schedule import working_seconds, ScheduleResolver, is_working
 
 MEXICO = ZoneInfo("America/Mexico_City")
 
@@ -16,7 +16,7 @@ MEXICO = ZoneInfo("America/Mexico_City")
 def attention_notifications(conversations, now=None):
     from .trials import _manual_response_events, _reportable_response_events
     now = now or timezone.now()
-    schedule = get_schedule()
+    schedules = ScheduleResolver()
     # Rolling seven days: old unanswered requests must not remain in the bell,
     # even if a recent follow-up or bot acknowledgement touched the conversation.
     start = now - timedelta(days=7)
@@ -38,7 +38,7 @@ def attention_notifications(conversations, now=None):
             continue
         address = event.conversation.to_address
         group = groups.setdefault(address, [])
-        group.append(working_seconds(event.first_inbound_at, event.responded_at, schedule))
+        group.append(working_seconds(event.first_inbound_at, event.responded_at, schedules.for_conversation(event.conversation)))
     labels = {row["to_address"]: row for row in conversations.values(
         "to_address", "channel_site_id", "channel_site_name", "channel_label",
     ).distinct()}
@@ -50,7 +50,7 @@ def attention_notifications(conversations, now=None):
                 "business_address": address, "seconds": round(average),
                 "sample_count": len(durations), "week_start": str(monday),
                 **labels.get(address, {})})
-    if is_working(now, schedule):
+    if schedules.any_open(now):
         meaningful = WhatsAppMessage.objects.filter(reportable_messages_q(),conversation_id=models.OuterRef("pk")).exclude(pk__in=invalid_reactions)
         rejected = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef('pk'),pk__in=invalid_reactions).order_by('-created_at','-id')
         last_out = meaningful.filter(direction="outbound").order_by("-created_at", "-id")
@@ -89,6 +89,9 @@ def attention_notifications(conversations, now=None):
                 if not closing_acknowledgement(message["body"]) and message["body"].strip().lower() not in {"[reaction]", "[revoke]"}:
                     incoming_by_chat.setdefault(message["conversation_id"], []).append(message)
         for chat in pending_rows:
+            schedule = schedules.for_site(chat['channel_site_id'])
+            if not is_working(now, schedule):
+                continue
             context = chat["context"] if isinstance(chat["context"], dict) else {}
             resolution = context.get("attention_resolution")
             resolution = resolution if isinstance(resolution, dict) else {}
@@ -128,4 +131,4 @@ def attention_notifications(conversations, now=None):
     alerts.sort(key=lambda row: (0 if row["kind"] == "average" else 1, -row["seconds"], row["id"]))
     return {"items": alerts[:100], "total": len(alerts), "generated_at": now.isoformat(),
         "timezone": str(MEXICO), "week_start": str(monday), "window_start": start.isoformat(),
-        "window_days": 7, "hours": {"start": schedule.starts_at.strftime('%H:%M'), "end": schedule.ends_at.strftime('%H:%M'), "days":schedule.days}}
+        "window_days": 7, "time_basis": "site_business_hours"}
