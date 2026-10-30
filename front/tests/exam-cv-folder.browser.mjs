@@ -9,7 +9,7 @@ const fixture=await mkdtemp(join(tmpdir(),'cv-import-browser-qa-'));
 const folder=join(fixture,'cvs'),empty=join(fixture,'sin-cvs');
 const pdfs='C:/Users/daniel/Documents/marco/mexprod/tmp/pdfs/cv-import-qa';
 await mkdir(join(folder,'subcarpeta'),{recursive:true});await mkdir(empty);
-for(let i=0;i<21;i++)await writeFile(join(folder,`extra-${i}.TXT`),`Persona Ficticia ${i}\nCorreo: extra${i}@example.invalid\nPERFIL\nExcel Python`);
+for(let i=0;i<21;i++)await writeFile(join(folder,`extra-${i}.TXT`),`Persona Ficticia ${i}\nCorreo: extra${i}@example.invalid\nPERFIL\nExcel${i===0?'\u0000':''} Python`);
 await copyFile(join(pdfs,'cv-matched.pdf'),join(folder,'cv-matched.pdf'));
 await copyFile(join(pdfs,'cv-unmatched.pdf'),join(folder,'subcarpeta','cv-unmatched.pdf'));
 await copyFile(join(pdfs,'cv-partial.pdf'),join(folder,'cv-partial.pdf'));
@@ -28,7 +28,7 @@ try {
       const request=route.request(),path=new URL(request.url()).pathname;
       if(path==='/api/recruitment-profiles/import-cv/') {
         assert.match(request.headers()['content-type'],/application\/json/);
-        const data=request.postDataJSON();calls.push(data);assert(!request.postData().includes('%PDF'));
+        const data=request.postDataJSON();assert(!data.cv_text.includes('\u0000'));calls.push(data);assert(!request.postData().includes('%PDF'));
         assert.equal(data.exam,'5');assert.deepEqual(Object.keys(data).sort(),data.commit?['commit','cv_text','exam','expected_cv_hash']:['cv_text','exam']);
         active++;maxActive=Math.max(maxActive,active);
         try {
@@ -48,7 +48,7 @@ try {
         path==='/api/recruitment-profiles/'?{results:[],count:0,page:1,filters:{graded_count:0,top_threshold:null}}:null;
       assert(data,`Unexpected ${path}`);await route.fulfill({json:data});
     });
-    await page.goto('http://127.0.0.1:5202/#/examenes/perfiles');
+    await page.goto((process.env.CV_TEST_BASE||'http://127.0.0.1:5202')+'/#/examenes/perfiles');
     await page.getByRole('button',{name:'Cargar carpeta de CV',exact:true}).click();
     await page.getByLabel(/^Postulación para la carga de CV/).selectOption('5');
     const picker=page.getByLabel('Seleccionar carpeta de CV',{exact:true});

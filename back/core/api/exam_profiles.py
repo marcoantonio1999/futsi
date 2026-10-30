@@ -69,7 +69,7 @@ class ExamProfilesView(APIView):
         profile, _ = RecruitmentProfile.objects.get_or_create(attempt=attempt,defaults={'updated_by':request.user})
         for field,limit in [('position',180),('cv_text',80000),('form_text',60000)]:
             if field in data:
-                setattr(profile,field,clean_string(data[field],limit,field))
+                setattr(profile,field,clean_string(data[field],limit,field).replace('\x00','') if field=='cv_text' else clean_string(data[field],limit,field))
         if 'form_fields' in data:
             profile.form_fields=clean_fields(data['form_fields'])
         profile.cv_search=normalized(profile.cv_text)
@@ -132,7 +132,7 @@ class ExamCVImportView(APIView):
         data=request.data
         if not isinstance(data,dict) or set(data)-{'cv_text','exam','commit','expected_cv_hash'}:
             raise ValidationError({'detail':'Envía solo el texto extraído del CV; no se reciben archivos PDF.'})
-        body=clean_string(data.get('cv_text',''),80000,'el texto del CV')
+        body=clean_string(data.get('cv_text',''),80000,'el texto del CV').replace('\x00','')
         if not body:
             raise ValidationError({'detail':'No se encontró texto legible en el CV.'})
         rows=submitted_rows()

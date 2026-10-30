@@ -105,3 +105,42 @@ def test_hr_only_permission(auth_client,role,permissions):
 def test_no_contacts_in_footer_or_references():
     emails,phones=cv_contacts('Persona Ficticia\nPerfil profesional\nREFERENCIAS\nref@example.invalid\n5500000000')
     assert not emails and not phones
+
+
+def test_column_contacts_after_experience_require_exact_name_and_contact(auth_client):
+    c,_,_=auth_client(); e=create_exam(c); a=attempt(e)
+    body=f'{a.name}\nEXPERIENCIA LABORAL\nGestión de documentos\n' + ('\n\nTrabajo administrativo\n'*30) + f'\nCONTACTO\n{a.email}\n{a.phone}'
+    assert c.post(URL,{'cv_text':body},format='json').json()['candidate']['id']==a.id
+    # A reference or employer contact cannot identify a differently named applicant.
+    other=body.replace(a.name,'Otra Persona Ficticia')
+    assert c.post(URL,{'cv_text':other},format='json').json()['match_status']=='unmatched'
+    refs=f'{a.name}\nEXPERIENCIA\nTrabajo\nREFERENCIAS\n{a.email}\n{a.phone}'
+    assert c.post(URL,{'cv_text':refs},format='json').json()['match_status']=='unmatched'
+
+
+def test_blank_lines_do_not_hide_header_contacts_and_disagreement_stays_manual(auth_client):
+    c,_,_=auth_client();e=create_exam(c);a=attempt(e)
+    body=f'{a.name}\n'+('Perfil profesional\n\n'*25)+f'{a.email}\n{a.phone}'
+    assert c.post(URL,{'cv_text':body},format='json').json()['match_status']=='matched'
+    body=f'{a.name}\nEXPERIENCIA\nTrabajo\nCONTACTO\nother@example.invalid\n{a.phone}'
+    assert c.post(URL,{'cv_text':body},format='json').json()['match_status']!='matched'
+
+
+def test_email_spacing_and_reference_only_name_do_not_create_wrong_match(auth_client):
+    c,_,_=auth_client();e=create_exam(c);a=attempt(e)
+    spaced=a.email.replace('@',' @ ')
+    assert c.post(URL,{'cv_text':f'{a.name}\nCorreo: {spaced}\n{a.phone}'},format='json').json()['match_status']=='matched'
+    body=f'Otra Persona Ficticia\nEXPERIENCIA\n{a.phone}\nREFERENCIAS\n{a.name}\n{a.email}'
+    assert c.post(URL,{'cv_text':body},format='json').json()['match_status']=='unmatched'
+
+
+def test_invisible_pdf_nul_characters_are_removed_before_saving(auth_client):
+    c,_,_=auth_client();e=create_exam(c);a=attempt(e)
+    body=cv(a)+'\nMicrosoft\x00 Office'
+    data=c.post(URL,{'cv_text':body},format='json').json()
+    result=c.post(URL,{'cv_text':body,'commit':True,'expected_cv_hash':data['expected_cv_hash']},format='json')
+    assert result.status_code==200
+    p=RecruitmentProfile.objects.get(attempt=a)
+    assert '\x00' not in p.cv_text and 'Microsoft Office' in p.cv_text
+    assert c.post(f'/api/recruitment-profiles/{a.id}/',{'cv_text':'Texto\x00 del CV'},format='json').status_code==200
+    p.refresh_from_db();assert p.cv_text=='Texto del CV'
