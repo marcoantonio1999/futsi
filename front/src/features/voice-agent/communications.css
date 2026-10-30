@@ -251,3 +251,10 @@
   .comm-audit-summary .comm-audit-period input,.comm-audit-summary .comm-audit-period select { min-height:44px; max-width:100%; }
   .comm-audit-summary .comm-audit-period button { min-height:44px; min-width:44px; }
 }
+.comm-response-schedule{box-sizing:border-box;width:min(560px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:auto;margin:auto;padding:20px;border:1px solid var(--comm-line);border-radius:16px;background:var(--comm-bg,#fff);color:var(--comm-text,#172b27)}
+.comm-response-schedule::backdrop{background:rgb(0 0 0 / .5)}
+.comm-response-schedule p{margin:16px 0}
+.comm-response-schedule button,.comm-response-schedule input{min-height:44px}
+.comm-response-schedule input{display:block;width:100%;min-width:0}
+.comm-response-days{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.comm-response-days button{min-width:44px}

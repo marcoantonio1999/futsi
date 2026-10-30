@@ -1692,6 +1692,18 @@ class WhatsAppOutboundDispatch(TimestampedModel):
         return f"Respuesta WhatsApp {self.in_reply_to_sid} - {self.get_status_display()}"
 
 
+class WhatsAppResponseSchedule(TimestampedModel):
+    """Global reporting clock, independent from bot availability."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    days = models.JSONField(default=list)
+    starts_at = models.TimeField(default=time(9))
+    ends_at = models.TimeField(default=time(20))
+
+    class Meta:
+        db_table = 'whatsapp_response_schedule'
+        constraints = [models.CheckConstraint(condition=Q(id=1), name='wa_response_schedule_singleton')]
+
+
 class WhatsAppAutomationSettings(TimestampedModel):
     site = models.ForeignKey(
         Site, null=True, blank=True, on_delete=models.PROTECT,

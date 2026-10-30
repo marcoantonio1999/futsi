@@ -19,7 +19,7 @@ def chat(site, address="meta:123456789", age=3):
     return conversation, message
 
 
-@pytest.mark.parametrize("start,end,seconds", [("2026-10-06T21:00", "2026-10-07T09:00", 7200), ("2026-10-06T23:00", "2026-10-07T10:01", 7260), ("2026-10-07T07:00", "2026-10-07T08:00", 0)])
+@pytest.mark.parametrize("start,end,seconds", [("2026-10-06T21:00", "2026-10-07T09:00", 0), ("2026-10-06T23:00", "2026-10-07T10:01", 3660), ("2026-10-07T07:00", "2026-10-07T08:00", 0)])
 def test_work_window(start, end, seconds):
     zone = ZoneInfo("America/Mexico_City")
     assert working_seconds(datetime.fromisoformat(start).replace(tzinfo=zone), datetime.fromisoformat(end).replace(tzinfo=zone)) == seconds
@@ -88,7 +88,7 @@ def test_strict_thresholds_and_average(auth_client):
     client, _, _ = auth_client(role="admin")
     with patch("core.api.whatsapp_notifications.timezone.now", return_value=NOW):
         assert client.get(URL).json()["total"] == 0
-    event.response_seconds=3601; event.save()
+    event.response_seconds=3601; event.responded_at+=timedelta(seconds=1); event.save()
     with patch("core.api.whatsapp_notifications.timezone.now", return_value=NOW):
         assert client.get(URL).json()["items"][0]["kind"] == "average"
 

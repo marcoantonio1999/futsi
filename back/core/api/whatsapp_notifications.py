@@ -1,5 +1,5 @@
 """Read-only, site-scoped attention alerts; no messages or production writes."""
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.db import models
@@ -8,32 +8,15 @@ from django.utils import timezone
 from core.models import WhatsAppHumanResponseEvent, WhatsAppMessage
 from core.whatsapp.attention import closing_acknowledgement, reportable_messages_q
 from core.whatsapp.conversation_scope import individual_conversations
+from core.whatsapp.response_schedule import working_seconds, get_schedule, is_working
 
 MEXICO = ZoneInfo("America/Mexico_City")
-
-
-def working_seconds(start, end):
-    """Count only 08:00 <= local time < 22:00, including overnight requests."""
-    start, end = start.astimezone(MEXICO), end.astimezone(MEXICO)
-    if end <= start:
-        return 0
-    # Whole intervening days are constant work windows, without an unbounded loop.
-    days = (end.date() - start.date()).days
-    opening = datetime.combine(start.date(), time(8), MEXICO)
-    closing = datetime.combine(start.date(), time(22), MEXICO)
-    if not days:
-        return max(0, int((min(end, closing) - max(start, opening)).total_seconds()))
-    first = max(0, int((closing - max(start, opening)).total_seconds()))
-    last_open = datetime.combine(end.date(), time(8), MEXICO)
-    last_close = datetime.combine(end.date(), time(22), MEXICO)
-    last = max(0, int((min(end, last_close) - last_open).total_seconds()))
-    return first + max(0, days - 1) * 14 * 3600 + last
 
 
 def attention_notifications(conversations, now=None):
     from .trials import _manual_response_events, _reportable_response_events
     now = now or timezone.now()
-    local = now.astimezone(MEXICO)
+    schedule = get_schedule()
     # Rolling seven days: old unanswered requests must not remain in the bell,
     # even if a recent follow-up or bot acknowledgement touched the conversation.
     start = now - timedelta(days=7)
@@ -55,7 +38,7 @@ def attention_notifications(conversations, now=None):
             continue
         address = event.conversation.to_address
         group = groups.setdefault(address, [])
-        group.append(event.response_seconds)
+        group.append(working_seconds(event.first_inbound_at, event.responded_at, schedule))
     labels = {row["to_address"]: row for row in conversations.values(
         "to_address", "channel_site_id", "channel_site_name", "channel_label",
     ).distinct()}
@@ -67,7 +50,7 @@ def attention_notifications(conversations, now=None):
                 "business_address": address, "seconds": round(average),
                 "sample_count": len(durations), "week_start": str(monday),
                 **labels.get(address, {})})
-    if 8 <= local.hour < 22:
+    if is_working(now, schedule):
         meaningful = WhatsAppMessage.objects.filter(reportable_messages_q(),conversation_id=models.OuterRef("pk")).exclude(pk__in=invalid_reactions)
         rejected = WhatsAppMessage.objects.filter(conversation_id=models.OuterRef('pk'),pk__in=invalid_reactions).order_by('-created_at','-id')
         last_out = meaningful.filter(direction="outbound").order_by("-created_at", "-id")
@@ -134,7 +117,7 @@ def attention_notifications(conversations, now=None):
             chat["alert_started_at"] = actual_request["created_at"]
             if not chat["alert_started_at"] or not start <= chat["alert_started_at"] <= now:
                 continue
-            seconds = working_seconds(chat["alert_started_at"], now) if chat["alert_started_at"] else 0
+            seconds = working_seconds(chat["alert_started_at"], now, schedule) if chat["alert_started_at"] else 0
             if seconds > 7200:
                 alerts.append({"id": f"pending:{chat['id']}:{chat['alert_started_at'].isoformat()}",
                     "kind": "pending", "conversation_id": chat["id"], "business_address": chat["to_address"],
@@ -145,4 +128,4 @@ def attention_notifications(conversations, now=None):
     alerts.sort(key=lambda row: (0 if row["kind"] == "average" else 1, -row["seconds"], row["id"]))
     return {"items": alerts[:100], "total": len(alerts), "generated_at": now.isoformat(),
         "timezone": str(MEXICO), "week_start": str(monday), "window_start": start.isoformat(),
-        "window_days": 7, "hours": {"start": "08:00", "end": "22:00"}}
+        "window_days": 7, "hours": {"start": schedule.starts_at.strftime('%H:%M'), "end": schedule.ends_at.strftime('%H:%M'), "days":schedule.days}}

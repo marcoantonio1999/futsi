@@ -5,6 +5,7 @@ import type { WhatsAppWeeklyStats } from "../../types";
 import { durationLabel, localDateKey, mondayKey, shiftDays } from "./communicationUtils";
 import { formatDateTime, inputClass, secondaryButtonClass } from "./model";
 import { responseTimeTone, type ResponseTimeTone } from "./responseTimeTone";
+import { ResponseScheduleDialog } from './ResponseScheduleDialog';
 
 export function WhatsAppWeeklyStatsPanel({ value, token, onOpenConversation, scopeQuery = "scope=all", endpoint = '/whatsapp-conversations/weekly-stats/', showPeriodControls = true, periodDays = 7, periodStart, onPeriodStartChange }: {
   value: WhatsAppWeeklyStats | null; token: string; onOpenConversation: (id: number) => void;
@@ -44,6 +45,7 @@ export function WhatsAppWeeklyStatsPanel({ value, token, onOpenConversation, sco
   const summary = stats?.summary;
   const delta = summary?.average_response_seconds != null && previous?.summary.average_response_seconds != null ? summary.average_response_seconds - previous.summary.average_response_seconds : null;
   return <div className="grid min-w-0 gap-4" aria-busy={loading}>
+    {endpoint === '/whatsapp-conversations/weekly-stats/' && <div className="flex justify-end"><ResponseScheduleDialog token={token} onSaved={()=>setRetry(n=>n+1)}/></div>}
     {showPeriodControls && <div className="comm-toolbar"><div className="comm-inline comm-week-picker"><button className={secondaryButtonClass} aria-label="Periodo anterior" onClick={() => setWeek(shiftDays(week, -periodDays))}><ArrowLeft size={16} /></button><label>{periodDays === 7 ? "Semana del" : "Desde"} <input aria-label="Inicio del periodo" className={inputClass} type="date" value={week} max={currentWeek} onChange={e => { if (e.target.value) setWeek(periodDays === 7 ? mondayKey(new Date(e.target.value + "T12:00:00")) : e.target.value); }} /></label><span>al {shiftDays(week, periodDays - 1)}</span><button className={secondaryButtonClass} aria-label="Periodo siguiente" disabled={week >= currentWeek} onClick={() => setWeek(shiftDays(week, periodDays) > currentWeek ? currentWeek : shiftDays(week, periodDays))}><ArrowRight size={16} /></button>{!isCurrent && <button className="comm-link" onClick={() => setWeek(currentWeek)}>Periodo actual</button>}</div><span className="comm-badge">{isCurrent ? "Periodo en curso" : "Periodo completo"}</span></div>}
     {error && <div className="comm-reference" role="alert"><p className="comm-error">{error}</p><button className="comm-link" onClick={() => setRetry(n => n + 1)}>Volver a intentar</button></div>}
     {loading && <p className="comm-muted" role="status">Consultando periodo…</p>}

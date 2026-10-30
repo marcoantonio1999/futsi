@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from datetime import timedelta
 
 import pytest
 from django.utils import timezone
@@ -122,8 +123,8 @@ def test_restricted_coordinator_sees_only_own_channel_response_statistics(auth_c
         WhatsAppHumanResponseEvent.objects.create(
             conversation=chat,
             first_inbound_message=inbound,
-            first_inbound_at=timezone.now(),
-            responded_at=timezone.now(),
+                first_inbound_at=timezone.localtime().replace(hour=12, minute=0, second=0, microsecond=0),
+                responded_at=timezone.localtime().replace(hour=12, minute=0, second=0, microsecond=0)+timedelta(seconds=seconds),
             response_seconds=seconds,
             human_attention_expected=True,
         )

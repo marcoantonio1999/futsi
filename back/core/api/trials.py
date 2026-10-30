@@ -488,6 +488,31 @@ class WhatsAppConversationViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
+    @action(detail=False, methods=['get', 'patch'], url_path='response-schedule', permission_classes=[CanViewWhatsAppWeeklyStats])
+    def response_schedule(self, request):
+        from core.whatsapp.response_schedule import get_schedule, schedule_data, ResponseScheduleSerializer
+        from core.models import WhatsAppResponseSchedule
+        can_edit = request.user.role in ADMIN_ROLES and not request.user.section_permissions
+        if request.method == 'GET':
+            return Response({**schedule_data(get_schedule()), 'can_edit':can_edit})
+        if not can_edit:
+            raise PermissionDenied('Solo administración puede cambiar el horario global.')
+        if not isinstance(request.data, dict) or set(request.data) != {'days', 'starts_at', 'ends_at'}:
+            raise ValidationError('Envía los días, apertura y cierre.')
+        serializer = ResponseScheduleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            schedule, _ = WhatsAppResponseSchedule.objects.get_or_create(pk=1, defaults={'days':list(range(7))})
+            schedule = WhatsAppResponseSchedule.objects.select_for_update().get(pk=1)
+            before = schedule_data(schedule)
+            for key, value in serializer.validated_data.items():
+                setattr(schedule, key, value)
+            schedule.save()
+            AuditLog.objects.create(actor=request.user, action='whatsapp_response_schedule_updated',
+                table_name='whatsapp_response_schedule', record_id='1', previous_values=before,
+                new_values=schedule_data(schedule))
+        return Response({**schedule_data(schedule), 'can_edit':True})
+
     queryset = (
         WhatsAppConversation.objects.select_related(
             "site",
@@ -1018,6 +1043,15 @@ class WhatsAppConversationViewSet(
         events = _reportable_response_events(events, start_at, end_at, ignored_ids, invalid_reactions)
         events.extend(_manual_response_events(conversations, events, start_at, end_at, ignored_ids, invalid_reactions))
 
+        from core.whatsapp.response_schedule import get_schedule, working_seconds, schedule_data, is_working
+        schedule = get_schedule()
+        # Only the read model changes. Original events and message timestamps stay intact.
+        events = [copy(event) for event in events]
+        for event in events:
+            event.within_business_hours = is_working(event.first_inbound_at, schedule)
+            if event.responded_at:
+                event.response_seconds = working_seconds(event.first_inbound_at, event.responded_at, schedule)
+
         responder_groups = {}
         for event in events:
             if event.response_seconds is None:
@@ -1060,10 +1094,7 @@ class WhatsAppConversationViewSet(
             wait_until = event.responded_at or min(now, end_at)
             wait_seconds = event.response_seconds
             if wait_seconds is None:
-                wait_seconds = max(
-                    0,
-                    int((wait_until - event.first_inbound_at).total_seconds()),
-                )
+                wait_seconds = working_seconds(event.first_inbound_at, wait_until, schedule)
             longest_waits.append(
                 {
                     "id": event.id,
@@ -1107,6 +1138,7 @@ class WhatsAppConversationViewSet(
                 "week_end": (week_end_date - timedelta(days=1)).isoformat(),
                 "period_days": period_days,
                 "generated_at": now.isoformat(),
+                "response_schedule": schedule_data(schedule),
                 **({'range': period[2], 'period_days': period[3], 'period_start': start_at.isoformat(), 'period_end': end_at.isoformat()} if period else {}),
                 "summary": _response_event_summary(events),
                 "business_hours": _response_event_summary(
