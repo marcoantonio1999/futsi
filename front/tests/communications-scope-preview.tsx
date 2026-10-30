@@ -3,6 +3,8 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { emptyData } from "../src/appState";
 import { VoiceDashboardPanel } from "../src/features/voice-agent/VoiceDashboardPanel";
+import { CommunicationsNav } from '../src/features/voice-agent/CommunicationsNav';
+import { CourtCommunicationsOnlyContext } from '../src/features/voice-agent/CommunicationsAccess';
 import { filterCommunications } from "../src/features/voice-agent/communicationScope";
 import type { VoiceDashboardSection } from "../src/features/voice-agent/model";
 import type { AppData, Site, User, WhatsAppAutomationSettings, WhatsAppConversation } from "../src/types";
@@ -12,7 +14,7 @@ const sites = [1, 2, 3].map(id => ({ id, name: ["Norte", "Sur", "Sin actividad"]
 const channels = [1, 2].map(site => ({ site, site_name: sites[site - 1].name, business_address: `whatsapp:+52550000010${site}` }));
 let settings = channels.map((channel, i) => ({ ...channel, id: i + 1, openai_model: "modelo-prueba", effective_model: "modelo-prueba", human_first_enabled: true, business_days: [0, 1, 2, 3, 4], business_hours_start: "09:00", business_hours_end: "18:00", human_response_delay_seconds: 600, welcome_message: `Hola de ${channel.site_name}`, assistant_instructions: `Información exclusiva de ${channel.site_name}`, contact_classification_enabled: true, classification_confidence_threshold: 80, out_of_hours_acknowledgement: "Escribe HUMANO si necesitas ayuda del equipo.", created_at: null, updated_at: null })) as WhatsAppAutomationSettings[];
 const now = new Date().toISOString();
-let responseSchedule={days:[0,1,2,3,4,5,6],starts_at:'09:00',ends_at:'20:00',timezone:'America/Mexico_City',can_edit:true};
+let responseSchedule={days:[0,1,2,3,4,5,6],starts_at:'09:00',ends_at:'20:00',timezone:'America/Mexico_City',can_edit:!new URLSearchParams(location.search).has('court-only')};
 const manualAttempts: Record<number, { stage: number; state: string; created_at: string; detail: string; template_name: string }> = {};
 let manualPreview: { charge: number; stage: number; body: string; address: string } | null = null;
 const conversations = Array.from({ length: 30 }, (_, index) => (index % 2) + 1).map((site, index) => ({
@@ -113,8 +115,10 @@ window.fetch = async (input, init) => {
 };
 function Preview() {
   const requested = new URLSearchParams(location.search).get("section");
-  const [section, setSection] = useState<VoiceDashboardSection>(requested === "collections" ? "collections" : requested === "whatsapp" ? "whatsapp" : requested === "weekly-stats" ? "weekly-stats" : "summary");
+  const [section, setSection] = useState<VoiceDashboardSection>(requested === 'response-schedule' ? 'response-schedule' : requested === "collections" ? "collections" : requested === "whatsapp" ? "whatsapp" : requested === "weekly-stats" ? "weekly-stats" : "summary");
+  const courtOnly=new URLSearchParams(location.search).has('court-only');
+  const sidebar=new URLSearchParams(location.search).has('sidebar');
   const blocked = async (): Promise<never> => { throw new Error("No se envían mensajes ni se editan datos reales en esta prueba"); };
-  return <main className="p-5"><p>Prueba local · datos ficticios · no envía mensajes</p><VoiceDashboardPanel user={{ role: "admin" } as User} token="qa-only" section={section} onSelectSection={setSection} data={data} onCreateRecord={blocked} onUpdateRecord={blocked} onCreateAndReturn={blocked} /></main>;
+  return <CourtCommunicationsOnlyContext.Provider value={courtOnly}><main className="p-5"><p>Prueba local · datos ficticios · no envía mensajes</p><div className={sidebar?'grid gap-5 md:grid-cols-[260px_minmax(0,1fr)]':undefined}>{sidebar&&<aside className="communications"><CommunicationsNav section={section} canReview={!courtOnly} onSelect={setSection}/></aside>}<VoiceDashboardPanel user={{ role: courtOnly?'site_coordinator':'admin', primary_site:1 } as User} token="qa-only" section={section} onSelectSection={setSection} data={data} onCreateRecord={blocked} onUpdateRecord={blocked} onCreateAndReturn={blocked} /></div></main></CourtCommunicationsOnlyContext.Provider>;
 }
 createRoot(document.getElementById("root")!).render(<Preview />);

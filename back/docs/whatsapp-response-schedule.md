@@ -1,6 +1,6 @@
 # Reloj laboral de primera respuesta
 
-El horario global del reporte se edita en Soccer WA → Histórico de primera respuesta → Horario laboral.
+El horario global del reporte se edita en Soccer WA → Configuración → Horario laboral, con acceso en los menús de administración y cancha (lectura para usuarios limitados). También se conserva el acceso desde Histórico de primera respuesta → Horario laboral.
 Inicial: todos los días, 09:00–20:00, America/Mexico_City. Los botones de días repiten cada semana.
 
 - GET/PATCH `/api/whatsapp-conversations/response-schedule/`; lectura con permiso del histórico, escritura solo administradores sin restricciones de sección.

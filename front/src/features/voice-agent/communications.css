@@ -258,3 +258,7 @@
 .comm-response-schedule input{display:block;width:100%;min-width:0}
 .comm-response-days{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .comm-response-days button{min-width:44px}
+.comm-response-schedule-inline{max-width:640px;padding:20px}
+.comm-response-schedule-inline p{margin:16px 0}
+.comm-response-schedule-inline input{display:block;width:100%;min-width:0;min-height:44px}
+.comm-response-schedule-inline button{min-height:44px}
