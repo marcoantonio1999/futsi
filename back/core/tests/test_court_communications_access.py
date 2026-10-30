@@ -39,6 +39,18 @@ def restricted_client(auth_client, site, channel):
     )[0]
 
 
+def test_restricted_coordinator_reads_schedule_but_cannot_change_it(auth_client):
+    client = restricted_client(auth_client, make_site(), FRANCO_ACADEMY)
+    schedule = client.get(BASE + 'response-schedule/')
+    assert schedule.status_code == 200, schedule.content
+    assert schedule.json()['starts_at'] == '09:00'
+    assert schedule.json()['ends_at'] == '20:00'
+    assert schedule.json()['can_edit'] is False
+    assert client.head(BASE + 'response-schedule/').status_code == 200
+    assert client.patch(BASE + 'response-schedule/', {'days':[0], 'starts_at':'10:00', 'ends_at':'18:00'}, format='json').status_code == 403
+    assert client.get(BASE + 'response-schedule/').json() == schedule.json()
+
+
 def test_restricted_coordinator_sees_only_the_assigned_number(auth_client):
     franco, uvm = make_site(name="Colegio Franco"), make_site(name="UVM")
     for address, label, site in (

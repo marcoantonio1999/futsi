@@ -36,7 +36,7 @@ import { auditPeriods, type AuditRange } from './auditPeriods';
 const adminRoles = new Set(["admin", "owner", "dev"]);
 const operationsRoles = new Set(["admin", "owner", "dev", "site_coordinator"]);
 const sectionDetails: Record<VoiceDashboardSection, { title: string }> = {
-  'response-schedule': { title: 'Configuración' },
+  'response-schedule': { title: 'Configurar horario laboral' },
   'veronica-exams': { title: 'Exámenes de reclutamiento' },
   connections: { title: "Conexiones" },
   "veronica-templates": { title: "Plantillas de WhatsApp" },
@@ -212,7 +212,7 @@ export function VoiceDashboardPanel({
   }
 
   if (!canManageTrials || (courtCommunicationsOnly && !isCourtCommunicationsSection(section))) return null;
-  if (section === 'response-schedule') return (canReviewCalls || courtCommunicationsOnly) ? <div className="communications"><header className="comm-page-heading"><h2>Configuración</h2></header><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection}/><ResponseScheduleDialog inline token={token} onSaved={()=>{}}/></div> : null;
+  if (section === 'response-schedule') return (canReviewCalls || courtCommunicationsOnly) ? <div className="communications"><header className="comm-page-heading"><h2>Configurar horario laboral</h2></header><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection}/><ResponseScheduleDialog inline token={token} onSaved={()=>{}}/></div> : null;
   if (section === 'veronica-exams') return canReviewCalls ? <ExamAdmin token={token} /> : null;
   if (section === 'veronica-templates') return canReviewCalls ? <div className="communications"><VeronicaTemplatesPanel token={token} /></div> : null;
   if (section === 'veronica-stats') return canReviewCalls ? <div className="communications"><VeronicaStatsPanel token={token} onOpenConversation={() => onSelectSection('veronica')} /></div> : null;

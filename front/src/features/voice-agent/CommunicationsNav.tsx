@@ -22,7 +22,7 @@ const courtCoordinatorItems: CommunicationItem[] = [
   { key: "templates", label: "Plantillas de WhatsApp" },
   academyBulkItems[1],
   ...auditItems,
-  { key: "response-schedule", label: "Configuración" },
+  { key: "response-schedule", label: "Configurar horario laboral" },
 ];
 
 const courtAttentionItems: CommunicationItem[] = [
@@ -59,7 +59,7 @@ export const communicationGroups: Array<{
     { key: "availability", label: "Disponibilidad", shortLabel: "Horarios" },
   ] },
   { label: "Gestión", icon: Settings2, items: [
-    { key: "response-schedule", label: "Configuración", admin: true },
+    { key: "response-schedule", label: "Configurar horario laboral", admin: true },
     { key: "connections", label: "Conexiones", admin: true },
     { key: "collections", label: "Cobranza por WhatsApp", shortLabel: "Cobranza" },
     { key: "chat-export", label: "Exportar chats", admin: true },

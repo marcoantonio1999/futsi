@@ -493,7 +493,7 @@ class WhatsAppConversationViewSet(
         from core.whatsapp.response_schedule import get_schedule, schedule_data, ResponseScheduleSerializer
         from core.models import WhatsAppResponseSchedule
         can_edit = request.user.role in ADMIN_ROLES and not request.user.section_permissions
-        if request.method == 'GET':
+        if request.method in {'GET', 'HEAD'}:
             return Response({**schedule_data(get_schedule()), 'can_edit':can_edit})
         if not can_edit:
             raise PermissionDenied('Solo administración puede cambiar el horario global.')

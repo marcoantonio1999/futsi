@@ -44,6 +44,7 @@ def court_communications_route_allowed(path, method):
         "/api/whatsapp-conversations/assignees/": {"GET", "HEAD"},
         "/api/whatsapp-conversations/templates/": {"GET", "HEAD"},
         "/api/whatsapp-conversations/weekly-stats/": {"GET", "HEAD"},
+        "/api/whatsapp-conversations/response-schedule/": {"GET", "HEAD"},
         "/api/whatsapp-conversations/contact-audit/": {"GET", "HEAD"},
         "/api/whatsapp-conversations/quality-audit/": {"GET", "HEAD"},
         "/api/whatsapp-conversations/attention-notifications/": {"GET", "HEAD"},
