@@ -23,7 +23,7 @@ try{for(const width of [320,390,1440])for(const mode of ['local','online']){
  await page.goto('http://127.0.0.1:5213/tests/enrollment-register-preview.html#/admin/inscripciones/permits');await page.getByRole('heading',{name:'Permisos de 24 horas',exact:true}).waitFor();
  if(width<768){const menu=page.getByRole('button',{name:'Abrir secciones'});await menu.click();await page.getByRole('button',{name:'Permisos de 24 horas',exact:true}).click();assert.equal(await menu.getAttribute('aria-expanded'),'false');}
  await page.getByLabel('Torneo',{exact:true}).selectOption('1');await page.getByLabel('Equipo',{exact:true}).selectOption('1');
- await page.getByRole('button',{name:'Permiso en línea',exact:true}).click();assert((await page.getByLabel('Enlace de permiso',{exact:true}).inputValue()).endsWith('#/permiso/public-test'));
+ assert.equal(await page.getByRole('button',{name:'Permiso en línea',exact:true}).count(),0);
  await page.getByRole('button',{name:'Permiso local',exact:true}).click();await page.getByRole('dialog',{name:'Permiso local',exact:true}).waitFor();
  page.once('dialog',d=>d.dismiss());await page.keyboard.press('Escape');assert(await page.getByRole('dialog',{name:'Permiso local',exact:true}).isVisible());
  }else await page.goto('http://127.0.0.1:5213/tests/enrollment-permit-preview.html#/permiso/public-test');

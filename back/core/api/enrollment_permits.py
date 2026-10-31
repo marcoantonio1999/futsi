@@ -2,8 +2,10 @@
 from datetime import timedelta
 from hashlib import sha256
 from uuid import uuid4
+import re
 
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -117,7 +119,34 @@ class EnrollmentPermitView(APIView):
 
     def get(self, request):
         rows = permits_for(request.user)
+        tournaments = list(rows.order_by('tournament_name').values_list('tournament_name', flat=True).distinct())
+        tournament = request.query_params.get('tournament', '').strip()[:140]
+        team = request.query_params.get('team', '').strip()[:140]
+        if tournament:
+            rows = rows.filter(tournament_name=tournament)
+        teams = list(rows.order_by('team_name').values_list('team_name', flat=True).distinct())
+        if team:
+            rows = rows.filter(team_name=team)
+        search = request.query_params.get('search', '').strip()[:160]
+        if search:
+            match = re.fullmatch(r'(?:P-)?0*(\d+)', search, re.IGNORECASE)
+            condition = Q(name__icontains=search)
+            if match and len(match.group(1)) <= 19 and int(match.group(1)) < 2**63:
+                condition |= Q(pk=int(match.group(1)))
+            rows = rows.filter(condition)
+        dates = {}
+        for field in ('date_from', 'date_to'):
+            if request.query_params.get(field):
+                dates[field] = serializers.DateField().run_validation(request.query_params[field])
+        if dates.get('date_from') and dates.get('date_to') and dates['date_from'] > dates['date_to']:
+            raise ValidationError('La fecha inicial no puede ser posterior a la final.')
+        if 'date_from' in dates:
+            rows = rows.filter(issued_at__date__gte=dates['date_from'])
+        if 'date_to' in dates:
+            rows = rows.filter(issued_at__date__lte=dates['date_to'])
         status = request.query_params.get('status', '')
+        if status not in {'', 'active', 'expired'}:
+            raise ValidationError('Estado inválido.')
         now = timezone.now()
         if status == 'active':
             rows = rows.filter(issued_at__lte=now, expires_at__gt=now)
@@ -127,7 +156,7 @@ class EnrollmentPermitView(APIView):
             page = max(1, int(request.query_params.get('page', 1)))
         except ValueError:
             raise ValidationError('Página inválida.')
-        response = Response({'results': [payload(row) for row in rows[(page-1)*20:page*20]], 'count': rows.count()})
+        response = Response({'results': [payload(row) for row in rows[(page-1)*20:page*20]], 'count': rows.count(), 'filters': {'tournaments': tournaments, 'teams': teams}})
         response['Cache-Control'] = 'private, no-store'
         return response
 

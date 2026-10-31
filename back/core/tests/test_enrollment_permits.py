@@ -172,3 +172,44 @@ class EnrollmentPermitTests(TestCase):
         self.assertEqual(public.get(url).status_code,200)
         self.assertFalse(PlayerTemporaryPermit.objects.exists())
         self.upload.assert_not_called()
+
+
+    def test_history_search_folio_filters_and_pagination_apply_before_limit(self):
+        self.client.post(self.url,self.data(),format='multipart')
+        first=PlayerTemporaryPermit.objects.get()
+        first.name='Ana Jugadora';first.team_name='Equipo histórico';first.tournament_name='Torneo cerrado';first.save()
+        for index in range(23):
+            self.client.post(self.url,self.data(),format='multipart')
+        self.assertEqual(self.client.get(self.url).data['count'],24)
+        self.assertEqual(len(self.client.get(self.url).data['results']),20)
+        response=self.client.get(self.url,{'search':'  Ana  '})
+        self.assertEqual(response.data['count'],1)
+        self.assertEqual(response.data['results'][0]['id'],first.pk)
+        response=self.client.get(self.url,{'search':f'p-{first.pk:06d}'})
+        self.assertEqual(response.data['count'],1)
+        self.assertEqual(response.data['results'][0]['id'],first.pk)
+        response=self.client.get(self.url,{'tournament':'Torneo cerrado','team':'Equipo histórico'})
+        self.assertEqual(response.data['count'],1)
+        self.assertIn('Torneo cerrado',response.data['filters']['tournaments'])
+        self.assertEqual(response.data['filters']['teams'],['Equipo histórico'])
+        self.assertEqual(self.client.get(self.url,{'tournament':'Torneo cerrado','team':'Otro'}).data['count'],0)
+
+    def test_history_date_range_uses_local_emission_date_inclusively(self):
+        from datetime import datetime, timezone as dt_timezone
+        self.client.post(self.url,self.data(),format='multipart')
+        row=PlayerTemporaryPermit.objects.get()
+        row.issued_at=datetime(2026,10,31,5,59,59,tzinfo=dt_timezone.utc)
+        row.expires_at=row.issued_at+timedelta(hours=24);row.save()
+        self.assertEqual(self.client.get(self.url,{'date_from':'2026-10-30','date_to':'2026-10-30'}).data['count'],1)
+        self.assertEqual(self.client.get(self.url,{'date_from':'2026-10-31'}).data['count'],0)
+        row.issued_at=datetime(2026,10,31,6,0,0,tzinfo=dt_timezone.utc);row.save()
+        self.assertEqual(self.client.get(self.url,{'date_to':'2026-10-30'}).data['count'],0)
+        for params in ({'date_from':'incorrecta'},{'date_from':'2026-11-02','date_to':'2026-11-01'},{'status':'unknown'}):
+            self.assertEqual(self.client.get(self.url,params).status_code,400)
+
+    def test_history_filter_choices_do_not_expose_other_sites(self):
+        self.client.post(self.url,self.data(),format='multipart')
+        self.user.section_permissions=['player_enrollments_only','player_enrollments_site:999999'];self.user.save()
+        response=self.client.get(self.url,{'search':'Jugador'})
+        self.assertEqual(response.data['count'],0)
+        self.assertEqual(response.data['filters'],{'tournaments':[],'teams':[]})

@@ -197,3 +197,11 @@ Pruebas: 13 de API (sin motivos, fecha anticipada, límites inclusivos, datos in
 Validar inscripción carga todas las fotos, firmas y documentos juntos al abrir una ficha. Las imágenes aparecen en una galería (dos columnas en escritorio y una en celular) y los PDF se renderizan a páginas visibles con el renderizador local existente. No hay selector de documento, checks ni marcas individuales de revisión. Se revocan las URL privadas de las imágenes al salir y no se cargan documentos de fichas no abiertas.
 
 El único botón de autorización es Validar inscripción. Se habilita después de cargar todos los adjuntos requeridos; conserva el bloqueo si falta un documento o no se puede mostrar. Al pulsarlo envía la confirmación y los IDs de los documentos cargados al mismo endpoint de validación. Se mantienen los controles del servidor y no requiere migración. Pruebas simuladas en 320/390/1440 px: galería completa, PDF visible, sin checks/desbordamiento, error recuperable y bloqueo de archivos no disponibles. No se validaron registros reales para probar.
+
+## Permisos locales y filtros del histórico
+
+La pantalla de emisión muestra únicamente Permiso local como acción principal de ventanilla, con foto y firma obligatorias. Se quitó la creación de enlaces de esa pantalla; los enlaces ya entregados conservan su vigencia original.
+
+El histórico permite buscar por nombre o folio completo P-000123 y filtrar por torneo, equipo, vigente/vencido y fecha de emisión desde/hasta (ambos días incluidos en horario de Ciudad de México). Los filtros se aplican en servidor antes de paginar y cuentan todos los resultados. Los desplegables provienen del histórico autorizado, incluyendo nombres de equipos o torneos inactivos/eliminados; seleccionar torneo limita las opciones de equipo. Cambiar filtros vuelve a página 1; Limpiar filtros restaura la consulta completa. No requiere migración.
+
+Verificación: 16 pruebas de API, filtros en 320/390/1440 px y regresión de foto/firma/impresión. No se crearon permisos reales durante las pruebas.
