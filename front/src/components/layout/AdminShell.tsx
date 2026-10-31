@@ -470,7 +470,7 @@ export function AdminShell({
           onSelectStudentsSection={selectStudentsSection}
           onSelectTournamentSection={selectTournamentSection}
         />
-        <div className={`min-w-0 flex-1 pt-[116px] transition-[margin] duration-200 sm:pt-[116px] lg:pt-0 ${sidebarExpanded ? "lg:ml-[17rem]" : "lg:ml-[5.75rem]"}`}>
+        <div className={`min-w-0 flex-1 transition-[margin] duration-200 ${isSoccerWa ? "pt-20 lg:pt-0" : "pt-[116px] sm:pt-[116px] lg:pt-0"} ${sidebarExpanded ? "lg:ml-[17rem]" : "lg:ml-[5.75rem]"}`}>
           <AdminShellHeader
             token={token}
             onOpenChats={() => selectCommunicationsSection('whatsapp')}

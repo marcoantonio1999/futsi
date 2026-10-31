@@ -33,12 +33,12 @@ export function AdminShellHeader({ token, onOpenChats, user, businessScope, canT
         </div>
         <button className={buttonClass + " hidden sm:grid"} onClick={onLogout} aria-label="Salir" type="button"><LogOut size={16} /></button>
       </div>
-      <label className="flex w-full items-center gap-2 border-t border-zinc-100 pt-2 text-xs text-zinc-500 lg:order-first lg:w-auto lg:border-0 lg:pr-3 lg:pt-0">
+      {!isSoccerWa && <label className="flex w-full items-center gap-2 border-t border-zinc-100 pt-2 text-xs text-zinc-500 lg:order-first lg:w-auto lg:border-0 lg:pr-3 lg:pt-0">
         Área
         {canToggleAdultDashboard ? <select aria-label="Área de trabajo" value={businessScope} onChange={event => onSwitchScope(event.target.value as BusinessScope)} className="min-h-8 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
           <option value="academy">Academia</option><option value="adult">Liga adultos</option>
         </select> : <span className="font-semibold">{businessScope === "adult" ? "Liga adultos" : "Academia"}</span>}
-      </label>
+      </label>}
     </div>
   </header>;
 }
