@@ -269,7 +269,7 @@ export function VoiceDashboardPanel({
       {section === "summary" && <><CommunicationsSummary data={voiceData} periodDays={auditPeriodDays} periodStart={auditStart} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} /><ContactClassificationPanel compact token={token} scopeQuery={query} /></>}
       {section === "chat-quality" && <><AuditPeriodPicker weeklyQuality days={7} start={qualityWeek} onStartChange={setQualityWeek} /><WhatsAppQualityPanel token={token} scopeQuery={query} week={qualityWeek} onOpenConversation={openConversation} /></>}
 
-      {section === "bookings" ? (
+      {section === "bookings" && !isSoccerWa ? (
         <TrialBookingsPanel
           initialBookingId={bookingId}
           data={voiceData}
@@ -298,7 +298,7 @@ export function VoiceDashboardPanel({
         />
       ) : null}
 
-      {section === "availability" ? (
+      {section === "availability" && !isSoccerWa ? (
         <AvailabilityPanel
           data={voiceData}
           onCreateRule={async (payload) => {

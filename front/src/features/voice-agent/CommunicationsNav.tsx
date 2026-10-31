@@ -56,10 +56,10 @@ export const communicationGroups: Array<{
   items: CommunicationItem[];
 }> = [
   { label: "Atención", icon: MessageCircle, items: [...courtAttentionItems, ...hrAttentionItems] },
-  { label: "Agenda", icon: CalendarDays, items: [
+  ...(!isSoccerWa ? [{ label: "Agenda", icon: CalendarDays, items: [
     { key: "bookings", label: "Pruebas gratuitas" },
     { key: "availability", label: "Disponibilidad", shortLabel: "Horarios" },
-  ] },
+  ] as CommunicationItem[] }] : []),
   { label: "Gestión", icon: Settings2, items: [
     { key: "response-schedule", label: "Configurar horario laboral", admin: true },
     { key: "connections", label: "Conexiones", admin: true },

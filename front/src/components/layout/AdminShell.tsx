@@ -185,7 +185,7 @@ export function AdminShell({
   useEffect(() => {
     const navigation = createNavigationHistory(window, `${isSoccerWa ? "soccerwa" : "futsi"}:${user.id}`, navigationScreen, screen => {
       setActiveTab(screen.activeTab); setBusinessScope(screen.businessScope);
-      setCommunicationsSection(isSoccerWa && ["calls", "veronica-exams"].includes(screen.communicationsSection) ? defaultCommunicationsSection : screen.communicationsSection); setTournamentSection(screen.tournamentSection);
+      setCommunicationsSection(isSoccerWa && ["calls", "veronica-exams", "bookings", "availability"].includes(screen.communicationsSection) ? defaultCommunicationsSection : screen.communicationsSection); setTournamentSection(screen.tournamentSection);
       setStudentsSection(screen.studentsSection); setCoachesSection(screen.coachesSection);
       setGuardiansSection(screen.guardiansSection); setBillingSection(screen.billingSection);
       setAttendanceSubsection(screen.attendanceSubsection); setStudentToEdit(screen.studentToEdit); setGuardianToEdit(screen.guardianToEdit);
@@ -249,7 +249,7 @@ export function AdminShell({
   }
 
   function selectCommunicationsSection(section: CommunicationsSubsection) {
-    if (isSoccerWa && ["calls", "veronica-exams"].includes(section)) return;
+    if (isSoccerWa && ["calls", "veronica-exams", "bookings", "availability"].includes(section)) return;
     if (veronicaOnly && !isVeronicaSection(section)) return;
     if (courtCommunicationsOnly && !isCourtCommunicationsSection(section)) return;
     if (effectiveActiveTab !== "communications") setCommunicationsMenuExpanded(true);
