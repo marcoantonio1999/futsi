@@ -63,7 +63,7 @@ export const communicationGroups: Array<{
   { label: "Gestión", icon: Settings2, items: [
     { key: "response-schedule", label: "Configurar horario laboral", admin: true },
     { key: "connections", label: "Conexiones", admin: true },
-    { key: "collections", label: "Cobranza por WhatsApp", shortLabel: "Cobranza" },
+    ...(!isSoccerWa ? [{ key: "collections", label: "Cobranza por WhatsApp", shortLabel: "Cobranza" } as CommunicationItem] : []),
     { key: "chat-export", label: "Exportar chats", admin: true },
     { key: "settings", label: "Ajustes del asistente", shortLabel: "Ajustes" , admin: true },
   ] },

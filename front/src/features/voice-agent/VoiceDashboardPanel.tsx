@@ -264,7 +264,7 @@ export function VoiceDashboardPanel({
       {channelsReady && <div key={query} role={auditPage ? "region" : undefined} aria-label={auditPage ? "Contenido de auditoría" : undefined} tabIndex={auditPage ? 0 : undefined} className={auditPage ? "comm-audit-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
       {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} showChannelDetails={canReviewCalls} />}
       {section === "template-builder" && <WhatsAppTemplateBuilder token={token} channels={templateChannels} />}
-      {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
+      {section === "collections" && !isSoccerWa && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
       {auditPage && section !== "chat-quality" && <AuditPeriodPicker days={auditPeriodDays} start={auditStart} onDaysChange={setAuditPeriodDays} onStartChange={setAuditStart} />}
       {section === "summary" && <><CommunicationsSummary data={voiceData} periodDays={auditPeriodDays} periodStart={auditStart} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} /><ContactClassificationPanel compact token={token} scopeQuery={query} /></>}
       {section === "chat-quality" && <><AuditPeriodPicker weeklyQuality days={7} start={qualityWeek} onStartChange={setQualityWeek} /><WhatsAppQualityPanel token={token} scopeQuery={query} week={qualityWeek} onOpenConversation={openConversation} /></>}
