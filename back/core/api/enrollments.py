@@ -288,7 +288,7 @@ class PublicEnrollmentView(APIView):
         assert_no_pending_sanction(fields['name'], fields['birth_date'])
         kinds = ["player_photo"]
         if is_minor(fields["birth_date"]):
-            kinds.extend(["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back", "guardian_signature"])
+            kinds.extend(["minor_credential", "guardian_ine_front", "guardian_ine_back", "guardian_signature"])
         elif fields["identity_type"] == "ine":
             kinds.extend(["player_signature", "ine_front", "ine_back"])
         elif fields["identity_type"] == "curp":
@@ -296,6 +296,10 @@ class PublicEnrollmentView(APIView):
         else:
             kinds.extend(["player_signature", "identity_document"])
         direct = request.data.get('uploaded_documents')
+        # A client opened before this release may already have uploaded the old extra CURP.
+        # Its signed receipt is still validated by the same strict storage checks.
+        if is_minor(fields['birth_date']) and isinstance(direct, list) and len(direct) == len(kinds) + 1:
+            kinds.append('curp')
         files = [] if direct is not None else [(kind, *validated_file(request.FILES.get(kind), kind)) for kind in kinds]
         # Reject invalid invitations before transferring any private files.
         invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token, purpose='enroll')
@@ -751,7 +755,7 @@ class EnrollmentValidationView(APIView):
             assert_not_blacklisted(row.name, row.birth_date, locked=True)
             required = {'player_photo'}
             if is_minor(row.birth_date, timezone.localdate(row.signed_at)):
-                required.update(['minor_credential', 'curp', 'guardian_ine_front', 'guardian_ine_back', 'guardian_signature'])
+                required.update(['minor_credential', 'guardian_ine_front', 'guardian_ine_back', 'guardian_signature'])
             elif row.identity_type == 'ine':
                 required.update(['player_signature', 'ine_front', 'ine_back'])
             elif row.identity_type == 'curp':

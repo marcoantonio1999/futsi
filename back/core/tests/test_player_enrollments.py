@@ -677,7 +677,7 @@ class PlayerEnrollmentTests(TestCase):
     def payload(self, minor=False, tutor=True, blank=False):
         data = {"given_names": "Jugador", "paternal_surname": "de", "maternal_surname": "prueba", "birth_date": "2015-01-01" if minor else "1990-01-01", "identity_type": "minor" if minor else "ine", "phone": "5512345678", "phone_secondary": "5587654321", "accepted_terms": "true", "player_photo": image_file("foto.png"), "player_signature": image_file("firma.png", blank)}
         if minor:
-            data.update({kind: image_file(kind + ".png") for kind in ("minor_credential", "curp", "guardian_ine_front", "guardian_ine_back")})
+            data.update({kind: image_file(kind + ".png") for kind in ("minor_credential", "guardian_ine_front", "guardian_ine_back")})
         else:
             data.update(ine_front=image_file("frente.png"), ine_back=image_file("reverso.png"))
         if minor and tutor:
@@ -789,8 +789,8 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, content)
 
-    def test_minor_requires_curp_and_tutor_identity(self):
-        for kind in ("curp", "guardian_ine_front", "minor_credential"):
+    def test_minor_requires_one_child_document_and_tutor_identity(self):
+        for kind in ("guardian_ine_front", "guardian_ine_back", "minor_credential"):
             data = self.payload(minor=True); del data[kind]
             self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
 
@@ -813,6 +813,8 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(self.client.post(self.url, data, format='multipart').status_code, 201)
         self.assertTrue(PlayerEnrollmentDocument.objects.filter(kind='guardian_signature').exists())
         self.assertFalse(PlayerEnrollmentDocument.objects.filter(kind='player_signature').exists())
+        self.assertFalse(PlayerEnrollmentDocument.objects.filter(kind='curp').exists())
+        self.assertEqual(PlayerEnrollmentDocument.objects.count(), 5)
 
     def test_minor_legacy_upload_ignores_child_signature(self):
         self.assertEqual(self.client.post(self.url, self.payload(minor=True), format='multipart').status_code, 201)

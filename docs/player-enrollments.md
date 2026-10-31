@@ -205,3 +205,11 @@ La pantalla de emisión muestra únicamente Permiso local como acción principal
 El histórico permite buscar por nombre o folio completo P-000123 y filtrar por torneo, equipo, vigente/vencido y fecha de emisión desde/hasta (ambos días incluidos en horario de Ciudad de México). Los filtros se aplican en servidor antes de paginar y cuentan todos los resultados. Los desplegables provienen del histórico autorizado, incluyendo nombres de equipos o torneos inactivos/eliminados; seleccionar torneo limita las opciones de equipo. Cambiar filtros vuelve a página 1; Limpiar filtros restaura la consulta completa. No requiere migración.
 
 Verificación: 16 pruebas de API, filtros en 320/390/1440 px y regresión de foto/firma/impresión. No se crearon permisos reales durante las pruebas.
+
+## Registro de menores: documento único y firma del tutor
+
+En inscripciones por enlace y ventanilla, la documentación del jugador menor se solicita en un solo campo Documento del menor, que admite foto o PDF. Ya no se requieren por separado credencial y CURP. Se reutiliza la referencia interna minor_credential para conservar compatibilidad con archivos existentes; no se elimina ningún documento histórico. La validación y las hojas de inscripción usan el mismo nombre y requisito.
+
+El menor no firma su inscripción: solo se solicita, guarda y presenta la firma del padre o tutor. Se conservan el nombre e INE del tutor, la foto del jugador y los compromisos actuales. Para adultos se mantienen la firma del jugador y la alternativa CURP. La carga directa R2 tolera el CURP adicional de un formulario abierto antes del despliegue, comprobando sus recibos firmados como cualquier otro adjunto.
+
+Sin migración. Verificado con pruebas de inscripción, R2, validación y navegador en 320/390/1440 px; se confirmó emisión con cinco adjuntos del menor y sin firma infantil. No se hicieron registros reales para probar.

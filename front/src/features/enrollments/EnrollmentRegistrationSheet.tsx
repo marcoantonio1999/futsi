@@ -11,7 +11,7 @@ type Enrollment = { id: number; name: string; birth_date: string; identity_type:
   terms_text: string[]; documents: Document[] };
 const labels: Record<string,string> = { player_photo:'Foto del jugador', player_signature:'Firma del jugador',
   guardian_signature:'Firma del tutor', ine_front:'INE frente', ine_back:'INE reverso',
-  identity_document:'Pasaporte / cartilla', minor_credential:'Credencial del menor', curp:'CURP',
+  identity_document:'Pasaporte / cartilla', minor_credential:'Documento del menor', curp:'CURP',
   guardian_ine_front:'INE del tutor frente', guardian_ine_back:'INE del tutor reverso' };
 
 function PrivateDocument({document,token,onReady}:{document:Document;token:string;onReady:(id:number,ready:boolean)=>void}) {

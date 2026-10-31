@@ -40,7 +40,7 @@ import { LightingIndicator } from './LightingIndicator';
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
-  identity_document: "Pasaporte / cartilla", minor_credential: "Credencial del menor", curp: "CURP",
+  identity_document: "Pasaporte / cartilla", minor_credential: "Documento del menor", curp: "CURP",
   guardian_ine_front: "INE del tutor frente", guardian_ine_back: "INE del tutor reverso",
   player_signature: "Firma del jugador", guardian_signature: "Firma del tutor",
 };
@@ -199,7 +199,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     if (file && file.size <= ENROLLMENT_FILE_MAX_BYTES) clearIssue(kind);
   }
   const kind = minor ? "minor" : identity;
-  const documentKinds = minor ? ["minor_credential", "curp", "guardian_ine_front", "guardian_ine_back"]
+  const documentKinds = minor ? ["minor_credential", "guardian_ine_front", "guardian_ine_back"]
     : identity === "ine" ? ["ine_front", "ine_back"] : identity === "curp" ? ["curp"] : ["identity_document"];
   const signatureKind = minor ? 'guardian_signature' : 'player_signature';
   const required = ["player_photo", signatureKind, ...documentKinds];

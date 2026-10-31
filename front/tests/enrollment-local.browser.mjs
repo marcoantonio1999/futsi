@@ -52,7 +52,7 @@ async function completeForm(page,minor=false){
  await consent(page);
  await page.getByRole('button',{name:'Siguiente',exact:true}).click();
  await page.locator('[data-enrollment-field="birth_date"].enrollment-invalid').waitFor();
- if(page.viewportSize().width<768)await page.locator('input[type=date][name=birth_date]').fill(minor?'2015-01-01':'2000-01-01');
+ if(await page.locator('input[type=date][name=birth_date]').isVisible())await page.locator('input[type=date][name=birth_date]').fill(minor?'2015-01-01':'2000-01-01');
  else {
   await page.locator('.enrollment-date-trigger').click();
   const calendar=page.locator('.enrollment-date-popup');await calendar.waitFor();
@@ -70,7 +70,8 @@ async function completeForm(page,minor=false){
   await page.screenshot({path:`${output}/curp-${page.viewportSize().width}.png`,fullPage:true});
  }
  const pdf={name:'documento-ficticio.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nFICTICIO')};
- for(const field of (minor?['minor_credential','curp','guardian_ine_front','guardian_ine_back']:adultCurp?['curp']:['ine_front','ine_back']))await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
+ if(minor){assert.equal(await page.locator('[data-enrollment-field=curp] input').count(),0);assert.equal(await page.getByText('Documento del menor',{exact:true}).count(),1);}
+ for(const field of (minor?['minor_credential','guardian_ine_front','guardian_ine_back']:adultCurp?['curp']:['ine_front','ine_back']))await page.locator(`[data-enrollment-field="${field}"] input[type=file]`).setInputFiles(pdf);
  assert.equal(await page.locator('.upload-box').first().getAttribute('data-slot'),'card');
  assert.equal(await page.locator('.upload-box button').first().getAttribute('data-slot'),'button');
  await page.screenshot({path:`${output}/documents-${minor?'minor':'adult'}-${page.viewportSize().width}.png`,fullPage:true});
@@ -113,11 +114,11 @@ try{
   const body=writes.at(-1).body;
   if(direct){
    const payload=JSON.parse(body);assert.equal(payload.given_names,'José');assert.equal(payload.birth_date,minor?'2015-01-01':'2000-01-01');
-   assert.equal(payload.uploaded_documents.length,minor?6:adultCurp?3:4);assert(!body.includes('base64'));assert(!body.includes('filename='));
+   assert.equal(payload.uploaded_documents.length,minor?5:adultCurp?3:4);assert(!body.includes('base64'));assert(!body.includes('filename='));
    if(!minor&&adultCurp){assert.equal(payload.identity_type,'curp');assert(payload.uploaded_documents.includes('receipt:curp'));}
    assert(!payload.uploaded_documents.includes(`receipt:${minor?'player_signature':'guardian_signature'}`));
   }else{
-   for(const field of ['birth_date','accepted_terms','player_photo','given_names','paternal_surname','maternal_surname','phone',...(minor?['guardian_signature','guardian_name','minor_credential','curp','guardian_ine_front','guardian_ine_back']:adultCurp?['player_signature','curp']:['player_signature','ine_front','ine_back'])])assert(body.includes(`name="${field}"`),field);
+   for(const field of ['birth_date','accepted_terms','player_photo','given_names','paternal_surname','maternal_surname','phone',...(minor?['guardian_signature','guardian_name','minor_credential','guardian_ine_front','guardian_ine_back']:adultCurp?['player_signature','curp']:['player_signature','ine_front','ine_back'])])assert(body.includes(`name="${field}"`),field);
    assert(!body.includes(`name="${minor?'player_signature':'guardian_signature'}"`));
   }
   assert.equal(writes.length,width===390?3:2);

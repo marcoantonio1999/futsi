@@ -24,7 +24,7 @@ type RecordRow = {
 };
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador",
-  minor_credential: "Credencial del menor",
+  minor_credential: "Documento del menor",
   curp: "CURP",
   guardian_ine_front: "INE del tutor frente",
   guardian_ine_back: "INE del tutor reverso",
@@ -138,7 +138,6 @@ export function EnrollmentApproval({
       ? [
           "player_photo",
           "minor_credential",
-          "curp",
           "guardian_ine_front",
           "guardian_ine_back",
           "guardian_signature",

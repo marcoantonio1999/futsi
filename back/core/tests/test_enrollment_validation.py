@@ -60,3 +60,10 @@ class EnrollmentValidationTests(TestCase):
   self.client.force_authenticate(self.user)
   self.row.withdrawn_at=timezone.now();self.row.save()
   self.assertEqual(count(),0)
+
+ def test_minor_validation_accepts_one_child_document_and_only_guardian_signature(self):
+  self.row.birth_date=date(2015,1,1);self.row.identity_type='minor';self.row.guardian_name='Tutor';self.row.save()
+  self.row.documents.all().delete()
+  self.docs=[PlayerEnrollmentDocument.objects.create(enrollment=self.row,kind=k,content=b'test',content_type='image/png',sha256='a'*64) for k in ('player_photo','minor_credential','guardian_ine_front','guardian_ine_back','guardian_signature')]
+  self.assertEqual(self.approve().status_code,200)
+  self.assertFalse(self.row.documents.filter(kind__in=['curp','player_signature']).exists())

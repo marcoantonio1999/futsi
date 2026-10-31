@@ -98,6 +98,17 @@ class EnrollmentR2Tests(TestCase):
             result=self.client.post(url,{**data,'uploaded_documents':receipts},format='json');self.assertEqual(result.status_code,400,result.data)
         self.copy.assert_not_called();self.assertFalse(PlayerEnrollment.objects.exists())
 
+    def test_minor_old_client_can_finish_an_already_uploaded_extra_curp(self):
+        data,files=self.metadata(minor=True)
+        files['curp']={'content':b'%PDF-1.4 synthetic CURP','mime':'application/pdf'}
+        data['uploaded_documents']=self.plan(files)
+        response=self.client.post(self.url,data,format='json')
+        self.assertEqual(response.status_code,201,response.data)
+        row=PlayerEnrollment.objects.get()
+        self.assertTrue(row.documents.filter(kind='minor_credential').exists())
+        self.assertTrue(row.documents.filter(kind='curp').exists())
+        self.assertFalse(row.documents.filter(kind='player_signature').exists())
+
     def test_adult_curp_direct_upload_is_committed_and_keeps_document_kind(self):
         data, files = self.metadata()
         data['identity_type'] = 'curp'
