@@ -1,4 +1,5 @@
 """Staff-mediated private appeals and administrator payment acknowledgement."""
+from datetime import timedelta
 from hashlib import sha256
 from io import BytesIO
 from uuid import uuid4
@@ -11,9 +12,9 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.models import PlayerSanction
+from core.models import PlayerSanction, AuditLog
 from core.api.sanctions import SanctionPermission
-from core.api.disciplinary import scoped_sanctions, can_manage_blacklist, status_of
+from core.api.disciplinary import scoped_sanctions, can_manage_blacklist, can_decide_appeals, status_of
 from core.services import enrollment_storage
 
 
@@ -30,7 +31,7 @@ class SanctionAppealView(APIView):
         source = get_object_or_404(scoped_sanctions(request.user), pk=pk)
         if source.appeal_status != 'none':
             raise ValidationError('Esta sanción ya tiene una apelación registrada.')
-        reason = serializers.CharField(min_length=10, max_length=4000).run_validation(request.data.get('reason'))
+        reason = serializers.CharField(allow_blank=True, max_length=4000).run_validation(request.data.get('reason', ''))
         photo = request.FILES.get('letter')
         if not photo or photo.size > 20_000_000:
             raise ValidationError('Adjunta una foto de la carta (máximo 20 MB antes de comprimir).')
@@ -88,11 +89,13 @@ class SanctionDecisionView(APIView):
     permission_classes = [SanctionPermission]
 
     def post(self, request, pk):
-        if not can_manage_blacklist(request.user):
-            raise PermissionDenied('Solo administración puede decidir la apelación o registrar el pago.')
         action = serializers.ChoiceField(choices=['accepted','rejected','payment']).run_validation(request.data.get('action'))
+        if (action == 'payment' and not can_manage_blacklist(request.user)) or (action != 'payment' and not can_decide_appeals(request.user)):
+            raise PermissionDenied('No tienes permiso para realizar esta acción.')
+        if action != 'accepted' and 'return_on' in request.data:
+            raise ValidationError('La fecha de regreso solo se modifica al aceptar la apelación.')
         with transaction.atomic():
-            row = get_object_or_404(PlayerSanction.objects.select_for_update(), pk=pk)
+            row = get_object_or_404(scoped_sanctions(request.user).select_for_update(of=('self',)), pk=pk)
             if action == 'payment':
                 folio = serializers.CharField(min_length=1,max_length=100,trim_whitespace=True).run_validation(request.data.get('folio'))
                 if any(ord(char)<32 for char in folio):
@@ -105,12 +108,30 @@ class SanctionDecisionView(APIView):
                     row.payment_recorded_at=timezone.now()
                     row.save(update_fields=['payment_folio','payment_recorded_by','payment_recorded_at'])
             else:
-                reason = serializers.CharField(min_length=3,max_length=2000).run_validation(request.data.get('reason'))
+                reason = (serializers.CharField(allow_blank=True,max_length=2000).run_validation(request.data.get('reason', '')) if action == 'accepted'
+                          else serializers.CharField(min_length=3,max_length=2000).run_validation(request.data.get('reason')))
                 if row.appeal_status != 'pending':
                     raise ValidationError('Solo se puede decidir una apelación pendiente; la decisión registrada no se sobrescribe.')
+                date_fields = []
+                if action == 'accepted' and 'return_on' in request.data:
+                    return_on = serializers.DateField().run_validation(request.data['return_on'])
+                    if return_on <= row.starts_on:
+                        raise ValidationError({'return_on': 'La fecha de regreso debe ser posterior al inicio de la sanción.'})
+                    ends_on = return_on - timedelta(days=1)
+                    if ends_on != row.ends_on:
+                        previous = {'starts_on': row.starts_on.isoformat(), 'ends_on': row.ends_on.isoformat() if row.ends_on else None,
+                                    'duration_unit': row.duration_unit, 'duration_value': row.duration_value}
+                        row.ends_on = ends_on
+                        row.duration_unit = 'dates'
+                        row.duration_value = None
+                        date_fields = ['ends_on', 'duration_unit', 'duration_value']
+                        AuditLog.objects.create(actor=request.user, action='sanction_appeal_return_changed',
+                            table_name=PlayerSanction._meta.db_table, record_id=str(row.pk), previous_values=previous,
+                            new_values={'starts_on': row.starts_on.isoformat(), 'ends_on': ends_on.isoformat(),
+                                        'return_on': return_on.isoformat(), 'duration_unit': 'dates', 'duration_value': None})
                 row.appeal_status=action
                 row.appeal_decision_reason=reason
                 row.appeal_decided_by=request.user
                 row.appeal_decided_at=timezone.now()
-                row.save(update_fields=['appeal_status','appeal_decision_reason','appeal_decided_by','appeal_decided_at'])
+                row.save(update_fields=['appeal_status','appeal_decision_reason','appeal_decided_by','appeal_decided_at', *date_fields])
         return private_response(Response({'completed':True,'status':status_of(row)}))

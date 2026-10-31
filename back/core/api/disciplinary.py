@@ -21,6 +21,10 @@ from core.services.disciplinary_photos import snapshot_photo, document_thumbnail
 def can_manage_blacklist(user):
     return user.role in {'admin','owner','dev'} or (user.username.casefold()=='emilio' and enrollment_staff(user))
 
+def can_decide_appeals(user):
+    return can_manage_blacklist(user) or user.role == 'site_coordinator'
+
+
 def scoped_sanctions(user):
     rows=PlayerSanction.objects.select_related('team__tournament__site','created_by','enrollment','player','appeal_submitted_by','appeal_decided_by','payment_recorded_by').prefetch_related(Prefetch('enrollment__documents',queryset=PlayerEnrollmentDocument.objects.filter(kind='player_photo').defer('content'),to_attr='disciplinary_photos'))
     if enrollment_site_ids(user) is not None:
@@ -87,7 +91,7 @@ class DisciplinaryHistoryView(APIView):
                     appeal_decision_reason=row.appeal_decision_reason,appeal_decided_at=row.appeal_decided_at,
                     appeal_decided_by=row.appeal_decided_by.username if row.appeal_decided_by_id else None)
             result.append(common)
-        response=Response({'results':result,'count':count,'filters':filters,'can_manage_blacklist':can_manage_blacklist(request.user)})
+        response=Response({'results':result,'count':count,'filters':filters,'can_manage_blacklist':can_manage_blacklist(request.user), 'can_decide_appeals':can_decide_appeals(request.user)})
         response['Cache-Control']='no-store';return response
 
 class BlacklistView(DisciplinaryHistoryView):

@@ -180,3 +180,14 @@ Foto y firma se validan antes de subir cualquier archivo. La firma vacía se rec
 Los permisos no crean una inscripción, no cambian cupos ni cancelan sanciones/lista negra. No se implementa identificación por foto para comprobar sanciones. No se emitieron permisos reales durante las pruebas.
 
 Requiere publicar API/frontend y aplicar `0076_player_temporary_permits`. Crea tablas privadas de invitaciones y permisos, con RLS y sin permisos PUBLIC/anon/authenticated en PostgreSQL. La migración se comprobó en SQLite aislado y no se aplicó en producción. Trece pruebas de API verifican autorización, alcance, firmas/aceptación obligatorias, enlace público sin sesión, uso único, vencimiento y reintentos. Flujos de navegador local/en línea en 320/390/1440 px verifican firma, error recuperable, cierre protegido, navegación móvil y comprobante impreso con firma.
+
+
+## Apelaciones: motivo opcional y fecha de regreso
+
+Al solicitar apelación se requiere únicamente la foto de la carta; ya no hay campo de motivo escrito. Al aceptar tampoco se pide motivo. La negativa mantiene su motivo para el historial. Las cartas siguen privadas y se usa entrega R2 autorizada.
+
+Aceptar apelación muestra la fecha actual de regreso (primer día posterior al último día sancionado) y una opción Modificar fecha de regreso. El servidor acepta return_on solo para aceptación pendiente, exige que sea posterior al inicio y guarda ends_on=return_on-1 día. La duración pasa a fechas y se conserva el periodo anterior/nuevo con autor en AuditLog. Aceptar y ajustar fechas es atómico; no reescribe decisiones anteriores ni elimina otras sanciones o lista negra. El folio de pago sigue siendo necesario cuando la sanción lo requiere.
+
+Administración y Emilio conservan su acceso; el coordinador de sede puede decidir apelaciones y modificar regreso solamente para su sede. Registrar folio de pago conserva el permiso de administración. La interfaz recibe can_decide_appeals separado de can_manage_blacklist. No requiere migración.
+
+Pruebas: 13 de API (sin motivos, fecha anticipada, límites inclusivos, datos inválidos, conservación de la carta y permisos por sede); aceptación en 320/390/1440 px sin desbordamiento y con fecha nativa en el diálogo.

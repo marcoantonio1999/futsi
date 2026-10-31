@@ -42,7 +42,7 @@ test('embedded camera stays in the existing modal and releases the stream on clo
 test('payment folio is an explicit visible text field styled inside the portal dialog',()=>{
   const source=readFileSync('src/features/enrollments/SanctionAppeal.tsx','utf8');
   const css=readFileSync('src/features/enrollments/enrollmentAdmin.css','utf8');
-  assert.match(source,/<label className="sanction-payment-field">Folio de pago<input type="text" name="folio" required/);
+  assert.match(source,/<Label className="sanction-payment-field">Folio de pago<Input type="text" name="folio" required/);
   assert.match(source,/placeholder="Ej. PAGO-000123"/);
   assert.match(css,/\.tournament-dialog \.sanction-payment-field input\{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:46px/);
   assert.match(css,/border:1px solid #d3ddd6;border-radius:8px/);

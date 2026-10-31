@@ -280,3 +280,7 @@
 .sanction-appeal-details dd { white-space:pre-wrap; }
 
 .enrollment-sabana-players{font-variant-numeric:tabular-nums;font-weight:650;white-space:nowrap}
+
+.tournament-dialog .sanction-return-toggle{display:flex;align-items:center;gap:10px;min-height:44px;margin:12px 0}
+.tournament-dialog .sanction-return-toggle input{width:22px;min-width:22px;height:22px;margin:0}
+.tournament-dialog .sanction-return-date input[type="date"]{box-sizing:border-box;display:block;width:100%;min-width:0;min-height:44px;padding:10px 12px;font-size:16px;border:1px solid #d3ddd6;border-radius:8px;background:white;color:#24362b}
