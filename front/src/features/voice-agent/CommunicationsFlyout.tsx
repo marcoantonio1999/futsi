@@ -1,6 +1,6 @@
 import {useEffect, useId, useRef, useState} from 'react';
 import {Popover} from '@base-ui/react/popover';
-import {ArrowLeft, ChevronRight, X, type LucideIcon} from 'lucide-react';
+import {ArrowLeft, ChevronRight, type LucideIcon} from 'lucide-react';
 import type {VoiceDashboardSection} from './model';
 
 type Item = {key:VoiceDashboardSection;label:string};
@@ -41,11 +41,11 @@ export function CommunicationsFlyout({groups,section,onSelect}:{groups:Group[];s
   const Icon=group.icon,active=group.items.some(item=>item.key===section);
   const contents=<><Icon size={19} aria-hidden="true"/><span>{group.label}</span><ChevronRight size={16} aria-hidden="true"/></>;
   if(mobile) return <button ref={element=>{triggers.current[group.key]=element;}} key={group.key} type="button" className="comm-flyout-trigger" aria-expanded={false} data-active={active || undefined} onClick={()=>setOpen(group.key)}>{contents}</button>;
-  return <Popover.Root key={group.key} open={open===group.key} onOpenChange={value=>setOpen(current=>value?group.key:current===group.key?null:current)}>
+  return <Popover.Root key={group.key} modal={false} open={open===group.key} onOpenChange={value=>setOpen(current=>value?group.key:current===group.key?null:current)}>
    <Popover.Trigger type="button" className="comm-flyout-trigger" data-active={active || undefined}>{contents}</Popover.Trigger>
    <Popover.Portal><Popover.Positioner side="right" align="start" sideOffset={12} collisionPadding={12} className="comm-flyout-positioner">
     <Popover.Popup className="comm-flyout-popup" aria-labelledby={`${id}-${group.key}`}>
-     <header><Popover.Title id={`${id}-${group.key}`}>{group.label}</Popover.Title><Popover.Close type="button" aria-label="Cerrar submenú"><X size={18}/></Popover.Close></header>
+     <header><Popover.Title id={`${id}-${group.key}`}>{group.label}</Popover.Title></header>
      {links(group)}
     </Popover.Popup>
    </Popover.Positioner></Popover.Portal>

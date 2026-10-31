@@ -28,6 +28,7 @@ try{
   await courts.focus();await courts.press('Enter');
   const panel=mobile?page.getByRole('region',{name:'Opciones de Canchas'}):page.getByRole('dialog',{name:'Canchas',exact:true});
   await panel.waitFor();
+  assert.equal(await panel.getByRole('button',{name:'Cerrar submenú',exact:true}).count(),0);
   for(const label of ['Nuevo envío masivo','Historial de envíos','Bandeja de WhatsApp','Plantillas de WhatsApp','Crear plantilla','Resumen','Calidad de chats','Histórico de primera respuesta','Llamadas']){
    const button=panel.getByRole('button',{name:label,exact:true});assert(await button.isVisible());assert((await button.boundingBox()).height>=44);
   }
@@ -50,7 +51,12 @@ try{
   await openDrawer();await nav.getByRole('button',{name:'Gestión',exact:true}).click();
   const management=mobile?page.getByRole('region',{name:'Opciones de Gestión'}):page.getByRole('dialog',{name:'Gestión',exact:true});
   await management.getByRole('button',{name:'Configurar horario laboral',exact:true}).waitFor();
-  if(mobile){await management.getByRole('button',{name:'Volver al menú'}).click();assert(await nav.isVisible());}
+  if(mobile){
+   await management.getByRole('button',{name:'Volver al menú'}).click();assert(await nav.isVisible());
+   await nav.getByRole('button',{name:'Canchas',exact:true}).click();
+   await page.mouse.click(width-8,100);
+   assert.equal(await page.getByTestId('section-menu-dropdown').count(),0);
+  }
   else await page.keyboard.press('Escape');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
   console.log(JSON.stringify({width,adminCategories:4,clickAndKeyboard:true,rightFlyout:!mobile,mobilePanel:mobile,navigation:true,overflow:false}));

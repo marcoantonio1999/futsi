@@ -110,7 +110,6 @@
 .comm-flyout-popup{width:310px;max-width:calc(100vw - 24px);max-height:min(720px,var(--available-height));overflow:auto;padding:10px;border:1px solid #dce5df;border-radius:12px;background:#fff;color:#253b31;box-shadow:0 12px 40px #102d2426}
 .comm-flyout-popup header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 4px 8px;border-bottom:1px solid #e5ece7}
 .comm-flyout-popup header h2,.comm-flyout-mobile h3{margin:0;font-size:15px;font-weight:700}
-.comm-flyout-popup header button{display:grid;place-items:center;flex-shrink:0;min-width:44px;min-height:44px;border:0;border-radius:6px;background:transparent;cursor:pointer}
 .comm-flyout-links{display:grid;gap:3px;padding-top:6px}
 .comm-flyout-links>button{display:block;width:100%;min-height:44px;padding:10px 12px;border:0;border-radius:7px;background:transparent;color:inherit;font-size:14px;text-align:left;white-space:normal;cursor:pointer}
 .comm-flyout-links>button:hover{background:#f2f7f4}.comm-flyout-links>button[aria-current=page]{background:#e2f2e9;color:#086244;font-weight:700}
