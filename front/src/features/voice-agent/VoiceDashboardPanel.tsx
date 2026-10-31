@@ -214,7 +214,7 @@ export function VoiceDashboardPanel({
 
   if (!canManageTrials || (courtCommunicationsOnly && !isCourtCommunicationsSection(section))) return null;
   if (section === 'response-schedule') return (canReviewCalls || courtCommunicationsOnly) ? <div className="communications"><header className="comm-page-heading"><h2>Configurar horario laboral</h2></header><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection}/><ResponseScheduleDialog inline token={token} sites={permittedData.sites} siteId={selectedSite} onSaved={()=>{}}/></div> : null;
-  if (section === 'veronica-exams') return canReviewCalls ? <ExamAdmin token={token} /> : null;
+  if (section === 'veronica-exams') return canReviewCalls && !isSoccerWa ? <ExamAdmin token={token} /> : null;
   if (section === 'veronica-templates') return canReviewCalls ? <div className="communications"><VeronicaTemplatesPanel token={token} /></div> : null;
   if (section === 'veronica-stats') return canReviewCalls ? <div className="communications"><VeronicaStatsPanel token={token} onOpenConversation={() => onSelectSection('veronica')} /></div> : null;
   if (section === 'connections') return canReviewCalls ? <div className="communications"><CommunicationsNav compact section={section} canReview={canReviewCalls} onSelect={onSelectSection} /><ConnectionsPanel token={token} /></div> : null;

@@ -185,7 +185,7 @@ export function AdminShell({
   useEffect(() => {
     const navigation = createNavigationHistory(window, `${isSoccerWa ? "soccerwa" : "futsi"}:${user.id}`, navigationScreen, screen => {
       setActiveTab(screen.activeTab); setBusinessScope(screen.businessScope);
-      setCommunicationsSection(isSoccerWa && screen.communicationsSection === "calls" ? defaultCommunicationsSection : screen.communicationsSection); setTournamentSection(screen.tournamentSection);
+      setCommunicationsSection(isSoccerWa && ["calls", "veronica-exams"].includes(screen.communicationsSection) ? defaultCommunicationsSection : screen.communicationsSection); setTournamentSection(screen.tournamentSection);
       setStudentsSection(screen.studentsSection); setCoachesSection(screen.coachesSection);
       setGuardiansSection(screen.guardiansSection); setBillingSection(screen.billingSection);
       setAttendanceSubsection(screen.attendanceSubsection); setStudentToEdit(screen.studentToEdit); setGuardianToEdit(screen.guardianToEdit);
@@ -249,7 +249,7 @@ export function AdminShell({
   }
 
   function selectCommunicationsSection(section: CommunicationsSubsection) {
-    if (isSoccerWa && section === "calls") return;
+    if (isSoccerWa && ["calls", "veronica-exams"].includes(section)) return;
     if (veronicaOnly && !isVeronicaSection(section)) return;
     if (courtCommunicationsOnly && !isCourtCommunicationsSection(section)) return;
     if (effectiveActiveTab !== "communications") setCommunicationsMenuExpanded(true);
@@ -488,7 +488,7 @@ export function AdminShell({
             onLogout={onLogout}
           />
           {veronicaOnly ? <div className="communications"><div className="mt-5">
-            {communicationsSection === 'veronica-exams' ? <ExamAdmin token={token} /> : communicationsSection === 'veronica-stats' ? <VeronicaStatsPanel token={token} onOpenConversation={() => selectCommunicationsSection('veronica')} /> : communicationsSection === 'veronica-templates' ? <VeronicaTemplatesPanel token={token} /> : communicationsSection === 'bulk-veronica' ? <BulkTemplatesPanel token={token} kind="veronica" /> : <VeronicaPanel token={token} />}
+            {communicationsSection === 'veronica-exams' && !isSoccerWa ? <ExamAdmin token={token} /> : communicationsSection === 'veronica-stats' ? <VeronicaStatsPanel token={token} onOpenConversation={() => selectCommunicationsSection('veronica')} /> : communicationsSection === 'veronica-templates' ? <VeronicaTemplatesPanel token={token} /> : communicationsSection === 'bulk-veronica' ? <BulkTemplatesPanel token={token} kind="veronica" /> : <VeronicaPanel token={token} />}
           </div></div> : <AdminShellContent
             coachesSection={coachesSection}
             onSelectCoachesSection={selectCoachesSection}

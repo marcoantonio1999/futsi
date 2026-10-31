@@ -37,7 +37,7 @@ const courtAttentionItems: CommunicationItem[] = [
 ];
 
 const hrAttentionItems: CommunicationItem[] = [
-  { key: 'veronica-exams', label: 'Exámenes', admin: true },
+  ...(!isSoccerWa ? [{ key: 'veronica-exams', label: 'Exámenes', admin: true } as CommunicationItem] : []),
   { key: "veronica-stats", label: "Mis estadísticas", admin: true },
   { key: "veronica-templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas", admin: true },
   { key: "veronica", label: "Atención manual", shortLabel: "Atención manual", admin: true },
