@@ -87,9 +87,10 @@ export function AdminShell({
   const [unknownSubjectToRegister, setUnknownSubjectToRegister] = useState("");
   const [businessScope, setBusinessScope] = useState<BusinessScope>("academy");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+  const [sidebarExpandedPreference, setSidebarExpanded] = useState(() => {
     try { return localStorage.getItem("futsi_sidebar_expanded") !== "false"; } catch { return true; }
   });
+  const sidebarExpanded = isSoccerWa || sidebarExpandedPreference;
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const mobileSwipeStartX = useRef<number | null>(null);
   const desktopSidebarRef = useRef<HTMLElement | null>(null);

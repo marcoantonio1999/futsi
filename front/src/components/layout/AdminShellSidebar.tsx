@@ -79,7 +79,7 @@ export function AdminShellSidebar({
       <div className={`shrink-0 py-2 ${sidebarExpanded ? "px-2" : "px-0"}`}>
         <div className={`flex items-center ${sidebarExpanded ? "justify-between gap-3" : "justify-center"}`}>
           {sidebarExpanded && <img className="h-auto w-36 object-contain" src={isSoccerWa ? "./soccer-wa-logo.png" : "./logo-futsi.png"} alt={isSoccerWa ? "Soccer WA" : "Futsi Mini ERP"} />}
-          <button
+          {!isSoccerWa && <button
             data-testid="sidebar-toggle"
             className="grid size-10 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50"
             onClick={onToggleExpanded}
@@ -89,7 +89,7 @@ export function AdminShellSidebar({
             title={sidebarExpanded ? "Contraer menu" : "Expandir menu"}
           >
             <Menu size={18} />
-          </button>
+          </button>}
         </div>
         {sidebarExpanded && !isSoccerWa && <p className="mt-2 text-xs font-medium text-zinc-500">{shellTone.subtitle}</p>}
       </div>
