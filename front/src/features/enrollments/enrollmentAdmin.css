@@ -278,3 +278,5 @@
 .sanction-appeal-letter { display:block; width:100%; max-width:650px; height:auto; object-fit:contain; margin:12px auto; }
 .sanction-appeal-details { min-width:0; overflow-wrap:anywhere; }
 .sanction-appeal-details dd { white-space:pre-wrap; }
+
+.enrollment-sabana-players{font-variant-numeric:tabular-nums;font-weight:650;white-space:nowrap}

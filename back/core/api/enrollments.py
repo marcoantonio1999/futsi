@@ -362,6 +362,17 @@ class PublicEnrollmentView(APIView):
         return Response({"completed": True, "folio": row.pk}, status=201)
 
 
+def roster_enrollments(rows):
+    """Shared eligibility for both the printed roster and its directory count."""
+    from core.enrollment_models import PlayerBlacklistEntry
+    from django.db.models import Q
+    exclusions = PlayerBlacklistEntry.objects.filter(is_active=True)
+    return rows.filter(validated_at__isnull=False, withdrawn_at__isnull=True,
+                       team_record__is_active=True, team_record__tournament__is_active=True).exclude(
+        Q(identity_key__in=exclusions.values('identity_key')) |
+        Q(pk__in=exclusions.filter(source_sanction__enrollment_id__isnull=False).values('source_sanction__enrollment_id')))
+
+
 class EnrollmentAdminView(APIView):
     permission_classes = [EnrollmentStaffPermission]
     def get(self, request):
@@ -403,12 +414,7 @@ class EnrollmentAdminView(APIView):
             if 'date_to' in dates:
                 rows = rows.filter(withdrawn_at__date__lte=dates['date_to'])
         if request.query_params.get('active_only') == 'true':
-            rows = rows.filter(validated_at__isnull=False, withdrawn_at__isnull=True, team_record__is_active=True,
-                               team_record__tournament__is_active=True).order_by('-is_delegate', 'signed_at', 'id')
-            from core.enrollment_models import PlayerBlacklistEntry
-            from django.db.models import Q
-            exclusions=PlayerBlacklistEntry.objects.filter(is_active=True)
-            rows = rows.exclude(Q(identity_key__in=exclusions.values('identity_key')) | Q(pk__in=exclusions.filter(source_sanction__enrollment_id__isnull=False).values('source_sanction__enrollment_id')))
+            rows = roster_enrollments(rows).order_by('-is_delegate', 'signed_at', 'id')
         for field in ("team", "tournament"):
             if request.query_params.get(field):
                 rows = rows.filter(**{field: request.query_params[field][:140]})
@@ -600,9 +606,15 @@ class EnrollmentCatalogView(APIView):
         sites = enrollment_sites(request.user)
         tournaments = Tournament.objects.filter(site__in=sites).order_by('name', 'id')
         teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__in=sites).order_by('name', 'id')
+        from django.db.models import Count
+        counts = dict(roster_enrollments(PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)))
+                      .order_by().values('team_record_id').annotate(total=Count('pk')).values_list('team_record_id', 'total'))
+        team_rows = list(teams.values('id','name','tournament','is_active'))
+        for team in team_rows:
+            team['validated_player_count'] = counts.get(team['id'], 0)
         return Response({'sites': list(sites.values('id','name')), 'deletable_tournament_ids': [],
                          'tournaments': TournamentSerializer(tournaments, many=True).data,
-                         'teams': list(teams.values('id','name','tournament','is_active'))})
+                         'teams': team_rows})
     def post(self, request):
         kind = request.data.get('kind')
         allowed = {'tournament': {'site','name','billing_type','starts_on','expected_weeks','is_active','football_format'},

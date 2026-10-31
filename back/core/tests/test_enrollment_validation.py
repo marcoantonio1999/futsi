@@ -46,3 +46,17 @@ class EnrollmentValidationTests(TestCase):
   self.row.withdrawn_at=None;self.row.save();self.team.is_active=False;self.team.save();self.assertEqual(self.approve().status_code,400)
  def test_minor_requires_guardian_documents(self):
   self.row.birth_date=date(2015,1,1);self.row.save();self.assertEqual(self.approve().status_code,400)
+
+ def test_catalog_count_matches_roster_and_changes_after_validation_or_withdrawal(self):
+  def count():
+   teams=self.client.get('/api/player-enrollments/catalog/').data['teams']
+   return next(team['validated_player_count'] for team in teams if team['id']==self.team.pk)
+  self.assertEqual(count(),0)
+  self.assertEqual(self.approve().status_code,200)
+  self.assertEqual(count(),1)
+  self.assertEqual(count(),self.client.get('/api/player-enrollments/?active_only=true').data['count'])
+  self.client.force_authenticate(self.other)
+  self.assertEqual(count(),0)
+  self.client.force_authenticate(self.user)
+  self.row.withdrawn_at=timezone.now();self.row.save()
+  self.assertEqual(count(),0)

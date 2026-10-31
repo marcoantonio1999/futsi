@@ -52,7 +52,7 @@ type Enrollment = {
   terms_text: string[]; documents: Document[]; is_delegate?: boolean; sanctions?: SanctionSummary[];
 };
 type Defaults = { direct_upload?: boolean; team: string; tournament: string; terms: string[]; is_delegate?: boolean; delegate_name?: string; delegate_phone?: string };
-type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: Pick<Team, "id" | "name" | "tournament" | "is_active">[]; deletable_tournament_ids?: number[] };
+type EnrollmentCatalog = { sites: Pick<Site, "id" | "name">[]; tournaments: Tournament[]; teams: (Pick<Team, "id" | "name" | "tournament" | "is_active"> & {validated_player_count?: number})[]; deletable_tournament_ids?: number[] };
 
 export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: User) => void }) {
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
@@ -692,7 +692,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
           onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </Card> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>setRosterRevision(r=>r+1)} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
+      </Card> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>{setRosterRevision(r=>r+1);void loadCatalog().catch(()=>undefined)}} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <Card as="section" className="operator-controls no-print">
         <h2>{enrollmentSection === "withdraw" ? "Nueva baja" : "Registrar"}</h2>
         <form onSubmit={invite} className="control-grid">
@@ -727,17 +727,18 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
         <p className="enrollment-sabana-count" role="status">{catalogBusy ? "Cargando equipos…" : `${filteredTeams.length} equipos`}</p>
         <div className="tournament-directory-scroll" tabIndex={0} role="region" aria-label="Equipos y sábanas">
           <table className="tournament-directory-table enrollment-sabana-table">
-            <thead><tr><th scope="col">Equipo</th><th scope="col">Torneo</th><th scope="col">Sede</th><th scope="col">Estado</th><th scope="col">Detalle</th><th scope="col">Imprimir / PDF</th></tr></thead>
+            <thead><tr><th scope="col">Equipo</th><th scope="col">Torneo</th><th scope="col">Sede</th><th scope="col">Estado</th><th scope="col">Jugadores</th><th scope="col">Detalle</th><th scope="col">Imprimir / PDF</th></tr></thead>
             <tbody>{!catalogBusy && filteredTeams.map(item => {
               const tournamentRow = catalog.tournaments.find(row => row.id === item.tournament);
               return <tr key={item.id}><th scope="row">{item.name}</th><td>{tournamentRow?.name || "Sin torneo"}</td>
                 <td>{catalog.sites.find(site => site.id === tournamentRow?.site)?.name || "—"}</td>
                 <td>{item.is_active ? "Activo" : "Inactivo"}</td>
+                <td className="enrollment-sabana-players" title="Jugadores validados en la sábana / límite del torneo">{item.validated_player_count ?? '—'}/{tournamentRow?.max_players_per_team ?? '—'}</td>
                 <td><Button type="button" className="enrollment-sabana-action" aria-label={`Ver sábana de ${item.name}`} onClick={() => openRoster(item)}><Eye size={16} aria-hidden="true" />Ver sábana</Button></td>
                 <td><Button type="button" className="enrollment-sabana-action" aria-label={`Imprimir o guardar PDF de ${item.name}`} onClick={() => openRoster(item, true)}><Printer size={16} aria-hidden="true" />Imprimir / PDF</Button></td>
               </tr>;
             })}
-            {!catalogBusy && !filteredTeams.length && <tr><td colSpan={6} className="tournament-directory-empty">No hay equipos con estos filtros.</td></tr>}
+            {!catalogBusy && !filteredTeams.length && <tr><td colSpan={7} className="tournament-directory-empty">No hay equipos con estos filtros.</td></tr>}
             </tbody>
           </table>
         </div>
