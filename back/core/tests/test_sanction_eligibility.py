@@ -41,7 +41,7 @@ class SanctionEligibilityTests(TestCase):
         self.assertEqual(self.client.post(url,self.payload([self.enrollment.pk]),format='multipart').status_code,400)
         self.sanction.ends_on=timezone.localdate()-timedelta(days=1)
         self.sanction.starts_on=self.sanction.ends_on; self.sanction.save()
-        with patch('core.api.enrollments.enrollment_storage.upload_document'):
+        with patch('core.api.enrollments.enrollment_storage.upload_document', return_value=''):
             self.assertEqual(self.client.post(url,self.payload([self.enrollment.pk]),format='multipart').status_code,200)
 
     def test_scheduled_sanction_cannot_be_escaped(self):
@@ -71,6 +71,9 @@ class SanctionEligibilityTests(TestCase):
             self.assertEqual(self.client.post(url,data,format='multipart').status_code,400);upload.assert_not_called()
 
     def test_roster_keeps_sanctioned_player_and_excludes_expired_labels(self):
+        self.enrollment.validated_at = timezone.now()
+        self.enrollment.validated_by = self.user
+        self.enrollment.save(update_fields=['validated_at', 'validated_by'])
         self.sanction.payment_required=False
         row=self.client.get('/api/player-enrollments/?active_only=true').json()['results'][0]
         self.assertEqual(row['id'],self.enrollment.pk);self.assertEqual(len(row['sanctions']),1)

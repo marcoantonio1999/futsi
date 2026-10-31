@@ -1,4 +1,4 @@
-export const enrollmentSections = ['history', 'permits', 'send', 'tools', 'withdraw', 'withdraw-history', 'sanction-new', 'commission', 'blacklist', 'players', 'tournament-overview', 'tournament-create', 'tournament-teams', 'tournament-team-create'] as const;
+export const enrollmentSections = ['validate', 'history', 'permits', 'send', 'tools', 'withdraw', 'withdraw-history', 'sanction-new', 'commission', 'blacklist', 'players', 'tournament-overview', 'tournament-create', 'tournament-teams', 'tournament-team-create'] as const;
 export type EnrollmentSection = typeof enrollmentSections[number];
 export type EnrollmentScreen = {
   section: EnrollmentSection; roster: number | null; alignment: boolean; detail: number | null;

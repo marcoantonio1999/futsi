@@ -177,8 +177,8 @@ class EnrollmentUploadView(APIView):
         return response
 
 
-def is_minor(birth_date):
-    today = timezone.localdate()
+def is_minor(birth_date, today=None):
+    today = today or timezone.localdate()
     return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day)) < 18
 
 
@@ -370,6 +370,13 @@ class EnrollmentAdminView(APIView):
         except (ValueError, TypeError):
             raise ValidationError("Página inválida.")
         rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).select_related('team_record__tournament').prefetch_related("documents")
+        pending_count = rows.filter(validated_at__isnull=True, withdrawn_at__isnull=True, team_record__is_active=True, team_record__tournament__is_active=True).count()
+        if request.query_params.get('validation_count_only') == 'true':
+            response = Response({'pending_validation_count': pending_count})
+            response['Cache-Control'] = 'no-store'
+            return response
+        if request.query_params.get('pending_validation') == 'true':
+            rows = rows.filter(validated_at__isnull=True, withdrawn_at__isnull=True, team_record__is_active=True, team_record__tournament__is_active=True)
         enrollment_id = request.query_params.get('enrollment_id')
         if enrollment_id is not None:
             if not enrollment_id.isdecimal() or int(enrollment_id) < 1:
@@ -396,7 +403,7 @@ class EnrollmentAdminView(APIView):
             if 'date_to' in dates:
                 rows = rows.filter(withdrawn_at__date__lte=dates['date_to'])
         if request.query_params.get('active_only') == 'true':
-            rows = rows.filter(withdrawn_at__isnull=True, team_record__is_active=True,
+            rows = rows.filter(validated_at__isnull=False, withdrawn_at__isnull=True, team_record__is_active=True,
                                team_record__tournament__is_active=True).order_by('-is_delegate', 'signed_at', 'id')
             from core.enrollment_models import PlayerBlacklistEntry
             from django.db.models import Q
@@ -423,9 +430,9 @@ class EnrollmentAdminView(APIView):
         sanctions = enrollment_sanctions(page_rows)
         for row in page_rows:
             result.append({"id": row.pk, "name": row.name, "birth_date": row.birth_date, "team": row.team, "team_id": row.team_record_id, "tournament": row.tournament, "tournament_id": row.team_record.tournament_id if row.team_record_id else None, "identity_type": row.identity_type, "terms_text": row.terms_text, "phone": row.phone, "phone_secondary": row.phone_secondary, "guardian_name": row.guardian_name, "payment_reference": row.payment_reference, "document_checklist": row.document_checklist, "signed_at": row.signed_at, "terms_version": row.terms_version, "status": "Inscrito", "documents": [{"id": doc.pk, "kind": doc.kind, "sha256": doc.sha256} for doc in row.documents.all()]})
-            result[-1].update(is_delegate=row.is_delegate, withdrawn_at=row.withdrawn_at, status='Baja' if row.withdrawn_at else 'Inscrito')
+            result[-1].update(is_delegate=row.is_delegate, withdrawn_at=row.withdrawn_at, validated_at=row.validated_at, validated_by_id=row.validated_by_id, status='Baja' if row.withdrawn_at else 'Inscrito' if row.validated_at else 'Pendiente de validar')
             result[-1]['sanctions'] = sanctions[row.pk]
-        body = {"results": result, "count": count, "page": page}
+        body = {"results": result, "count": count, "page": page, "pending_validation_count": pending_count}
         if withdrawal_history:
             body['withdrawal_filters'] = withdrawal_filters
         response = Response(body)
@@ -711,3 +718,43 @@ class EnrollmentDocumentView(APIView):
         response["Cache-Control"] = "no-store"
         response["X-Content-Type-Options"] = "nosniff"
         return response
+
+
+class EnrollmentValidationView(APIView):
+    permission_classes = [EnrollmentStaffPermission]
+
+    def post(self, request, pk):
+        class ValidationInput(serializers.Serializer):
+            confirmed = serializers.BooleanField()
+            documents_reviewed = serializers.ListField(child=serializers.IntegerField(min_value=1), allow_empty=False)
+        serializer = ValidationInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data['confirmed']:
+            raise ValidationError('Confirma que revisaste los datos y documentos de la inscripción.')
+        with transaction.atomic():
+            row = get_object_or_404(PlayerEnrollment.objects.select_for_update(of=('self',)).select_related('team_record__tournament'),
+                                   pk=pk, invitation__in=invitations_for(request.user))
+            if row.withdrawn_at or not row.team_record_id or not row.team_record.is_active or not row.team_record.tournament.is_active:
+                raise ValidationError('La inscripción debe pertenecer a un equipo y torneo activos y no estar dada de baja.')
+            assert_not_blacklisted(row.name, row.birth_date, locked=True)
+            required = {'player_photo'}
+            if is_minor(row.birth_date, timezone.localdate(row.signed_at)):
+                required.update(['minor_credential', 'curp', 'guardian_ine_front', 'guardian_ine_back', 'guardian_signature'])
+            elif row.identity_type == 'ine':
+                required.update(['player_signature', 'ine_front', 'ine_back'])
+            elif row.identity_type == 'curp':
+                required.update(['player_signature', 'curp'])
+            else:
+                required.update(['player_signature', 'identity_document'])
+            documents = list(row.documents.defer('content'))
+            if not required <= {doc.kind for doc in documents}:
+                raise ValidationError('Faltan documentos obligatorios. No se puede validar la inscripción.')
+            required_ids = {doc.pk for doc in documents if doc.kind in required}
+            reviewed = set(serializer.validated_data['documents_reviewed'])
+            if not required_ids <= reviewed or not reviewed <= {doc.pk for doc in documents}:
+                raise ValidationError('Revisa todos los documentos obligatorios antes de validar.')
+            if not row.validated_at:
+                row.validated_at = timezone.now()
+                row.validated_by = request.user
+                row.save(update_fields=['validated_at', 'validated_by'])
+        return Response({'id': row.pk, 'validated_at': row.validated_at, 'validated_by_id': row.validated_by_id})

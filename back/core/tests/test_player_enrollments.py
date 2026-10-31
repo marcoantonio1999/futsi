@@ -501,7 +501,8 @@ class PlayerEnrollmentTests(TestCase):
         other_link = PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, team_record=other_team,
             expires_at=timezone.now()+timedelta(days=1))
         other = PlayerEnrollment.objects.create(invitation=other_link, team_record=other_team,
-            name=row.name, birth_date=row.birth_date, team=other_team.name, tournament=self.tournament.name)
+            name=row.name, birth_date=row.birth_date, team=other_team.name, tournament=self.tournament.name,
+            validated_at=timezone.now(), validated_by=self.emilio)
         self.client.force_authenticate(self.emilio)
         url = f'/api/player-enrollments/teams/{self.team.pk}/'
         preview = self.client.get(url+'deletion-preview/').json()

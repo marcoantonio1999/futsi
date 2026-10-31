@@ -8,7 +8,7 @@ from core.api.exam_statistics import ExamStatisticsView
 from core.api.exam_export import ExamExportView
 from core.api.employment_forms import PublicEmploymentFormView, EmploymentFormsAdminView
 from core.api.bulk import BulkView
-from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView, EnrollmentUploadView
+from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentValidationView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView, EnrollmentUploadView
 from core.api.team_reuse import TeamReuseView
 from core.api.sanctions import PlayerSanctionView
 from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, BlacklistRevokeView, DisciplinaryPhotoView, BlacklistPhotoView
@@ -100,6 +100,7 @@ urlpatterns = [
     path('api/public-exams/attempt/', ExamAttemptView.as_view()),
     path('api/public-exams/<str:token>/', PublicExamView.as_view()),
     path("api/player-enrollments/", EnrollmentAdminView.as_view()),
+    path("api/player-enrollments/<int:pk>/validate/", EnrollmentValidationView.as_view()),
     path("api/player-enrollments/permits/", EnrollmentPermitView.as_view()),
     path("api/player-enrollments/permits/invitations/", EnrollmentPermitInvitationView.as_view()),
     path("api/player-enrollments/permits/public/<str:token>/", PublicEnrollmentPermitView.as_view()),

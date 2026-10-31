@@ -43,6 +43,8 @@ class PlayerEnrollment(models.Model):
     signed_at = models.DateTimeField(auto_now_add=True)
     withdrawn_at = models.DateTimeField(null=True, blank=True)
     is_delegate = models.BooleanField(default=False)
+    validated_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    validated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="validated_player_enrollments")
     def save(self, *args, **kwargs):
         from core.services.player_blacklist import identity_key
         key = identity_key(self.name, self.birth_date)

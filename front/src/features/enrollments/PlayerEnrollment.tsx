@@ -1,3 +1,4 @@
+import { EnrollmentApproval } from './EnrollmentApproval';
 import { Signature } from './EnrollmentSignaturePad';
 import { EnrollmentPermits } from './EnrollmentPermits';
 import { Button, Card, Dialog, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
@@ -265,7 +266,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   </Label></EnrollmentField>;
   return <main className={`enrollment-page public-enrollment-wizard${embedded ? ' enrollment-wizard-embedded' : ''}`}>
     <div className="enrollment-public-brand no-print"><EnrollmentBrand /></div>
-    {done ? <Card as="section" className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados.</p></Card> :
+    {done ? <Card as="section" className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados. Tu inscripción está pendiente de revisión por ventanilla antes de aparecer en la sábana.</p></Card> :
       <Card as="form" className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate onChange={(event: React.FormEvent<HTMLFormElement>) => {
         const input = event.target;
         if (!(input instanceof HTMLInputElement) || !fieldErrors[input.name]) return;
@@ -534,9 +535,16 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
   useEnrollmentScrollReady(!catalogBusy);
   useEffect(() => { setMobileMenuOpen(false); if (!navigation.screen.roster) setPrintRoster(false); setError(''); setMessage(''); }, [navigation.screen.section, navigation.screen.roster]);
   const [rosterRevision, setRosterRevision] = useState(0);
+  const [pendingValidationCount, setPendingValidationCount] = useState<number | null>(null);
   const invitationSaving = useRef(false);
   const [localRegistration, setLocalRegistration] = useState<{ token: string; team: string; tournament: string; purpose: "enroll" | "withdraw" } | null>(null);
   const [localCompleted, setLocalCompleted] = useState(false), [localSaving, setLocalSaving] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    apiRequest<{pending_validation_count:number}>('/player-enrollments/?validation_count_only=true',token,{signal:controller.signal})
+      .then(result=>setPendingValidationCount(result.pending_validation_count)).catch(()=>{if(!controller.signal.aborted)setPendingValidationCount(null)});
+    return ()=>controller.abort();
+  },[token,rosterRevision,localCompleted,enrollmentSection]);
   const localDialogRef = useRef<HTMLDialogElement>(null), localButtonRef = useRef<HTMLButtonElement>(null);
   const restoreLocalFocus = useRef(false);
   useEffect(() => {
@@ -639,6 +647,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Inscripciones</div>
         <div className="enrollment-sidebar-submenu">
           <Button aria-current={tournamentSection === null && enrollmentSection === "send" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("send"); setLink(""); setError(""); setMessage(""); }}><Send size={16} aria-hidden="true" />Registrar</Button>
+          <Button aria-current={tournamentSection === null && enrollmentSection === "validate" ? "page" : undefined} onClick={() => setEnrollmentSection("validate")}><ListChecks size={16} aria-hidden="true" />Validar{pendingValidationCount !== null && <span className="enrollment-validation-count" aria-label={`${pendingValidationCount} inscripciones pendientes de validar`}>{pendingValidationCount}</span>}</Button>
           <Button aria-current={tournamentSection === null && enrollmentSection === "history" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("history"); setError(""); setMessage(""); }}><ClipboardList size={16} aria-hidden="true" />Sábana</Button>
         </div>
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Permisos</div>
@@ -661,7 +670,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print">{mobileViewport && <Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button>}<h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "permits" ? "Permisos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
+      <header className="operator-header enrollment-admin-header no-print">{mobileViewport && <Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button>}<h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "validate" ? "Validar" : enrollmentSection === "permits" ? "Permisos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : "Sábana"}</h1><div>
         <Button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></Button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
@@ -683,7 +692,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
           onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </Card> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
+      </Card> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>setRosterRevision(r=>r+1)} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <Card as="section" className="operator-controls no-print">
         <h2>{enrollmentSection === "withdraw" ? "Nueva baja" : "Registrar"}</h2>
         <form onSubmit={invite} className="control-grid">
