@@ -2,6 +2,8 @@ import { BriefcaseBusiness, Building2, CalendarDays, ChevronDown, MessageCircle,
 import type { VoiceDashboardSection } from "./model";
 import { useContext, useEffect, useState } from 'react';
 import { CourtCommunicationsOnlyContext, VeronicaOnlyContext, isCourtCommunicationsSection, isVeronicaSection } from './CommunicationsAccess';
+import { isSoccerWa } from '../../appBrand';
+import { CommunicationsFlyout } from './CommunicationsFlyout';
 
 type CommunicationItem = { key: VoiceDashboardSection; label: string; shortLabel?: string; admin?: boolean };
 
@@ -91,6 +93,15 @@ export function CommunicationsNav({ section, canReview, onSelect, compact = fals
     : courtCommunicationsOnly
       ? isCourtCommunicationsSection(item.key)
       : !item.admin || canReview;
+
+  if (isSoccerWa && canReview && !veronicaOnly && !courtCommunicationsOnly) {
+    if (compact) return null;
+    return <CommunicationsFlyout section={section} onSelect={onSelect} groups={[
+      {key:'courts',label:'Canchas',icon:Building2,items:courtAttentionItems},
+      {key:'hr',label:'RRHH',icon:BriefcaseBusiness,items:hrAttentionItems},
+      ...communicationGroups.filter(group=>group.label !== 'Atención').map(group=>({...group,key:group.label})),
+    ]}/>;
+  }
 
   if (courtCommunicationsOnly) return <nav aria-label="Comunicaciones de mi cancha" className={compact ? "comm-mobile-nav comm-section-map comm-court-flat" : "comm-nav comm-court-flat"}>
     <ul className="comm-nav-children comm-court-flat-list">
