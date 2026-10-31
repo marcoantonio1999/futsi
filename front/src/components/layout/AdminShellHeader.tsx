@@ -24,9 +24,9 @@ export function AdminShellHeader({ token, onOpenChats, user, businessScope, canT
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {!isSoccerWa && ["admin", "owner", "dev"].includes(user.role) && <a href="#/admin/inscripciones" className="rounded-md border border-emerald-200 px-2 py-2 text-xs font-semibold text-emerald-800">Inscripciones</a>}
-        <button className={buttonClass} onClick={() => { onRefresh(); window.dispatchEvent(new Event("futsi:refresh-attention")); }} aria-label="Actualizar" title="Actualizar" type="button"><RefreshCw size={16} /></button>
+        {!isSoccerWa && <button className={buttonClass} onClick={() => { onRefresh(); window.dispatchEvent(new Event("futsi:refresh-attention")); }} aria-label="Actualizar" title="Actualizar" type="button"><RefreshCw size={16} /></button>}
         <AttentionNotifications token={token} user={user} onOpenChats={onOpenChats} />
-        <button data-testid="theme-toggle" className={buttonClass} onClick={onToggleTheme} aria-label={theme === "light" ? "Cambiar a tema oscuro" : "Cambiar a tema claro"} type="button">{theme === "light" ? <Moon size={16} /> : <Sun size={16} />}</button>
+        {!isSoccerWa && <button data-testid="theme-toggle" className={buttonClass} onClick={onToggleTheme} aria-label={theme === "light" ? "Cambiar a tema oscuro" : "Cambiar a tema claro"} type="button">{theme === "light" ? <Moon size={16} /> : <Sun size={16} />}</button>}
         <div className="hidden items-center gap-2 px-2 md:flex">
           <span className="grid size-8 place-items-center rounded-full bg-emerald-700 text-sm font-semibold text-white">{user.username.slice(0, 1).toUpperCase()}</span>
           <div className="text-sm leading-tight"><p className="font-medium">{user.username}</p><p className="text-xs text-zinc-500">{roleLabels[user.role]}</p></div>

@@ -78,7 +78,7 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   if (token && loading && !hasLoadedData && !error) {
     return (
       <>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        {!isSoccerWa && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
         <AppSkeleton />
       </>
     );
@@ -111,7 +111,7 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   if (currentUser.role === "guardian") {
     return (
       <>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        {!isSoccerWa && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
         <ActionLoadingOverlay message={actionLoadingMessage} />
         <Suspense fallback={<AppSkeleton />}>
           <GuardianPortal
@@ -132,7 +132,7 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   if (currentUser.role === "adult_representative" || currentUser.role === "adult_player") {
     return (
       <>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        {!isSoccerWa && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
         <ActionLoadingOverlay message={actionLoadingMessage} />
         <main className="min-h-screen bg-blue-50/40 text-zinc-950" data-testid="adult-portal">
           <header className="border-b border-blue-200 bg-white">
@@ -172,7 +172,7 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   if (currentUser.role === "accounting" && !hasCustomSectionPermissions) {
     return (
       <>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        {!isSoccerWa && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
         <ActionLoadingOverlay message={actionLoadingMessage} />
         <Suspense fallback={<AppSkeleton />}>
           <AccountingPortal
