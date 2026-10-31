@@ -1,3 +1,4 @@
+import { isSoccerWa } from "../../appBrand";
 import { useContext, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../api";
 import { channelOwnerLabel, channelsForScope, filterCommunications, scopeQuery, conversationSite, type CommunicationChannel } from "./communicationScope";
@@ -277,7 +278,7 @@ export function VoiceDashboardPanel({
         />
       ) : null}
 
-      {section === "calls" && canReviewCalls ? (
+      {section === "calls" && !isSoccerWa && canReviewCalls ? (
         <VoiceCallsPanel calls={voiceData.voiceCalls} bookings={voiceData.trialBookings} onReviewCall={reviewCall} />
       ) : null}
 

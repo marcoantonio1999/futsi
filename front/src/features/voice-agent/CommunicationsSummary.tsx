@@ -1,3 +1,4 @@
+import { isSoccerWa } from "../../appBrand";
 import type { AppData } from "../../types";
 import { CheckCheck, Clock3, Flag, MessageCircle } from "lucide-react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -39,7 +40,7 @@ export function CommunicationsSummary({ data, canReview, onNavigate, onOpenInbox
         </ResponsiveContainer>
       </div>
     </section>
-    {canReview && pendingCalls > 0 && <button className="comm-review-call" onClick={() => onNavigate("calls")}><Flag size={17} /><strong>{pendingCalls} llamadas por revisar</strong><span>Registrar resultado →</span></button>}
+    {!isSoccerWa && canReview && pendingCalls > 0 && <button className="comm-review-call" onClick={() => onNavigate("calls")}><Flag size={17} /><strong>{pendingCalls} llamadas por revisar</strong><span>Registrar resultado →</span></button>}
   </div>;
 }
 

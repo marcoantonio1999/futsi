@@ -33,7 +33,7 @@ const courtAttentionItems: CommunicationItem[] = [
   { key: "templates", label: "Plantillas de WhatsApp", shortLabel: "Plantillas" },
   { key: "template-builder", label: "Crear plantilla", shortLabel: "Crear plantilla" },
   ...academyBulkItems,
-  { key: "calls", label: "Llamadas", admin: true },
+  ...(!isSoccerWa ? [{ key: "calls", label: "Llamadas", admin: true } as CommunicationItem] : []),
 ];
 
 const hrAttentionItems: CommunicationItem[] = [

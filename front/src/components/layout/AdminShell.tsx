@@ -185,7 +185,7 @@ export function AdminShell({
   useEffect(() => {
     const navigation = createNavigationHistory(window, `${isSoccerWa ? "soccerwa" : "futsi"}:${user.id}`, navigationScreen, screen => {
       setActiveTab(screen.activeTab); setBusinessScope(screen.businessScope);
-      setCommunicationsSection(screen.communicationsSection); setTournamentSection(screen.tournamentSection);
+      setCommunicationsSection(isSoccerWa && screen.communicationsSection === "calls" ? defaultCommunicationsSection : screen.communicationsSection); setTournamentSection(screen.tournamentSection);
       setStudentsSection(screen.studentsSection); setCoachesSection(screen.coachesSection);
       setGuardiansSection(screen.guardiansSection); setBillingSection(screen.billingSection);
       setAttendanceSubsection(screen.attendanceSubsection); setStudentToEdit(screen.studentToEdit); setGuardianToEdit(screen.guardianToEdit);
@@ -249,6 +249,7 @@ export function AdminShell({
   }
 
   function selectCommunicationsSection(section: CommunicationsSubsection) {
+    if (isSoccerWa && section === "calls") return;
     if (veronicaOnly && !isVeronicaSection(section)) return;
     if (courtCommunicationsOnly && !isCourtCommunicationsSection(section)) return;
     if (effectiveActiveTab !== "communications") setCommunicationsMenuExpanded(true);
