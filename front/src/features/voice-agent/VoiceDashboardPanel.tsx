@@ -261,7 +261,7 @@ export function VoiceDashboardPanel({
       {auditPage && <div className="comm-audit-filter">{scopePanel}</div>}
       {channelError && <p role="alert" className="comm-error">No se pudieron cargar los canales: {channelError} <button onClick={() => setChannelRetry(n => n + 1)}>Reintentar</button></p>}
       {!channelsReady && !channelError && <p role="status">Cargando sedes y números…</p>}
-      {channelsReady && <div key={query} className={auditPage ? "comm-audit-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
+      {channelsReady && <div key={query} role={auditPage ? "region" : undefined} aria-label={auditPage ? "Contenido de auditoría" : undefined} tabIndex={auditPage ? 0 : undefined} className={auditPage ? "comm-audit-content" : section === "whatsapp" ? "comm-inbox-content" : undefined}>
       {section === "templates" && <WhatsAppTemplatesPanel token={token} channels={templateChannels} showChannelDetails={canReviewCalls} />}
       {section === "template-builder" && <WhatsAppTemplateBuilder token={token} channels={templateChannels} />}
       {section === "collections" && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}

@@ -189,7 +189,8 @@
 .comm-audit-page{display:flex;flex-direction:column;height:calc(100dvh - 110px);min-height:490px;overflow:hidden}
 .comm-audit-page>.comm-page-heading,.comm-audit-page>.comm-inline{flex-shrink:0}
 .comm-audit-content{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:24px;padding-right:6px;scrollbar-gutter:stable}
-.comm-audit-content>.comm-summary,.comm-audit-content>div{flex-shrink:0}
+/* Preserve full audit panels so the parent can scroll to their final row. */
+.comm-audit-content>*{flex-shrink:0}
 .comm-audit-filter{align-self:flex-start;flex-shrink:0;width:min(560px,100%)}
 @media(min-width:768px){.comm-audit-page .comm-attention-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:767px){.comm-audit-page{height:auto;min-height:0;overflow:visible}.comm-audit-content{overflow:visible;padding-right:0}}
