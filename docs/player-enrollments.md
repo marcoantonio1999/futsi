@@ -191,3 +191,9 @@ Aceptar apelación muestra la fecha actual de regreso (primer día posterior al 
 Administración y Emilio conservan su acceso; el coordinador de sede puede decidir apelaciones y modificar regreso solamente para su sede. Registrar folio de pago conserva el permiso de administración. La interfaz recibe can_decide_appeals separado de can_manage_blacklist. No requiere migración.
 
 Pruebas: 13 de API (sin motivos, fecha anticipada, límites inclusivos, datos inválidos, conservación de la carta y permisos por sede); aceptación en 320/390/1440 px sin desbordamiento y con fecha nativa en el diálogo.
+
+## Revisión de inscripciones en galería
+
+Validar inscripción carga todas las fotos, firmas y documentos juntos al abrir una ficha. Las imágenes aparecen en una galería (dos columnas en escritorio y una en celular) y los PDF se renderizan a páginas visibles con el renderizador local existente. No hay selector de documento, checks ni marcas individuales de revisión. Se revocan las URL privadas de las imágenes al salir y no se cargan documentos de fichas no abiertas.
+
+El único botón de autorización es Validar inscripción. Se habilita después de cargar todos los adjuntos requeridos; conserva el bloqueo si falta un documento o no se puede mostrar. Al pulsarlo envía la confirmación y los IDs de los documentos cargados al mismo endpoint de validación. Se mantienen los controles del servidor y no requiere migración. Pruebas simuladas en 320/390/1440 px: galería completa, PDF visible, sin checks/desbordamiento, error recuperable y bloqueo de archivos no disponibles. No se validaron registros reales para probar.

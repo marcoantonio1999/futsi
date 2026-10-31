@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../../api";
 import { Button, Card, Input, Label } from "../../components/ui/enrollment-ui";
 import { fetchEnrollmentDocument } from "./fetchEnrollmentDocument";
+import { renderRegistrationPdf } from "./renderRegistrationPdf";
 import "./enrollmentApproval.css";
 type Doc = { id: number; kind: string };
 type RecordRow = {
@@ -45,18 +46,13 @@ export function EnrollmentApproval({
     [page, setPage] = useState(1),
     [search, setSearch] = useState(""),
     [revision, setRevision] = useState(0);
-  const [selected, setSelected] = useState<RecordRow | null>(null),
-    [doc, setDoc] = useState<Doc | null>(null),
-    [reviewed, setReviewed] = useState<number[]>([]),
-    [confirmed, setConfirmed] = useState(false);
+  const [selected, setSelected] = useState<RecordRow | null>(null);
+  const [ready, setReady] = useState<number[]>([]);
+  const [documents, setDocuments] = useState<Record<number, {url?: string; mime?: string; pages?: string[]; error?: string}>>({});
   const [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
-  const [preview, setPreview] = useState<{ url: string; mime: string } | null>(
-      null,
-    ),
-    [docError, setDocError] = useState("");
   useEffect(() => {
     const c = new AbortController();
     setLoading(true);
@@ -85,37 +81,40 @@ export function EnrollmentApproval({
     return () => c.abort();
   }, [token, page, search, revision]);
   useEffect(() => {
-    setPreview(null);
-    setDocError("");
-    if (!doc) return;
-    const c = new AbortController();
-    let url = "";
-    fetchEnrollmentDocument(
-      "/player-enrollments/documents/" + doc.id + "/",
-      token,
-      c.signal,
-    )
-      .then(async (r) => {
-        if (!r.ok)
-          throw Error(
-            "El documento no está disponible. No se puede marcar como revisado.",
-          );
-        const blob = await r.blob();
-        if (!blob.size) throw Error("El documento está vacío.");
-        if (!blob.type.startsWith("image/") && blob.type !== "application/pdf")
-          throw Error("Formato no disponible para revisión.");
-        if (c.signal.aborted) return;
-        url = URL.createObjectURL(blob);
-        setPreview({ url, mime: blob.type });
-      })
-      .catch((e) => {
-        if (!c.signal.aborted) setDocError(e.message);
-      });
-    return () => {
-      c.abort();
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [doc, token]);
+    setDocuments({});
+    setReady([]);
+    if (!selected) return;
+    const controller = new AbortController();
+    const urls: string[] = [];
+    for (const document of selected.documents) {
+      void fetchEnrollmentDocument('/player-enrollments/documents/' + document.id + '/', token, controller.signal)
+        .then(async response => {
+          if (!response.ok) throw Error('El documento no está disponible.');
+          const blob = await response.blob();
+          if (!blob.size) throw Error('El documento está vacío.');
+          if (!blob.type.startsWith('image/') && blob.type !== 'application/pdf') throw Error('Formato no disponible para revisión.');
+          if (controller.signal.aborted) return;
+          if (blob.type === 'application/pdf') {
+            const pages = await renderRegistrationPdf(blob, controller.signal);
+            if (!controller.signal.aborted) setDocuments(previous => ({...previous, [document.id]: {pages, mime: blob.type}}));
+          } else {
+            const url = URL.createObjectURL(blob); urls.push(url);
+            setDocuments(previous => ({...previous, [document.id]: {url, mime: blob.type}}));
+          }
+        })
+        .catch(reason => {
+          if (!controller.signal.aborted) setDocuments(previous => ({...previous, [document.id]: {error: reason.message}}));
+        });
+    }
+    return () => { controller.abort(); urls.forEach(url => URL.revokeObjectURL(url)); };
+  }, [selected, token]);
+  function documentReady(id: number) {
+    setReady(previous => previous.includes(id) ? previous : [...previous, id]);
+  }
+  function documentFailed(id: number) {
+    setDocuments(previous => ({...previous, [id]: {...previous[id], error: 'No se pudo mostrar el documento.'}}));
+    setReady(previous => previous.filter(value => value !== id));
+  }
   const missingDocuments = (() => {
     if (!selected) return [];
     const signedDate = new Intl.DateTimeFormat("en-CA", {
@@ -159,15 +158,10 @@ export function EnrollmentApproval({
   })();
   function open(row: RecordRow) {
     setSelected(row);
-    setDoc(row.documents[0] || null);
-    setReviewed([]);
-    setConfirmed(false);
+    setReady([]);
+    setDocuments({});
     setError("");
     setMessage("");
-  }
-  function markReviewed() {
-    if (doc)
-      setReviewed((ids) => (ids.includes(doc.id) ? ids : [...ids, doc.id]));
   }
   async function approve() {
     if (!selected || saving) return;
@@ -179,12 +173,11 @@ export function EnrollmentApproval({
         token,
         {
           method: "POST",
-          body: JSON.stringify({ confirmed, documents_reviewed: reviewed }),
+          body: JSON.stringify({ confirmed: true, documents_reviewed: ready }),
         },
       );
       setMessage("Inscripción validada. Ya puede aparecer en la sábana.");
       setSelected(null);
-      setDoc(null);
       setRevision((r) => r + 1);
       onChanged();
     } catch (e) {
@@ -212,10 +205,7 @@ export function EnrollmentApproval({
         <>
           <Button
             disabled={saving}
-            onClick={() => {
-              setSelected(null);
-              setDoc(null);
-            }}
+            onClick={() => setSelected(null)}
           >
             Volver a pendientes
           </Button>
@@ -268,75 +258,33 @@ export function EnrollmentApproval({
                 . No se puede validar.
               </p>
             )}
-            <p>
-              {reviewed.length} de {selected.documents.length} revisados
-            </p>
             <div className="enrollment-approval-docs">
-              {selected.documents.map((d) => (
-                <Button
-                  key={d.id}
-                  aria-pressed={doc?.id === d.id}
-                  onClick={() => setDoc(d)}
-                >
-                  {labels[d.kind] || d.kind}
-                  {reviewed.includes(d.id) ? " · Revisado" : ""}
-                </Button>
-              ))}
+              {selected.documents.map(document => {
+                const preview = documents[document.id];
+                const title = labels[document.kind] || document.kind;
+                return <article key={document.id} className="enrollment-document-preview">
+                  <h4>{title}</h4>
+                  {preview?.error ? <p role="alert" className="error">{preview.error} No se puede validar hasta cargarlo.</p>
+                    : !preview?.url && !preview?.pages ? <p role="status">Cargando documento privado…</p>
+                    : preview.mime === 'application/pdf' ? <div className="enrollment-pdf-pages">{preview.pages?.map((url, index) => <img key={index} src={url} alt={`${title} · Página ${index+1}`} onLoad={event => {
+                      const images = event.currentTarget.parentElement?.querySelectorAll('img');
+                      if (images && Array.from(images).every(image => image.complete && image.naturalWidth > 0)) documentReady(document.id);
+                    }} onError={() => documentFailed(document.id)} />)}</div>
+                    : <img src={preview.url} alt={title} onLoad={() => documentReady(document.id)} onError={() => documentFailed(document.id)} />}
+                </article>;
+              })}
             </div>
-            {!selected.documents.length && (
-              <p className="error">
-                No hay documentos disponibles. No se puede validar.
-              </p>
-            )}
-            {doc && (
-              <div className="enrollment-document-preview">
-                <h4>{labels[doc.kind] || doc.kind}</h4>
-                {docError ? (
-                  <p role="alert" className="error">
-                    {docError}
-                  </p>
-                ) : !preview ? (
-                  <p role="status">Cargando documento privado…</p>
-                ) : preview.mime === "application/pdf" ? (
-                  <iframe
-                    title={labels[doc.kind] || doc.kind}
-                    src={preview.url}
-                    onLoad={markReviewed}
-                  />
-                ) : (
-                  <img
-                    src={preview.url}
-                    alt={labels[doc.kind] || doc.kind}
-                    onLoad={markReviewed}
-                    onError={() =>
-                      setDocError(
-                        "No se pudo mostrar la imagen. No se puede marcar como revisada.",
-                      )
-                    }
-                  />
-                )}
-              </div>
-            )}
+            {!selected.documents.length && <p className="error">No hay documentos disponibles. No se puede validar.</p>}
           </Card>
           <Card className="enrollment-approval-confirm">
-            <Label>
-              <Input
-                type="checkbox"
-                checked={confirmed}
-                disabled={saving}
-                onChange={(e) => setConfirmed(e.target.checked)}
-              />
-              Revisé la hoja, las firmas y los documentos. Confirmo que los
-              datos son correctos.
-            </Label>
+            <p>Al validar confirmas que la hoja, las fotos, las firmas y los documentos son correctos.</p>
             <Button
               className="primary"
               disabled={
                 saving ||
-                !confirmed ||
                 !!missingDocuments.length ||
                 !selected.documents.length ||
-                selected.documents.some((d) => !reviewed.includes(d.id))
+                selected.documents.some((d) => !ready.includes(d.id))
               }
               onClick={() => void approve()}
             >
