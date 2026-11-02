@@ -7,7 +7,7 @@ import {compressEnrollmentPhoto} from './compressEnrollmentPhoto';
 import {CameraCapture} from './CameraCapture';
 import {calendarDateValue, parseCalendarDate, displayCalendarDate} from './enrollmentDates';
 
-export type AppealRow={id:number;player_name:string;status:string;starts_on?:string;ends_on?:string|null;payment_required?:boolean;fine_amount?:string|null;payment_folio?:string;payment_recorded_by?:string|null;payment_recorded_at?:string|null;appeal_status?:string;appeal_reason?:string;has_appeal_letter?:boolean;appeal_submitted_by?:string|null;appeal_submitted_at?:string|null;appeal_decision_reason?:string;appeal_decided_by?:string|null;appeal_decided_at?:string|null};
+export type AppealRow={id:number;player_name:string;status:string;starts_on?:string;ends_on?:string|null;appeal_original_period?:{starts_on:string;ends_on:string|null}|null;payment_required?:boolean;fine_amount?:string|null;payment_folio?:string;payment_recorded_by?:string|null;payment_recorded_at?:string|null;appeal_status?:string;appeal_reason?:string;has_appeal_letter?:boolean;appeal_submitted_by?:string|null;appeal_submitted_at?:string|null;appeal_decision_reason?:string;appeal_decided_by?:string|null;appeal_decided_at?:string|null};
 export const appealLabels:Record<string,string>={none:'Sin apelación',pending:'Pendiente',accepted:'Aceptada',rejected:'No aceptada'};
 function nextDate(value?: string | null) {
   const date = parseCalendarDate(value || '');
@@ -56,8 +56,12 @@ export function SanctionAppealDetails({row,token}:{row:AppealRow;token:string}){
   async function load(){setLoading(true);setError('');try{const response=await fetchEnrollmentDocument(`/player-enrollments/sanctions/${row.id}/appeal/`,token);if(!response.ok)throw new Error('No se pudo cargar la carta.');url.current=URL.createObjectURL(await response.blob());setLetter(url.current)}catch(reason){setError(reason instanceof Error?reason.message:'Carta no disponible.')}finally{setLoading(false)}}
   return <section className="sanction-appeal-details"><h3>Apelación y pago</h3><dl>
     <div><dt>Apelación</dt><dd>{appealLabels[row.appeal_status||'none']}</dd></div>
-    {row.appeal_status==='accepted'&&<div><dt>Fecha de regreso</dt><dd>{nextDate(row.ends_on)?displayCalendarDate(nextDate(row.ends_on)):'Sin fecha definida'}</dd></div>}
-    <div><dt>Registrada por</dt><dd>{row.appeal_submitted_by||'—'} {row.appeal_submitted_at&&new Date(row.appeal_submitted_at).toLocaleString('es-MX')}</dd></div>
+    {row.appeal_status&&row.appeal_status!=='none'&&<>
+      <div><dt>Fecha de registro de la apelación</dt><dd>{row.appeal_submitted_at?new Date(row.appeal_submitted_at).toLocaleString('es-MX',{timeZone:'America/Mexico_City'}):'No registrada'}</dd></div>
+      <div><dt>Fecha de regreso original</dt><dd>{row.appeal_original_period ? nextDate(row.appeal_original_period.ends_on) ? displayCalendarDate(nextDate(row.appeal_original_period.ends_on)) : 'Sin fecha definida' : 'No registrada'}</dd></div>
+      <div><dt>Fecha de regreso actual</dt><dd>{nextDate(row.ends_on)?displayCalendarDate(nextDate(row.ends_on)):'Sin fecha definida'}</dd></div>
+    </>}
+    <div><dt>Registrada por</dt><dd>{row.appeal_submitted_by||'—'}</dd></div>
     <div><dt>Decisión</dt><dd>{row.appeal_status==='accepted'?'Aceptada':row.appeal_decision_reason||'Sin decisión'} · {row.appeal_decided_by||'—'} {row.appeal_decided_at&&new Date(row.appeal_decided_at).toLocaleString('es-MX')}</dd></div>
     <div><dt>Folio de pago</dt><dd>{row.payment_folio|| (row.payment_required?'Pendiente':'No requerido (sanción histórica)')}</dd></div><div><dt>Pago registrado por</dt><dd>{row.payment_recorded_by||'—'} {row.payment_recorded_at&&new Date(row.payment_recorded_at).toLocaleString('es-MX')}</dd></div>
   </dl>{row.has_appeal_letter&&!letter&&<Button type="button" disabled={loading} onClick={()=>void load()}>{loading?'Cargando carta…':'Ver foto de la carta'}</Button>}{error&&<p role="alert">{error}</p>}{letter&&<img className="sanction-appeal-letter" src={letter} alt={`Carta de apelación de ${row.player_name}`}/>}</section>;

@@ -213,3 +213,12 @@ En inscripciones por enlace y ventanilla, la documentación del jugador menor se
 El menor no firma su inscripción: solo se solicita, guarda y presenta la firma del padre o tutor. Se conservan el nombre e INE del tutor, la foto del jugador y los compromisos actuales. Para adultos se mantienen la firma del jugador y la alternativa CURP. La carga directa R2 tolera el CURP adicional de un formulario abierto antes del despliegue, comprobando sus recibos firmados como cualquier otro adjunto.
 
 Sin migración. Verificado con pruebas de inscripción, R2, validación y navegador en 320/390/1440 px; se confirmó emisión con cinco adjuntos del menor y sin firma infantil. No se hicieron registros reales para probar.
+
+
+## Apelación: fecha original visible en detalle
+
+Al registrar por primera vez una apelación se guarda una instantánea del periodo de sanción en AuditLog (`sanction_appeal_registered`), con inicio, fin, duración, autor y la fecha original de registro. Se guarda en la misma transacción de la carta y no se vuelve a escribir en los reintentos o al decidir la apelación.
+
+Ver detalle muestra Fecha de registro de la apelación, Fecha de regreso original y Fecha de regreso actual. La fecha de regreso es el primer día posterior al último día sancionado. El histórico recupera el periodo original del primer registro auditado; para apelaciones anteriores aprovecha el primer evento `sanction_appeal_return_changed`. Si no existe evidencia anterior se muestra No registrada; una sanción originalmente indefinida muestra Sin fecha definida. No se inventan ni se sobrescriben fechas históricas. La consulta de auditoría está limitada a la página de sanciones autorizadas del usuario y no carga cartas ni archivos por anticipado.
+
+No requiere migración. Pruebas de API: instantánea y fecha de registro inmutables tras aceptar, recuperación de auditoría anterior, ausencia de evidencia y sanción indefinida. UI en 320/390/1440 px sin desbordamiento. No se alteraron sanciones reales para probar.

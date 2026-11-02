@@ -200,3 +200,39 @@ class SanctionAppealTests(TestCase):
         self.client.force_authenticate(coordinator)
         self.assertEqual(self.client.post(self.url('decision'),{'action':'accepted','return_on':str(self.sanction.starts_on+timedelta(days=1))},format='json').status_code,404)
         self.sanction.refresh_from_db();self.assertEqual(self.sanction.appeal_status,'pending')
+
+    def test_original_period_and_first_submission_date_survive_acceptance(self):
+        from core.models import AuditLog
+        today=timezone.localdate();old_end=today+timedelta(days=20)
+        self.sanction.ends_on=old_end;self.sanction.save();self.appeal()
+        original_stamp=self.sanction.appeal_submitted_at
+        audit=AuditLog.objects.get(action='sanction_appeal_registered',record_id=str(self.sanction.pk))
+        self.assertEqual(audit.new_values['ends_on'],str(old_end))
+        self.assertEqual(audit.new_values['submitted_at'],original_stamp.isoformat())
+        response=self.client.post(self.url('decision'),{'action':'accepted','return_on':str(today+timedelta(days=1))},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        row=self.client.get('/api/player-enrollments/disciplinary/').data['results'][0]
+        self.assertEqual(row['appeal_original_period'],{'starts_on':str(today),'ends_on':str(old_end)})
+        self.assertEqual(row['ends_on'],today)
+        self.assertEqual(row['appeal_submitted_at'],original_stamp)
+        self.sanction.refresh_from_db();self.assertEqual(self.sanction.appeal_submitted_at,original_stamp)
+        self.assertEqual(self.client.post(self.url('decision'),{'action':'accepted','return_on':str(today+timedelta(days=2))},format='json').status_code,400)
+        self.assertEqual(AuditLog.objects.filter(action='sanction_appeal_registered',record_id=str(self.sanction.pk)).count(),1)
+
+    def test_old_appeal_recovers_original_period_from_earliest_return_audit(self):
+        from core.models import AuditLog
+        today=timezone.localdate();old_end=today+timedelta(days=25)
+        self.sanction.ends_on=old_end;self.sanction.save();self.appeal()
+        self.client.post(self.url('decision'),{'action':'accepted','return_on':str(today+timedelta(days=1))},format='json')
+        AuditLog.objects.filter(action='sanction_appeal_registered').delete()
+        row=self.client.get('/api/player-enrollments/disciplinary/').data['results'][0]
+        self.assertEqual(row['appeal_original_period']['ends_on'],str(old_end))
+        AuditLog.objects.filter(action='sanction_appeal_return_changed').delete()
+        row=self.client.get('/api/player-enrollments/disciplinary/').data['results'][0]
+        self.assertIsNone(row['appeal_original_period'])
+
+    def test_original_indefinite_period_is_distinct_from_missing_history(self):
+        self.appeal()
+        row=self.client.get('/api/player-enrollments/disciplinary/').data['results'][0]
+        self.assertIn('ends_on',row['appeal_original_period'])
+        self.assertIsNone(row['appeal_original_period']['ends_on'])

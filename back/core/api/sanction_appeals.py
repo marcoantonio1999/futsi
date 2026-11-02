@@ -65,6 +65,12 @@ class SanctionAppealView(APIView):
                 row.appeal_submitted_at = timezone.now()
                 row.appeal_submitted_by = request.user
                 row.save(update_fields=['appeal_status','appeal_reason','appeal_letter_path','appeal_letter_sha256','appeal_submitted_at','appeal_submitted_by'])
+                AuditLog.objects.create(actor=request.user, action='sanction_appeal_registered',
+                    table_name=PlayerSanction._meta.db_table, record_id=str(row.pk),
+                    new_values={'starts_on': row.starts_on.isoformat(),
+                                'ends_on': row.ends_on.isoformat() if row.ends_on else None,
+                                'duration_unit': row.duration_unit, 'duration_value': row.duration_value,
+                                'submitted_at': row.appeal_submitted_at.isoformat()})
         except Exception:
             enrollment_storage.delete_document(path)
             raise

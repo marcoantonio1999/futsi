@@ -10,7 +10,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.models import PlayerSanction, PlayerBlacklistEntry
+from core.models import PlayerSanction, PlayerBlacklistEntry, AuditLog
 from core.api.sanctions import SanctionPermission
 from core.api.enrollments import enrollment_staff, enrollment_sites
 from core.enrollment_access import enrollment_site_ids
@@ -47,6 +47,20 @@ def status_of(row):
     today=timezone.localdate()
     return 'scheduled' if row.starts_on>today else 'indefinite' if row.ends_on is None else ('awaiting_payment' if row.payment_required and not row.payment_folio else 'expired') if row.ends_on<today else 'active'
 
+def original_appeal_periods(rows):
+    ids = [str(row.pk) for row in rows if row.appeal_status != 'none']
+    if not ids:
+        return {}
+    audits = AuditLog.objects.filter(table_name=PlayerSanction._meta.db_table, record_id__in=ids,
+        action__in=['sanction_appeal_registered', 'sanction_appeal_return_changed']).order_by('created_at', 'pk')
+    result = {}
+    for audit in audits:
+        period = audit.new_values if audit.action == 'sanction_appeal_registered' else audit.previous_values
+        if isinstance(period, dict) and 'starts_on' in period and 'ends_on' in period:
+            result.setdefault(audit.record_id, {key: period[key] for key in ('starts_on', 'ends_on')})
+    return result
+
+
 class DisciplinaryHistoryView(APIView):
     permission_classes=[SanctionPermission]
     blacklist=False
@@ -78,7 +92,9 @@ class DisciplinaryHistoryView(APIView):
             elif status:raise ValidationError('Estado inválido.')
         page=serializers.IntegerField(min_value=1,max_value=100000).run_validation(request.query_params.get('page',1))
         count=rows.count(); result=[]
-        for row in rows.order_by('-created_at','-pk')[(page-1)*25:page*25]:
+        page_rows = list(rows.order_by('-created_at','-pk')[(page-1)*25:page*25])
+        appeal_periods = {} if self.blacklist else original_appeal_periods(page_rows)
+        for row in page_rows:
             common={'id':row.pk,'player_name':row.player_name,'offense':row.offense_label,'reason':row.reason,'created_at':row.created_at,'applied_by':row.created_by.username}
             common['has_photo']=bool(row.photo_storage_path or row.photo_sha256 or row.photo_legacy_file) if self.blacklist else bool((row.enrollment_id and row.enrollment.disciplinary_photos) or (row.player_id and row.player.photo))
             if self.blacklist:common.update(site=row.origin_site,tournament=row.origin_tournament,team=row.origin_team,birth_date=row.birth_date,status='active' if row.is_active else 'revoked',revoked_at=row.revoked_at,revoked_by=row.revoked_by.username if row.revoked_by else None,revocation_reason=row.revocation_reason)
@@ -86,6 +102,7 @@ class DisciplinaryHistoryView(APIView):
             if not self.blacklist:
                 common.update(payment_required=row.payment_required,fine_amount=row.fine_amount,payment_folio=row.payment_folio,
                     payment_recorded_at=row.payment_recorded_at,payment_recorded_by=row.payment_recorded_by.username if row.payment_recorded_by_id else None,
+                    appeal_original_period=appeal_periods.get(str(row.pk)),
                     appeal_status=row.appeal_status,appeal_reason=row.appeal_reason,has_appeal_letter=bool(row.appeal_letter_path),
                     appeal_submitted_at=row.appeal_submitted_at,appeal_submitted_by=row.appeal_submitted_by.username if row.appeal_submitted_by_id else None,
                     appeal_decision_reason=row.appeal_decision_reason,appeal_decided_at=row.appeal_decided_at,

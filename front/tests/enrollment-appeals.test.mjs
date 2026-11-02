@@ -47,3 +47,10 @@ test('payment folio is an explicit visible text field styled inside the portal d
   assert.match(css,/\.tournament-dialog \.sanction-payment-field input\{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:46px/);
   assert.match(css,/border:1px solid #d3ddd6;border-radius:8px/);
 });
+
+test('appeal details preserve original and current return dates plus first registration',()=>{
+ const details={...row,appeal_status:'accepted',starts_on:'2026-10-01',ends_on:'2026-10-31',appeal_submitted_at:'2026-10-20T18:00:00Z',appeal_original_period:{starts_on:'2026-10-01',ends_on:'2026-11-15'}};
+ const html=renderToStaticMarkup(React.createElement(loaded.exports.SanctionAppealDetails,{row:details,token:'fixture'}));
+ assert.match(html,/Fecha de registro de la apelación/);assert.match(html,/Fecha de regreso original/);assert.match(html,/16 nov 2026/);assert.match(html,/Fecha de regreso actual/);assert.match(html,/01 nov 2026/);
+ const missing=renderToStaticMarkup(React.createElement(loaded.exports.SanctionAppealDetails,{row:{...details,appeal_original_period:null},token:'fixture'}));assert.match(missing,/No registrada/);
+});
