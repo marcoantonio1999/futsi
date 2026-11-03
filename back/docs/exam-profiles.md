@@ -77,6 +77,14 @@ heredado. El filtro de puesto sigue la misma regla y respeta las excepciones.
 
 `GET /api/recruitment-profiles/` agrega `exam`, `position`, `keywords` (hasta 20
 frases separadas por comas), `keyword_mode=all|any`, `form_q`, `has_cv=yes`, `has_form=yes`.
+Los filtros opcionales `date_from` y `date_to` son fechas ISO inclusivas y se
+aplican en servidor antes de paginar. Se basan en el día de entrega en la zona
+`America/Mexico_City`; las cargas históricas usan su `completed_on` registrado,
+no la fecha de carga. Las cargas sin fecha conocida siguen visibles sin filtro,
+pero se excluyen si se pide un límite de fecha. La lista y el detalle muestran
+esta misma fecha, o «Sin fecha registrada». Un rango invertido o inválido se
+rechaza sin modificar datos. El corte del mejor 10 % conserva el universo de
+entregas calificadas del examen completo, como antes de añadir este filtro.
 Para el top 10 % exige elegir examen y no comparar pruebas distintas.
 Los términos se escapan y buscan con límites de palabra, sin distinguir acentos
 ni mayúsculas: Excel no coincide con excelente. Es presencia literal del texto,

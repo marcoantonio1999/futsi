@@ -1,4 +1,4 @@
-from datetime import datetime, timezone as dtz
+from datetime import datetime
 
 import pytest
 from rest_framework.test import APIClient
