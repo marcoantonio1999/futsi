@@ -45,15 +45,14 @@ def complete_skill_questions(questions):
 
 def eligibility(attempt):
     questions = attempt.snapshot.get('questions', []) if isinstance(attempt.snapshot, dict) else []
-    if not attempt.submitted_at or not complete_skill_questions(questions):
+    if not attempt.submitted_at:
         return {'status': 'incomplete', 'management': None, 'sales': None}
     grades = attempt.grading.get('questions', {}) if isinstance(attempt.grading, dict) else {}
-    skills = attempt_skills(questions, attempt.grading_status, grades)
+    # Scores are informative only. Missing grades or a low result must never
+    # prevent a participant from continuing after delivering the first stage.
+    skills = attempt_skills(questions, attempt.grading_status, grades) if complete_skill_questions(questions) else {}
     management, sales = (skills.get(key, (None, 0))[0] for key in ('management', 'sales'))
-    if management is None or sales is None:
-        return {'status': 'incomplete', 'management': management, 'sales': sales}
-    return {'status': 'eligible' if management >= 8 and sales >= 8 else 'below_threshold',
-            'management': management, 'sales': sales}
+    return {'status': 'eligible', 'management': management, 'sales': sales}
 
 
 def complementary_grade(attempt):

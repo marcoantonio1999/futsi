@@ -6,7 +6,7 @@ export type SecondExam = { id: number; title: string; public_token: string; dura
 export type SecondAttempt = { submitted_at: string | null; grading_status?: string; grading?: Grading;
   snapshot: { questions: Question[] }; answers: Record<string, number | string>;
   complementary_grade?: { total: number; scale: number; meets_suggested_priority: boolean } | null };
-export type SecondProgress = { status: 'eligible' | 'below_threshold' | 'incomplete'; management: number | null; sales: number | null; attempt: SecondAttempt | null };
+export type SecondProgress = { status: 'eligible' | 'incomplete'; management: number | null; sales: number | null; attempt: SecondAttempt | null };
 
 const labels: Record<string, string> = { '1': 'Proactividad', '2': 'Responsabilidad, constancia y capacidad de trabajo', '3': 'Habilidad comercial y persuasión por WhatsApp' };
 const score = (value: number | null) => value == null ? 'Sin desglose' : `${value.toFixed(2)} / 10`;
@@ -19,7 +19,7 @@ export function SecondStageControls({ stage, link, busy, onToggle, onGrade, onCo
   useEffect(() => { if (stage) setMinutes(stage.duration_minutes); }, [stage?.id, stage?.duration_minutes]);
   return <section className="exam-second-controls" aria-label="Segunda fase">
     <div><p className="exam-eyebrow">EVALUACIÓN COMPLEMENTARIA</p><h3>Segunda fase</h3>
-      <p>Para participantes con al menos 8 en Gestión y 8 en Ventas. Incluye tres preguntas abiertas. La primera fase sigue disponible de forma independiente.</p></div>
+      <p>Para participantes que hayan entregado la primera fase. Incluye tres preguntas abiertas. La primera fase sigue disponible de forma independiente.</p></div>
     {!stage ? <p role="status">Preparando el segundo enlace. Actualiza la página en unos momentos.</p> : <>
       <span className="exam-tag">{stage.accepting ? 'Segundo enlace abierto' : 'Segundo enlace cerrado'} · {stage.duration_minutes} min</span>
       <label>Enlace de la segunda fase<input readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>
@@ -39,7 +39,7 @@ export function SecondStageStatus({ progress }: { progress?: SecondProgress }) {
   if (!progress) return <span>Sin información de la segunda fase</span>;
   const a = progress.attempt;
   return <div className="exam-second-status">
-    <span>{progress.status === 'eligible' ? 'Cumple filtro inicial' : progress.status === 'below_threshold' ? 'No alcanza el filtro inicial' : 'Sin desglose completo'}</span>
+    <span>{progress.status === 'eligible' ? 'Primera fase entregada' : 'Primera fase sin entregar'}</span>
     <small>Gestión: {score(progress.management)}<br />Ventas: {score(progress.sales)}</small>
     {a ? <strong>{!a.submitted_at ? 'En curso' : a.complementary_grade ? `${a.complementary_grade.total} / 30` : a.grading_status === 'error' ? 'Error al calificar' : 'Entregado · pendiente de calificar'}</strong> : progress.status === 'eligible' ? <span>Segunda fase sin iniciar</span> : null}
   </div>;

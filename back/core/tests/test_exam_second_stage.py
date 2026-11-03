@@ -93,20 +93,46 @@ def test_full_flow_permissions_link_grade_and_both_results(auth_client):
     assert [p['id'] for p in profiles] == [first.id]
 
 
-def test_threshold_and_incomplete_data_never_become_zero(auth_client):
+@pytest.mark.parametrize('grading_state', ['zero', 'below_eight', 'missing_question', 'pending', 'missing_breakdown'])
+def test_second_stage_accepts_delivered_first_stage_regardless_of_scores(auth_client, grading_state):
     admin, _, _ = auth_client()
     exam = first_exam(admin); second = activate(admin, exam).json()['second_stage']
     first = submit_first(exam)
-    for points, expected in [(8, 'eligible'), (7.999, 'below_threshold')]:
-        for item in first.grading['questions'].values(): item['points'] = points
-        first.save()
-        assert eligibility(first)['status'] == expected
-    assert start(second).status_code == 403
-    first.grading['questions'].pop('5'); first.save()
+    if grading_state in {'zero', 'below_eight'}:
+        for item in first.grading['questions'].values():
+            item['points'] = 0 if grading_state == 'zero' else 7.999
+    elif grading_state == 'missing_question':
+        first.grading['questions'].pop('5')
+    elif grading_state == 'pending':
+        first.grading_status = 'pending'
+    else:
+        first.snapshot['questions'] = []
+    first.save()
+    progress = eligibility(first)
+    assert progress['status'] == 'eligible'
+    if grading_state == 'zero':
+        assert progress['management'] == progress['sales'] == 0
+    if grading_state in {'pending', 'missing_breakdown'}:
+        assert progress['management'] is None and progress['sales'] is None
+    result = start_second(second, email=' PRUEBA@example.invalid ')
+    assert result.status_code == 201, result.content
+    child = RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
+    assert child.first_stage_attempt_id == first.id
+    row = admin.get(f'/api/recruitment-exams/{exam["id"]}/').json()['results'][0]
+    assert row['second_stage']['status'] == 'eligible'
+    from core.tests.test_exam_export import book
+    exported = list(book(admin.get('/api/recruitment-exams/export/', {'exam': exam['id']}))['Segunda fase'].values)
+    assert dict(zip(exported[0], exported[1]))['Primera fase'] == 'Entregada'
+
+
+def test_second_stage_waits_for_first_delivery(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    started = start(exam)
+    first = RecruitmentExamAttempt.objects.get(access_token=started.json()['access_token'])
     assert eligibility(first)['status'] == 'incomplete'
-    assert start(second).status_code == 403
-    first.grading_status = 'pending'; first.save()
-    assert eligibility(first)['status'] == 'incomplete'
+    assert start_second(second).status_code == 403
+    assert RecruitmentExamAttempt.objects.filter(exam_id=second['id']).count() == 0
 
 
 def test_ambiguous_email_and_unknown_email_denied(auth_client):

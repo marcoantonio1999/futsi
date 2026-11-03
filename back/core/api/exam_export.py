@@ -96,7 +96,7 @@ class ExamExportView(APIView):
         results = workbook.create_sheet('Evaluaciones')
         answers = workbook.create_sheet('Respuestas')
         second_sheet = workbook.create_sheet('Segunda fase') if exam and hasattr(exam, 'second_stage') else None
-        second_headers = ['ID primera entrega', 'Participante', 'Gestión / 10', 'Ventas / 10', 'Filtro inicial',
+        second_headers = ['ID primera entrega', 'Participante', 'Gestión / 10', 'Ventas / 10', 'Primera fase',
                           'Estado segunda fase', 'Total / 30', 'Filtro sugerido',
                           'Proactividad / 10', 'Respuesta proactividad', 'Justificación proactividad',
                           'Responsabilidad / 10', 'Respuesta responsabilidad', 'Justificación responsabilidad',
@@ -166,7 +166,7 @@ class ExamExportView(APIView):
                     details += [points, child.answers.get(qid, '') if child_submitted else '', item.get('reason', '')]
                 stage_status = 'Sin iniciar' if not child else 'En curso' if not child_submitted else STATUSES.get(child.grading_status, 'Revisar estado')
                 append_row(second_sheet, [attempt.id, attempt.name, stage['management'], stage['sales'],
-                    {'eligible': 'Cumple', 'below_threshold': 'No alcanza', 'incomplete': 'Sin desglose completo'}[stage['status']],
+                    {'eligible': 'Entregada', 'incomplete': 'Sin entregar'}[stage['status']],
                     stage_status, total['total'] if total else None,
                     ('Cumple' if total['meets_suggested_priority'] else 'No alcanza') if total else '',
                     *details, 'Sí' if child_grade.get('review') else 'No' if total else ''])

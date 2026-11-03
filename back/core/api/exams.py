@@ -303,8 +303,8 @@ class PublicExamView(APIView):
             for legacy in first.attempts.filter(identity_email='').only('id', 'email', 'phone'):
                 legacy.save(update_fields=['identity_email', 'identity_phone'])
             matches = list(first.attempts.filter(identity_email=exam_email(email))[:2])
-            if len(matches) != 1 or eligibility(matches[0])['status'] != 'eligible':
-                return Response({'detail': 'No fue posible vincular esta participación. Usa el mismo correo de la primera evaluación y consulta a Recursos Humanos.', 'code': 'second_stage_unavailable'}, status=403)
+            if len(matches) != 1 or not matches[0].submitted_at:
+                return Response({'detail': 'No fue posible vincular esta participación. Verifica que entregaste la primera evaluación y usa el mismo correo; si necesitas ayuda, consulta a Recursos Humanos.', 'code': 'second_stage_unavailable'}, status=403)
             first_attempt = matches[0]
             name, phone = first_attempt.name, first_attempt.phone
         else:

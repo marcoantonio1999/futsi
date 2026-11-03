@@ -103,11 +103,10 @@ primera evaluación.
 El inicio exige únicamente el mismo correo de la primera etapa, sin distinción de
 mayúsculas y espacios exteriores, y un único intento anterior coincidente. La
 segunda fase no vuelve a pedir nombre ni teléfono; asocia la entrega al intento
-anterior y conserva sus datos de contacto en administración. Debe estar entregado y calificado
-con al menos 8/10 en **cada una** de las áreas Gestión y prioridades y Ventas y
-marketing. Las 9 y 4 preguntas originales deben estar completas y reconocerse por
-contenido y opciones; no se infiere el desglose desde un total, un título o una
-plantilla alterada. Faltantes y coincidencias ambiguas requieren revisión por RRHH.
+anterior y conserva sus datos de contacto en administración. La primera evaluación
+debe estar entregada; su calificación y el desglose por habilidad no restringen el
+acceso. Los puntajes de Gestión y Ventas se muestran cuando estén disponibles y no
+se infieren desde una nota total. Las coincidencias ambiguas requieren revisión por RRHH.
 La coincidencia de correo vincula las etapas, pero no verifica la identidad civil ni
 reemplaza una autenticación individual; una persona que conozca el correo podría
 intentar usarlo. Las respuestas anteriores no se muestran por el enlace público.
@@ -122,7 +121,7 @@ rúbrica pide no premiar extensión, no suponer veracidad y señalar evidencia
 insuficiente. El filtro de 7 en cada pregunta y 24/30 se muestra como una sugerencia,
 no decide una contratación. RRHH debe revisar la respuesta y verificar sus hechos.
 
-En Ver evaluaciones, la columna Segunda fase muestra el filtro inicial, avance y
+En Ver evaluaciones, la columna Segunda fase muestra la entrega inicial, avance y
 total; Ver respuestas reúne ambas etapas y el detalle de las tres justificaciones.
 Exportar Excel desde ese examen agrega una hoja Segunda fase con las mismas personas
 filtradas, sin borradores de respuestas no entregadas. Los perfiles y la vinculación
