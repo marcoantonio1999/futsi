@@ -77,7 +77,7 @@ def veronica_route_allowed(path, method):
         return method in {'GET', 'HEAD'}
     if path == '/api/recruitment-exams/test-grading/':
         return method == 'POST'
-    if re.fullmatch(r'/api/recruitment-exams/[1-9][0-9]*/grade/', path):
+    if re.fullmatch(r'/api/recruitment-exams/[1-9][0-9]*/(?:grade|second-stage)/', path):
         return method == 'POST'
     if re.fullmatch(r'/api/recruitment-exams/(?:template/|[1-9][0-9]*/)?', path):
         return method in {'GET', 'HEAD', 'POST'} and not (path.endswith('/template/') and method == 'POST')

@@ -2,7 +2,7 @@ from core.api.enrollment_permits import EnrollmentPermitView, EnrollmentPermitPh
 from django.contrib import admin
 from django.urls import include, path
 from core.api.veronica import VeronicaConsoleView, VeronicaWeeklyStatsView
-from core.api.exams import ExamAdminView, ExamTemplateView, PublicExamView, ExamAttemptView, ExamGradeView, ExamGradingTestView
+from core.api.exams import ExamAdminView, ExamTemplateView, PublicExamView, ExamAttemptView, ExamGradeView, ExamGradingTestView, ExamSecondStageView
 from core.api.exam_profiles import ExamProfilesView, ExamProfileImportView, ExamCVImportView
 from core.api.exam_statistics import ExamStatisticsView
 from core.api.exam_export import ExamExportView
@@ -96,6 +96,7 @@ urlpatterns = [
     path('api/recruitment-exams/template/', ExamTemplateView.as_view()),
     path('api/recruitment-exams/test-grading/', ExamGradingTestView.as_view()),
     path('api/recruitment-exams/<int:pk>/grade/', ExamGradeView.as_view()),
+    path('api/recruitment-exams/<int:pk>/second-stage/', ExamSecondStageView.as_view()),
     path('api/recruitment-exams/<int:pk>/', ExamAdminView.as_view()),
     path('api/public-exams/attempt/', ExamAttemptView.as_view()),
     path('api/public-exams/<str:token>/', PublicExamView.as_view()),

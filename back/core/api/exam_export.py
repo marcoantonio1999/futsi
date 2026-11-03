@@ -19,6 +19,7 @@ from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentExam, RecruitmentExamAttempt
 from core.exam_profiles import filtered_attempts
 from core.exam_skills import SKILLS, attempt_skills
+from core.exam_second_stage import eligibility, complementary_grade
 
 CDMX = ZoneInfo('America/Mexico_City')
 STATUSES = {'graded': 'Calificado', 'review': 'Revisión manual', 'pending': 'Pendiente de calificar',
@@ -76,10 +77,11 @@ class ExamExportView(APIView):
         if set(request.query_params) - {'exam', 'ordering', 'top', 'q', 'status', 'min_score', 'max_score', 'min_minutes', 'max_minutes', 'skill', 'skill_ranges'}:
             raise ValidationError({'detail': 'Filtro de exportación no reconocido. La descarga incluye todas las páginas.'})
         exam_id = request.query_params.get('exam')
+        exam = None
         if exam_id is not None:
             if not exam_id.isdecimal() or int(exam_id) < 1:
                 raise ValidationError({'detail': 'Examen inválido.'})
-            get_object_or_404(RecruitmentExam, pk=int(exam_id))
+            exam = get_object_or_404(RecruitmentExam, pk=int(exam_id))
         if request.query_params.get('status', '') not in {'', 'graded', 'pending', 'unsubmitted'} or request.query_params.get('top', '') not in {'', '10'}:
             raise ValidationError({'detail': 'Filtro de exportación inválido.'})
         if not exam_id and set(request.query_params) - {'exam'}:
@@ -88,11 +90,23 @@ class ExamExportView(APIView):
             rows, _ = filtered_attempts(RecruitmentExamAttempt.objects.filter(exam_id=int(exam_id)), request.query_params)
         else:
             rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False).order_by('exam_id', 'id')
-        rows = rows.select_related('exam').defer('access_token', 'start_key', 'identity_email', 'identity_phone',
+        rows = rows.select_related('exam', 'second_stage_attempt').defer('access_token', 'start_key', 'identity_email', 'identity_phone',
             'exam__public_token', 'exam__answer_key')
         workbook = Workbook(write_only=True)
         results = workbook.create_sheet('Evaluaciones')
         answers = workbook.create_sheet('Respuestas')
+        second_sheet = workbook.create_sheet('Segunda fase') if exam and hasattr(exam, 'second_stage') else None
+        second_headers = ['ID primera entrega', 'Participante', 'Gestión / 10', 'Ventas / 10', 'Filtro inicial',
+                          'Estado segunda fase', 'Total / 30', 'Filtro sugerido',
+                          'Proactividad / 10', 'Respuesta proactividad', 'Justificación proactividad',
+                          'Responsabilidad / 10', 'Respuesta responsabilidad', 'Justificación responsabilidad',
+                          'Comercial / 10', 'Respuesta comercial', 'Justificación comercial', 'Requiere revisión']
+        if second_sheet:
+            second_sheet.freeze_panes = 'C2'
+            second_sheet.row_dimensions[1].height = 34
+            for i, width in enumerate([20, 32, 18, 18, 26, 28, 18, 26, 20, 65, 65, 22, 65, 65, 20, 65, 65, 22], 1):
+                second_sheet.column_dimensions[get_column_letter(i)].width = width
+            append_row(second_sheet, second_headers, header=True)
         result_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Correo', 'Teléfono', 'Fecha del examen (CDMX)',
             'Inicio (CDMX)', 'Entrega (CDMX)', 'Duración (min)', 'Tiempo de referencia (min)', 'Estado',
             'Calificación / 10', 'Requiere revisión', 'Observaciones', 'Origen']
@@ -137,6 +151,25 @@ class ExamExportView(APIView):
                 None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado') if submitted else 'Sin entregar', score,
                 'Sí' if review else 'No', grading.get('error') or observations,
                 'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'] + skill_scores + ([SKILLS[skill][0], attempt.skill_score] if skill else []))
+            if second_sheet:
+                stage = eligibility(attempt)
+                child = getattr(attempt, 'second_stage_attempt', None)
+                child_submitted = bool(child and child.submitted_at)
+                child_grade = child.grading if child_submitted and isinstance(child.grading, dict) else {}
+                total = complementary_grade(child) if child_submitted else None
+                details = []
+                for qid in ('1', '2', '3'):
+                    item = (child_grade.get('questions') or {}).get(qid, {})
+                    points = item.get('points') if child and child.grading_status == 'graded' else None
+                    if not numeric(points) or not 0 <= points <= 10:
+                        points = None
+                    details += [points, child.answers.get(qid, '') if child_submitted else '', item.get('reason', '')]
+                stage_status = 'Sin iniciar' if not child else 'En curso' if not child_submitted else STATUSES.get(child.grading_status, 'Revisar estado')
+                append_row(second_sheet, [attempt.id, attempt.name, stage['management'], stage['sales'],
+                    {'eligible': 'Cumple', 'below_threshold': 'No alcanza', 'incomplete': 'Sin desglose completo'}[stage['status']],
+                    stage_status, total['total'] if total else None,
+                    ('Cumple' if total['meets_suggested_priority'] else 'No alcanza') if total else '',
+                    *details, 'Sí' if child_grade.get('review') else 'No' if total else ''])
             # Unsubmitted drafts are not delivered answers and must not be exported.
             if not submitted:
                 continue
@@ -159,6 +192,8 @@ class ExamExportView(APIView):
                     'Confirmar selección con Vero' if marks and qid not in accepted else grade.get('reason','')])
         results.auto_filter.ref = f'A1:{get_column_letter(len(result_headers))}{max(1,count+1)}'
         answers.auto_filter.ref = f'A1:L{max(1,detail_count+1)}'
+        if second_sheet:
+            second_sheet.auto_filter.ref = f'A1:{get_column_letter(len(second_headers))}{max(1,count+1)}'
         output = BytesIO()
         workbook.save(output)
         scope = f'examen-{int(exam_id)}' if exam_id else 'todos-los-examenes'

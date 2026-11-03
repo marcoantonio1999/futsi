@@ -15,7 +15,7 @@ import re
 
 
 def submitted_rows(detail=False):
-    rows=RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False).select_related('exam','profile')
+    rows=RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False, first_stage_attempt__isnull=True).select_related('exam','profile')
     if not detail:
         # Do not transfer CVs, form texts or whole questionnaires to list contacts.
         rows=rows.defer('snapshot','answers','grading_key','exam__questions','exam__answer_key',

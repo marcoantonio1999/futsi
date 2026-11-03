@@ -20,6 +20,8 @@ class RecruitmentExam(models.Model):
     accepting = models.BooleanField(default=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
+    first_stage = models.OneToOneField('self', null=True, blank=True, on_delete=models.PROTECT,
+                                      related_name='second_stage')
 
     class Meta:
         db_table = 'recruitment_exams'
@@ -45,6 +47,8 @@ class RecruitmentExamAttempt(models.Model):
     graded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='graded_recruitment_attempts')
     started_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    first_stage_attempt = models.OneToOneField('self', null=True, blank=True, on_delete=models.PROTECT,
+                                              related_name='second_stage_attempt')
 
     class Meta:
         db_table = 'recruitment_exam_attempts'

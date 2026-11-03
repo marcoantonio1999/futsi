@@ -1,0 +1,156 @@
+import json
+import uuid
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+from rest_framework.test import APIClient
+
+from core.exam_models import RecruitmentExam, RecruitmentExamAttempt
+from core.exam_second_stage import KEY, QUESTIONS, eligibility
+from core.tests.test_recruitment_exams import create_exam, start
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def clear_cache():
+    from django.core.cache import cache
+    cache.clear()
+
+
+def first_exam(admin):
+    template = json.loads(Path(__file__).parents[1].joinpath('exam_template.json').read_text(encoding='utf-8'))
+    return create_exam(admin, template['questions'])
+
+
+def activate(admin, exam, minutes=40):
+    return admin.post(f'/api/recruitment-exams/{exam["id"]}/second-stage/', {'duration_minutes': minutes}, format='json')
+
+
+def submit_first(exam, **identity):
+    result = start(exam, **identity)
+    assert result.status_code == 201, result.content
+    public = APIClient()
+    public.credentials(HTTP_AUTHORIZATION='Exam ' + result.json()['access_token'])
+    assert public.post('/api/public-exams/attempt/', {'answers': {q['id']: 0 for q in exam['questions']}}, format='json').status_code == 200
+    return RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
+
+
+def test_full_flow_permissions_link_grade_and_both_results(auth_client):
+    admin, _, _ = auth_client(role='collaborator', section_permissions=['veronica_only'])
+    exam = first_exam(admin)
+    url = f'/api/recruitment-exams/{exam["id"]}/second-stage/'
+    assert APIClient().post(url, {}, format='json').status_code in (401, 403)
+    r = activate(admin, exam, 35)
+    assert r.status_code == 201, r.content
+    second = r.json()['second_stage']
+    assert second['duration_minutes'] == 35 and second['public_token'] != exam['public_token']
+    assert activate(admin, exam).json()['second_stage']['id'] == second['id']
+    assert len(admin.get('/api/recruitment-exams/').json()['results']) == 1
+    first = submit_first(exam)
+    public = APIClient()
+    info = public.get(f'/api/public-exams/{second["public_token"]}/')
+    assert info.json()['second_stage'] and 'answer_key' not in str(info.json())
+    result = start(second, email='PRUEBA@example.invalid', phone='+52 55 0000 0000')
+    assert result.status_code == 201, result.content
+    child = RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
+    assert child.first_stage_attempt_id == first.id
+    assert result.json()['snapshot']['questions'] == QUESTIONS
+    assert 'answer_key' not in str(result.json()) and 'grading_key' not in str(result.json())
+    public.credentials(HTTP_AUTHORIZATION='Exam ' + result.json()['access_token'])
+    answers = {'1': 'Organicé una mejora concreta.', '2': 'Priorizamos y terminamos.', '3': 'Escucharía a la mamá y daría seguimiento.'}
+    assert public.post('/api/public-exams/attempt/', {'answers': answers}, format='json').status_code == 200
+    assert start(second).status_code == 409
+    grades = {'1': {'points': 7, 'reason': 'Acciones; verificar resultado.', 'review': True},
+              '2': {'points': 8, 'reason': 'Prioridades y seguimiento.', 'review': False},
+              '3': {'points': 9, 'reason': 'Propone seguimiento.', 'review': False}}
+    with patch('core.api.exams.grade_open', return_value=(grades, {})) as ai:
+        response = admin.post(f'/api/recruitment-exams/{second["id"]}/grade/', {}, format='json')
+        assert response.json()['status'] == 'graded'
+        assert ai.call_count == 1 and ai.call_args.args[2] == KEY
+    data = admin.get(f'/api/recruitment-exams/{exam["id"]}/').json()
+    row = data['results'][0]
+    assert row['id'] == first.id and row['grading']['score'] == 10
+    assert row['second_stage']['status'] == 'eligible'
+    linked = row['second_stage']['attempt']
+    assert linked['answers'] == answers and linked['grading']['questions'] == grades
+    assert linked['complementary_grade'] == {'total': 24, 'scale': 30, 'meets_suggested_priority': True}
+    from core.tests.test_exam_export import book
+    workbook = book(admin.get('/api/recruitment-exams/export/', {'exam': exam['id']}))
+    assert 'Segunda fase' in workbook.sheetnames
+    rows = list(workbook['Segunda fase'].values)
+    exported = dict(zip(rows[0], rows[1]))
+    assert exported['ID primera entrega'] == first.id and exported['Total / 30'] == 24
+    assert exported['Proactividad / 10'] == 7 and exported['Respuesta comercial'] == answers['3']
+    assert exported['Justificación proactividad'] == grades['1']['reason']
+    profiles = admin.get('/api/recruitment-profiles/').json()['results']
+    assert [p['id'] for p in profiles] == [first.id]
+
+
+def test_threshold_and_incomplete_data_never_become_zero(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = activate(admin, exam).json()['second_stage']
+    first = submit_first(exam)
+    for points, expected in [(8, 'eligible'), (7.999, 'below_threshold')]:
+        for item in first.grading['questions'].values(): item['points'] = points
+        first.save()
+        assert eligibility(first)['status'] == expected
+    assert start(second).status_code == 403
+    first.grading['questions'].pop('5'); first.save()
+    assert eligibility(first)['status'] == 'incomplete'
+    assert start(second).status_code == 403
+    first.grading_status = 'pending'; first.save()
+    assert eligibility(first)['status'] == 'incomplete'
+
+
+def test_ambiguous_contact_missing_contact_and_wrong_data_denied(auth_client):
+    admin, _, _ = auth_client(); exam = first_exam(admin)
+    second = activate(admin, exam).json()['second_stage']
+    first = submit_first(exam)
+    assert start(second, phone='5500000001').status_code == 403
+    # A historic duplicate with both contacts is ambiguous, even if both passed.
+    first.pk = None; first.start_key = uuid.uuid4(); first.access_token = 'historic-duplicate'; first.save(force_insert=True)
+    assert start(second).status_code == 403
+    assert RecruitmentExamAttempt.objects.filter(exam_id=second['id']).count() == 0
+
+
+def test_activation_requires_complete_distinct_recognized_questions_and_valid_duration(auth_client):
+    admin, _, _ = auth_client(); custom = create_exam(admin)
+    assert activate(admin, custom).status_code == 400
+    exam = first_exam(admin)
+    assert activate(admin, exam, 0).status_code == 400
+    parent = RecruitmentExam.objects.get(pk=exam['id'])
+    parent.questions[19] = parent.questions[4].copy()  # Duplicate sales question, missing another.
+    parent.save()
+    assert activate(admin, exam).status_code == 400
+    assert RecruitmentExam.objects.filter(first_stage=parent).count() == 0
+
+
+def test_closed_second_link_blocks_new_starts_but_not_existing_attempt(auth_client):
+    admin, _, _ = auth_client(); exam = first_exam(admin)
+    second = activate(admin, exam).json()['second_stage']; submit_first(exam)
+    result = start(second); assert result.status_code == 201
+    admin.post(f'/api/recruitment-exams/{second["id"]}/', {'accepting': False}, format='json')
+    assert start(second).status_code == 410
+    public = APIClient(); public.credentials(HTTP_AUTHORIZATION='Exam ' + result.json()['access_token'])
+    assert public.post('/api/public-exams/attempt/', {'answers': {'1':'a', '2':'b', '3':'c'}}, format='json').status_code == 200
+
+
+def test_expired_second_stage_is_closed_and_can_be_graded_when_admin_opens_results(auth_client):
+    from datetime import timedelta
+    from django.utils import timezone
+    admin, _, _ = auth_client(); exam = first_exam(admin)
+    second = activate(admin, exam).json()['second_stage']; submit_first(exam)
+    result = start(second).json()
+    public = APIClient(); public.credentials(HTTP_AUTHORIZATION='Exam ' + result['access_token'])
+    public.post('/api/public-exams/attempt/', {'action':'draft', 'answers': {'1':'Respuesta guardada'}}, format='json')
+    child = RecruitmentExamAttempt.objects.get(access_token=result['access_token'])
+    RecruitmentExamAttempt.objects.filter(pk=child.pk).update(started_at=timezone.now()-timedelta(minutes=41))
+    row = admin.get(f'/api/recruitment-exams/{exam["id"]}/').json()['results'][0]
+    assert row['second_stage']['attempt']['submitted_at'] is not None
+    assert row['second_stage']['attempt']['answers'] == {'1':'Respuesta guardada'}
+    with patch('core.api.exams.grade_open', return_value=({'1':{'points':5,'reason':'Parcial','review':True}}, {})):
+        assert admin.post(f'/api/recruitment-exams/{second["id"]}/grade/', {}, format='json').json()['status'] == 'graded'
+    child.refresh_from_db()
+    assert child.grading['questions']['2']['points'] == 0 and child.grading['questions']['3']['points'] == 0

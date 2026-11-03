@@ -28,3 +28,17 @@
 .exam-skill-bounds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
 .exam-skill-bounds label{margin:0!important}
 @media(max-width:600px){.exam-skill-range{grid-template-columns:minmax(0,1fr);gap:4px}.exam-skill-ranges{padding:12px}}
+
+.exam-second-controls{min-width:0;margin-top:24px;padding:20px;border:1px solid #cbd9e7;border-radius:12px;background:#f6f9fd}
+.exam-second-controls h3{margin:4px 0 8px}
+.exam-second-controls p{overflow-wrap:anywhere}
+.exam-second-status{display:grid;gap:7px;min-width:160px}
+.exam-second-status small{line-height:1.5;color:#52687c}
+.exam-second-detail{margin:24px 0;padding:20px;border:1px solid #cbd9e7;border-radius:12px;background:#f6f9fd}
+.exam-second-answer{padding-top:12px;border-top:1px solid #d6e0eb;overflow-wrap:anywhere}
+.exam-second-answer h4{font-size:16px;margin-bottom:8px}
+@media(max-width:600px){
+  .exam-second-controls,.exam-second-detail{padding:16px 12px}
+  .exam-second-controls .exam-actions{display:grid;grid-template-columns:minmax(0,1fr)}
+  .exam-second-controls .exam-actions button{width:100%;min-height:44px}
+}

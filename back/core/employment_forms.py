@@ -35,7 +35,7 @@ def form_text(fields):
 
 
 def candidates(application, same_vacancy=True):
-    rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False).select_related('exam')
+    rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False, first_stage_attempt__isnull=True).select_related('exam')
     if application.exam_id:
         rows = rows.filter(exam_id=application.exam_id)
     rows = rows.filter(Q(identity_email=application.identity_email)|Q(identity_phone=application.identity_phone))
@@ -71,6 +71,8 @@ def auto_link(application):
 @transaction.atomic
 def link_forms_after_exam(attempt):
     # Event-driven only: no cron, worker, periodic scan or external request.
+    if attempt.first_stage_attempt_id:
+        return
     forms=RecruitmentApplication.objects.select_for_update().filter(attempt__isnull=True,
         identity_email=attempt.identity_email,identity_phone=attempt.identity_phone).filter(Q(exam=attempt.exam)|Q(exam__isnull=True))
     for application in forms:

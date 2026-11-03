@@ -81,3 +81,41 @@ Validación: 43 pruebas de exportación/perfiles; comparación de IDs y orden co
 API paginada, empates, pendientes, filtros vacíos e inválidos, permisos y escritura
 segura de celdas. Navegador en 320, 390 y 1440 px verifica parámetros aplicados,
 descarga, errores y ausencia de desbordamiento.
+
+## Evaluación complementaria: segunda fase
+
+En Mis exámenes, un examen que contiene todas las preguntas originales reconocidas
+de Gestión y Ventas permite activar la segunda fase. La duración se elige al
+activarla (40 minutos inicialmente); el mismo enlace se comparte con los candidatos.
+El enlace se puede cerrar o reabrir sin afectar los intentos ya iniciados. El
+temporizador y guardado son los del examen existente: al llegar al límite se
+entrega lo guardado. La activación es idempotente y conserva la primera evaluación.
+
+El inicio exige el mismo correo y teléfono de la primera etapa, con su normalización
+existente, y un único intento anterior coincidente. Debe estar entregado y calificado
+con al menos 8/10 en **cada una** de las áreas Gestión y prioridades y Ventas y
+marketing. Las 9 y 4 preguntas originales deben estar completas y reconocerse por
+contenido y opciones; no se infiere el desglose desde un total, un título o una
+plantilla alterada. Faltantes y coincidencias ambiguas requieren revisión por RRHH.
+La coincidencia de datos vincula las etapas, pero no verifica la identidad civil ni
+reemplaza una autenticación individual; una persona que conozca ambos datos podría
+intentar usarlos. Las respuestas anteriores no se muestran por el enlace público.
+
+El segundo examen contiene las tres preguntas y rúbricas acordadas: proactividad;
+responsabilidad, constancia y trabajo; y persuasión por WhatsApp. Su clave se guarda
+en privado y se fija en cada intento. La calificación solo se solicita al pulsar
+«Calificar segunda fase»: usa el mecanismo y proveedor existentes, con costo de API,
+sin reintentos automáticos. Cada pregunta recibe 0–10, justificación y marca de
+revisión cuando corresponda; se muestra la suma exacta de las tres sobre 30. La
+rúbrica pide no premiar extensión, no suponer veracidad y señalar evidencia
+insuficiente. El filtro de 7 en cada pregunta y 24/30 se muestra como una sugerencia,
+no decide una contratación. RRHH debe revisar la respuesta y verificar sus hechos.
+
+En Ver evaluaciones, la columna Segunda fase muestra el filtro inicial, avance y
+total; Ver respuestas reúne ambas etapas y el detalle de las tres justificaciones.
+Exportar Excel desde ese examen agrega una hoja Segunda fase con las mismas personas
+filtradas, sin borradores de respuestas no entregadas. Los perfiles y la vinculación
+automática de solicitudes siguen usando el primer intento para no duplicar personas.
+Los datos de la segunda etapa están protegidos por los permisos existentes de
+exámenes; la migración 0081 solo agrega dos relaciones opcionales a las tablas
+privadas existentes, sin alterar entregas anteriores ni crear tablas públicas.
