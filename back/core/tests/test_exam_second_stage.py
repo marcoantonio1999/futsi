@@ -37,6 +37,12 @@ def submit_first(exam, **identity):
     return RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
 
 
+def start_second(exam, email='prueba@example.invalid', **extra):
+    return APIClient().post(f'/api/public-exams/{exam["public_token"]}/', {
+        'start_key': str(uuid.uuid4()), 'email': email, 'consent': True, **extra,
+    }, format='json')
+
+
 def test_full_flow_permissions_link_grade_and_both_results(auth_client):
     admin, _, _ = auth_client(role='collaborator', section_permissions=['veronica_only'])
     exam = first_exam(admin)
@@ -50,10 +56,11 @@ def test_full_flow_permissions_link_grade_and_both_results(auth_client):
     public = APIClient()
     info = public.get(f'/api/public-exams/{second["public_token"]}/')
     assert info.json()['second_stage'] and 'answer_key' not in str(info.json())
-    result = start(second, email='PRUEBA@example.invalid', phone='+52 55 0000 0000')
+    result = start_second(second, email=' PRUEBA@example.invalid ')
     assert result.status_code == 201, result.content
     child = RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
     assert child.first_stage_attempt_id == first.id
+    assert child.name == first.name and child.phone == first.phone
     assert result.json()['snapshot']['questions'] == QUESTIONS
     assert 'answer_key' not in str(result.json()) and 'grading_key' not in str(result.json())
     public.credentials(HTTP_AUTHORIZATION='Exam ' + result.json()['access_token'])
@@ -102,15 +109,48 @@ def test_threshold_and_incomplete_data_never_become_zero(auth_client):
     assert eligibility(first)['status'] == 'incomplete'
 
 
-def test_ambiguous_contact_missing_contact_and_wrong_data_denied(auth_client):
+def test_ambiguous_email_and_unknown_email_denied(auth_client):
     admin, _, _ = auth_client(); exam = first_exam(admin)
     second = activate(admin, exam).json()['second_stage']
     first = submit_first(exam)
-    assert start(second, phone='5500000001').status_code == 403
-    # A historic duplicate with both contacts is ambiguous, even if both passed.
-    first.pk = None; first.start_key = uuid.uuid4(); first.access_token = 'historic-duplicate'; first.save(force_insert=True)
-    assert start(second).status_code == 403
+    assert start_second(second, email='desconocido@example.invalid').status_code == 403
+    assert start_second(second, email='invalid').status_code == 400
+    assert start_second(second, consent=False).status_code == 400
+    # A historic duplicate email is ambiguous even when phone numbers differ.
+    first.pk = None; first.start_key = uuid.uuid4(); first.access_token = 'historic-duplicate'; first.phone = '5500000001'; first.save(force_insert=True)
+    assert start_second(second).status_code == 403
     assert RecruitmentExamAttempt.objects.filter(exam_id=second['id']).count() == 0
+
+
+def test_second_stage_uses_email_only_even_when_names_or_phones_differ(auth_client):
+    admin, _, _ = auth_client(); exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam)
+    result = start_second(second, name='Otro Nombre', phone='5500009999')
+    assert result.status_code == 201, result.content
+    child = RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
+    assert child.first_stage_attempt_id == first.id and child.name == first.name and child.phone == first.phone
+    assert start_second(second, phone='5500008888').status_code == 409
+
+
+def test_second_stage_does_not_reject_different_email_with_same_historical_phone(auth_client):
+    admin, _, _ = auth_client(); exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam)
+    first.pk = None; first.start_key = uuid.uuid4(); first.access_token = 'historical-other-email'
+    first.email = 'otra@example.invalid'; first.name = 'Otra Persona'; first.save(force_insert=True)
+    assert start_second(second).status_code == 201
+    assert start_second(second, email='otra@example.invalid').status_code == 201
+
+
+def test_existing_second_exam_instructions_change_without_rewriting_history(auth_client):
+    admin, _, _ = auth_client(); exam = first_exam(admin); second = exam['second_stage']
+    submit_first(exam)
+    old = 'Segunda fase. Usa el mismo correo y teléfono de tu primera evaluación.'
+    RecruitmentExam.objects.filter(pk=second['id']).update(instructions=old)
+    public = APIClient(); info = public.get(f'/api/public-exams/{second["public_token"]}/').json()
+    assert 'mismo correo de tu primera' in info['instructions'] and 'teléfono' not in info['instructions']
+    started = start_second(second).json()
+    assert 'mismo correo de tu primera' in started['snapshot']['instructions']
+    assert RecruitmentExam.objects.get(pk=second['id']).instructions == old
 
 
 def test_automatic_link_requires_complete_distinct_recognized_questions(auth_client):

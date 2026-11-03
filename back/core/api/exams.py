@@ -19,6 +19,15 @@ from core.exam_grading import clean_key, choice_grades, finish_grade, grade_open
 from core.exam_timing import exam_deadline, expire_attempt
 from core.exam_second_stage import QUESTIONS as SECOND_QUESTIONS, KEY as SECOND_KEY, complete_skill_questions, eligibility, complementary_grade
 
+SECOND_INSTRUCTIONS = 'Segunda fase. Responde con ejemplos y acciones concretas. Usa el mismo correo de tu primera evaluación.'
+OLD_SECOND_CONTACT_INSTRUCTION = 'Usa el mismo correo y teléfono de tu primera evaluación.'
+
+
+def public_exam_instructions(exam):
+    # Existing second exams keep their stored metadata and historic snapshots.
+    # Show the current contact rule for new starts without rewriting old data.
+    return exam.instructions.replace(OLD_SECOND_CONTACT_INSTRUCTION, 'Usa el mismo correo de tu primera evaluación.') if exam.first_stage_id else exam.instructions
+
 
 class CanManageExams(BasePermission):
     def has_permission(self, request, view):
@@ -105,7 +114,7 @@ def ensure_second_stage(first):
     if not second:
         second, _ = RecruitmentExam.objects.get_or_create(first_stage_id=first.pk, defaults={
             'title': 'Evaluación complementaria – B POWER ACADEMY',
-            'instructions': 'Segunda fase. Responde con ejemplos y acciones concretas. Usa el mismo correo y teléfono de tu primera evaluación.',
+            'instructions': SECOND_INSTRUCTIONS,
             'duration_minutes': 40, 'questions': SECOND_QUESTIONS, 'answer_key': SECOND_KEY,
             'created_by_id': first.created_by_id,
         })
@@ -246,7 +255,7 @@ class ExamSecondStageView(APIView):
         if type(duration) is not int or not 1 <= duration <= 480:
             raise ValidationError({'detail': 'La duración debe ser de 1 a 480 minutos.'})
         RecruitmentExam.objects.create(first_stage=first, title='Evaluación complementaria – B POWER ACADEMY',
-            instructions='Segunda fase. Responde con ejemplos y acciones concretas. Usa el mismo correo y teléfono de tu primera evaluación.',
+            instructions=SECOND_INSTRUCTIONS,
             duration_minutes=duration, questions=SECOND_QUESTIONS, answer_key=SECOND_KEY, created_by=request.user)
         # Invalidate Django's cached missing reverse relation before serialization.
         first._state.fields_cache.pop('second_stage', None)
@@ -260,7 +269,7 @@ class PublicExamView(APIView):
 
     def get(self, request, token):
         e = get_object_or_404(RecruitmentExam, public_token=token)
-        return Response({'title': e.title, 'instructions': e.instructions, 'duration_minutes': e.duration_minutes,
+        return Response({'title': e.title, 'instructions': public_exam_instructions(e), 'duration_minutes': e.duration_minutes,
                          'question_count': len(e.questions), 'accepting': e.accepting,
                          'second_stage': bool(e.first_stage_id)})
 
@@ -281,38 +290,44 @@ class PublicExamView(APIView):
             return Response({'access_token': existing.access_token, **attempt_data(existing)})
         if not e.accepting:
             return Response({'detail': 'Este examen ya no admite nuevos participantes.'}, status=410)
-        name = text(data.get('name'), 'el nombre completo', 180)
-        if len(name.split()) < 2:
-            raise ValidationError({'detail': 'Escribe tu nombre completo con apellidos.'})
         email = text(data.get('email'), 'el correo electrónico', 254)
         try:
             validate_email(email)
         except DjangoValidationError:
             raise ValidationError({'detail': 'Escribe un correo electrónico válido.'})
-        phone = text(data.get('phone'), 'el teléfono', 30)
-        if not 8 <= len(exam_phone(phone)) <= 15 or data.get('consent') is not True:
-            raise ValidationError({'detail': 'Revisa tu teléfono y la autorización para guardar tus respuestas.'})
+        if data.get('consent') is not True:
+            raise ValidationError({'detail': 'Revisa la autorización para guardar tus respuestas.'})
         first_attempt = None
         if e.first_stage_id:
             first = e.first_stage
-            for legacy in first.attempts.filter(Q(identity_email='') | Q(identity_phone='')).only('id', 'email', 'phone'):
+            for legacy in first.attempts.filter(identity_email='').only('id', 'email', 'phone'):
                 legacy.save(update_fields=['identity_email', 'identity_phone'])
-            matches = list(first.attempts.filter(identity_email=exam_email(email), identity_phone=exam_phone(phone))[:2])
+            matches = list(first.attempts.filter(identity_email=exam_email(email))[:2])
             if len(matches) != 1 or eligibility(matches[0])['status'] != 'eligible':
-                return Response({'detail': 'No fue posible vincular esta participación. Usa el mismo correo y teléfono de la primera evaluación y consulta a Recursos Humanos.', 'code': 'second_stage_unavailable'}, status=403)
+                return Response({'detail': 'No fue posible vincular esta participación. Usa el mismo correo de la primera evaluación y consulta a Recursos Humanos.', 'code': 'second_stage_unavailable'}, status=403)
             first_attempt = matches[0]
+            name, phone = first_attempt.name, first_attempt.phone
+        else:
+            name = text(data.get('name'), 'el nombre completo', 180)
+            if len(name.split()) < 2:
+                raise ValidationError({'detail': 'Escribe tu nombre completo con apellidos.'})
+            phone = text(data.get('phone'), 'el teléfono', 30)
+            if not 8 <= len(exam_phone(phone)) <= 15:
+                raise ValidationError({'detail': 'Revisa tu teléfono y la autorización para guardar tus respuestas.'})
         # The parent exam row remains locked throughout this transaction. Two
         # simultaneous starts cannot both pass this check on PostgreSQL.
         # Normalize a legacy row written by an older instance during rollout.
         for legacy in e.attempts.filter(Q(identity_email='') | Q(identity_phone='')).only('id', 'email', 'phone'):
             legacy.save(update_fields=['identity_email', 'identity_phone'])
-        matching = e.attempts.filter(Q(identity_email=exam_email(email)) | Q(identity_phone=exam_phone(phone)))
+        matching = e.attempts.filter(identity_email=exam_email(email)) if e.first_stage_id else e.attempts.filter(Q(identity_email=exam_email(email)) | Q(identity_phone=exam_phone(phone)))
         if matching.filter(submitted_at__isnull=False).exists():
-            return Response({'detail': 'Ya se realizó este examen con este correo o teléfono. No es posible realizarlo dos veces.', 'code': 'exam_already_completed'}, status=409)
+            contact = 'correo' if e.first_stage_id else 'correo o teléfono'
+            return Response({'detail': f'Ya se realizó este examen con este {contact}. No es posible realizarlo dos veces.', 'code': 'exam_already_completed'}, status=409)
         if matching.exists():
-            return Response({'detail': 'Este examen ya fue iniciado con este correo o teléfono. Continúa en la pestaña original; no es posible iniciar un segundo intento.', 'code': 'exam_already_started'}, status=409)
+            contact = 'correo' if e.first_stage_id else 'correo o teléfono'
+            return Response({'detail': f'Este examen ya fue iniciado con este {contact}. Continúa en la pestaña original; no es posible iniciar un segundo intento.', 'code': 'exam_already_started'}, status=409)
         a = RecruitmentExamAttempt.objects.create(exam=e, start_key=start_key, name=name, email=email, phone=phone, grading_key=e.answer_key, first_stage_attempt=first_attempt,
-            snapshot={'title': e.title, 'instructions': e.instructions, 'duration_minutes': e.duration_minutes, 'questions': e.questions})
+            snapshot={'title': e.title, 'instructions': public_exam_instructions(e), 'duration_minutes': e.duration_minutes, 'questions': e.questions})
         return Response({'access_token': a.access_token, **attempt_data(a)}, status=201)
 
 
