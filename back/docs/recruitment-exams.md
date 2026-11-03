@@ -87,7 +87,9 @@ descarga, errores y ausencia de desbordamiento.
 En Mis exámenes, el segundo enlace aparece automáticamente para cada examen que
 contiene todas las preguntas originales reconocidas de Gestión y Ventas. Se crea
 al crear el examen o al consultar uno anterior; no requiere activar una fase. El
-mismo enlace se comparte con los candidatos y la segunda fase tiene 40 minutos.
+mismo enlace se comparte con los candidatos y la segunda fase inicia con 40 minutos.
+La duración se puede ajustar sin afectar los intentos ya iniciados: el cambio solo
+se aplica a quienes empiecen después de guardarlo.
 La primera fase conserva su enlace y estado, y sigue recibiendo respuestas. Cada
 enlace se puede cerrar o reabrir independientemente sin afectar intentos iniciados.
 El temporizador y guardado son los del examen existente: al llegar al límite se

@@ -36,11 +36,16 @@ try {
   await first.getByRole('checkbox').check();
   await first.getByRole('button', { name: 'Iniciar examen', exact: true }).click();
   await first.locator('#question-1').waitFor();
+  await card.getByLabel('Duración de la segunda fase (minutos)').fill('35');
+  await card.getByRole('button', { name: 'Guardar duración' }).click();
+  await admin.getByText('Duración guardada para nuevos intentos', { exact: false }).waitFor();
+  assert(await first.locator('#question-1').isVisible());
   for (const width of [320, 390, 1440]) { await admin.setViewportSize({ width, height: 850 }); await checkLayout(admin); }
   for (const width of [320, 390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 850 } });
     const pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));
     await page.goto(secondLink);
+    await page.getByText('35 minutos', { exact: true }).waitFor();
     await page.getByText('Usa el mismo correo y teléfono que registraste', { exact: false }).waitFor();
     await page.getByLabel('Nombre completo', { exact: true }).fill(`Participante Ficticio ${width}`);
     await page.getByLabel('Correo electrónico', { exact: true }).fill(`qa-${width}@example.invalid`);

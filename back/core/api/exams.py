@@ -187,6 +187,13 @@ class ExamAdminView(APIView):
             raise ValidationError({'detail': 'Formulario inválido.'})
         if pk is not None:
             exam = get_object_or_404(RecruitmentExam.objects.select_for_update(), pk=pk)
+            if 'duration_minutes' in request.data:
+                duration = request.data['duration_minutes']
+                if not exam.first_stage_id or type(duration) is not int or not 1 <= duration <= 480:
+                    raise ValidationError({'detail': 'La duración de la segunda fase debe ser de 1 a 480 minutos.'})
+                exam.duration_minutes = duration
+                exam.save(update_fields=['duration_minutes'])
+                return Response(exam_data(exam))
             if 'answer_key' in request.data:
                 key = clean_key(exam.questions, request.data['answer_key'])
                 if exam.answer_key and exam.answer_key != key:

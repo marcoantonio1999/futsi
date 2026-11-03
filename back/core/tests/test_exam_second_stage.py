@@ -146,6 +146,22 @@ def test_existing_first_stage_continues_while_second_link_appears(auth_client):
     assert RecruitmentExam.objects.filter(first_stage=parent).count() == 1
 
 
+def test_second_duration_only_changes_future_attempts(auth_client):
+    admin, _, _ = auth_client(); exam = first_exam(admin)
+    second = exam['second_stage']; submit_first(exam)
+    original = start(second).json()
+    assert original['snapshot']['duration_minutes'] == 40
+    url = f'/api/recruitment-exams/{second["id"]}/'
+    assert admin.post(url, {'duration_minutes': 25}, format='json').status_code == 200
+    assert admin.post(url, {'duration_minutes': True}, format='json').status_code == 400
+    assert admin.post(f'/api/recruitment-exams/{exam["id"]}/', {'duration_minutes': 25}, format='json').status_code == 400
+    public = APIClient(); public.credentials(HTTP_AUTHORIZATION='Exam ' + original['access_token'])
+    assert public.get('/api/public-exams/attempt/').json()['snapshot']['duration_minutes'] == 40
+    submit_first(exam, name='Otra Persona', email='otra@example.invalid', phone='5512345678')
+    later = start(second, name='Otra Persona', email='otra@example.invalid', phone='5512345678')
+    assert later.status_code == 201 and later.json()['snapshot']['duration_minutes'] == 25
+
+
 def test_closed_second_link_blocks_new_starts_but_not_existing_attempt(auth_client):
     admin, _, _ = auth_client(); exam = first_exam(admin)
     second = activate(admin, exam).json()['second_stage']; submit_first(exam)

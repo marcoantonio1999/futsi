@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { Question } from './ExamQuestionEditor';
 import type { Grading } from './ExamAnswerKey';
 
@@ -10,10 +11,12 @@ export type SecondProgress = { status: 'eligible' | 'below_threshold' | 'incompl
 const labels: Record<string, string> = { '1': 'Proactividad', '2': 'Responsabilidad, constancia y capacidad de trabajo', '3': 'Habilidad comercial y persuasión por WhatsApp' };
 const score = (value: number | null) => value == null ? 'Sin desglose' : `${value.toFixed(2)} / 10`;
 
-export function SecondStageControls({ stage, link, busy, onToggle, onGrade, onCopy }: {
+export function SecondStageControls({ stage, link, busy, onToggle, onGrade, onCopy, onDuration }: {
   stage: SecondExam | null; link: string; busy: boolean;
-  onToggle: () => void; onCopy: () => void; onGrade?: () => void;
+  onToggle: () => void; onCopy: () => void; onGrade?: () => void; onDuration: (minutes: number) => void;
 }) {
+  const [minutes, setMinutes] = useState(stage?.duration_minutes ?? 40);
+  useEffect(() => { if (stage) setMinutes(stage.duration_minutes); }, [stage?.id, stage?.duration_minutes]);
   return <section className="exam-second-controls" aria-label="Segunda fase">
     <div><p className="exam-eyebrow">EVALUACIÓN COMPLEMENTARIA</p><h3>Segunda fase</h3>
       <p>Para participantes con al menos 8 en Gestión y 8 en Ventas. Incluye tres preguntas abiertas. La primera fase sigue disponible de forma independiente.</p></div>
@@ -21,6 +24,9 @@ export function SecondStageControls({ stage, link, busy, onToggle, onGrade, onCo
       <span className="exam-tag">{stage.accepting ? 'Segundo enlace abierto' : 'Segundo enlace cerrado'} · {stage.duration_minutes} min</span>
       <label>Enlace de la segunda fase<input readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>
       <p className="exam-muted">Comparte este enlace. El candidato debe usar el mismo correo y teléfono de la primera fase.</p>
+      <label>Duración de la segunda fase (minutos)<input type="number" min={1} max={480} value={minutes} onChange={e => setMinutes(Number(e.target.value))} /></label>
+      <div className="exam-actions"><button type="button" disabled={busy || !Number.isInteger(minutes) || minutes < 1 || minutes > 480 || minutes === stage.duration_minutes} onClick={() => onDuration(minutes)}>Guardar duración</button></div>
+      <p className="exam-muted">La duración nueva aplica a quienes inicien después de guardarla; no cambia exámenes en curso.</p>
       <div className="exam-actions"><button type="button" disabled={busy} onClick={onCopy}>Copiar segundo enlace</button>
         <button type="button" disabled={busy} onClick={onToggle}>{stage.accepting ? 'Cerrar segundo enlace' : 'Reabrir segundo enlace'}</button>
         {onGrade && <button type="button" className="exam-primary" disabled={busy} onClick={onGrade}>Calificar segunda fase</button>}</div>
