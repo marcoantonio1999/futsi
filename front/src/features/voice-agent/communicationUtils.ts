@@ -184,7 +184,7 @@ export function conversationAttention(c: WhatsAppConversation): ConversationAtte
   };
   if (analysis?.last_message_id === last?.id && analysis?.current_state === 'waiting_client') return c.follow_up_required
     ? { key: "follow_up", tone: "amber", label: "Seguimiento marcado", since: c.follow_up_updated_at, turn: "client", detail: "El equipo espera información del cliente y mantiene un seguimiento marcado." }
-    : { key: "waiting_client", tone: "blue", label: "Esperando al cliente", since: last.created_at, turn: "client", detail: "El análisis identifica que el siguiente paso depende del cliente." };
+    : { key: "waiting_client", tone: "blue", label: "Esperando al cliente", since: last?.created_at ?? null, turn: "client", detail: "El análisis identifica que el siguiente paso depende del cliente." };
   if (analysis?.last_message_id === last?.id && analysis?.current_state === 'uncertain') return {
     key: "follow_up", tone: "amber", label: "Por revisar", since: inbound?.created_at ?? null, turn,
     detail: "El análisis semanal no pudo confirmar el cierre. La solicitud no se descarta ni se cuenta como respuesta humana.",
