@@ -3,8 +3,8 @@ import { ExamFiltersModal } from './ExamFiltersModal';
 
 export const skillOptions = [{id:"mathematics",label:"Matemáticas y análisis numérico"},{id:"sales",label:"Ventas y marketing"},{id:"ai",label:"Uso de IA"},{id:"processes",label:"Procesos y automatización"},{id:"management",label:"Gestión y prioridades"},{id:"information",label:"Análisis de información"}];
 type SkillRanges = Record<string, {min:string;max:string}>;
-export type ResultFilter = { skill_ranges: string; skill: string; ordering: string; top: string; q: string; status: string; min_score: string; max_score: string; min_minutes: string; max_minutes: string };
-export const emptyFilters: ResultFilter = { skill_ranges: '', skill: '', ordering: 'score_desc', top: '', q: '', status: '', min_score: '', max_score: '', min_minutes: '', max_minutes: '' };
+export type ResultFilter = { skill_ranges: string; skill: string; ordering: string; top: string; q: string; status: string; min_score: string; max_score: string; min_minutes: string; max_minutes: string; date_from: string; date_to: string };
+export const emptyFilters: ResultFilter = { skill_ranges: '', skill: '', ordering: 'score_desc', top: '', q: '', status: '', min_score: '', max_score: '', min_minutes: '', max_minutes: '', date_from: '', date_to: '' };
 export const filterQuery = (values: object) => new URLSearchParams(Object.entries(values).filter(([,v]) => v !== '').map(([k,v]) => [k,String(v)])).toString();
 
 export function ExamResultFilters({ onApply, busy, error, initialFilters = emptyFilters }: { onApply: (f: ResultFilter) => Promise<boolean>; busy: boolean; error?: string; initialFilters?: ResultFilter }) {
@@ -24,7 +24,8 @@ export function ExamResultFilters({ onApply, busy, error, initialFilters = empty
     <form onSubmit={apply} className="exam-filter-panel" aria-label="Filtros de evaluaciones">
     <div className="exam-filter-grid">
       <label>Buscar participante<input value={filters.q} onChange={e => change('q', e.target.value)} placeholder="Nombre, correo o teléfono" /></label>
-
+      <label>Fecha del examen desde<input type="date" max={filters.date_to || undefined} value={filters.date_from} onChange={e => change('date_from', e.target.value)} /></label>
+      <label>Fecha del examen hasta<input type="date" min={filters.date_from || undefined} value={filters.date_to} onChange={e => change('date_to', e.target.value)} /></label>
       <label>Ordenar por<select aria-label="Ordenar por" value={filters.ordering} onChange={e => change('ordering',e.target.value)}><option value="score_desc">Calificación general más alta</option><option value="score_asc">Calificación general más baja</option><option value="newest">Más recientes</option><option value="name">Nombre</option></select></label>
       <label>Selección<select aria-label="Selección" value={filters.top} onChange={e => change('top',e.target.value)}><option value="">Todos</option><option value="10">Mejor 10 % (incluye empates)</option></select></label>
       <label>Estado<select aria-label="Estado" value={filters.status} onChange={e => change('status',e.target.value)}><option value="">Todos</option><option value="graded">Calificados</option><option value="pending">Entregados por calificar</option><option value="unsubmitted">Sin entregar</option></select></label>
@@ -33,6 +34,7 @@ export function ExamResultFilters({ onApply, busy, error, initialFilters = empty
       <label>Tiempo mínimo (minutos)<input type="number" min="0" max={filters.max_minutes || '525600'} step="any" value={filters.min_minutes} onChange={e => change('min_minutes',e.target.value)} /></label>
       <label>Tiempo máximo (minutos)<input type="number" min={filters.min_minutes || '0'} max="525600" step="any" value={filters.max_minutes} onChange={e => change('max_minutes',e.target.value)} /></label>
     </div>
+    <p className="exam-muted">Las fechas corresponden a la entrega del examen en Ciudad de México; las cargas históricas usan su fecha registrada. Al filtrar fechas no aparecen evaluaciones sin fecha conocida ni exámenes sin entregar.</p>
     <p className="exam-muted">El tiempo es lo que tardaron en resolver y entregar. Al filtrar por tiempo, no se incluyen exámenes sin entregar ni cargas externas sin tiempo registrado.</p>
     <fieldset className="exam-skill-ranges"><legend>Habilidades y rangos de nota</legend>
       <p className="exam-muted">Selecciona una o varias habilidades. Cada participante debe cumplir todos los rangos marcados. Las notas son sobre 10; sin desglose de una habilidad seleccionada, no aparece en los resultados.</p>

@@ -69,8 +69,12 @@ Pruebas: `test_exam_grading.py` cubre clave obligatoria/privacidad, calificació
 ## Exportación con filtros (2026-10-27)
 
 En Ver evaluaciones, Exportar Excel envía los filtros aplicados del examen:
-búsqueda de participante, estado, calificación mínima/máxima, orden y mejor 10 %
-con empates. Comparte `filtered_attempts` con la lista; no envía número de página.
+búsqueda de participante, intervalo de fecha, estado, calificación mínima/máxima,
+orden y mejor 10 % con empates. El intervalo es inclusivo y usa la entrega en
+Ciudad de México o la fecha registrada en una carga histórica; al filtrar excluye
+entregas sin fecha conocida y exámenes sin entregar. El mejor 10 % conserva su
+grupo de comparación anterior a los filtros de fecha. Comparte `filtered_attempts`
+con la lista; no envía número de página.
 Las hojas Evaluaciones y Respuestas contienen el mismo conjunto seleccionado,
 con todas las páginas. Cambios todavía no aplicados en el modal no alteran la descarga.
 Los intentos sin entregar aparecen sin nota, fecha de entrega ni duración final;
