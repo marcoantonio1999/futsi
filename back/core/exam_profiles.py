@@ -3,13 +3,52 @@ import json
 import math
 import re
 import unicodedata
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.db.models import Case, When, FloatField, BooleanField, F, Value, Q, DurationField, ExpressionWrapper
 from django.db.models.functions import Cast
 from rest_framework.exceptions import ValidationError
 
 from core.exam_identity import exam_email, exam_phone
+
+CDMX = ZoneInfo('America/Mexico_City')
+OFFLINE_EXAM_SOURCES = ('pdf_manual', 'xlsx_results')
+
+
+def filter_profile_dates(rows, params):
+    """Filter by the actual exam date; date-only imports never use upload time."""
+    bounds = {}
+    for key in ('date_from', 'date_to'):
+        value = params.get(key, '')
+        if value:
+            try:
+                if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                    raise ValueError
+                bounds[key] = date.fromisoformat(value)
+            except (ValueError, TypeError):
+                raise ValidationError({'detail': 'Escribe fechas válidas para el examen.'})
+    if bounds.get('date_from') and bounds.get('date_to') and bounds['date_from'] > bounds['date_to']:
+        raise ValidationError({'detail': 'La fecha inicial no puede ser posterior a la fecha final.'})
+    if not bounds:
+        return rows
+
+    offline = Q(exam_source__in=OFFLINE_EXAM_SOURCES)
+    # Explicit null/missing handling keeps web attempts without metadata visible.
+    online_match = (Q(exam_source__isnull=True) | ~offline)
+    # Unknown date-only imports must not inherit an upload-time anchor.
+    offline_match = offline & Q(offline_completed_date__regex=r'^\d{4}-\d{2}-\d{2}$')
+    try:
+        if 'date_from' in bounds:
+            online_match &= Q(submitted_at__gte=datetime.combine(bounds['date_from'], time.min, CDMX))
+            offline_match &= Q(offline_completed_date__gte=bounds['date_from'].isoformat())
+        if 'date_to' in bounds:
+            if bounds['date_to'] < date.max:
+                online_match &= Q(submitted_at__lt=datetime.combine(bounds['date_to'] + timedelta(days=1), time.min, CDMX))
+            offline_match &= Q(offline_completed_date__lte=bounds['date_to'].isoformat())
+        return rows.filter(online_match | offline_match)
+    except (OverflowError, ValueError):
+        raise ValidationError({'detail': 'Escribe fechas válidas para el examen.'})
 
 
 def normalized(value):

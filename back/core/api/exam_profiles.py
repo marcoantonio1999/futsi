@@ -1,6 +1,8 @@
 """Authorized text-only recruitment profiles and explicit form imports."""
 from django.db import transaction
-from django.db.models import Case, When, Value, BooleanField
+from django.db.models import Case, When, Value, BooleanField, CharField
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -8,14 +10,16 @@ from rest_framework.views import APIView
 
 from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentExamAttempt, RecruitmentProfile
-from core.exam_profiles import filtered_attempts, normalized, clean_string, clean_fields, match_form
+from core.exam_profiles import filtered_attempts, filter_profile_dates, normalized, clean_string, clean_fields, match_form, CDMX, OFFLINE_EXAM_SOURCES
 from core.cv_import import match_cv,cv_digest
 import hmac
 import re
 
 
 def submitted_rows(detail=False):
-    rows=RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False, first_stage_attempt__isnull=True).select_related('exam','profile')
+    rows=RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False, first_stage_attempt__isnull=True).select_related('exam','profile').annotate(
+        exam_source=Cast(KeyTextTransform('source', KeyTextTransform('offline_import', 'snapshot')), CharField()),
+        offline_completed_date=Cast(KeyTextTransform('completed_on', KeyTextTransform('offline_import', 'snapshot')), CharField()))
     if not detail:
         # Do not transfer CVs, form texts or whole questionnaires to list contacts.
         rows=rows.defer('snapshot','answers','grading_key','exam__questions','exam__answer_key',
@@ -27,8 +31,17 @@ def submitted_rows(detail=False):
 
 def profile_data(a, detail=False, terms=()):
     p = getattr(a, 'profile', None)
+    if a.exam_source in OFFLINE_EXAM_SOURCES:
+        from datetime import date
+        try:
+            completed = a.offline_completed_date
+            exam_date = date.fromisoformat(completed).isoformat() if isinstance(completed, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', completed) else None
+        except ValueError:
+            exam_date = None
+    else:
+        exam_date = a.submitted_at.astimezone(CDMX).date().isoformat()
     result = dict(id=a.pk, name=a.name, email=a.email, phone=a.phone,
-                  exam_id=a.exam_id, exam_title=a.exam.title, submitted_at=a.submitted_at.isoformat(),
+                  exam_id=a.exam_id, exam_title=a.exam.title, submitted_at=a.submitted_at.isoformat(), exam_date=exam_date,
                   grading_status=a.grading_status, score=a.grading.get('score') if a.grading_status == 'graded' else None,
                   position=p.position if p and p.position else a.exam.title,
                   position_source='saved' if p and p.position else 'exam',
@@ -57,6 +70,7 @@ class ExamProfilesView(APIView):
         except (ValueError, TypeError):
             raise ValidationError({'detail': 'Página o examen inválido.'})
         rows, filters = filtered_attempts(rows,request.query_params,profiles=True)
+        rows = filter_profile_dates(rows, request.query_params)
         return Response(dict(count=rows.count(),page=page,filters=filters,
                              results=[profile_data(a,terms=filters['matched_keywords']) for a in rows[(page-1)*50:page*50]]))
 
