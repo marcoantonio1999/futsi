@@ -96,15 +96,17 @@ El temporizador y guardado son los del examen existente: al llegar al límite se
 entrega lo guardado. La creación del segundo enlace es idempotente y conserva la
 primera evaluación.
 
-El inicio exige el mismo correo y teléfono de la primera etapa, con su normalización
-existente, y un único intento anterior coincidente. Debe estar entregado y calificado
+El inicio exige únicamente el mismo correo de la primera etapa, sin distinción de
+mayúsculas y espacios exteriores, y un único intento anterior coincidente. La
+segunda fase no vuelve a pedir nombre ni teléfono; asocia la entrega al intento
+anterior y conserva sus datos de contacto en administración. Debe estar entregado y calificado
 con al menos 8/10 en **cada una** de las áreas Gestión y prioridades y Ventas y
 marketing. Las 9 y 4 preguntas originales deben estar completas y reconocerse por
 contenido y opciones; no se infiere el desglose desde un total, un título o una
 plantilla alterada. Faltantes y coincidencias ambiguas requieren revisión por RRHH.
-La coincidencia de datos vincula las etapas, pero no verifica la identidad civil ni
-reemplaza una autenticación individual; una persona que conozca ambos datos podría
-intentar usarlos. Las respuestas anteriores no se muestran por el enlace público.
+La coincidencia de correo vincula las etapas, pero no verifica la identidad civil ni
+reemplaza una autenticación individual; una persona que conozca el correo podría
+intentar usarlo. Las respuestas anteriores no se muestran por el enlace público.
 
 El segundo examen contiene las tres preguntas y rúbricas acordadas: proactividad;
 responsabilidad, constancia y trabajo; y persuasión por WhatsApp. Su clave se guarda

@@ -46,10 +46,10 @@ try {
     const pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));
     await page.goto(secondLink);
     await page.getByText('35 minutos', { exact: true }).waitFor();
-    await page.getByText('Usa el mismo correo y teléfono que registraste', { exact: false }).waitFor();
-    await page.getByLabel('Nombre completo', { exact: true }).fill(`Participante Ficticio ${width}`);
+    await page.getByText('Usa el mismo correo que registraste', { exact: false }).waitFor();
+    assert.equal(await page.getByLabel('Nombre completo', { exact: true }).count(), 0);
+    assert.equal(await page.getByLabel('Teléfono', { exact: true }).count(), 0);
     await page.getByLabel('Correo electrónico', { exact: true }).fill(`qa-${width}@example.invalid`);
-    await page.getByLabel('Teléfono', { exact: true }).fill('550000' + String(width).padStart(4, '0'));
     await page.getByRole('checkbox').check();
     await checkLayout(page);
     await page.screenshot({ path: `${screenshots}/exam-second-start-${width}.png` });

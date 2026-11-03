@@ -23,7 +23,7 @@ export function SecondStageControls({ stage, link, busy, onToggle, onGrade, onCo
     {!stage ? <p role="status">Preparando el segundo enlace. Actualiza la página en unos momentos.</p> : <>
       <span className="exam-tag">{stage.accepting ? 'Segundo enlace abierto' : 'Segundo enlace cerrado'} · {stage.duration_minutes} min</span>
       <label>Enlace de la segunda fase<input readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>
-      <p className="exam-muted">Comparte este enlace. El candidato debe usar el mismo correo y teléfono de la primera fase.</p>
+      <p className="exam-muted">Comparte este enlace. El candidato solo necesita el mismo correo de la primera fase.</p>
       <label>Duración de la segunda fase (minutos)<input type="number" min={1} max={480} value={minutes} onChange={e => setMinutes(Number(e.target.value))} /></label>
       <div className="exam-actions"><button type="button" disabled={busy || !Number.isInteger(minutes) || minutes < 1 || minutes > 480 || minutes === stage.duration_minutes} onClick={() => onDuration(minutes)}>Guardar duración</button></div>
       <p className="exam-muted">La duración nueva aplica a quienes inicien después de guardarla; no cambia exámenes en curso.</p>
