@@ -117,9 +117,11 @@ def current_attention(instance):
     if not evidence_valid(result, by_id):
         return None
     last=meaningful[-1]
-    if is_human_reaction(last.direction,last.response_source,last.body) and result.get('current_state') in ('pending','uncertain'):
+    if is_human_reaction(last.direction,last.response_source,last.body) and result.get('current_state') == 'pending':
         if result.get('reaction_policy') != 'human_reaction_v1' or last.id not in result.get('insufficient_reaction_ids',[]):
-            return None  # Old/uncertain analysis cannot revoke the immediate acknowledgement.
+            return None  # Only verified evidence can revoke the immediate acknowledgement.
+    # An uncertain analysis may still require review after a reaction. Showing
+    # it does not revoke the real human acknowledgement or alter response metrics.
     return {key: result.get(key) for key in ('current_state', 'last_message_id', 'analyzed_until')}
 
 
