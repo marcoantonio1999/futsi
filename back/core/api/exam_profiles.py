@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 
 from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentExamAttempt, RecruitmentProfile
-from core.exam_profiles import filtered_attempts, filter_profile_dates, normalized, clean_string, clean_fields, match_form, CDMX, OFFLINE_EXAM_SOURCES
+from core.exam_profiles import filtered_attempts, filter_exam_dates, normalized, clean_string, clean_fields, match_form, CDMX, OFFLINE_EXAM_SOURCES
 from core.cv_import import match_cv,cv_digest
 import hmac
 import re
@@ -70,7 +70,7 @@ class ExamProfilesView(APIView):
         except (ValueError, TypeError):
             raise ValidationError({'detail': 'Página o examen inválido.'})
         rows, filters = filtered_attempts(rows,request.query_params,profiles=True)
-        rows = filter_profile_dates(rows, request.query_params)
+        rows = filter_exam_dates(rows, request.query_params)
         return Response(dict(count=rows.count(),page=page,filters=filters,
                              results=[profile_data(a,terms=filters['matched_keywords']) for a in rows[(page-1)*50:page*50]]))
 

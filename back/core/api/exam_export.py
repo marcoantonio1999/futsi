@@ -74,7 +74,7 @@ class ExamExportView(APIView):
     permission_classes = [CanManageExams]
 
     def get(self, request):
-        if set(request.query_params) - {'exam', 'ordering', 'top', 'q', 'status', 'min_score', 'max_score', 'min_minutes', 'max_minutes', 'skill', 'skill_ranges'}:
+        if set(request.query_params) - {'exam', 'ordering', 'top', 'q', 'status', 'min_score', 'max_score', 'min_minutes', 'max_minutes', 'skill', 'skill_ranges', 'date_from', 'date_to'}:
             raise ValidationError({'detail': 'Filtro de exportación no reconocido. La descarga incluye todas las páginas.'})
         exam_id = request.query_params.get('exam')
         exam = None

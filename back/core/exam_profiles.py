@@ -6,7 +6,8 @@ import unicodedata
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from django.db.models import Case, When, FloatField, BooleanField, F, Value, Q, DurationField, ExpressionWrapper
+from django.db.models import Case, When, FloatField, BooleanField, CharField, F, Value, Q, DurationField, ExpressionWrapper
+from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from rest_framework.exceptions import ValidationError
 
@@ -16,7 +17,7 @@ CDMX = ZoneInfo('America/Mexico_City')
 OFFLINE_EXAM_SOURCES = ('pdf_manual', 'xlsx_results')
 
 
-def filter_profile_dates(rows, params):
+def filter_exam_dates(rows, params):
     """Filter by the actual exam date; date-only imports never use upload time."""
     bounds = {}
     for key in ('date_from', 'date_to'):
@@ -33,6 +34,9 @@ def filter_profile_dates(rows, params):
     if not bounds:
         return rows
 
+    rows = rows.filter(submitted_at__isnull=False).annotate(
+        exam_source=Cast(KeyTextTransform('source', KeyTextTransform('offline_import', 'snapshot')), CharField()),
+        offline_completed_date=Cast(KeyTextTransform('completed_on', KeyTextTransform('offline_import', 'snapshot')), CharField()))
     offline = Q(exam_source__in=OFFLINE_EXAM_SOURCES)
     # Explicit null/missing handling keeps web attempts without metadata visible.
     online_match = (Q(exam_source__isnull=True) | ~offline)
@@ -222,6 +226,8 @@ def filtered_attempts(rows, params, profiles=False):
             rows = rows.filter(profile__cv_text__gt='')
         if params.get('has_form') == 'yes':
             rows = rows.filter(profile__form_text__gt='')
+    else:
+        rows = filter_exam_dates(rows, params)
     ordering = params.get('ordering', 'newest')
     order = {'score_desc': F('profile_score').desc(nulls_last=True),
              'score_asc': F('profile_score').asc(nulls_last=True), 'name': 'name', 'newest': '-id'}
