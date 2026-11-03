@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { Question } from './ExamQuestionEditor';
 import type { Grading } from './ExamAnswerKey';
 
@@ -11,16 +10,14 @@ export type SecondProgress = { status: 'eligible' | 'below_threshold' | 'incompl
 const labels: Record<string, string> = { '1': 'Proactividad', '2': 'Responsabilidad, constancia y capacidad de trabajo', '3': 'Habilidad comercial y persuasión por WhatsApp' };
 const score = (value: number | null) => value == null ? 'Sin desglose' : `${value.toFixed(2)} / 10`;
 
-export function SecondStageControls({ stage, link, busy, onActivate, onToggle, onGrade, onCopy }: {
-  stage: SecondExam | null; link: string; busy: boolean; onActivate: (minutes: number) => void;
+export function SecondStageControls({ stage, link, busy, onToggle, onGrade, onCopy }: {
+  stage: SecondExam | null; link: string; busy: boolean;
   onToggle: () => void; onCopy: () => void; onGrade?: () => void;
 }) {
-  const [minutes, setMinutes] = useState(40);
   return <section className="exam-second-controls" aria-label="Segunda fase">
     <div><p className="exam-eyebrow">EVALUACIÓN COMPLEMENTARIA</p><h3>Segunda fase</h3>
-      <p>Para participantes con al menos 8 en Gestión y 8 en Ventas. Incluye tres preguntas abiertas.</p></div>
-    {!stage ? <><label>Duración de la segunda fase (minutos)<input type="number" min={1} max={480} value={minutes} onChange={e => setMinutes(Number(e.target.value))} /></label>
-      <button type="button" disabled={busy || !Number.isInteger(minutes) || minutes < 1 || minutes > 480} onClick={() => onActivate(minutes)}>Activar segunda fase</button></> : <>
+      <p>Para participantes con al menos 8 en Gestión y 8 en Ventas. Incluye tres preguntas abiertas. La primera fase sigue disponible de forma independiente.</p></div>
+    {!stage ? <p role="status">Preparando el segundo enlace. Actualiza la página en unos momentos.</p> : <>
       <span className="exam-tag">{stage.accepting ? 'Segundo enlace abierto' : 'Segundo enlace cerrado'} · {stage.duration_minutes} min</span>
       <label>Enlace de la segunda fase<input readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>
       <p className="exam-muted">Comparte este enlace. El candidato debe usar el mismo correo y teléfono de la primera fase.</p>
@@ -33,7 +30,7 @@ export function SecondStageControls({ stage, link, busy, onActivate, onToggle, o
 }
 
 export function SecondStageStatus({ progress }: { progress?: SecondProgress }) {
-  if (!progress) return <span>Sin activar</span>;
+  if (!progress) return <span>Sin información de la segunda fase</span>;
   const a = progress.attempt;
   return <div className="exam-second-status">
     <span>{progress.status === 'eligible' ? 'Cumple filtro inicial' : progress.status === 'below_threshold' ? 'No alcanza el filtro inicial' : 'Sin desglose completo'}</span>

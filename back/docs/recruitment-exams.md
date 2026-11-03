@@ -84,12 +84,15 @@ descarga, errores y ausencia de desbordamiento.
 
 ## Evaluación complementaria: segunda fase
 
-En Mis exámenes, un examen que contiene todas las preguntas originales reconocidas
-de Gestión y Ventas permite activar la segunda fase. La duración se elige al
-activarla (40 minutos inicialmente); el mismo enlace se comparte con los candidatos.
-El enlace se puede cerrar o reabrir sin afectar los intentos ya iniciados. El
-temporizador y guardado son los del examen existente: al llegar al límite se
-entrega lo guardado. La activación es idempotente y conserva la primera evaluación.
+En Mis exámenes, el segundo enlace aparece automáticamente para cada examen que
+contiene todas las preguntas originales reconocidas de Gestión y Ventas. Se crea
+al crear el examen o al consultar uno anterior; no requiere activar una fase. El
+mismo enlace se comparte con los candidatos y la segunda fase tiene 40 minutos.
+La primera fase conserva su enlace y estado, y sigue recibiendo respuestas. Cada
+enlace se puede cerrar o reabrir independientemente sin afectar intentos iniciados.
+El temporizador y guardado son los del examen existente: al llegar al límite se
+entrega lo guardado. La creación del segundo enlace es idempotente y conserva la
+primera evaluación.
 
 El inicio exige el mismo correo y teléfono de la primera etapa, con su normalización
 existente, y un único intento anterior coincidente. Debe estar entregado y calificado

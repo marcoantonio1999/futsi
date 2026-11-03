@@ -21,11 +21,22 @@ try {
   await admin.getByLabel('Contraseña', { exact: true }).fill('qa-fictional-2026');
   await admin.getByRole('button', { name: 'Iniciar sesión', exact: true }).click();
   const card = admin.locator('article.exam-card').filter({ hasText: 'Evaluación ficticia QA' });
-  await card.getByRole('button', { name: 'Activar segunda fase' }).click();
   const linkInput = card.getByLabel('Enlace de la segunda fase');
   await linkInput.waitFor();
+  assert.equal(await card.getByRole('button', { name: 'Activar segunda fase' }).count(), 0);
   const secondLink = await linkInput.inputValue();
+  const firstLink = await card.getByLabel('Enlace para candidatos').inputValue();
   assert(secondLink.startsWith(base + '#/examen/'));
+  assert.notEqual(firstLink, secondLink);
+  const first = await browser.newPage({ viewport: { width: 320, height: 850 } });
+  await first.goto(firstLink);
+  await first.getByLabel('Nombre completo', { exact: true }).fill('Persona Primera Fase');
+  await first.getByLabel('Correo electrónico', { exact: true }).fill('primera@example.invalid');
+  await first.getByLabel('Teléfono', { exact: true }).fill('5512345678');
+  await first.getByRole('checkbox').check();
+  await first.getByRole('button', { name: 'Iniciar examen', exact: true }).click();
+  await first.locator('#question-1').waitFor();
+  for (const width of [320, 390, 1440]) { await admin.setViewportSize({ width, height: 850 }); await checkLayout(admin); }
   for (const width of [320, 390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 850 } });
     const pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));
@@ -67,6 +78,8 @@ try {
   assert.match(await admin.locator('.exam-second-detail').innerText(), /Total: 24 \/ 30/);
   assert.match(await admin.locator('.exam-second-detail').innerText(), /Ejemplo ficticio: revisar evidencia/);
   for (const width of [320, 390, 1440]) { await admin.setViewportSize({ width, height: 850 }); await checkLayout(admin); }
+  assert(await first.locator('#question-1').isVisible(), 'La primera fase sigue en curso.');
+  await first.close({ runBeforeUnload: false });
   assert.deepEqual(errors, []);
   console.log('Segunda fase: enlace, tres entregas, resultados vinculados, revisión y 320/390/1440 px OK; calificación simulada.');
 } finally { await browser.close(); }

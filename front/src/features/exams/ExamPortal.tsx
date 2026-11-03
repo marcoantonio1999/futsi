@@ -100,7 +100,6 @@ export function ExamAdmin({ token, standalone = false }: { token: string; standa
     const stage = exam.second_stage || null;
     const refresh = async () => { await load(); if (results?.exam.id === exam.id) await view(exam); };
     return <SecondStageControls key={exam.id} stage={stage} link={stage ? link(stage) : ''} busy={busy}
-      onActivate={minutes => void run(async () => { const updated = await apiRequest<Exam>(`/recruitment-exams/${exam.id}/second-stage/`, token, { method: 'POST', body: JSON.stringify({ duration_minutes: minutes }) }); await load(); if (results?.exam.id === exam.id) await view(updated); setMessage('Segunda fase activada. Ya puedes copiar su enlace.'); })}
       onCopy={() => void run(async () => { if (stage) { await navigator.clipboard.writeText(link(stage)); setMessage('Segundo enlace copiado.'); } })}
       onToggle={() => void run(async () => { if (stage) { await apiRequest(`/recruitment-exams/${stage.id}/`, token, { method: 'POST', body: JSON.stringify({ accepting: !stage.accepting }) }); await refresh(); } })}
       onGrade={grading && stage ? () => void gradeAll(stage) : undefined} />;

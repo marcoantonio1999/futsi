@@ -97,6 +97,22 @@ def exam_data(exam):
                               'duration_minutes': second.duration_minutes, 'accepting': second.accepting} if second else None)}
 
 
+def ensure_second_stage(first):
+    """Make the shared second link available without changing the first exam."""
+    if first.first_stage_id or not complete_skill_questions(first.questions):
+        return None
+    second = getattr(first, 'second_stage', None)
+    if not second:
+        second, _ = RecruitmentExam.objects.get_or_create(first_stage_id=first.pk, defaults={
+            'title': 'Evaluación complementaria – B POWER ACADEMY',
+            'instructions': 'Segunda fase. Responde con ejemplos y acciones concretas. Usa el mismo correo y teléfono de tu primera evaluación.',
+            'duration_minutes': 40, 'questions': SECOND_QUESTIONS, 'answer_key': SECOND_KEY,
+            'created_by_id': first.created_by_id,
+        })
+        first._state.fields_cache['second_stage'] = second
+    return second
+
+
 def attempt_data(a, private=False, include_second=False):
     elapsed = max(0, int(((a.submitted_at or timezone.now()) - a.started_at).total_seconds()))
     result = {'started_at': a.started_at.isoformat(), 'submitted_at': a.submitted_at.isoformat() if a.submitted_at else None,
@@ -136,6 +152,7 @@ class ExamAdminView(APIView):
     def get(self, request, pk=None):
         if pk is not None:
             exam = get_object_or_404(RecruitmentExam, pk=pk)
+            ensure_second_stage(exam)
             # Bounded pages; contact data is never exposed by the public routes.
             try:
                 page = max(1, int(request.query_params.get('page', 1)))
@@ -159,7 +176,9 @@ class ExamAdminView(APIView):
             return Response({'exam': exam_data(exam), 'count': rows.count(), 'page': page,
                              'filters': filters,
                              'results': [attempt_data(a, True, include_second=not exam.first_stage_id and hasattr(exam, 'second_stage')) for a in page_rows]})
-        rows = RecruitmentExam.objects.filter(first_stage__isnull=True).select_related('second_stage').annotate(attempt_count=Count('attempts'))[:200]
+        rows = list(RecruitmentExam.objects.filter(first_stage__isnull=True).select_related('second_stage').annotate(attempt_count=Count('attempts'))[:200])
+        for exam in rows:
+            ensure_second_stage(exam)
         return Response({'results': [exam_data(e) for e in rows]})
 
     @transaction.atomic
@@ -192,6 +211,7 @@ class ExamAdminView(APIView):
             title=text(data.get('title'), 'el nombre del examen', 180),
             instructions=text(data.get('instructions', ''), 'las instrucciones', 10000, False),
             duration_minutes=duration, questions=questions, answer_key=key, created_by=request.user)
+        ensure_second_stage(exam)
         return Response(exam_data(exam), status=201)
 
 

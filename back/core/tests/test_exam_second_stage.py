@@ -42,10 +42,8 @@ def test_full_flow_permissions_link_grade_and_both_results(auth_client):
     exam = first_exam(admin)
     url = f'/api/recruitment-exams/{exam["id"]}/second-stage/'
     assert APIClient().post(url, {}, format='json').status_code in (401, 403)
-    r = activate(admin, exam, 35)
-    assert r.status_code == 201, r.content
-    second = r.json()['second_stage']
-    assert second['duration_minutes'] == 35 and second['public_token'] != exam['public_token']
+    second = exam['second_stage']
+    assert second['duration_minutes'] == 40 and second['public_token'] != exam['public_token']
     assert activate(admin, exam).json()['second_stage']['id'] == second['id']
     assert len(admin.get('/api/recruitment-exams/').json()['results']) == 1
     first = submit_first(exam)
@@ -115,16 +113,37 @@ def test_ambiguous_contact_missing_contact_and_wrong_data_denied(auth_client):
     assert RecruitmentExamAttempt.objects.filter(exam_id=second['id']).count() == 0
 
 
-def test_activation_requires_complete_distinct_recognized_questions_and_valid_duration(auth_client):
-    admin, _, _ = auth_client(); custom = create_exam(admin)
-    assert activate(admin, custom).status_code == 400
-    exam = first_exam(admin)
-    assert activate(admin, exam, 0).status_code == 400
-    parent = RecruitmentExam.objects.get(pk=exam['id'])
-    parent.questions[19] = parent.questions[4].copy()  # Duplicate sales question, missing another.
-    parent.save()
-    assert activate(admin, exam).status_code == 400
+def test_automatic_link_requires_complete_distinct_recognized_questions(auth_client):
+    admin, _, user = auth_client(); custom = create_exam(admin)
+    assert custom['second_stage'] is None and activate(admin, custom).status_code == 400
+    template = json.loads(Path(__file__).parents[1].joinpath('exam_template.json').read_text(encoding='utf-8'))
+    questions = template['questions']
+    questions[19] = questions[4].copy()  # Duplicate sales question, missing another.
+    parent = RecruitmentExam.objects.create(title='Plantilla alterada', questions=questions, created_by=user)
+    listed = admin.get('/api/recruitment-exams/').json()['results']
+    assert next(e for e in listed if e['id'] == parent.id)['second_stage'] is None
     assert RecruitmentExam.objects.filter(first_stage=parent).count() == 0
+
+
+def test_existing_first_stage_continues_while_second_link_appears(auth_client):
+    admin, _, user = auth_client()
+    template = json.loads(Path(__file__).parents[1].joinpath('exam_template.json').read_text(encoding='utf-8'))
+    parent = RecruitmentExam.objects.create(title='Examen existente', questions=template['questions'],
+        answer_key={q['id']: 0 for q in template['questions']}, created_by=user)
+    exam = {'id': parent.id, 'public_token': parent.public_token, 'questions': parent.questions}
+    ongoing = start(exam).json()
+    first_token = parent.public_token
+    listed = admin.get('/api/recruitment-exams/').json()['results']
+    second = next(e for e in listed if e['id'] == parent.id)['second_stage']
+    assert second and second['public_token'] != first_token
+    assert admin.get('/api/recruitment-exams/').json()['results'][0]['second_stage']['id'] == second['id']
+    parent.refresh_from_db()
+    assert parent.accepting and parent.public_token == first_token
+    public = APIClient(); public.credentials(HTTP_AUTHORIZATION='Exam ' + ongoing['access_token'])
+    answers = {q['id']: 0 for q in parent.questions}
+    assert public.post('/api/public-exams/attempt/', {'answers': answers}, format='json').status_code == 200
+    assert start(second).status_code == 201
+    assert RecruitmentExam.objects.filter(first_stage=parent).count() == 1
 
 
 def test_closed_second_link_blocks_new_starts_but_not_existing_attempt(auth_client):
