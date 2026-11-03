@@ -167,6 +167,17 @@ test('weekly contextual closure changes existing status without inventing a repl
   assert.equal(conversationAttention(c).key,'needs_reply');
 });
 
+test('a verified client-waiting classification wins over the direction of the last message', () => {
+  const messages=[msg(1,'outbound','human_whatsapp','10',{body:'¿Ya confirmaste con tu equipo?'}),
+    msg(2,'inbound','unknown','11',{body:'Aún lo estoy consultando'})];
+  const analysis={current_state:'waiting_client',last_message_id:2,analyzed_until:'2026-09-05T12:00:00Z'};
+  const c=chat(messages,{human_takeover_active:true,attention_analysis:analysis});
+  assert.equal(conversationAttention(c).key,'waiting_client');
+  assert.equal(matchesAttention(c,'needs_reply'),false);
+  assert.equal(conversationAttention({...c,follow_up_required:true}).key,'follow_up');
+  assert.equal(conversationAttention({...c,messages:[...messages,msg(3,'inbound','unknown','12',{body:'¿Y cuánto cuesta?'})]}).key,'needs_reply');
+});
+
 test("manual takeover does not mean that the team owes a reply", () => {
   const c = chat([msg(1, "inbound", "unknown", "10"), msg(2, "outbound", "human_whatsapp", "11", { sent_by_name: "Manuel" })], { human_takeover_active: true });
   assert.equal(conversationAttention(c).key, "waiting_client");
