@@ -117,11 +117,13 @@ def current_attention(instance):
     if not evidence_valid(result, by_id):
         return None
     last=meaningful[-1]
+    human_media = (last.direction=='outbound' and last.response_source in ('human_whatsapp','human_dashboard')
+                   and last.body.strip().lower() in ('[image]','[imagen]','[sticker]','[reaction]'))
+    if human_media and result.get('current_state') == 'uncertain':
+        return None  # A human photo, sticker or reaction remains an answer by default.
     if is_human_reaction(last.direction,last.response_source,last.body) and result.get('current_state') == 'pending':
         if result.get('reaction_policy') != 'human_reaction_v1' or last.id not in result.get('insufficient_reaction_ids',[]):
             return None  # Only verified evidence can revoke the immediate acknowledgement.
-    # An uncertain analysis may still require review after a reaction. Showing
-    # it does not revoke the real human acknowledgement or alter response metrics.
     return {key: result.get(key) for key in ('current_state', 'last_message_id', 'analyzed_until')}
 
 

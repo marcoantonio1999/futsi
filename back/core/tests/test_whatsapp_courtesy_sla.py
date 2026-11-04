@@ -52,6 +52,16 @@ class CourtesyResponseReportTests(TestCase):
         self.assertEqual(data['longest_waits'][0]['responded_at'],reaction.created_at.isoformat())
         self.assertEqual(WhatsAppHumanResponseEvent.objects.count(),0)
 
+    def test_human_photo_and_sticker_count_as_response(self):
+        for marker in ('[image]', '[sticker]'):
+            with self.subTest(marker=marker):
+                self.conversation.messages.all().delete()
+                self.message('Necesito información',40,routing='unclassified')
+                reply=self.message(marker,27,'outbound','human_whatsapp')
+                data=self.report()
+                self.assertEqual((data['summary']['answered'],data['summary']['unanswered']),(1,0))
+                self.assertEqual(data['longest_waits'][0]['responded_at'],reply.created_at.isoformat())
+
     def test_historical_event_uses_earliest_reaction_without_writing_history(self):
         first=self.message('¿Qué horarios tienen?',40)
         reaction=self.message('[reaction]',27,'outbound','human_whatsapp')

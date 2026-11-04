@@ -11,7 +11,7 @@ from core.services.whatsapp_attention_audit import message_version, ignored_requ
 
 @override_settings(ALLOWED_HOSTS=['testserver'], MIGRATION_MODULES={'core':None}, FUTSI_ENV='test')
 class AttentionAuditReadTests(TransactionTestCase):
-    def test_failed_cut_triage_is_visible_without_retracting_a_human_reaction(self):
+    def test_failed_cut_triage_keeps_human_reaction_as_answer(self):
         first = self.message('Consulta con archivo', 40)
         reaction = self.message('[reaction]', 30, 'outbound', 'human_whatsapp')
         self.chat.context = {'human_last_reply_at': reaction.created_at.isoformat()}
@@ -22,19 +22,30 @@ class AttentionAuditReadTests(TransactionTestCase):
         row.save()
         response = self.client.get(f'/api/whatsapp-conversations/{self.chat.pk}/?scope=all')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['attention_analysis']['current_state'], 'uncertain')
+        self.assertIsNone(response.json()['attention_analysis'])
         self.assertEqual(self.report()['summary']['answered'], 1)
         first.body = 'Consulta editada'; first.save()
         response = self.client.get(f'/api/whatsapp-conversations/{self.chat.pk}/?scope=all')
         self.assertIsNone(response.json()['attention_analysis'])
 
-    def test_automatic_uncertain_reaction_is_visible_without_retracting_acknowledgement(self):
+    def test_automatic_uncertain_reaction_keeps_existing_acknowledgement(self):
         first = self.message('Consulta con archivo', 40)
         reaction = self.message('[reaction]', 30, 'outbound', 'human_whatsapp')
         row = self.audit([first, reaction], [], state='uncertain')
         response = self.client.get(f'/api/whatsapp-conversations/{self.chat.pk}/?scope=all')
-        self.assertEqual(response.json()['attention_analysis']['current_state'], 'uncertain')
+        self.assertIsNone(response.json()['attention_analysis'])
         self.assertEqual(self.report()['summary']['answered'], 1)
+
+    def test_uncertain_analysis_keeps_human_photo_and_sticker_as_answer(self):
+        first=self.message('¿Me envías la información?',40)
+        for marker in ('[image]','[sticker]'):
+            with self.subTest(marker=marker):
+                reply=self.message(marker,30,'outbound','human_whatsapp')
+                row=self.audit([first,reply],[],state='uncertain')
+                response=self.client.get(f'/api/whatsapp-conversations/{self.chat.pk}/?scope=all')
+                self.assertIsNone(response.json()['attention_analysis'])
+                self.assertEqual(self.report()['summary']['answered'],1)
+                row.delete();reply.delete()
 
     def test_notification_only_reopens_after_explicit_verified_ai_rejection(self):
         from unittest.mock import patch
