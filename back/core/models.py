@@ -334,6 +334,33 @@ class MatchStatus(models.TextChoices):
     CANCELED = "canceled", "Cancelado"
 
 
+class GameRoleRound(TimestampedModel):
+    tournament = models.ForeignKey(Tournament, on_delete=models.CASCADE, related_name="game_role_rounds")
+    number = models.PositiveSmallIntegerField()
+    starts_on = models.DateField()
+
+    class Meta:
+        db_table = "game_role_rounds"
+        constraints = [
+            models.UniqueConstraint(fields=["tournament", "number"], name="uq_game_role_round_number"),
+            models.CheckConstraint(condition=Q(number__gte=1, number__lte=999), name="ck_game_role_round_number"),
+        ]
+
+
+class GameRoleCross(TimestampedModel):
+    tournament = models.ForeignKey(Tournament, on_delete=models.CASCADE, related_name="game_role_crosses")
+    round = models.ForeignKey(GameRoleRound, on_delete=models.CASCADE, related_name="crosses")
+    home_team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="game_role_home_crosses")
+    away_team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="game_role_away_crosses")
+
+    class Meta:
+        db_table = "game_role_crosses"
+        constraints = [
+            models.UniqueConstraint(fields=["tournament", "home_team", "away_team"], name="uq_game_role_cross"),
+            models.CheckConstraint(condition=~Q(home_team=models.F("away_team")), name="ck_game_role_distinct_teams"),
+        ]
+
+
 class Match(TimestampedModel):
     tournament = models.ForeignKey(Tournament, on_delete=models.PROTECT, related_name="matches")
     round = models.ForeignKey(Round, null=True, blank=True, on_delete=models.PROTECT, related_name="matches")

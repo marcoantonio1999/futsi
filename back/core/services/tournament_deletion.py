@@ -9,7 +9,7 @@ from django.db.models import Q
 from rest_framework.exceptions import APIException, ValidationError
 
 from core.models import (
-    Tournament, Team, Round, Match, StudentTournamentRegistration, Player,
+    Tournament, Team, Round, Match, GameRoleRound, GameRoleCross, StudentTournamentRegistration, Player,
     AttendanceSession, AttendanceRecord, PlayerAttendanceRecord, FaceRecognitionAttempt,
     FaceStationEvent, FaceStationUnknownLink, FaceStationDailyPresence, FaceStationDailyReport,
     Charge, Payment, Discount, Invoice, HistoricalImportRow, AuditLog,
@@ -45,6 +45,8 @@ def deletion_plan(tournament, *, lock=False):
     enrollments = add(PlayerEnrollment, "Inscripciones y firmas de jugadores", Q(team_record_id__in=teams) | Q(invitation_id__in=invitations))
     documents = add(PlayerEnrollmentDocument, "Documentos de inscripción", Q(enrollment_id__in=enrollments))
     rounds = add(Round, "Jornadas", Q(tournament=tournament))
+    add(GameRoleRound, "Jornadas de roles de juego", Q(tournament=tournament))
+    add(GameRoleCross, "Cruces de roles de juego", Q(tournament=tournament))
     registrations = add(StudentTournamentRegistration, "Inscripciones de alumnos", Q(tournament=tournament) | Q(team_id__in=teams))
     player_query = Player.objects.filter(team_id__in=teams).order_by("pk")
     preserved_players = list(player_query.select_for_update() if lock else player_query)
@@ -121,7 +123,8 @@ def permanently_delete(tournament, actor, payload):
         order = [HistoricalImportRow, PlayerSanction, PlayerEnrollmentDocument, PlayerEnrollment, PlayerEnrollmentInvitation,
                  Invoice, Discount, Payment, Charge, StudentTournamentRegistration,
                  AttendanceRecord, PlayerAttendanceRecord, FaceRecognitionAttempt, FaceStationEvent,
-                 FaceStationUnknownLink, FaceStationDailyPresence, AttendanceSession, Match, Round, Team, Tournament]
+                 FaceStationUnknownLink, FaceStationDailyPresence, AttendanceSession, Match, Round,
+                 GameRoleCross, GameRoleRound, Team, Tournament]
         Player.objects.filter(pk__in=plan["preserved_players"]).update(team=None)
         for model in order:
             ids = by_model[model]

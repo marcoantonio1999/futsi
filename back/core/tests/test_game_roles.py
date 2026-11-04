@@ -1,0 +1,65 @@
+from django.test import TestCase
+from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient
+
+from core.models import GameRoleCross, Match, Round, Site, Team, Tournament, User
+
+
+class GameRoleMatrixTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.create(name="Colegio de prueba", code="prueba")
+        other_site = Site.objects.create(name="Otra sede", code="otra")
+        self.tournament = Tournament.objects.create(name="Torneo de prueba", site=self.site)
+        self.other_tournament = Tournament.objects.create(name="Otro torneo", site=other_site)
+        self.home = Team.objects.create(tournament=self.tournament, name="Halcones")
+        self.away = Team.objects.create(tournament=self.tournament, name="Tigres")
+        self.other = Team.objects.create(tournament=self.other_tournament, name=self.away.name)
+        self.user = User.objects.create_user(username="operador", role="collaborator",
+            section_permissions=["player_enrollments_only", f"player_enrollments_site:{self.site.pk}"])
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + Token.objects.create(user=self.user).key)
+        self.url = f"/api/player-enrollments/game-roles/{self.tournament.pk}/"
+
+    def add_round(self, number=1, starts_on="2026-11-07"):
+        response = self.client.post(self.url, {"number": number, "starts_on": starts_on}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        return next(row for row in response.json()["rounds"] if row["number"] == number)
+
+    def set_cross(self, round_id, home=None, away=None):
+        return self.client.put(self.url, {
+            "home_team_id": (home or self.home).pk, "away_team_id": (away or self.away).pk, "round_id": round_id,
+        }, format="json")
+
+    def test_jornadas_and_ordered_crosses_persist_without_creating_matches(self):
+        first = self.add_round()
+        self.assertEqual(self.add_round()["id"], first["id"])
+        second = self.add_round(2, "2026-11-14")
+        self.assertEqual(self.set_cross(first["id"]).status_code, 200)
+        self.assertEqual(self.set_cross(second["id"], home=self.away, away=self.home).status_code, 200)
+        self.assertEqual(self.set_cross(first["id"]).status_code, 200)
+        self.assertEqual(GameRoleCross.objects.count(), 2)
+        edited = self.client.patch(self.url, {"round_id": first["id"], "number": 3, "starts_on": "2026-11-08"}, format="json")
+        self.assertEqual(edited.status_code, 200)
+        self.home.name = "Halcones renovados"
+        self.home.save()
+        matrix = self.client.get(self.url).json()
+        self.assertEqual([row["name"] for row in matrix["teams"]], ["Halcones renovados", self.away.name])
+        self.assertEqual(matrix["rounds"][-1], {"id": first["id"], "number": 3, "starts_on": "2026-11-08"})
+        self.assertEqual([row["round_id"] for row in matrix["crosses"]], [first["id"], second["id"]])
+        self.assertEqual(len(self.set_cross(None).json()["crosses"]), 1)
+        self.assertFalse(Round.objects.exists())
+        self.assertFalse(Match.objects.exists())
+
+    def test_tournament_scope_and_input_validation(self):
+        second = self.add_round(2)
+        outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/"
+        self.assertEqual(self.client.get(outside).status_code, 404)
+        self.assertEqual(self.client.post(outside, {"number": 1, "starts_on": "2026-11-07"}, format="json").status_code, 404)
+        self.assertEqual(self.set_cross(second["id"], away=self.other).status_code, 400)
+        self.assertEqual(self.set_cross(second["id"], away=self.home).status_code, 400)
+        foreign_round = self.other_tournament.game_role_rounds.create(number=1, starts_on="2026-11-07")
+        self.assertEqual(self.set_cross(foreign_round.pk).status_code, 404)
+        self.assertEqual(self.client.post(self.url, {"number": 2, "starts_on": "2026-11-08"}, format="json").status_code, 400)
+        self.assertFalse(GameRoleCross.objects.exists())
+        self.client.credentials()
+        self.assertEqual(self.client.get(self.url).status_code, 401)

@@ -1,0 +1,110 @@
+.game-roles-intro label {
+  max-width: 32rem;
+  margin: 0;
+}
+
+.game-roles-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 235px);
+  grid-template-areas: "matrix rounds";
+  align-items: start;
+  gap: 16px;
+}
+
+.game-roles-matrix, .game-roles-rounds {
+  min-width: 0;
+  padding: 16px;
+  background: white;
+  border: 1px solid #dce4e0;
+  border-radius: 12px;
+}
+
+.game-roles-matrix { grid-area: matrix; }
+.game-roles-rounds { grid-area: rounds; }
+.game-roles-round-select, .game-roles-mobile-week { display: none !important; }
+
+.game-roles-round-list {
+  display: grid;
+  gap: 6px;
+  margin-block: 12px;
+  max-height: 55dvh;
+  overflow-y: auto;
+}
+
+.enrollment-page .game-roles-workspace .game-roles-round-list button {
+  flex-direction: column;
+  align-items: start;
+  text-align: left;
+  gap: 0;
+}
+
+.enrollment-page .game-roles-workspace .game-roles-round-list button[aria-pressed="true"],
+.enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-highlighted="true"] {
+  background: #1246a0 !important;
+  border-color: #1246a0 !important;
+  color: white !important;
+}
+
+.game-roles-selection strong { color: #1246a0; }
+.game-roles-grid-scroll {
+  max-width: 100%;
+  max-height: 66dvh;
+  margin-top: 12px;
+  overflow: auto;
+  overscroll-behavior-inline: contain;
+  border: 1px solid #cdd8d2;
+  border-radius: 8px;
+}
+
+.game-roles-grid {
+  width: max-content;
+  min-width: 100%;
+  border-spacing: 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+.game-roles-grid th, .game-roles-grid td { border-right: 1px solid #e1e7e4; border-bottom: 1px solid #e1e7e4; }
+.game-roles-grid th { padding: 8px; width: 106px; max-width: 106px; overflow-wrap: anywhere; background: #f0f4f2; }
+.game-roles-grid th small { display: block; color: #536259; font-weight: 400; }
+.game-roles-grid thead th { position: sticky; top: 0; z-index: 2; }
+.game-roles-grid th:first-child { position: sticky; left: 0; z-index: 1; }
+.game-roles-grid thead th:first-child { z-index: 3; }
+.game-roles-grid td { padding: 3px; }
+.game-roles-diagonal { background: #e8edeb; color: #48544d; }
+
+.enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell {
+  width: 100%;
+  min-width: 44px;
+  padding: 6px !important;
+  font-weight: 700 !important;
+  border-radius: 5px !important;
+}
+
+.game-roles-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(430px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 20px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border: 1px solid #dce4e0;
+  border-radius: 12px;
+  background: white;
+  color: #17231b;
+}
+
+.game-roles-dialog::backdrop { background: #1019138c; }
+.game-roles-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.enrollment-page .game-roles-dialog :is(input, select) { min-height: 44px; border-radius: 8px; }
+
+@media screen and (max-width: 1023px) {
+  .game-roles-workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rounds" "matrix"; }
+  .game-roles-matrix, .game-roles-rounds { padding: 12px; }
+  .game-roles-round-list { display: none; }
+  .game-roles-round-select, .game-roles-mobile-week { display: block !important; }
+  .game-roles-grid-scroll { max-height: 60dvh; }
+  .game-roles-grid th { width: 88px; max-width: 88px; }
+}
