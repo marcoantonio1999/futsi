@@ -111,16 +111,16 @@ La coincidencia de correo vincula las etapas, pero no verifica la identidad civi
 reemplaza una autenticación individual; una persona que conozca el correo podría
 intentar usarlo. Las respuestas anteriores no se muestran por el enlace público.
 
-Cuando Recursos Humanos autoriza una excepción concreta para un resultado anterior,
-el mismo segundo enlace también ofrece identificación por nombre completo y teléfono.
-La excepción solo funciona para los registros expresamente autorizados, con coincidencia
-única de nombre y teléfono; admite cambios de mayúsculas, acentos, orden de nombres y
-prefijo mexicano. No publica la lista ni exige correo nuevo. La segunda entrega queda
-vinculada al resultado anterior y conserva su calificación; si el resultado histórico
-no tenía teléfono, el dato capturado se muestra desde la segunda entrega. Estas
-coincidencias no sustituyen la verificación humana de identidad.
-En casos confirmados, Recursos Humanos puede autorizar variantes concretas del nombre
-con el mismo teléfono sin duplicar ni cambiar la evaluación histórica.
+Cuando Recursos Humanos autoriza una excepción concreta con teléfono confirmado,
+el mismo segundo enlace permite ingresar solamente con ese teléfono. El número se
+compara únicamente con registros autorizados del examen y debe coincidir con uno
+solo; se admiten el prefijo mexicano y distintos formatos. No se pide nombre ni
+correo nuevo. La segunda entrega queda vinculada al resultado anterior y conserva
+su calificación; si el resultado histórico no tenía teléfono, el dato capturado se
+muestra desde la segunda entrega. Estas coincidencias no verifican por sí solas
+la identidad de la persona.
+
+Se conserva la compatibilidad con excepciones anteriores por nombre y teléfono.
 Si no existe un teléfono histórico completo, una excepción específica puede vincular
 por nombre único y capturar el teléfono actual; el resultado y el Excel lo marcan
 como identidad por verificar, sin presentar el teléfono como cotejado.

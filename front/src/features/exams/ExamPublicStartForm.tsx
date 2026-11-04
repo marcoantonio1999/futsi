@@ -2,26 +2,28 @@ import type { FormEvent } from 'react';
 
 export type PublicExamInfo = {
   title: string; instructions: string; duration_minutes: number; question_count: number;
-  accepting: boolean; second_stage?: boolean; phone_access?: boolean;
+  accepting: boolean; second_stage?: boolean; phone_access?: boolean; phone_only_access?: boolean; phone_legacy_access?: boolean;
 };
-export type StartMethod = 'email' | 'phone';
+export type StartMethod = 'email' | 'phone' | 'phone_only';
 
 export function ExamPublicStartForm({ info, busy, method, onMethodChange, onSubmit }: {
   info: PublicExamInfo; busy: boolean; method: StartMethod;
   onMethodChange: (method: StartMethod) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const byPhone = !!info.second_stage && method === 'phone';
+  const byPhone = !!info.second_stage && method !== 'email';
+  const phoneOnly = byPhone && method === 'phone_only';
   return <form onSubmit={onSubmit}>
     <h2>Antes de comenzar</h2>
     {info.second_stage && <p className="exam-notice">{byPhone
-      ? 'Escribe tu nombre completo y teléfono. Si ya compartiste tu número con Recursos Humanos, usa ese mismo.'
+      ? phoneOnly ? 'Escribe el teléfono que compartiste con Recursos Humanos.' : 'Escribe tu nombre completo y teléfono. Si ya compartiste tu número con Recursos Humanos, usa ese mismo.'
       : 'Usa el mismo correo que registraste en la primera evaluación. Si no puedes comenzar, consulta a Recursos Humanos.'}</p>}
     {info.second_stage && info.phone_access && <div role="group" aria-label="Forma de identificación" className="exam-actions">
       <button type="button" aria-pressed={!byPhone} className={!byPhone ? 'exam-primary' : ''} onClick={() => onMethodChange('email')}>Con mi correo</button>
-      <button type="button" aria-pressed={byPhone} className={byPhone ? 'exam-primary' : ''} onClick={() => onMethodChange('phone')}>Con nombre y teléfono</button>
+      {info.phone_only_access && <button type="button" aria-pressed={phoneOnly} className={phoneOnly ? 'exam-primary' : ''} onClick={() => onMethodChange('phone_only')}>Con mi teléfono</button>}
+      {(!info.phone_only_access || info.phone_legacy_access) && <button type="button" aria-pressed={byPhone && !phoneOnly} className={byPhone && !phoneOnly ? 'exam-primary' : ''} onClick={() => onMethodChange('phone')}>Con nombre y teléfono</button>}
     </div>}
     <p>El tiempo empieza al pulsar «Iniciar examen».</p>
-    {(!info.second_stage || byPhone) && <label>Nombre completo<input name="name" required autoComplete="name" maxLength={180} /></label>}
+    {(!info.second_stage || (byPhone && !phoneOnly)) && <label>Nombre completo<input name="name" required autoComplete="name" maxLength={180} /></label>}
     {!byPhone && <label>Correo electrónico<input name="email" type="email" required autoComplete="email" maxLength={254} /></label>}
     {(!info.second_stage || byPhone) && <label>Teléfono<input name="phone" type="tel" required autoComplete="tel" maxLength={30} /></label>}
     <label className="exam-consent"><input name="consent" type="checkbox" required /><span>{info.second_stage

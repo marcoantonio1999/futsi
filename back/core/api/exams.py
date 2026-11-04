@@ -17,18 +17,19 @@ from core.veronica_access import is_veronica_only
 from core.exam_identity import exam_email, exam_phone
 from core.exam_grading import clean_key, choice_grades, finish_grade, grade_open, GradingError, MODEL
 from core.exam_timing import exam_deadline, expire_attempt
-from core.exam_second_stage import QUESTIONS as SECOND_QUESTIONS, KEY as SECOND_KEY, complete_skill_questions, eligibility, complementary_grade, matches_phone_access
+from core.exam_second_stage import QUESTIONS as SECOND_QUESTIONS, KEY as SECOND_KEY, complete_skill_questions, eligibility, complementary_grade, matches_phone_access, matches_phone_only_access
 
 SECOND_INSTRUCTIONS = 'Segunda fase. Responde con ejemplos y acciones concretas. Usa el mismo correo de tu primera evaluación.'
 OLD_SECOND_CONTACT_INSTRUCTION = 'Usa el mismo correo y teléfono de tu primera evaluación.'
 
 
-def public_exam_instructions(exam, phone_access=False):
+def public_exam_instructions(exam, phone_access=False, phone_only=False):
     # Existing second exams keep their stored metadata and historic snapshots.
     # Show the current contact rule for new starts without rewriting old data.
     instructions = exam.instructions.replace(OLD_SECOND_CONTACT_INSTRUCTION, 'Usa el mismo correo de tu primera evaluación.') if exam.first_stage_id else exam.instructions
     if phone_access and exam.first_stage_id:
-        instructions = instructions.replace('Usa el mismo correo de tu primera evaluación.', 'Usa el correo de tu primera evaluación o la opción de nombre y teléfono autorizada por Recursos Humanos.')
+        alternative = 'la opción de teléfono autorizada por Recursos Humanos.' if phone_only else 'la opción de nombre y teléfono autorizada por Recursos Humanos.'
+        instructions = instructions.replace('Usa el mismo correo de tu primera evaluación.', f'Usa el correo de tu primera evaluación o {alternative}')
     return instructions
 
 
@@ -273,10 +274,16 @@ class PublicExamView(APIView):
 
     def get(self, request, token):
         e = get_object_or_404(RecruitmentExam, public_token=token)
-        phone_access = bool(e.first_stage_id and e.first_stage.attempts.filter(snapshot__second_stage_phone_access__version=1).exists())
-        return Response({'title': e.title, 'instructions': public_exam_instructions(e, phone_access), 'duration_minutes': e.duration_minutes,
+        phone_only = phone_legacy = False
+        if e.first_stage_id:
+            authorized = e.first_stage.attempts.filter(snapshot__second_stage_phone_access__version=1)
+            phone_only = authorized.filter(snapshot__second_stage_phone_access__phone_only_digest__isnull=False).exists()
+            phone_legacy = authorized.filter(snapshot__second_stage_phone_access__phone_only_digest__isnull=True).exists()
+        phone_access = phone_only or phone_legacy
+        return Response({'title': e.title, 'instructions': public_exam_instructions(e, phone_access, phone_only), 'duration_minutes': e.duration_minutes,
                          'question_count': len(e.questions), 'accepting': e.accepting,
-                         'second_stage': bool(e.first_stage_id), 'phone_access': phone_access})
+                         'second_stage': bool(e.first_stage_id), 'phone_access': phone_access,
+                         'phone_only_access': phone_only, 'phone_legacy_access': phone_legacy})
 
     @transaction.atomic
     def post(self, request, token):
@@ -296,7 +303,7 @@ class PublicExamView(APIView):
         if not e.accepting:
             return Response({'detail': 'Este examen ya no admite nuevos participantes.'}, status=410)
         method = data.get('identity_method', 'email') if e.first_stage_id else 'email'
-        if method not in {'email', 'phone'}:
+        if not isinstance(method, str) or method not in {'email', 'phone', 'phone_only'}:
             raise ValidationError({'detail': 'Revisa la forma de identificación.'})
         email = ''
         if method == 'email':
@@ -310,13 +317,18 @@ class PublicExamView(APIView):
         first_attempt = None
         if e.first_stage_id:
             first = e.first_stage
-            if method == 'phone':
-                entered_name = text(data.get('name'), 'el nombre completo', 180)
+            if method in {'phone', 'phone_only'}:
                 entered_phone = text(data.get('phone'), 'el teléfono', 30)
-                if len(entered_name.split()) < 2 or not 8 <= len(exam_phone(entered_phone)) <= 15:
-                    raise ValidationError({'detail': 'Revisa tu nombre completo y teléfono.'})
+                if not 8 <= len(exam_phone(entered_phone)) <= 15:
+                    raise ValidationError({'detail': 'Revisa tu teléfono.'})
                 candidates = first.attempts.filter(snapshot__second_stage_phone_access__version=1)
-                matches = [candidate for candidate in candidates if matches_phone_access(candidate.snapshot, entered_name, entered_phone)]
+                if method == 'phone':
+                    entered_name = text(data.get('name'), 'el nombre completo', 180)
+                    if len(entered_name.split()) < 2:
+                        raise ValidationError({'detail': 'Revisa tu nombre completo.'})
+                    matches = [candidate for candidate in candidates if matches_phone_access(candidate.snapshot, entered_name, entered_phone)]
+                else:
+                    matches = [candidate for candidate in candidates if matches_phone_only_access(candidate.snapshot, entered_phone)]
             else:
                 for legacy in first.attempts.filter(identity_email='').exclude(email='').only('id', 'email', 'phone'):
                     legacy.save(update_fields=['identity_email', 'identity_phone'])
@@ -325,8 +337,8 @@ class PublicExamView(APIView):
                 return Response({'detail': 'No fue posible vincular esta participación. Verifica tus datos y que hayas entregado la primera evaluación; si necesitas ayuda, consulta a Recursos Humanos.', 'code': 'second_stage_unavailable'}, status=403)
             first_attempt = matches[0]
             name = first_attempt.name
-            phone = first_attempt.phone or (entered_phone if method == 'phone' else '')
-            if method == 'phone':
+            phone = first_attempt.phone or (entered_phone if method in {'phone', 'phone_only'} else '')
+            if method in {'phone', 'phone_only'}:
                 email = first_attempt.email
         else:
             name = text(data.get('name'), 'el nombre completo', 180)
@@ -354,7 +366,7 @@ class PublicExamView(APIView):
         if matching.exists():
             detail = 'La segunda fase ya fue iniciada para esta participación. Continúa en la pestaña original; no es posible iniciar un segundo intento.' if e.first_stage_id else 'Este examen ya fue iniciado con este correo o teléfono. Continúa en la pestaña original; no es posible iniciar un segundo intento.'
             return Response({'detail': detail, 'code': 'exam_already_started'}, status=409)
-        snapshot = {'title': e.title, 'instructions': public_exam_instructions(e, method == 'phone'), 'duration_minutes': e.duration_minutes, 'questions': e.questions}
+        snapshot = {'title': e.title, 'instructions': public_exam_instructions(e, method in {'phone', 'phone_only'}, method == 'phone_only'), 'duration_minutes': e.duration_minutes, 'questions': e.questions}
         if method == 'phone' and first_attempt.snapshot['second_stage_phone_access'].get('mode') == 'name_only':
             snapshot['second_stage_identity_review'] = True
         a = RecruitmentExamAttempt.objects.create(exam=e, start_key=start_key, name=name, email=email, phone=phone, grading_key=e.answer_key, first_stage_attempt=first_attempt,

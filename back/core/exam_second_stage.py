@@ -36,6 +36,11 @@ def phone_access_digest(name, phone, salt, mode='name_phone'):
     return hashlib.sha256(bytes.fromhex(salt) + payload).hexdigest()
 
 
+def phone_only_digest(phone, salt):
+    payload = ('\x1f' + exam_phone(phone)).encode('utf-8')
+    return hashlib.sha256(bytes.fromhex(salt) + payload).hexdigest()
+
+
 def phone_access_grant(name, phone='', *, name_only=False, aliases=()):
     """Private, one-participant authorization; do not expose contacts in source code."""
     salt = secrets.token_hex(16)
@@ -61,6 +66,19 @@ def matches_phone_access(snapshot, name, phone):
             return False
         candidate = phone_access_digest(name, phone, salt, access.get('mode', 'name_phone'))
         return any(hmac.compare_digest(candidate, value) for value in [digest, *alternatives])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def matches_phone_only_access(snapshot, phone):
+    access = snapshot.get('second_stage_phone_access') if isinstance(snapshot, dict) else None
+    if not isinstance(access, dict) or access.get('version') != 1:
+        return False
+    try:
+        salt, digest = access['salt'], access['phone_only_digest']
+        if not isinstance(salt, str) or len(salt) != 32 or not isinstance(digest, str) or len(digest) != 64:
+            return False
+        return hmac.compare_digest(phone_only_digest(phone, salt), digest)
     except (KeyError, TypeError, ValueError):
         return False
 

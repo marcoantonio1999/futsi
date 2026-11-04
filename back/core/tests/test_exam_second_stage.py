@@ -7,7 +7,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from core.exam_models import RecruitmentExam, RecruitmentExamAttempt
-from core.exam_second_stage import KEY, QUESTIONS, eligibility, phone_access_grant
+from core.exam_second_stage import KEY, QUESTIONS, eligibility, phone_access_grant, phone_only_digest
 from core.tests.test_recruitment_exams import create_exam, start
 
 pytestmark = pytest.mark.django_db
@@ -155,6 +155,76 @@ def start_second_by_phone(exam, name, phone):
     }, format='json')
 
 
+def start_second_by_number(exam, phone):
+    return APIClient().post(f'/api/public-exams/{exam["public_token"]}/', {
+        'start_key': str(uuid.uuid4()), 'identity_method': 'phone_only',
+        'phone': phone, 'consent': True,
+    }, format='json')
+
+
+def test_authorized_candidates_can_start_with_only_phone(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam, name='Persona Histórica Uno', email='uno@example.invalid', phone='5510000011')
+    other = submit_first(exam, name='Persona Histórica Dos', email='dos@example.invalid', phone='5510000012')
+    unapproved = submit_first(exam, name='Persona No Autorizada', email='tres@example.invalid', phone='5510000013')
+    for row, name, phone in [(first, 'Persona Histórica Uno', '5510000011'), (other, 'Persona Histórica Dos', '5510000012')]:
+        access = phone_access_grant(name, phone)
+        access['phone_only_digest'] = phone_only_digest(phone, access['salt'])
+        snapshot = {**row.snapshot, 'offline_import': {'source': 'xlsx_results'}, 'second_stage_phone_access': access}
+        RecruitmentExamAttempt.objects.filter(pk=row.pk).update(email='', phone='', identity_email='', identity_phone='', snapshot=snapshot)
+    info = APIClient().get(f'/api/public-exams/{second["public_token"]}/').json()
+    assert info['phone_only_access'] is True and info['phone_legacy_access'] is False
+    assert 'opción de teléfono' in info['instructions']
+    assert start_second_by_number(second, '5510000099').status_code == 403
+    assert start_second_by_number(second, '5510000013').status_code == 403
+    response = start_second_by_number(second, '+52 55 1000 0011')
+    assert response.status_code == 201, response.content
+    child = RecruitmentExamAttempt.objects.get(access_token=response.json()['access_token'])
+    assert child.first_stage_attempt_id == first.id and child.email == '' and child.identity_phone == '5510000011'
+    assert start_second_by_number(second, '5510000011').status_code == 409
+    assert start_second_by_phone(second, 'Persona Histórica Uno', '5510000011').status_code == 409
+    response2 = start_second_by_number(second, '5510000012')
+    assert response2.status_code == 201, response2.content
+    assert RecruitmentExamAttempt.objects.get(access_token=response2.json()['access_token']).first_stage_attempt_id == other.id
+    assert not RecruitmentExamAttempt.objects.filter(first_stage_attempt=unapproved).exists()
+
+
+def test_phone_only_rejects_ambiguous_or_undelivered_records(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    result = start(exam, name='Persona Pendiente', email='pendiente@example.invalid', phone='5510000014')
+    first = RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
+    access = phone_access_grant('Persona Pendiente', '5510000014')
+    access['phone_only_digest'] = phone_only_digest('5510000014', access['salt'])
+    first.snapshot['second_stage_phone_access'] = access
+    first.save(update_fields=['snapshot'])
+    assert start_second_by_number(second, '5510000014').status_code == 403
+    first.submitted_at = first.started_at; first.save(update_fields=['submitted_at'])
+    duplicate = submit_first(exam, name='Otra Persona', email='otra@example.invalid', phone='5510000015')
+    duplicate.snapshot['second_stage_phone_access'] = access
+    duplicate.save(update_fields=['snapshot'])
+    assert start_second_by_number(second, '5510000014').status_code == 403
+    assert RecruitmentExamAttempt.objects.filter(exam_id=second['id']).count() == 0
+
+
+def test_mixed_phone_access_methods_remain_available(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam, name='Persona Antigua', email='antigua@example.invalid', phone='5510000016')
+    second_first = submit_first(exam, name='Persona Nueva', email='nueva@example.invalid', phone='5510000017')
+    first.snapshot['second_stage_phone_access'] = phone_access_grant(first.name, first.phone)
+    first.save(update_fields=['snapshot'])
+    access = phone_access_grant(second_first.name, second_first.phone)
+    access['phone_only_digest'] = phone_only_digest(second_first.phone, access['salt'])
+    second_first.snapshot['second_stage_phone_access'] = access
+    second_first.save(update_fields=['snapshot'])
+    info = APIClient().get(f'/api/public-exams/{second["public_token"]}/').json()
+    assert info['phone_only_access'] is True and info['phone_legacy_access'] is True
+    assert start_second_by_phone(second, first.name, first.phone).status_code == 201
+    assert start_second_by_number(second, second_first.phone).status_code == 201
+
+
 def test_authorized_historical_candidates_use_name_and_phone_without_email(auth_client):
     admin, _, _ = auth_client()
     exam = first_exam(admin); second = exam['second_stage']
@@ -166,7 +236,8 @@ def test_authorized_historical_candidates_use_name_and_phone_without_email(auth_
                     'second_stage_phone_access': phone_access_grant(name, phone)}
         RecruitmentExamAttempt.objects.filter(pk=row.pk).update(email='', phone='', identity_email='', identity_phone='', snapshot=snapshot)
     info = APIClient().get(f'/api/public-exams/{second["public_token"]}/').json()
-    assert info['phone_access'] is True and 'teléfono' in info['instructions']
+    assert info['phone_access'] is True and info['phone_only_access'] is False and info['phone_legacy_access'] is True
+    assert 'teléfono' in info['instructions']
     assert 'Persona Histórica' not in str(info) and 'digest' not in str(info)
     assert start_second_by_phone(second, 'Persona Histórica Uno', '5510000099').status_code == 403
     assert start_second_by_phone(second, 'Persona Sin Autorización', '5510000003').status_code == 403
