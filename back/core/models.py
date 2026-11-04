@@ -352,12 +352,21 @@ class GameRoleCross(TimestampedModel):
     round = models.ForeignKey(GameRoleRound, on_delete=models.CASCADE, related_name="crosses")
     home_team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="game_role_home_crosses")
     away_team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="game_role_away_crosses")
+    scheduled_on = models.DateField(null=True, blank=True)
+    starts_at = models.TimeField(null=True, blank=True)
+    ends_at = models.TimeField(null=True, blank=True)
+    played = models.BooleanField(default=False)
 
     class Meta:
         db_table = "game_role_crosses"
         constraints = [
             models.UniqueConstraint(fields=["tournament", "home_team", "away_team"], name="uq_game_role_cross"),
             models.CheckConstraint(condition=~Q(home_team=models.F("away_team")), name="ck_game_role_distinct_teams"),
+            models.CheckConstraint(
+                condition=Q(scheduled_on__isnull=True, starts_at__isnull=True, ends_at__isnull=True)
+                | Q(scheduled_on__isnull=False, starts_at__isnull=False, ends_at__isnull=False, ends_at__gt=models.F("starts_at")),
+                name="ck_game_role_complete_schedule",
+            ),
         ]
 
 

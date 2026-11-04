@@ -38,12 +38,17 @@
   gap: 0;
 }
 
-.enrollment-page .game-roles-workspace .game-roles-round-list button[aria-pressed="true"],
-.enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-highlighted="true"] {
+.enrollment-page .game-roles-workspace .game-roles-round-list button[aria-pressed="true"] {
   background: #1246a0 !important;
   border-color: #1246a0 !important;
   color: white !important;
 }
+
+.game-roles-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0; margin: 12px 0; list-style: none; font-size: 13px; }
+.game-roles-legend li { display: flex; align-items: center; gap: 5px; }
+.game-roles-legend b { padding: 1px 4px; border-radius: 4px; }
+.game-roles-played-key { color: white; background: #205840; }
+.game-roles-selected-key { outline: 2px solid #1246a0; color: #1246a0; }
 
 .game-roles-selection strong { color: #1246a0; }
 .game-roles-grid-scroll {
@@ -76,9 +81,28 @@
 .enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell {
   width: 100%;
   min-width: 44px;
+  min-height: 66px !important;
+  flex-direction: column;
+  gap: 1px;
   padding: 6px !important;
   font-weight: 700 !important;
   border-radius: 5px !important;
+  line-height: 1.15 !important;
+}
+
+.game-roles-cell small, .game-roles-time { font-size: 11px; white-space: nowrap; }
+.game-roles-cell .game-roles-unassigned { font-size: 20px; }
+.enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-highlighted="true"] {
+  border-color: #1246a0 !important;
+  box-shadow: inset 0 0 0 1px #1246a0;
+}
+.enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-played="true"] {
+  background: #205840 !important;
+  color: white !important;
+}
+.enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-played="true"][data-highlighted="true"] {
+  border-color: #a5c8fc !important;
+  box-shadow: inset 0 0 0 1px #a5c8fc;
 }
 
 .game-roles-dialog {
@@ -99,6 +123,13 @@
 .game-roles-dialog::backdrop { background: #1019138c; }
 .game-roles-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .enrollment-page .game-roles-dialog :is(input, select) { min-height: 44px; border-radius: 8px; }
+.game-roles-hour-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.game-roles-hour-fields input { min-width: 0; }
+.game-roles-availability { background: #f0f4f2; border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 13px; }
+.game-roles-availability ul { padding-inline-start: 18px; margin-block: 6px; }
+.game-roles-availability [role="status"] { font-weight: 700; }
+.enrollment-page .game-roles-dialog .game-roles-played-input { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.game-roles-played-input input { width: 18px; }
 
 @media screen and (max-width: 1023px) {
   .game-roles-workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rounds" "matrix"; }
@@ -107,4 +138,8 @@
   .game-roles-round-select, .game-roles-mobile-week { display: block !important; }
   .game-roles-grid-scroll { max-height: 60dvh; }
   .game-roles-grid th { width: 88px; max-width: 88px; }
+}
+
+@media screen and (max-width: 360px) {
+  .game-roles-hour-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }

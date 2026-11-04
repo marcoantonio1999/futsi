@@ -81,7 +81,7 @@ def plan(team, *, lock=False):
         sanctions_query = sanctions_query.select_for_update()
     sanctions = list(sanctions_query.values())
     crosses = list(GameRoleCross.objects.filter(Q(home_team=team) | Q(away_team=team))
-                   .order_by('pk').values_list('pk', 'round_id'))
+                   .order_by('pk').values_list('pk', 'updated_at'))
     scheduled_records = [(row._meta.label, [(field.attname, getattr(row, field.attname)) for field in row._meta.fields]) for row in matches + sessions]
     fingerprint = sha256(repr((team.pk, team.name, team.updated_at, players, registrations, scheduled_records,
                               links, enrollments, sanctions, crosses, json.dumps(clips, sort_keys=True, default=str))).encode()).hexdigest()

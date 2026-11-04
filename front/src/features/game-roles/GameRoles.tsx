@@ -7,9 +7,13 @@ import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
 type Round = { id: number; number: number; starts_on: string };
-type Cross = { home_team_id: number; away_team_id: number; round_id: number };
-type Matrix = { teams: Team[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null };
-type Editor = { kind: "round"; round?: Round } | { kind: "cross"; home: Team; away: Team; current?: Round };
+type Cross = {
+  home_team_id: number; away_team_id: number; round_id: number;
+  scheduled_on: string | null; starts_at: string | null; ends_at: string | null; played: boolean;
+};
+type Matrix = { teams: Team[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null; schedule_enabled?: boolean };
+type CrossEditor = { kind: "cross"; home: Team; away: Team; current?: Cross };
+type Editor = { kind: "round"; round?: Round } | CrossEditor;
 
 function addDays(value: string, days: number) {
   const date = new Date(value + "T00:00:00Z");
@@ -18,6 +22,8 @@ function addDays(value: string, days: number) {
 }
 
 const dateLabel = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const shortDate = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", timeZone: "UTC" });
+const timeLabel = (value: string | null | undefined) => value?.slice(0, 5) ?? "";
 function weekLabel(start: string) {
   return dateLabel.formatRange(new Date(start + "T00:00:00Z"), new Date(addDays(start, 6) + "T00:00:00Z"));
 }
@@ -59,14 +65,15 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
     return () => controller.abort();
   }, [path, token, reload]);
 
-  if (loadError) return <Card as="section" className="operator-controls">
-    <p className="error" role="alert">{loadError}</p><Button onClick={() => setReload(value => value + 1)}>Volver a cargar matriz</Button>
+  if (loadError || (matrix && !matrix.schedule_enabled)) return <Card as="section" className="operator-controls">
+    <p className="error" role="alert">{loadError || "La programación de horarios se está actualizando."}</p>
+    <Button onClick={() => setReload(value => value + 1)}>Volver a cargar matriz</Button>
   </Card>;
   if (!matrix) return <p role="status">Cargando matriz…</p>;
 
   const selected = matrix.rounds.find(round => round.id === selectedId) ?? matrix.rounds[0];
   const roundById = new Map(matrix.rounds.map(round => [round.id, round]));
-  const crossByTeams = new Map(matrix.crosses.map(cross => [`${cross.home_team_id}:${cross.away_team_id}`, roundById.get(cross.round_id)]));
+  const crossByTeams = new Map(matrix.crosses.map(cross => [`${cross.home_team_id}:${cross.away_team_id}`, cross]));
   const counts = new Map<number, number>();
   for (const cross of matrix.crosses) counts.set(cross.round_id, (counts.get(cross.round_id) ?? 0) + 1);
   const crosses = selected ? counts.get(selected.id) ?? 0 : 0;
@@ -100,7 +107,13 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
 
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
-      <p>Los locales están en las columnas y los visitantes en las filas. Selecciona una celda para asignar o cambiar su jornada.</p>
+      <p>Los locales están en las columnas y los visitantes en las filas. Selecciona un cruce para editar su jornada y horario.</p>
+      <ul className="game-roles-legend" aria-label="Estados del partido">
+        <li><b aria-hidden="true">×</b> Sin horario</li>
+        <li><b aria-hidden="true">09:00</b> Pendiente</li>
+        <li><b className="game-roles-played-key" aria-hidden="true">✓</b> Jugado</li>
+        <li><b className="game-roles-selected-key" aria-hidden="true">J</b> Jornada seleccionada</li>
+      </ul>
       {selected && <p className="game-roles-selection" role="status"><strong>Jornada {selected.number}</strong> · {crosses} {crosses === 1 ? "cruce" : "cruces"}</p>}
       {matrix.teams.length < 2 ? <p>El torneo necesita al menos dos equipos para asignar cruces.</p> :
         <div className="game-roles-grid-scroll" role="region" aria-label="Matriz de cruces por equipo" tabIndex={0}>
@@ -111,11 +124,19 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
               {matrix.teams.map(home => {
                 if (home.id === away.id) return <td key={home.id} className="game-roles-diagonal">—</td>;
                 const current = crossByTeams.get(`${home.id}:${away.id}`);
+                const round = current && roundById.get(current.round_id);
+                const day = current?.scheduled_on ? new Date(current.scheduled_on + "T00:00:00Z") : null;
+                const range = `${timeLabel(current?.starts_at)}–${timeLabel(current?.ends_at)}`;
+                const status = current?.played ? "Jugado" : day ? `Pendiente, ${dateLabel.format(day)}, ${range}` : "Sin horario";
                 return <td key={home.id}><Button type="button" className="game-roles-cell" disabled={!selected}
-                  data-highlighted={Boolean(selected && current?.id === selected.id)}
-                  aria-label={`${home.name} local, ${away.name} visitante, ${current ? "jornada " + current.number : "sin jornada"}`}
+                  data-highlighted={Boolean(selected && round?.id === selected.id)}
+                  data-played={Boolean(current?.played)}
+                  aria-label={`${home.name} local, ${away.name} visitante, ${round ? "jornada " + round.number + ", " : ""}${status}`}
                   onClick={() => setEditor({ kind: "cross", home, away, current })}>
-                  {current?.number ?? "+"}
+                  {round && <small>J{round.number}</small>}
+                  {current?.played ? <span>✓ Jugado</span> : day ? <>
+                    <span>{shortDate.format(day)}</span><span className="game-roles-time">{range}</span>
+                  </> : <span className="game-roles-unassigned">×</span>}
                 </Button></td>;
               })}
             </tr>)}</tbody>
@@ -152,7 +173,12 @@ function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
     try {
       if (editor.kind === "cross") {
         const roundId = form.get("round_id");
-        await onSave("PUT", { home_team_id: editor.home.id, away_team_id: editor.away.id, round_id: roundId ? Number(roundId) : null });
+        const scheduledOn = form.get("scheduled_on");
+        await onSave("PUT", {
+          home_team_id: editor.home.id, away_team_id: editor.away.id, round_id: roundId ? Number(roundId) : null,
+          schedule: scheduledOn ? { scheduled_on: scheduledOn, starts_at: form.get("starts_at"), ends_at: form.get("ends_at") } : null,
+          played: form.has("played"),
+        });
       } else {
         const number = Number(form.get("number"));
         await onSave(round ? "PATCH" : "POST", { round_id: round?.id, number, starts_on: form.get("starts_on") }, number);
@@ -168,15 +194,8 @@ function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
   return <Dialog ref={dialog} className="game-roles-dialog" aria-labelledby="game-roles-dialog-title"
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <form onSubmit={submit}>
-      <h2 id="game-roles-dialog-title">{editor.kind === "cross" ? "Asignar jornada al cruce" : round ? "Editar jornada" : "Agregar jornada"}</h2>
-      {editor.kind === "cross" ? <>
-        <p><strong>{editor.home.name}</strong> (local) vs. <strong>{editor.away.name}</strong> (visitante)</p>
-        <Label><span id="game-roles-cross-round-label">Jornada</span><NativeSelect aria-labelledby="game-roles-cross-round-label"
-          name="round_id" defaultValue={editor.current?.id ?? selected?.id ?? ""}>
-          <option value="">Sin jornada</option>
-          {matrix.rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number}</option>)}
-        </NativeSelect></Label>
-      </> : <>
+      <h2 id="game-roles-dialog-title">{editor.kind === "cross" ? "Jornada y horario del partido" : round ? "Editar jornada" : "Agregar jornada"}</h2>
+      {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} selected={selected} /> : <>
         <Label>Número de jornada<Input type="number" name="number" min={1} max={999} required defaultValue={round?.number ?? Math.min(999, (last?.number ?? 0) + 1)} /></Label>
         <Label>Inicio de la semana<Input type="date" name="starts_on" required defaultValue={round?.starts_on ?? (last ? addDays(last.starts_on, 7) : matrix.starts_on ?? "")} /></Label>
         <p>La jornada abarca siete días desde la fecha de inicio.</p>
@@ -188,4 +207,44 @@ function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
       </footer>
     </form>
   </Dialog>;
+}
+
+function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor; matrix: Matrix; selected?: Round }) {
+  const [roundId, setRoundId] = useState(editor.current?.round_id ?? selected?.id ?? 0);
+  const [day, setDay] = useState(editor.current?.scheduled_on ?? "");
+  const [start, setStart] = useState(timeLabel(editor.current?.starts_at));
+  const [end, setEnd] = useState(timeLabel(editor.current?.ends_at));
+  const round = matrix.rounds.find(row => row.id === roundId);
+  const hasSchedule = Boolean(day || start || end);
+  const occupied = matrix.crosses.filter(cross => cross.scheduled_on && cross.scheduled_on === day
+    && (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id))
+    .sort((a, b) => timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at)));
+  const overlap = occupied.some(cross => start < timeLabel(cross.ends_at) && end > timeLabel(cross.starts_at));
+  const teams = new Map(matrix.teams.map(team => [team.id, team.name]));
+
+  return <>
+    <p><strong>{editor.home.name}</strong> (local) vs. <strong>{editor.away.name}</strong> (visitante)</p>
+    <Label><span id="game-roles-cross-round-label">Jornada</span><NativeSelect aria-labelledby="game-roles-cross-round-label"
+      name="round_id" value={roundId || ""} onChange={event => setRoundId(Number(event.target.value))}>
+      <option value="">Sin jornada</option>
+      {matrix.rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number}</option>)}
+    </NativeSelect></Label>
+    {round && <>
+      <Label>Fecha del partido<Input type="date" name="scheduled_on" value={day} required={Boolean(start || end)}
+        min={round.starts_on} max={addDays(round.starts_on, 6)} onChange={event => setDay(event.target.value)} /></Label>
+      <div className="game-roles-hour-fields">
+        <Label>Hora de inicio<Input type="time" name="starts_at" value={start} required={hasSchedule} onChange={event => setStart(event.target.value)} /></Label>
+        <Label>Hora de fin<Input type="time" name="ends_at" value={end} required={hasSchedule} onChange={event => setEnd(event.target.value)} /></Label>
+      </div>
+      {day && <div className="game-roles-availability">
+        <strong>Horarios ocupados en este torneo</strong>
+        {occupied.length ? <ul>{occupied.map(cross => <li key={`${cross.home_team_id}:${cross.away_team_id}`}>
+          {timeLabel(cross.starts_at)}–{timeLabel(cross.ends_at)} · {teams.get(cross.home_team_id)} vs. {teams.get(cross.away_team_id)}
+        </li>)}</ul> : <p>No hay horarios ocupados para esta fecha.</p>}
+        {start && end && <p role="status">{end <= start ? "La hora de fin debe ser posterior a la de inicio." : overlap ? "El rango elegido se cruza con otro partido." : "El rango elegido está disponible."}</p>}
+      </div>}
+      {hasSchedule && <Button type="button" onClick={() => { setDay(""); setStart(""); setEnd(""); }}>Quitar horario</Button>}
+      <Label className="game-roles-played-input"><Input type="checkbox" name="played" defaultChecked={editor.current?.played} /> Marcar como jugado</Label>
+    </>}
+  </>;
 }

@@ -25,9 +25,10 @@ class GameRoleMatrixTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         return next(row for row in response.json()["rounds"] if row["number"] == number)
 
-    def set_cross(self, round_id, home=None, away=None):
+    def set_cross(self, round_id, home=None, away=None, **fields):
         return self.client.put(self.url, {
             "home_team_id": (home or self.home).pk, "away_team_id": (away or self.away).pk, "round_id": round_id,
+            **fields,
         }, format="json")
 
     def test_jornadas_and_ordered_crosses_persist_without_creating_matches(self):
@@ -63,3 +64,32 @@ class GameRoleMatrixTests(TestCase):
         self.assertFalse(GameRoleCross.objects.exists())
         self.client.credentials()
         self.assertEqual(self.client.get(self.url).status_code, 401)
+
+    def test_schedule_checks_week_and_overlap_and_preserves_played_state(self):
+        first = self.add_round()
+        schedule = {"scheduled_on": "2026-11-09", "starts_at": "09:00", "ends_at": "10:00"}
+        response = self.set_cross(first["id"], schedule=schedule)
+        self.assertEqual(response.status_code, 200)
+        cross = response.json()["crosses"][0]
+        self.assertEqual(cross["scheduled_on"], "2026-11-09")
+        self.assertEqual(cross["starts_at"], "09:00:00")
+        self.assertFalse(cross["played"])
+        self.assertEqual(self.set_cross(first["id"], played=True).status_code, 200)
+        legacy = self.set_cross(first["id"]).json()["crosses"][0]
+        self.assertTrue(legacy["played"])
+        self.assertEqual(legacy["scheduled_on"], schedule["scheduled_on"])
+
+        for changes in [{"starts_at": "09:30", "ends_at": "10:30"}, {"ends_at": "09:00"}, {"scheduled_on": "2026-11-14"}]:
+            with self.subTest(changes=changes):
+                rejected = self.set_cross(first["id"], self.away, self.home, schedule={**schedule, **changes})
+                self.assertEqual(rejected.status_code, 400)
+        adjacent = self.set_cross(first["id"], self.away, self.home, schedule={**schedule, "starts_at": "10:00", "ends_at": "11:00"})
+        self.assertEqual(adjacent.status_code, 200)
+        moved_week = self.client.patch(self.url, {"round_id": first["id"], "number": 1, "starts_on": "2026-11-10"}, format="json")
+        self.assertEqual(moved_week.status_code, 400)
+        self.assertEqual(self.set_cross(None, schedule=schedule).status_code, 400)
+        cleared = self.set_cross(first["id"], schedule=None, played=False).json()["crosses"][0]
+        self.assertIsNone(cleared["scheduled_on"])
+        self.assertIsNone(cleared["starts_at"])
+        self.assertIsNone(cleared["ends_at"])
+        self.assertFalse(cleared["played"])
