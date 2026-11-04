@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, Tournament } from "../../types";
@@ -14,6 +14,19 @@ type Cross = {
 type Matrix = { teams: Team[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null; schedule_enabled?: boolean };
 type CrossEditor = { kind: "cross"; home: Team; away: Team; current?: Cross };
 type Editor = { kind: "round"; round?: Round } | CrossEditor;
+
+const roundColors = [
+  "#1246a0", "#6d297a", "#00645b", "#9a3e10", "#8b2445",
+  "#485e18", "#184e6c", "#79540e", "#832e75", "#385485",
+  "#884724", "#326045", "#932821", "#3b356b", "#6d4c60",
+  "#2c514b", "#3f5561", "#563723", "#5d5925", "#4a3f57",
+];
+
+function roundColorStyle(number: number): CSSProperties {
+  const hue = (number * 137.508) % 360;
+  const color = roundColors[number - 1] ?? `hsl(${hue} 65% 27%)`;
+  return { "--game-roles-round-color": color } as CSSProperties;
+}
 
 function addDays(value: string, days: number) {
   const date = new Date(value + "T00:00:00Z");
@@ -85,7 +98,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
     setEditor(null);
   }
 
-  return <div className="game-roles-workspace">
+  return <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
     <Card as="aside" className="game-roles-rounds" aria-labelledby="game-roles-rounds-title">
       <h2 id="game-roles-rounds-title">Jornadas</h2>
       <Button type="button" className="primary" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
@@ -96,7 +109,8 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
           </NativeSelect>
         </Label>
         <div className="game-roles-round-list">
-          {matrix.rounds.map(round => <Button key={round.id} type="button" aria-pressed={round.id === selected.id} onClick={() => setSelectedId(round.id)}>
+          {matrix.rounds.map(round => <Button key={round.id} type="button" style={roundColorStyle(round.number)}
+            aria-pressed={round.id === selected.id} onClick={() => setSelectedId(round.id)}>
             <strong>Jornada {round.number}</strong><span>{weekLabel(round.starts_on)}</span>
           </Button>)}
         </div>
@@ -112,7 +126,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
         <li><b aria-hidden="true">×</b> Sin horario</li>
         <li><b aria-hidden="true">09:00</b> Pendiente</li>
         <li><b className="game-roles-played-key" aria-hidden="true">✓</b> Jugado</li>
-        <li><b className="game-roles-selected-key" aria-hidden="true">J</b> Jornada seleccionada</li>
+        <li><b className="game-roles-round-key" aria-hidden="true">J</b> Color de la jornada</li>
       </ul>
       {selected && <p className="game-roles-selection" role="status"><strong>Jornada {selected.number}</strong> · {crosses} {crosses === 1 ? "cruce" : "cruces"}</p>}
       {matrix.teams.length < 2 ? <p>El torneo necesita al menos dos equipos para asignar cruces.</p> :
@@ -129,6 +143,8 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
                 const range = `${timeLabel(current?.starts_at)}–${timeLabel(current?.ends_at)}`;
                 const status = current?.played ? "Jugado" : day ? `Pendiente, ${dateLabel.format(day)}, ${range}` : "Sin horario";
                 return <td key={home.id}><Button type="button" className="game-roles-cell" disabled={!selected}
+                  style={round ? roundColorStyle(round.number) : undefined}
+                  data-assigned={Boolean(round)}
                   data-highlighted={Boolean(selected && round?.id === selected.id)}
                   data-played={Boolean(current?.played)}
                   aria-label={`${home.name} local, ${away.name} visitante, ${round ? "jornada " + round.number + ", " : ""}${status}`}
