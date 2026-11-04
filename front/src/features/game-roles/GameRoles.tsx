@@ -3,6 +3,7 @@ import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentScrollReady, useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
+import { GameRoleNotes, scheduleSuggestion, type GameRoleNote } from "./GameRoleNotes";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -11,7 +12,10 @@ type Cross = {
   home_team_id: number; away_team_id: number; round_id: number;
   scheduled_on: string | null; starts_at: string | null; ends_at: string | null; played: boolean;
 };
-type Matrix = { teams: Team[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null; schedule_enabled?: boolean };
+type Matrix = {
+  teams: Team[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null;
+  schedule_enabled?: boolean; team_notes?: GameRoleNote[];
+};
 type CrossEditor = { kind: "cross"; home: Team; away: Team; current?: Cross };
 type Editor = { kind: "round"; round?: Round } | CrossEditor;
 
@@ -66,6 +70,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useEnrollmentViewState(`gameRoles.round.${tournamentId}`, 0);
+  const [view, setView] = useEnrollmentViewState<"matrix" | "history">("gameRoles.view", "matrix");
   const [editor, setEditor] = useState<Editor | null>(null);
   useEnrollmentScrollReady(Boolean(matrix));
 
@@ -98,7 +103,24 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
     setEditor(null);
   }
 
-  return <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
+  async function saveNote(payload: object) {
+    const result = await apiRequest<{ team_notes: GameRoleNote[] }>(path + "team-notes/", token, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+    setMatrix(current => current && { ...current, team_notes: result.team_notes });
+  }
+
+  return <>
+    <nav className="game-role-views" aria-label="Vistas de Roles de juego">
+      <Button type="button" aria-pressed={view === "matrix"} onClick={() => setView("matrix")}>Matriz</Button>
+      <Button type="button" aria-pressed={view === "history"} onClick={() => setView("history")}>Historial</Button>
+      {view === "matrix" && matrix.team_notes && <>
+        <Button type="button" onClick={() => document.getElementById("game-role-notes-permit")?.scrollIntoView()}>Permisos</Button>
+        <Button type="button" onClick={() => document.getElementById("game-role-notes-preferred")?.scrollIntoView()}>Sugerencias de horario</Button>
+      </>}
+    </nav>
+    {view === "history" ? <GameRoleHistory matrix={matrix} /> : <>
+    <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
     <Card as="aside" className="game-roles-rounds" aria-labelledby="game-roles-rounds-title">
       <h2 id="game-roles-rounds-title">Jornadas</h2>
       <Button type="button" className="primary" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
@@ -162,7 +184,39 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
         </div>}
     </Card>
     {editor && <MatrixEditor editor={editor} matrix={matrix} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
-  </div>;
+    </div>
+    {matrix.team_notes && <GameRoleNotes notes={matrix.team_notes} teams={matrix.teams} rounds={matrix.rounds}
+      selectedRound={selected} onSave={saveNote} />}
+    </>}
+  </>;
+}
+
+function GameRoleHistory({ matrix }: { matrix: Matrix }) {
+  const names = new Map(matrix.teams.map(team => [team.id, team.name]));
+  const matchesByRound = new Map<number, Cross[]>();
+  for (const cross of matrix.crosses) {
+    const matches = matchesByRound.get(cross.round_id) ?? [];
+    matches.push(cross);
+    matchesByRound.set(cross.round_id, matches);
+  }
+  const rounds = matrix.rounds.filter(round => matchesByRound.has(round.id))
+    .sort((a, b) => b.starts_on.localeCompare(a.starts_on) || b.number - a.number);
+  return <Card as="section" className="game-role-history" aria-labelledby="game-role-history-title">
+    <h2 id="game-role-history-title">Historial de partidos</h2>
+    {!rounds.length && <p>Los cruces asignados aparecerán aquí agrupados por jornada.</p>}
+    {rounds.map((round, index) => {
+      const matches = matchesByRound.get(round.id)!.sort((a, b) =>
+        (b.scheduled_on ?? "").localeCompare(a.scheduled_on ?? "") || timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at)));
+      return <details key={round.id} className="game-role-history-round" style={roundColorStyle(round.number)} open={index === 0}>
+        <summary><strong>Jornada {round.number}</strong><span>{weekLabel(round.starts_on)} · {matches.length} {matches.length === 1 ? "cruce" : "cruces"}</span></summary>
+        <ul className="game-role-history-list">{matches.map(cross => <li key={`${cross.home_team_id}:${cross.away_team_id}`} data-played={cross.played}>
+          <strong>{names.get(cross.home_team_id)} vs. {names.get(cross.away_team_id)}</strong>
+          <span>{cross.scheduled_on ? `${dateLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))} · ${timeLabel(cross.starts_at)}–${timeLabel(cross.ends_at)}` : "Sin horario"}</span>
+          <span className="game-role-history-status">{cross.played ? "✓ Jugado" : cross.scheduled_on ? "Pendiente" : "× Sin asignar horario"}</span>
+        </li>)}</ul>
+      </details>;
+    })}
+  </Card>;
 }
 
 function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
@@ -239,6 +293,8 @@ function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor
     .sort((a, b) => timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at)));
   const overlap = occupied.some(cross => start < timeLabel(cross.ends_at) && end > timeLabel(cross.starts_at));
   const teams = new Map(matrix.teams.map(team => [team.id, team.name]));
+  const teamNotes = matrix.team_notes?.filter(row =>
+    (row.team_id === editor.home.id || row.team_id === editor.away.id) && (row.kind !== "permit" || row.round_id === roundId)) ?? [];
 
   return <>
     <p><strong>{editor.home.name}</strong> (local) vs. <strong>{editor.away.name}</strong> (visitante)</p>
@@ -247,6 +303,13 @@ function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor
       <option value="">Sin jornada</option>
       {matrix.rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number}</option>)}
     </NativeSelect></Label>
+    {teamNotes.length > 0 && <div className="game-roles-availability">
+      <strong>Permisos y sugerencias de los equipos</strong>
+      <ul>{teamNotes.map(row => <li key={row.id}>
+        <b>{teams.get(row.team_id)}</b> · {row.kind === "permit" ? `Permiso en la jornada ${round?.number}` : scheduleSuggestion(row)}
+        {row.note && <> · {row.note}</>}
+      </li>)}</ul>
+    </div>}
     {round && <>
       <Label>Fecha del partido<Input type="date" name="scheduled_on" value={day} required={Boolean(start || end)}
         min={round.starts_on} max={addDays(round.starts_on, 6)} onChange={event => setDay(event.target.value)} /></Label>

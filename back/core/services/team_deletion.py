@@ -82,14 +82,15 @@ def plan(team, *, lock=False):
     sanctions = list(sanctions_query.values())
     crosses = list(GameRoleCross.objects.filter(Q(home_team=team) | Q(away_team=team))
                    .order_by('pk').values_list('pk', 'updated_at'))
+    schedule_notes = list(team.game_role_notes.order_by('pk').values_list('pk', 'updated_at'))
     scheduled_records = [(row._meta.label, [(field.attname, getattr(row, field.attname)) for field in row._meta.fields]) for row in matches + sessions]
     fingerprint = sha256(repr((team.pk, team.name, team.updated_at, players, registrations, scheduled_records,
-                              links, enrollments, sanctions, crosses, json.dumps(clips, sort_keys=True, default=str))).encode()).hexdigest()
-    return players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions, crosses
+                              links, enrollments, sanctions, crosses, schedule_notes, json.dumps(clips, sort_keys=True, default=str))).encode()).hexdigest()
+    return players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions, crosses, schedule_notes
 
 
 def preview(team, actor):
-    players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions, crosses = plan(team)
+    players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions, crosses, schedule_notes = plan(team)
     items = [{'label': 'Equipo', 'count': 1}]
     if matches:
         items.append({'label': 'Partidos programados sin resultados', 'count': len(matches)})
@@ -97,6 +98,8 @@ def preview(team, actor):
         items.append({'label': 'Sesiones sin actividad registrada', 'count': len(sessions)})
     if crosses:
         items.append({'label': 'Cruces de roles de juego', 'count': len(crosses)})
+    if schedule_notes:
+        items.append({'label': 'Permisos y sugerencias de horario', 'count': len(schedule_notes)})
     return {'full_name': team.name, 'items': items, 'file_count': 0,
         'preserved_player_count': len(players), 'preserved_registration_count': len(registrations),
         'preserved_video_count': len(clips),
@@ -116,7 +119,7 @@ def permanently_delete(team, actor, payload):
             raise ValidationError('Escribe el nombre del equipo para confirmar.')
         list(Player.objects.select_for_update().filter(team=team))
         list(StudentTournamentRegistration.objects.select_for_update().filter(team=team))
-        players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions, crosses = plan(team, lock=True)
+        players, registrations, fingerprint, matches, sessions, clips, links, enrollments, sanctions, crosses, schedule_notes = plan(team, lock=True)
         if fingerprint != confirmation.get('fingerprint'):
             raise ValidationError('El equipo cambió. Actualiza el detalle antes de confirmar.')
         audit = AuditLog.objects.create(actor=actor, action='team_deleted', table_name='teams', record_id=str(team.pk),
@@ -128,6 +131,7 @@ def permanently_delete(team, actor, payload):
                       'preserved_player_ids': [pk for pk, _ in players], 'preserved_registration_ids': [pk for pk, _ in registrations],
                       'deleted_scheduled_match_ids': [row.pk for row in matches], 'deleted_empty_session_ids': [row.pk for row in sessions],
                       'deleted_game_role_cross_ids': [pk for pk, _ in crosses],
+                      'deleted_game_role_note_ids': [pk for pk, _ in schedule_notes],
                       'preserved_video_clip_ids': [str(row[0]) for row in clips]})
         preserve_clip_evidence(clips, 'team_deletion_evidence', {'team_id': team.pk, 'deletion_id': audit.pk})
         PlayerSanction.objects.filter(team=team).update(team=None,

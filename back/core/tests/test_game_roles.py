@@ -65,6 +65,28 @@ class GameRoleMatrixTests(TestCase):
         self.client.credentials()
         self.assertEqual(self.client.get(self.url).status_code, 401)
 
+    def test_team_notes_use_tournament_teams_and_rounds_and_survive_retry(self):
+        first = self.add_round()
+        path = self.url + "team-notes/"
+        permit = {"kind": "permit", "team_id": self.home.pk, "round_id": first["id"], "note": "Solicitó descanso"}
+        for _ in range(2):
+            response = self.client.post(path, permit, format="json")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.json()["team_notes"]), 1)
+        unavailable = {"kind": "unavailable", "team_id": self.away.pk, "weekday": 2}
+        response = self.client.post(path, unavailable, format="json")
+        self.assertEqual(response.status_code, 200)
+        notes = self.client.get(self.url).json()["team_notes"]
+        self.assertEqual([(row["kind"], row["team_id"]) for row in notes],
+                         [("permit", self.home.pk), ("unavailable", self.away.pk)])
+        self.assertEqual(notes[1]["weekday"], 2)
+        self.assertEqual(self.client.post(path, {**unavailable, "starts_at": "17:00"}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(path, {**permit, "team_id": self.other.pk}, format="json").status_code, 404)
+        foreign_round = self.other_tournament.game_role_rounds.create(number=1, starts_on="2026-11-07")
+        self.assertEqual(self.client.post(path, {**permit, "round_id": foreign_round.pk}, format="json").status_code, 404)
+        outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/team-notes/"
+        self.assertEqual(self.client.post(outside, permit, format="json").status_code, 404)
+
     def test_schedule_checks_week_and_overlap_and_preserves_played_state(self):
         first = self.add_round()
         schedule = {"scheduled_on": "2026-11-09", "starts_at": "09:00", "ends_at": "10:00"}

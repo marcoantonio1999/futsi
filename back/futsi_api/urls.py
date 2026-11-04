@@ -15,7 +15,7 @@ from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, Blackl
 from core.api.sanction_appeals import SanctionAppealView, SanctionDecisionView
 from core.api.enrollment_delegate import EnrollmentDelegateView
 from core.api.enrollment_players import EnrollmentPlayersView
-from core.api.game_roles import GameRoleMatrixView
+from core.api.game_roles import GameRoleMatrixView, GameRoleTeamNotesView
 
 from core.api.automatic_attendance import (
     AutomaticAttendanceCancelJobView,
@@ -110,6 +110,7 @@ urlpatterns = [
     path("api/player-enrollments/permits/<int:pk>/photo/", EnrollmentPermitPhotoView.as_view()),
     path("api/player-enrollments/catalog/", EnrollmentCatalogView.as_view()),
     path("api/player-enrollments/game-roles/<int:tournament_id>/", GameRoleMatrixView.as_view()),
+    path("api/player-enrollments/game-roles/<int:tournament_id>/team-notes/", GameRoleTeamNotesView.as_view()),
     path("api/player-enrollments/players/", EnrollmentPlayersView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/deletion-preview/", EnrollmentTeamDeletionView.as_view()),
     path("api/player-enrollments/teams/<int:pk>/delegate/", EnrollmentDelegateView.as_view()),

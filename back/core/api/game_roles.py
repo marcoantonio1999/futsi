@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api.enrollments import EnrollmentStaffPermission, enrollment_sites
-from core.models import GameRoleCross, GameRoleRound, Team, Tournament
+from core.models import GameRoleTeamNote, Team, Tournament
 
 
 class RoundInput(serializers.Serializer):
@@ -45,13 +45,56 @@ def tournament_crosses(tournament):
     return tournament.game_role_crosses.filter(home_team__tournament=tournament, away_team__tournament=tournament)
 
 
-class GameRoleMatrixView(APIView):
+def team_notes(tournament):
+    return list(tournament.game_role_team_notes.filter(team__tournament=tournament)
+                .order_by("team__name", "weekday", "pk")
+                .values("id", "kind", "team_id", "round_id", "weekday", "starts_at", "ends_at", "note"))
+
+
+class TeamNoteInput(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=GameRoleTeamNote.Kind.choices)
+    team_id = serializers.IntegerField(min_value=1)
+    round_id = serializers.IntegerField(min_value=1, default=None, allow_null=True)
+    weekday = serializers.IntegerField(min_value=0, max_value=6, default=None, allow_null=True)
+    starts_at = serializers.TimeField(input_formats=["%H:%M"], default=None, allow_null=True)
+    ends_at = serializers.TimeField(input_formats=["%H:%M"], default=None, allow_null=True)
+    note = serializers.CharField(max_length=300, default="", allow_blank=True)
+
+    def validate(self, data):
+        start, end = data["starts_at"], data["ends_at"]
+        if (start is None) != (end is None) or (start is not None and end <= start):
+            raise ValidationError("Indica un rango completo con hora de fin posterior a la de inicio.")
+        if data["kind"] == GameRoleTeamNote.Kind.PERMIT:
+            if data["round_id"] is None or data["weekday"] is not None or start is not None:
+                raise ValidationError("Selecciona la jornada a la que corresponde el permiso.")
+        elif data["weekday"] is None or data["round_id"] is not None:
+            raise ValidationError("Selecciona un día de la semana para la sugerencia de horario.")
+        return data
+
+
+class GameRoleView(APIView):
     permission_classes = [EnrollmentStaffPermission]
 
     def tournament(self, request, tournament_id, lock=False):
         rows = Tournament.objects.filter(site__in=enrollment_sites(request.user))
         return get_object_or_404(rows.select_for_update() if lock else rows, pk=tournament_id)
 
+
+class GameRoleTeamNotesView(GameRoleView):
+    @transaction.atomic
+    def post(self, request, tournament_id):
+        tournament = self.tournament(request, tournament_id, lock=True)
+        serializer = TeamNoteInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        get_object_or_404(tournament.teams.select_for_update(), pk=data["team_id"])
+        if data["round_id"] is not None:
+            get_object_or_404(tournament.game_role_rounds, pk=data["round_id"])
+        tournament.game_role_team_notes.get_or_create(**data)
+        return Response({"team_notes": team_notes(tournament)})
+
+
+class GameRoleMatrixView(GameRoleView):
     def matrix(self, tournament):
         teams = list(tournament.teams.order_by("name", "pk").values("id", "name", "is_active"))
         rounds = list(tournament.game_role_rounds.order_by("number").values("id", "number", "starts_on"))
@@ -59,7 +102,7 @@ class GameRoleMatrixView(APIView):
                        .values("home_team_id", "away_team_id", "round_id", "scheduled_on", "starts_at", "ends_at", "played"))
         return Response({
             "teams": teams, "rounds": rounds, "crosses": crosses,
-            "starts_on": tournament.starts_on, "schedule_enabled": True,
+            "starts_on": tournament.starts_on, "schedule_enabled": True, "team_notes": team_notes(tournament),
         })
 
     def get(self, request, tournament_id):

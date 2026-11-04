@@ -370,6 +370,37 @@ class GameRoleCross(TimestampedModel):
         ]
 
 
+class GameRoleTeamNote(TimestampedModel):
+    class Kind(models.TextChoices):
+        PERMIT = "permit", "Permiso"
+        PREFERRED = "preferred", "Horario preferido"
+        UNAVAILABLE = "unavailable", "Horario no disponible"
+
+    tournament = models.ForeignKey(Tournament, on_delete=models.CASCADE, related_name="game_role_team_notes")
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="game_role_notes")
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    round = models.ForeignKey(GameRoleRound, on_delete=models.CASCADE, null=True, blank=True)
+    weekday = models.PositiveSmallIntegerField(null=True, blank=True)
+    starts_at = models.TimeField(null=True, blank=True)
+    ends_at = models.TimeField(null=True, blank=True)
+    note = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        db_table = "game_role_team_notes"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(kind="permit", round__isnull=False, weekday__isnull=True, starts_at__isnull=True, ends_at__isnull=True)
+                | Q(kind__in=["preferred", "unavailable"], round__isnull=True, weekday__isnull=False, weekday__lte=6),
+                name="ck_game_role_team_note_kind",
+            ),
+            models.CheckConstraint(
+                condition=Q(starts_at__isnull=True, ends_at__isnull=True)
+                | Q(starts_at__isnull=False, ends_at__isnull=False, ends_at__gt=models.F("starts_at")),
+                name="ck_game_role_team_note_hours",
+            ),
+        ]
+
+
 class Match(TimestampedModel):
     tournament = models.ForeignKey(Tournament, on_delete=models.PROTECT, related_name="matches")
     round = models.ForeignKey(Round, null=True, blank=True, on_delete=models.PROTECT, related_name="matches")
