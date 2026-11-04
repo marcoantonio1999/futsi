@@ -133,7 +133,9 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
                   data-played={Boolean(current?.played)}
                   aria-label={`${home.name} local, ${away.name} visitante, ${round ? "jornada " + round.number + ", " : ""}${status}`}
                   onClick={() => setEditor({ kind: "cross", home, away, current })}>
-                  {round && <small>J{round.number}</small>}
+                  {round && (current?.played
+                    ? <strong>Jornada {round.number}</strong>
+                    : <small>J{round.number}</small>)}
                   {current?.played ? <span>✓ Jugado</span> : day ? <>
                     <span>{shortDate.format(day)}</span><span className="game-roles-time">{range}</span>
                   </> : <span className="game-roles-unassigned">×</span>}

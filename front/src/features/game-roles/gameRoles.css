@@ -4,6 +4,7 @@
 }
 
 .game-roles-workspace {
+  --game-roles-round-color: #1246a0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(190px, 235px);
   grid-template-areas: "matrix rounds";
@@ -39,18 +40,18 @@
 }
 
 .enrollment-page .game-roles-workspace .game-roles-round-list button[aria-pressed="true"] {
-  background: #1246a0 !important;
-  border-color: #1246a0 !important;
+  background: var(--game-roles-round-color) !important;
+  border-color: var(--game-roles-round-color) !important;
   color: white !important;
 }
 
 .game-roles-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0; margin: 12px 0; list-style: none; font-size: 13px; }
 .game-roles-legend li { display: flex; align-items: center; gap: 5px; }
 .game-roles-legend b { padding: 1px 4px; border-radius: 4px; }
-.game-roles-played-key { color: white; background: #205840; }
-.game-roles-selected-key { outline: 2px solid #1246a0; color: #1246a0; }
+.game-roles-played-key { color: white; background: var(--game-roles-round-color); }
+.game-roles-selected-key { outline: 2px solid var(--game-roles-round-color); color: var(--game-roles-round-color); }
 
-.game-roles-selection strong { color: #1246a0; }
+.game-roles-selection strong { color: var(--game-roles-round-color); }
 .game-roles-grid-scroll {
   max-width: 100%;
   max-height: 66dvh;
@@ -93,16 +94,16 @@
 .game-roles-cell small, .game-roles-time { font-size: 11px; white-space: nowrap; }
 .game-roles-cell .game-roles-unassigned { font-size: 20px; }
 .enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-highlighted="true"] {
-  border-color: #1246a0 !important;
-  box-shadow: inset 0 0 0 1px #1246a0;
+  border-color: var(--game-roles-round-color) !important;
+  box-shadow: inset 0 0 0 1px var(--game-roles-round-color);
 }
 .enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-played="true"] {
-  background: #205840 !important;
+  background: var(--game-roles-round-color) !important;
+  border-color: var(--game-roles-round-color) !important;
   color: white !important;
 }
 .enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-played="true"][data-highlighted="true"] {
-  border-color: #a5c8fc !important;
-  box-shadow: inset 0 0 0 1px #a5c8fc;
+  box-shadow: inset 0 0 0 2px white;
 }
 
 .game-roles-dialog {
