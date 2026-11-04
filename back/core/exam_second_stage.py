@@ -36,11 +36,16 @@ def phone_access_digest(name, phone, salt, mode='name_phone'):
     return hashlib.sha256(bytes.fromhex(salt) + payload).hexdigest()
 
 
-def phone_access_grant(name, phone='', *, name_only=False):
+def phone_access_grant(name, phone='', *, name_only=False, aliases=()):
     """Private, one-participant authorization; do not expose contacts in source code."""
     salt = secrets.token_hex(16)
     mode = 'name_only' if name_only else 'name_phone'
-    return {'version': 1, 'mode': mode, 'salt': salt, 'digest': phone_access_digest(name, phone, salt, mode)}
+    if not isinstance(aliases, (tuple, list)) or len(aliases) > 5:
+        raise ValueError('Invalid name variants')
+    digest = phone_access_digest(name, phone, salt, mode)
+    alternatives = list(dict.fromkeys(phone_access_digest(alias, phone, salt, mode) for alias in aliases))
+    return {'version': 1, 'mode': mode, 'salt': salt, 'digest': digest,
+            'alternate_digests': [value for value in alternatives if value != digest]}
 
 
 def matches_phone_access(snapshot, name, phone):
@@ -49,9 +54,13 @@ def matches_phone_access(snapshot, name, phone):
         return False
     try:
         salt, digest = access['salt'], access['digest']
-        if not isinstance(salt, str) or len(salt) != 32 or not isinstance(digest, str) or len(digest) != 64:
+        alternatives = access.get('alternate_digests', [])
+        if (not isinstance(salt, str) or len(salt) != 32 or not isinstance(digest, str) or len(digest) != 64
+                or not isinstance(alternatives, list) or len(alternatives) > 5
+                or any(not isinstance(value, str) or len(value) != 64 for value in alternatives)):
             return False
-        return hmac.compare_digest(phone_access_digest(name, phone, salt, access.get('mode', 'name_phone')), digest)
+        candidate = phone_access_digest(name, phone, salt, access.get('mode', 'name_phone'))
+        return any(hmac.compare_digest(candidate, value) for value in [digest, *alternatives])
     except (KeyError, TypeError, ValueError):
         return False
 

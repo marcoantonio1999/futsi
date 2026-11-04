@@ -228,6 +228,21 @@ def test_phone_exception_and_email_share_one_attempt(auth_client):
     assert start_second(second, email='persona@example.invalid').status_code == 409
 
 
+@pytest.mark.parametrize('entered_name', ['Persona Evelin Ficticia', 'Persona Evilin Ficticia'])
+def test_authorized_name_variants_still_require_the_correct_phone(auth_client, entered_name):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam, name='Persona Evilin Ficticia', email='antes@example.invalid', phone='5510000010')
+    first.snapshot['second_stage_phone_access'] = phone_access_grant(
+        'Persona Evilin Ficticia', '5510000010', aliases=['Persona Evelin Ficticia'])
+    first.save(update_fields=['snapshot'])
+    assert start_second_by_phone(second, entered_name, '5510000011').status_code == 403
+    response = start_second_by_phone(second, entered_name, '5510000010')
+    assert response.status_code == 201, response.content
+    child = RecruitmentExamAttempt.objects.get(access_token=response.json()['access_token'])
+    assert child.first_stage_attempt_id == first.id and not child.snapshot.get('second_stage_identity_review')
+
+
 def test_second_stage_uses_email_only_even_when_names_or_phones_differ(auth_client):
     admin, _, _ = auth_client(); exam = first_exam(admin); second = exam['second_stage']
     first = submit_first(exam)

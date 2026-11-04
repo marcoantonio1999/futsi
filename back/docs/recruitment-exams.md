@@ -119,6 +119,8 @@ prefijo mexicano. No publica la lista ni exige correo nuevo. La segunda entrega 
 vinculada al resultado anterior y conserva su calificación; si el resultado histórico
 no tenía teléfono, el dato capturado se muestra desde la segunda entrega. Estas
 coincidencias no sustituyen la verificación humana de identidad.
+En casos confirmados, Recursos Humanos puede autorizar variantes concretas del nombre
+con el mismo teléfono sin duplicar ni cambiar la evaluación histórica.
 Si no existe un teléfono histórico completo, una excepción específica puede vincular
 por nombre único y capturar el teléfono actual; el resultado y el Excel lo marcan
 como identidad por verificar, sin presentar el teléfono como cotejado.
