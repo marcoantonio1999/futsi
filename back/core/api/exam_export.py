@@ -100,11 +100,11 @@ class ExamExportView(APIView):
                           'Estado segunda fase', 'Total / 30', 'Filtro sugerido',
                           'Proactividad / 10', 'Respuesta proactividad', 'Justificación proactividad',
                           'Responsabilidad / 10', 'Respuesta responsabilidad', 'Justificación responsabilidad',
-                          'Comercial / 10', 'Respuesta comercial', 'Justificación comercial', 'Requiere revisión']
+                          'Comercial / 10', 'Respuesta comercial', 'Justificación comercial', 'Requiere revisión', 'Identidad por verificar']
         if second_sheet:
             second_sheet.freeze_panes = 'C2'
             second_sheet.row_dimensions[1].height = 34
-            for i, width in enumerate([20, 32, 18, 18, 26, 28, 18, 26, 20, 65, 65, 22, 65, 65, 20, 65, 65, 22], 1):
+            for i, width in enumerate([20, 32, 18, 18, 26, 28, 18, 26, 20, 65, 65, 22, 65, 65, 20, 65, 65, 22, 24], 1):
                 second_sheet.column_dimensions[get_column_letter(i)].width = width
             append_row(second_sheet, second_headers, header=True)
         result_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Correo', 'Teléfono', 'Fecha del examen (CDMX)',
@@ -169,7 +169,8 @@ class ExamExportView(APIView):
                     {'eligible': 'Entregada', 'incomplete': 'Sin entregar'}[stage['status']],
                     stage_status, total['total'] if total else None,
                     ('Cumple' if total['meets_suggested_priority'] else 'No alcanza') if total else '',
-                    *details, 'Sí' if child_grade.get('review') else 'No' if total else ''])
+                    *details, 'Sí' if child_grade.get('review') else 'No' if total else '',
+                    'Sí' if child and child.snapshot.get('second_stage_identity_review') else 'No' if child else ''])
             # Unsubmitted drafts are not delivered answers and must not be exported.
             if not submitted:
                 continue

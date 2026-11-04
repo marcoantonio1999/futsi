@@ -3,7 +3,7 @@ import type { Question } from './ExamQuestionEditor';
 import type { Grading } from './ExamAnswerKey';
 
 export type SecondExam = { id: number; title: string; public_token: string; duration_minutes: number; accepting: boolean };
-export type SecondAttempt = { submitted_at: string | null; grading_status?: string; grading?: Grading;
+export type SecondAttempt = { submitted_at: string | null; name?: string; email?: string; phone?: string; identity_review?: boolean; grading_status?: string; grading?: Grading;
   snapshot: { questions: Question[] }; answers: Record<string, number | string>;
   complementary_grade?: { total: number; scale: number; meets_suggested_priority: boolean } | null };
 export type SecondProgress = { status: 'eligible' | 'incomplete'; management: number | null; sales: number | null; attempt: SecondAttempt | null };
@@ -23,7 +23,7 @@ export function SecondStageControls({ stage, link, busy, onToggle, onGrade, onCo
     {!stage ? <p role="status">Preparando el segundo enlace. Actualiza la página en unos momentos.</p> : <>
       <span className="exam-tag">{stage.accepting ? 'Segundo enlace abierto' : 'Segundo enlace cerrado'} · {stage.duration_minutes} min</span>
       <label>Enlace de la segunda fase<input readOnly value={link} onFocus={e => e.currentTarget.select()} /></label>
-      <p className="exam-muted">Comparte este enlace. El candidato solo necesita el mismo correo de la primera fase.</p>
+      <p className="exam-muted">Comparte este enlace. Los candidatos usan el correo de la primera fase; quienes tengan una autorización especial también pueden usar nombre y teléfono.</p>
       <label>Duración de la segunda fase (minutos)<input type="number" min={1} max={480} value={minutes} onChange={e => setMinutes(Number(e.target.value))} /></label>
       <div className="exam-actions"><button type="button" disabled={busy || !Number.isInteger(minutes) || minutes < 1 || minutes > 480 || minutes === stage.duration_minutes} onClick={() => onDuration(minutes)}>Guardar duración</button></div>
       <p className="exam-muted">La duración nueva aplica a quienes inicien después de guardarla; no cambia exámenes en curso.</p>
@@ -41,6 +41,7 @@ export function SecondStageStatus({ progress }: { progress?: SecondProgress }) {
   return <div className="exam-second-status">
     <span>{progress.status === 'eligible' ? 'Primera fase entregada' : 'Primera fase sin entregar'}</span>
     <small>Gestión: {score(progress.management)}<br />Ventas: {score(progress.sales)}</small>
+    {a?.identity_review && <small className="exam-late">Vinculada por nombre: verificar identidad</small>}
     {a ? <strong>{!a.submitted_at ? 'En curso' : a.complementary_grade ? `${a.complementary_grade.total} / 30` : a.grading_status === 'error' ? 'Error al calificar' : 'Entregado · pendiente de calificar'}</strong> : progress.status === 'eligible' ? <span>Segunda fase sin iniciar</span> : null}
   </div>;
 }

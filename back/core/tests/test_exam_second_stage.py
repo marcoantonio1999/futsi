@@ -7,7 +7,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from core.exam_models import RecruitmentExam, RecruitmentExamAttempt
-from core.exam_second_stage import KEY, QUESTIONS, eligibility
+from core.exam_second_stage import KEY, QUESTIONS, eligibility, phone_access_grant
 from core.tests.test_recruitment_exams import create_exam, start
 
 pytestmark = pytest.mark.django_db
@@ -146,6 +146,86 @@ def test_ambiguous_email_and_unknown_email_denied(auth_client):
     first.pk = None; first.start_key = uuid.uuid4(); first.access_token = 'historic-duplicate'; first.phone = '5500000001'; first.save(force_insert=True)
     assert start_second(second).status_code == 403
     assert RecruitmentExamAttempt.objects.filter(exam_id=second['id']).count() == 0
+
+
+def start_second_by_phone(exam, name, phone):
+    return APIClient().post(f'/api/public-exams/{exam["public_token"]}/', {
+        'start_key': str(uuid.uuid4()), 'identity_method': 'phone',
+        'name': name, 'phone': phone, 'consent': True,
+    }, format='json')
+
+
+def test_authorized_historical_candidates_use_name_and_phone_without_email(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam, name='Persona Histórica Uno', email='uno@example.invalid', phone='5510000001')
+    other = submit_first(exam, name='Persona Histórica Dos', email='dos@example.invalid', phone='5510000002')
+    unapproved = submit_first(exam, name='Persona Sin Autorización', email='tres@example.invalid', phone='5510000003')
+    for row, name, phone in [(first, 'Persona Histórica Uno', '5510000001'), (other, 'Persona Histórica Dos', '5510000002')]:
+        snapshot = {**row.snapshot, 'offline_import': {'source': 'xlsx_results'},
+                    'second_stage_phone_access': phone_access_grant(name, phone)}
+        RecruitmentExamAttempt.objects.filter(pk=row.pk).update(email='', phone='', identity_email='', identity_phone='', snapshot=snapshot)
+    info = APIClient().get(f'/api/public-exams/{second["public_token"]}/').json()
+    assert info['phone_access'] is True and 'teléfono' in info['instructions']
+    assert 'Persona Histórica' not in str(info) and 'digest' not in str(info)
+    assert start_second_by_phone(second, 'Persona Histórica Uno', '5510000099').status_code == 403
+    assert start_second_by_phone(second, 'Persona Sin Autorización', '5510000003').status_code == 403
+    result = start_second_by_phone(second, ' UNO HISTORICA   PERSONA ', '+52 55 1000 0001')
+    assert result.status_code == 201, result.content
+    child = RecruitmentExamAttempt.objects.get(access_token=result.json()['access_token'])
+    assert child.first_stage_attempt_id == first.id and child.email == '' and child.identity_phone == '5510000001'
+    assert start_second_by_phone(second, 'Persona Histórica Uno', '5510000001').status_code == 409
+    # A second email-less historical participant must not collide with the first.
+    result2 = start_second_by_phone(second, 'Persona Histórica Dos', '5510000002')
+    assert result2.status_code == 201, result2.content
+    assert RecruitmentExamAttempt.objects.get(access_token=result2.json()['access_token']).first_stage_attempt_id == other.id
+    assert not RecruitmentExamAttempt.objects.filter(first_stage_attempt=unapproved).exists()
+
+
+def test_name_only_exception_captures_phone_and_flags_identity_for_review(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam, name='Persona Sin Teléfono', email='antes@example.invalid', phone='5510000030')
+    snapshot = {**first.snapshot, 'offline_import': {'source': 'xlsx_results'},
+                'second_stage_phone_access': phone_access_grant('Persona Sin Teléfono', name_only=True)}
+    RecruitmentExamAttempt.objects.filter(pk=first.pk).update(email='', phone='', identity_email='', identity_phone='', snapshot=snapshot)
+    assert start_second_by_phone(second, 'Persona Distinta', '5510000031').status_code == 403
+    response = start_second_by_phone(second, 'Telefono Persona Sin', '5510000031')
+    assert response.status_code == 201, response.content
+    child = RecruitmentExamAttempt.objects.get(access_token=response.json()['access_token'])
+    assert child.first_stage_attempt_id == first.id and child.phone == '5510000031'
+    assert child.snapshot['second_stage_identity_review'] is True
+    row = next(row for row in admin.get(f'/api/recruitment-exams/{exam["id"]}/').json()['results'] if row['id'] == first.id)
+    assert row['second_stage']['attempt']['identity_review'] is True
+    from core.tests.test_exam_export import book
+    exported = list(book(admin.get('/api/recruitment-exams/export/', {'exam': exam['id']}))['Segunda fase'].values)
+    assert dict(zip(exported[0], exported[1]))['Identidad por verificar'] == 'Sí'
+
+
+def test_phone_access_requires_unique_grant_and_first_delivery(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    started = start(exam, name='Persona Pendiente', email='pendiente@example.invalid', phone='5510000004')
+    first = RecruitmentExamAttempt.objects.get(access_token=started.json()['access_token'])
+    first.snapshot['second_stage_phone_access'] = phone_access_grant('Persona Pendiente', '5510000004')
+    first.save(update_fields=['snapshot'])
+    assert start_second_by_phone(second, 'Persona Pendiente', '5510000004').status_code == 403
+    first.submitted_at = first.started_at; first.save(update_fields=['submitted_at'])
+    duplicate = submit_first(exam, name='Otra Persona', email='otra@example.invalid', phone='5510000005')
+    duplicate.snapshot['second_stage_phone_access'] = first.snapshot['second_stage_phone_access']
+    duplicate.save(update_fields=['snapshot'])
+    assert start_second_by_phone(second, 'Persona Pendiente', '5510000004').status_code == 403
+    assert RecruitmentExamAttempt.objects.filter(exam_id=second['id']).count() == 0
+
+
+def test_phone_exception_and_email_share_one_attempt(auth_client):
+    admin, _, _ = auth_client()
+    exam = first_exam(admin); second = exam['second_stage']
+    first = submit_first(exam, name='Persona Autorizada', email='persona@example.invalid', phone='5510000006')
+    first.snapshot['second_stage_phone_access'] = phone_access_grant('Persona Autorizada', '5510000006')
+    first.save(update_fields=['snapshot'])
+    assert start_second_by_phone(second, 'Persona Autorizada', '5510000006').status_code == 201
+    assert start_second(second, email='persona@example.invalid').status_code == 409
 
 
 def test_second_stage_uses_email_only_even_when_names_or_phones_differ(auth_client):

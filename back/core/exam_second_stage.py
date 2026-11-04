@@ -1,8 +1,12 @@
 """Complementary evaluation and conservative linking to the first attempt."""
 import json
+import hashlib
+import hmac
+import secrets
 from functools import lru_cache
 from pathlib import Path
 
+from core.exam_identity import exam_name, exam_phone
 from core.exam_skills import SKILLS, attempt_skills, signature
 
 QUESTIONS = [
@@ -23,6 +27,33 @@ KEY = {
     '3': 'Habilidad comercial y persuasión por WhatsApp: máximo 2 puntos por empatía y trato amable ante la objeción; máximo 3 por destacar beneficios sin inventar información; máximo 3 por iniciativa para avanzar hacia clase muestra o inscripción; máximo 2 por seguimiento adecuado si no hay respuesta.' + GENERAL,
 }
 LABELS = {'1': 'Proactividad', '2': 'Responsabilidad y constancia', '3': 'Habilidad comercial por WhatsApp'}
+
+
+def phone_access_digest(name, phone, salt, mode='name_phone'):
+    if mode not in {'name_phone', 'name_only'}:
+        raise ValueError('Unknown matching mode')
+    payload = (exam_name(name) + '\x1f' + (exam_phone(phone) if mode == 'name_phone' else '')).encode('utf-8')
+    return hashlib.sha256(bytes.fromhex(salt) + payload).hexdigest()
+
+
+def phone_access_grant(name, phone='', *, name_only=False):
+    """Private, one-participant authorization; do not expose contacts in source code."""
+    salt = secrets.token_hex(16)
+    mode = 'name_only' if name_only else 'name_phone'
+    return {'version': 1, 'mode': mode, 'salt': salt, 'digest': phone_access_digest(name, phone, salt, mode)}
+
+
+def matches_phone_access(snapshot, name, phone):
+    access = snapshot.get('second_stage_phone_access') if isinstance(snapshot, dict) else None
+    if not isinstance(access, dict) or access.get('version') != 1:
+        return False
+    try:
+        salt, digest = access['salt'], access['digest']
+        if not isinstance(salt, str) or len(salt) != 32 or not isinstance(digest, str) or len(digest) != 64:
+            return False
+        return hmac.compare_digest(phone_access_digest(name, phone, salt, access.get('mode', 'name_phone')), digest)
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 @lru_cache(maxsize=1)

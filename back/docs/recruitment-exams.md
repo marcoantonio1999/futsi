@@ -111,6 +111,18 @@ La coincidencia de correo vincula las etapas, pero no verifica la identidad civi
 reemplaza una autenticación individual; una persona que conozca el correo podría
 intentar usarlo. Las respuestas anteriores no se muestran por el enlace público.
 
+Cuando Recursos Humanos autoriza una excepción concreta para un resultado anterior,
+el mismo segundo enlace también ofrece identificación por nombre completo y teléfono.
+La excepción solo funciona para los registros expresamente autorizados, con coincidencia
+única de nombre y teléfono; admite cambios de mayúsculas, acentos, orden de nombres y
+prefijo mexicano. No publica la lista ni exige correo nuevo. La segunda entrega queda
+vinculada al resultado anterior y conserva su calificación; si el resultado histórico
+no tenía teléfono, el dato capturado se muestra desde la segunda entrega. Estas
+coincidencias no sustituyen la verificación humana de identidad.
+Si no existe un teléfono histórico completo, una excepción específica puede vincular
+por nombre único y capturar el teléfono actual; el resultado y el Excel lo marcan
+como identidad por verificar, sin presentar el teléfono como cotejado.
+
 El segundo examen contiene las tres preguntas y rúbricas acordadas: proactividad;
 responsabilidad, constancia y trabajo; y persuasión por WhatsApp. Su clave se guarda
 en privado y se fija en cada intento. La calificación solo se solicita al pulsar

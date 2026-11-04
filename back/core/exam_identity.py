@@ -7,6 +7,12 @@ def exam_email(value):
     return unicodedata.normalize('NFC', value.strip()).casefold()
 
 
+def exam_name(value):
+    decomposed = unicodedata.normalize('NFKD', value.casefold())
+    # Historical files sometimes place surnames before given names.
+    return ' '.join(sorted(''.join(c for c in decomposed if not unicodedata.combining(c)).split()))
+
+
 def exam_phone(value):
     digits = re.sub(r'[^0-9]', '', value)
     # Mexican local, international +52 and legacy mobile +521 are equivalent.
