@@ -20,6 +20,7 @@ const PublicPlayerEnrollment = lazy(() => import("./features/enrollments/PlayerE
 const PublicPlayerWithdrawal = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerWithdrawal })));
 const EnrollmentDashboard = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentDashboard })));
 const EnrollmentLogin = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentLogin })));
+const EnrollmentAccessDenied = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentAccessDenied })));
 const ExamPortal = lazy(() => import('./features/exams/ExamPortal'));
 const PublicEmploymentForm = lazy(() => import('./features/exams/EmploymentForms').then(module => ({default:module.PublicEmploymentForm})));
 const PublicExam = lazy(() => import('./features/exams/ExamPortal').then(module => ({ default: module.PublicExam })));
@@ -101,6 +102,10 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   const enrollmentOnly = currentUser.section_permissions?.includes("player_enrollments_only") ?? false;
   if (!isSoccerWa && (enrollmentOnly || (enrollmentAdmin && ["admin", "owner", "dev"].includes(currentUser.role)))) {
     return <Suspense fallback={<AppSkeleton />}><EnrollmentDashboard userId={currentUser.id} token={token} onLogout={logout} restricted={enrollmentOnly} /></Suspense>;
+  }
+
+  if (!isSoccerWa && enrollmentAdmin) {
+    return <Suspense fallback={<AppSkeleton />}><EnrollmentAccessDenied onLogout={logout} /></Suspense>;
   }
 
   if (isSoccerWa && !canUseSoccerWa(currentUser)) {

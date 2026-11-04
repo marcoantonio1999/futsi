@@ -76,6 +76,21 @@ export function EnrollmentLogin({ onLogin }: { onLogin: (token: string, user: Us
   </Card></main>;
 }
 
+export function EnrollmentAccessDenied({ onLogout }: { onLogout: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { document.title = "Inscripciones BPower"; }, []);
+
+  return <main className="enrollment-page"><Card as="section" className="registration-sheet" style={{ maxWidth: 440, marginTop: 60 }}>
+    <div className="enrollment-login-brand"><EnrollmentBrand /></div>
+    <h1>Sin acceso a Inscripciones</h1>
+    <p>Esta cuenta no tiene permiso para entrar. Cambia a tu cuenta de Inscripciones para continuar.</p>
+    <Button className="primary" disabled={busy} onClick={async () => {
+      setBusy(true);
+      await onLogout();
+    }}>{busy ? "Cerrando sesión…" : "Cambiar de cuenta"}</Button>
+  </Card></main>;
+}
+
 export function under18(date: string, today = new Date()) {
   if (!date) return false;
   const [year, month, day] = date.split("-").map(Number);
