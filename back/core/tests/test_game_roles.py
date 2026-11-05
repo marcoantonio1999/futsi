@@ -103,12 +103,16 @@ class GameRoleMatrixTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(len(response.json()["matches"]), 1)
+        self.assertEqual(response.json()["scoring"], [])
         self.assertNotIn("team_notes", response.json())
         self.assertNotIn("home_goals", response.json()["matches"][0])
         self.assertEqual(public.get(path.rstrip("/") + "x/").status_code, 404)
         self.assertEqual(public.get(self.url + f"rounds/{first['id']}/share/").status_code, 401)
-        self.set_cross(second["id"], schedule={**schedule, "scheduled_on": "2026-11-15"})
-        self.assertEqual(public.get(path).json()["matches"], [])
+        self.set_cross(second["id"], schedule={**schedule, "scheduled_on": "2026-11-15"}, played=True,
+                       score={"home_goals": 3, "away_goals": 1})
+        updated = public.get(path).json()
+        self.assertEqual(updated["matches"], [])
+        self.assertEqual(updated["scoring"], [{"team": self.home.name, "goals": 3}, {"team": self.away.name, "goals": 1}])
 
     def test_standings_rank_final_scores_by_points_difference_and_goals(self):
         round_id = self.add_round()["id"]

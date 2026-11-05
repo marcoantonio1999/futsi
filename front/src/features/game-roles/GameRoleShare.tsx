@@ -8,6 +8,7 @@ type Match = {
   home_team__name: string; away_team__name: string;
 };
 type Schedule = { tournament: string; site: string; number: number; starts_on: string; matches: Match[] };
+type PublicSchedule = Schedule & { scoring?: { team: string; goals: number }[] };
 const dayLabel = new Intl.DateTimeFormat("es-MX", {
   weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
 });
@@ -24,20 +25,30 @@ function scheduleDays(schedule: Schedule) {
   return [...days];
 }
 
-function ScheduleSheet({ schedule }: { schedule: Schedule }) {
-  const days = scheduleDays(schedule);
-  return <article className="game-role-sheet">
-    <header><small>FUTSI · ROL DE JUEGO</small><h1>Jornada {schedule.number}</h1>
-      <p>{schedule.tournament} · {schedule.site}</p></header>
-    {!days.length && <p className="game-role-sheet-empty">Todavía no hay partidos programados para esta jornada.</p>}
-    {days.map(([day, matches]) => <section key={day}>
+function MatchDays({ schedule }: { schedule: Schedule }) {
+  return scheduleDays(schedule).map(([day, matches]) => <section key={day}>
       <h2>{dayName(day)}</h2>
       <ul>{matches.map((match, index) => <li key={index}>
         <strong>{timeRange(match)}</strong>
         <span>{match.home_team__name} <small>vs.</small> {match.away_team__name}</span>
         {match.played && <small>Jugado</small>}
       </li>)}</ul>
-    </section>)}
+    </section>);
+}
+
+function ScheduleSheet({ schedule, publicView = false }: { schedule: Schedule; publicView?: boolean }) {
+  const upcoming = publicView ? schedule.matches.filter(match => !match.played) : schedule.matches;
+  const played = publicView ? schedule.matches.filter(match => match.played) : [];
+  return <article className="game-role-sheet">
+    <header><small>FUTSI · ROL DE JUEGO</small><h1>Jornada {schedule.number}</h1>
+      <p>{schedule.tournament} · {schedule.site}</p></header>
+    {publicView && <h2 className="game-role-public-heading">Próximos partidos</h2>}
+    {!upcoming.length && <p className="game-role-sheet-empty">Todavía no hay {publicView ? "próximos partidos" : "partidos programados"} para esta jornada.</p>}
+    <MatchDays schedule={{ ...schedule, matches: upcoming }} />
+    {played.length > 0 && <>
+      <h2 className="game-role-public-heading">Partidos jugados</h2>
+      <MatchDays schedule={{ ...schedule, matches: played }} />
+    </>}
   </article>;
 }
 
@@ -166,7 +177,7 @@ export function GameRoleShare({ path, token, onClose }: { path: string; token: s
 }
 
 export function PublicGameRole({ token }: { token: string }) {
-  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [schedule, setSchedule] = useState<PublicSchedule | null>(null);
   const [status, setStatus] = useState("Cargando rol de juego…");
   useEffect(() => {
     document.title = "Rol de juego | Futsi";
@@ -185,7 +196,7 @@ export function PublicGameRole({ token }: { token: string }) {
           return;
         }
         if (!response.ok) throw new Error();
-        const result: Schedule = await response.json();
+        const result: PublicSchedule = await response.json();
         if (!controller.signal.aborted) { setSchedule(result); setStatus(""); }
       } catch {
         if (!controller.signal.aborted) setStatus("No se pudo consultar el rol. Se volverá a intentar.");
@@ -204,7 +215,18 @@ export function PublicGameRole({ token }: { token: string }) {
     };
   }, [token]);
   return <main className="game-role-public">
-    {schedule && <ScheduleSheet schedule={schedule} />}
+    {schedule && <>
+      <ScheduleSheet schedule={schedule} publicView />
+      <section className="game-role-sheet game-role-public-scoring">
+        <h2 className="game-role-public-heading">Tabla de goleo</h2>
+        <table>
+          <thead><tr><th scope="col">Pos.</th><th scope="col">Equipo</th><th scope="col">Goles</th></tr></thead>
+          <tbody>{schedule.scoring?.length ? schedule.scoring.map((row, index) => <tr key={index}>
+            <td>{index + 1}</td><th scope="row">{row.team}</th><td>{row.goals}</td>
+          </tr>) : <tr><td colSpan={3}>Todavía no hay marcadores registrados.</td></tr>}</tbody>
+        </table>
+      </section>
+    </>}
     {status && <p role="status">{status}</p>}
   </main>;
 }

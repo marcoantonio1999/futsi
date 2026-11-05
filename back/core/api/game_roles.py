@@ -123,6 +123,17 @@ def round_schedule(round_row):
     }
 
 
+def public_scoring(tournament):
+    results = tournament_crosses(tournament).filter(
+        played=True, home_goals__isnull=False, away_goals__isnull=False,
+    ).order_by().values_list("home_team_id", "away_team_id", "home_goals", "away_goals")
+    standings = build_standings(tournament.teams.values_list("pk", "name", "tournament_id"), results)
+    return [
+        {"team": row["team_name"], "goals": row["goals_for"]}
+        for row in sorted(standings, key=lambda row: -row["goals_for"]) if row["played"]
+    ]
+
+
 class GameRoleShareView(GameRoleView):
     def get(self, request, tournament_id, round_id):
         tournament = self.tournament(request, tournament_id)
@@ -141,7 +152,8 @@ class PublicGameRoleView(APIView):
         except (signing.BadSignature, ValueError):
             raise Http404 from None
         round_row = get_object_or_404(GameRoleRound.objects.select_related("tournament__site"), pk=round_id)
-        return Response(round_schedule(round_row), headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+        return Response({**round_schedule(round_row), "scoring": public_scoring(round_row.tournament)},
+                        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
 class GameRoleMatrixView(GameRoleView):

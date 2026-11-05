@@ -12,6 +12,11 @@
 .game-role-sheet li { display: grid; gap: 4px 12px; grid-template-columns: auto minmax(0, 1fr); padding: 10px 0; border-top: 1px solid #e3ebe6; }
 .game-role-sheet li > small { grid-column: 2; }
 .game-role-sheet-empty { padding: 16px; }
+.game-role-sheet .game-role-public-heading { padding: 16px 14px 0; font-size: 19px; text-transform: none; }
+.game-role-public-scoring { margin-top: 16px; }
+.game-role-public-scoring table { width: 100%; text-align: left; }
+.game-role-public-scoring :is(th, td) { padding: 10px 14px; border-top: 1px solid #e3ebe6; }
+.game-role-public-scoring th[scope="row"] { overflow-wrap: anywhere; }
 .game-role-share-dialog { width: min(560px, calc(100vw - 24px)); }
 .enrollment-page .game-role-share-action { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; border-radius: 8px; background: #174734; color: white; }
 @media (max-width: 370px) {
