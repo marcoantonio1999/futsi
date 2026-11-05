@@ -87,6 +87,28 @@ class GameRoleMatrixTests(TestCase):
         outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/team-notes/"
         self.assertEqual(self.client.post(outside, permit, format="json").status_code, 404)
 
+    def test_standings_rank_final_scores_by_points_difference_and_goals(self):
+        round_id = self.add_round()["id"]
+        other_teams = [Team.objects.create(tournament=self.tournament, name=name)
+                       for name in ("Rojos", "Azules", "Verdes", "Amarillos")]
+        third, fourth, fifth, sixth = other_teams
+        for home, away, goals in [
+            (self.home, fourth, (3, 1)), (self.away, fifth, (2, 0)), (third, sixth, (1, 0)),
+            (fourth, sixth, (0, 0)),
+        ]:
+            response = self.set_cross(round_id, home, away, played=True,
+                                      score={"home_goals": goals[0], "away_goals": goals[1]})
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.set_cross(round_id, self.away, third, played=True).status_code, 200)
+        self.assertEqual(self.set_cross(round_id, fifth, self.home, played=False,
+                                       score={"home_goals": 20, "away_goals": 0}).status_code, 200)
+        rows = self.client.get(self.url).json()["standings"]
+        self.assertEqual([(row["team"], row["points"], row["goal_difference"], row["goals_for"]) for row in rows[:3]],
+                         [(self.home.pk, 3, 2, 3), (self.away.pk, 3, 2, 2), (third.pk, 3, 1, 1)])
+        self.assertEqual(rows[0]["played"], 1)
+        self.assertEqual(next(row for row in rows if row["team"] == fourth.pk)["drawn"], 1)
+        self.assertEqual(self.set_cross(round_id, self.home, third, played=True, score={"home_goals": 1}).status_code, 400)
+
     def test_schedule_checks_week_and_overlap_and_preserves_played_state(self):
         first = self.add_round()
         schedule = {"scheduled_on": "2026-11-09", "starts_at": "09:00", "ends_at": "10:00"}

@@ -356,6 +356,8 @@ class GameRoleCross(TimestampedModel):
     starts_at = models.TimeField(null=True, blank=True)
     ends_at = models.TimeField(null=True, blank=True)
     played = models.BooleanField(default=False)
+    home_goals = models.PositiveSmallIntegerField(null=True, blank=True)
+    away_goals = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "game_role_crosses"
@@ -366,6 +368,11 @@ class GameRoleCross(TimestampedModel):
                 condition=Q(scheduled_on__isnull=True, starts_at__isnull=True, ends_at__isnull=True)
                 | Q(scheduled_on__isnull=False, starts_at__isnull=False, ends_at__isnull=False, ends_at__gt=models.F("starts_at")),
                 name="ck_game_role_complete_schedule",
+            ),
+            models.CheckConstraint(
+                condition=Q(home_goals__isnull=True, away_goals__isnull=True)
+                | Q(home_goals__isnull=False, away_goals__isnull=False, home_goals__lte=999, away_goals__lte=999),
+                name="ck_game_role_complete_score",
             ),
         ]
 

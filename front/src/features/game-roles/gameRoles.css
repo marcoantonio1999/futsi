@@ -39,7 +39,7 @@
 .game-role-history-list { margin: 0 12px 10px; }
 .game-role-history-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   border-top: 1px solid #dce4e0;
@@ -57,6 +57,18 @@
   background: var(--game-roles-round-color);
   color: white;
 }
+
+.game-role-statistics { display: grid; gap: 16px; }
+.game-role-score-notice { background: #f0f4f2; border-radius: 8px; padding: 10px; }
+.game-role-stat-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
+.game-role-stat-table th, .game-role-stat-table td { padding: 10px; border-bottom: 1px solid #e1e7e4; }
+.game-role-stat-table thead { background: #f0f4f2; }
+.game-role-stat-table th[scope="row"], .game-role-stat-table th:nth-child(2) { text-align: left; }
+.game-role-stat-table th[scope="row"] { min-width: 100px; max-width: 240px; overflow-wrap: anywhere; }
+.game-role-stat-table tr[data-leader="true"] { background: #eef6f1; }
+.game-role-stat-table abbr { text-decoration: none; }
+.game-roles-score { border: 1px solid #dce4e0; border-radius: 8px; padding: 0 10px 8px; margin-inline: 0; min-width: 0; }
+.game-roles-score legend { padding: 0 4px; font-weight: 600; }
 
 .game-roles-workspace {
   display: grid;

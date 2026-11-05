@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from core.api.enrollments import EnrollmentStaffPermission, enrollment_sites
 from core.models import GameRoleTeamNote, Team, Tournament
+from core.services.standings import build_standings
 
 
 class RoundInput(serializers.Serializer):
@@ -27,12 +28,19 @@ class ScheduleInput(serializers.Serializer):
     starts_at = serializers.TimeField(input_formats=["%H:%M"])
     ends_at = serializers.TimeField(input_formats=["%H:%M"])
 
+
+class ScoreInput(serializers.Serializer):
+    home_goals = serializers.IntegerField(min_value=0, max_value=999)
+    away_goals = serializers.IntegerField(min_value=0, max_value=999)
+
+
 class CrossInput(serializers.Serializer):
     round_id = serializers.IntegerField(min_value=1, allow_null=True)
     home_team_id = serializers.IntegerField(min_value=1)
     away_team_id = serializers.IntegerField(min_value=1)
     schedule = ScheduleInput(required=False, allow_null=True)
     played = serializers.BooleanField(required=False)
+    score = ScoreInput(required=False, allow_null=True)
 
     def validate(self, data):
         schedule = data.get("schedule")
@@ -98,11 +106,15 @@ class GameRoleMatrixView(GameRoleView):
     def matrix(self, tournament):
         teams = list(tournament.teams.order_by("name", "pk").values("id", "name", "is_active"))
         rounds = list(tournament.game_role_rounds.order_by("number").values("id", "number", "starts_on"))
-        crosses = list(tournament_crosses(tournament).order_by("pk")
-                       .values("home_team_id", "away_team_id", "round_id", "scheduled_on", "starts_at", "ends_at", "played"))
+        crosses = list(tournament_crosses(tournament).order_by("pk").values(
+            "home_team_id", "away_team_id", "round_id", "scheduled_on", "starts_at", "ends_at", "played", "home_goals", "away_goals",
+        ))
+        results = ((cross["home_team_id"], cross["away_team_id"], cross["home_goals"], cross["away_goals"])
+                   for cross in crosses if cross["played"] and cross["home_goals"] is not None and cross["away_goals"] is not None)
+        standings = build_standings(((team["id"], team["name"], tournament.pk) for team in teams), results)
         return Response({
             "teams": teams, "rounds": rounds, "crosses": crosses,
-            "starts_on": tournament.starts_on, "schedule_enabled": True, "team_notes": team_notes(tournament),
+            "starts_on": tournament.starts_on, "schedule_enabled": True, "team_notes": team_notes(tournament), "standings": standings,
         })
 
     def get(self, request, tournament_id):
@@ -148,6 +160,7 @@ class GameRoleMatrixView(GameRoleView):
         round_id = data.pop("round_id")
         schedule = data.pop("schedule", serializers.empty)
         played = data.pop("played", serializers.empty)
+        score = data.pop("score", serializers.empty)
         team_ids = {data["home_team_id"], data["away_team_id"]}
         if len(team_ids) != 2:
             raise ValidationError("Selecciona dos equipos distintos.")
@@ -155,8 +168,8 @@ class GameRoleMatrixView(GameRoleView):
         if set(teams.values_list("pk", flat=True)) != team_ids:
             raise ValidationError("Ambos equipos deben pertenecer a este torneo.")
         if round_id is None:
-            if schedule not in (None, serializers.empty) or played is True:
-                raise ValidationError("Selecciona una jornada para guardar el horario o marcar el partido como jugado.")
+            if schedule not in (None, serializers.empty) or score not in (None, serializers.empty) or played is True:
+                raise ValidationError("Selecciona una jornada para guardar el horario, el marcador o el estado del partido.")
             tournament.game_role_crosses.filter(**data).delete()
         else:
             round_row = get_object_or_404(tournament.game_role_rounds, pk=round_id)
@@ -168,6 +181,8 @@ class GameRoleMatrixView(GameRoleView):
             defaults.update(schedule or dict.fromkeys(fields))
             if played is not serializers.empty:
                 defaults["played"] = played
+            if score is not serializers.empty:
+                defaults.update(score or {"home_goals": None, "away_goals": None})
             scheduled_on = defaults["scheduled_on"]
             if scheduled_on is not None:
                 if not round_row.starts_on <= scheduled_on <= round_row.starts_on + timedelta(days=6):

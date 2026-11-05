@@ -1,4 +1,5 @@
 from .common import *
+from core.services.standings import build_standings
 
 class MatchViewSet(viewsets.ModelViewSet):
     queryset = Match.objects.select_related("tournament", "round", "site", "home_team", "away_team", "updated_by").all()
@@ -89,59 +90,9 @@ class MatchViewSet(viewsets.ModelViewSet):
         else:
             teams = Team.objects.filter(tournament__matches__in=queryset).distinct()
 
-        table = {
-            team.id: {
-                "team": team.id,
-                "team_name": team.name,
-                "tournament": team.tournament_id,
-                "played": 0,
-                "won": 0,
-                "drawn": 0,
-                "lost": 0,
-                "goals_for": 0,
-                "goals_against": 0,
-                "goal_difference": 0,
-                "points": 0,
-                "is_leader": False,
-            }
-            for team in teams.only("id", "name", "tournament_id")
-        }
-
+        team_rows = teams.values_list("id", "name", "tournament_id")
         match_rows = queryset.order_by().values_list("home_team_id", "away_team_id", "home_goals", "away_goals")
-        for home_team_id, away_team_id, home_goals, away_goals in match_rows:
-            if home_team_id not in table or away_team_id not in table:
-                continue
-            home = table[home_team_id]
-            away = table[away_team_id]
-            home["played"] += 1
-            away["played"] += 1
-            home["goals_for"] += home_goals
-            home["goals_against"] += away_goals
-            away["goals_for"] += away_goals
-            away["goals_against"] += home_goals
-            if home_goals > away_goals:
-                home["won"] += 1
-                away["lost"] += 1
-                home["points"] += 3
-            elif home_goals < away_goals:
-                away["won"] += 1
-                home["lost"] += 1
-                away["points"] += 3
-            else:
-                home["drawn"] += 1
-                away["drawn"] += 1
-                home["points"] += 1
-                away["points"] += 1
-
-        rows = []
-        for row in table.values():
-            row["goal_difference"] = row["goals_for"] - row["goals_against"]
-            rows.append(row)
-        rows.sort(key=lambda item: (item["points"], item["goal_difference"], item["goals_for"], item["team_name"]), reverse=True)
-        for index, row in enumerate(rows, start=1):
-            row["position"] = index
-            row["is_leader"] = index == 1 and row["played"] > 0
-        return Response(rows)
+        return Response(build_standings(team_rows, match_rows))
 
 
 class StudentAssessmentViewSet(viewsets.ModelViewSet):

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
-import type { Site, Tournament } from "../../types";
+import type { Site, StandingRow, Tournament } from "../../types";
 import { useEnrollmentScrollReady, useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
 import { GameRoleNotes, scheduleSuggestion, type GameRoleNote } from "./GameRoleNotes";
+import { GameRoleStatistics } from "./GameRoleStatistics";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -11,10 +12,11 @@ type Round = { id: number; number: number; starts_on: string };
 type Cross = {
   home_team_id: number; away_team_id: number; round_id: number;
   scheduled_on: string | null; starts_at: string | null; ends_at: string | null; played: boolean;
+  home_goals?: number | null; away_goals?: number | null;
 };
 type Matrix = {
   teams: Team[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null;
-  schedule_enabled?: boolean; team_notes?: GameRoleNote[];
+  schedule_enabled?: boolean; team_notes?: GameRoleNote[]; standings?: StandingRow[];
 };
 type CrossEditor = { kind: "cross"; home: Team; away: Team; current?: Cross };
 type Editor = { kind: "round"; round?: Round } | CrossEditor;
@@ -41,6 +43,8 @@ function addDays(value: string, days: number) {
 const dateLabel = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const shortDate = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", timeZone: "UTC" });
 const timeLabel = (value: string | null | undefined) => value?.slice(0, 5) ?? "";
+const matchScore = (cross: Cross | undefined) => cross?.home_goals != null && cross.away_goals != null
+  ? `${cross.home_goals}–${cross.away_goals}` : null;
 function weekLabel(start: string) {
   return dateLabel.formatRange(new Date(start + "T00:00:00Z"), new Date(addDays(start, 6) + "T00:00:00Z"));
 }
@@ -70,7 +74,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useEnrollmentViewState(`gameRoles.round.${tournamentId}`, 0);
-  const [view, setView] = useEnrollmentViewState<"matrix" | "history">("gameRoles.view", "matrix");
+  const [view, setView] = useEnrollmentViewState<"matrix" | "history" | "statistics">("gameRoles.view", "matrix");
   const [editor, setEditor] = useState<Editor | null>(null);
   useEnrollmentScrollReady(Boolean(matrix));
 
@@ -114,12 +118,15 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
     <nav className="game-role-views" aria-label="Vistas de Roles de juego">
       <Button type="button" aria-pressed={view === "matrix"} onClick={() => setView("matrix")}>Matriz</Button>
       <Button type="button" aria-pressed={view === "history"} onClick={() => setView("history")}>Historial</Button>
+      {matrix.standings && <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>Estadísticas</Button>}
       {view === "matrix" && matrix.team_notes && <>
         <Button type="button" onClick={() => document.getElementById("game-role-notes-permit")?.scrollIntoView()}>Permisos</Button>
         <Button type="button" onClick={() => document.getElementById("game-role-notes-preferred")?.scrollIntoView()}>Sugerencias de horario</Button>
       </>}
     </nav>
-    {view === "history" ? <GameRoleHistory matrix={matrix} /> : <>
+    {view === "statistics" && matrix.standings
+      ? <GameRoleStatistics rows={matrix.standings} withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} />
+      : view === "history" ? <GameRoleHistory matrix={matrix} onEdit={(home, away, current) => setEditor({ kind: "cross", home, away, current })} /> : <>
     <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
     <Card as="aside" className="game-roles-rounds" aria-labelledby="game-roles-rounds-title">
       <h2 id="game-roles-rounds-title">Jornadas</h2>
@@ -163,7 +170,8 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
                 const round = current && roundById.get(current.round_id);
                 const day = current?.scheduled_on ? new Date(current.scheduled_on + "T00:00:00Z") : null;
                 const range = `${timeLabel(current?.starts_at)}–${timeLabel(current?.ends_at)}`;
-                const status = current?.played ? "Jugado" : day ? `Pendiente, ${dateLabel.format(day)}, ${range}` : "Sin horario";
+                const score = matchScore(current);
+                const status = current?.played ? `Jugado${score ? ", " + score : ""}` : day ? `Pendiente, ${dateLabel.format(day)}, ${range}` : "Sin horario";
                 return <td key={home.id}><Button type="button" className="game-roles-cell" disabled={!selected}
                   style={round ? roundColorStyle(round.number) : undefined}
                   data-assigned={Boolean(round)}
@@ -174,7 +182,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
                   {round && (current?.played
                     ? <strong>Jornada {round.number}</strong>
                     : <small>J{round.number}</small>)}
-                  {current?.played ? <span>✓ Jugado</span> : day ? <>
+                  {current?.played ? <span>{score ? `✓ ${score}` : "✓ Jugado"}</span> : day ? <>
                     <span>{shortDate.format(day)}</span><span className="game-roles-time">{range}</span>
                   </> : <span className="game-roles-unassigned">×</span>}
                 </Button></td>;
@@ -183,16 +191,16 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
           </table>
         </div>}
     </Card>
-    {editor && <MatrixEditor editor={editor} matrix={matrix} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
     </div>
     {matrix.team_notes && <GameRoleNotes notes={matrix.team_notes} teams={matrix.teams} rounds={matrix.rounds}
       selectedRound={selected} onSave={saveNote} />}
     </>}
+    {editor && <MatrixEditor editor={editor} matrix={matrix} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
   </>;
 }
 
-function GameRoleHistory({ matrix }: { matrix: Matrix }) {
-  const names = new Map(matrix.teams.map(team => [team.id, team.name]));
+function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Team, away: Team, cross: Cross) => void }) {
+  const teams = new Map(matrix.teams.map(team => [team.id, team]));
   const matchesByRound = new Map<number, Cross[]>();
   for (const cross of matrix.crosses) {
     const matches = matchesByRound.get(cross.round_id) ?? [];
@@ -209,11 +217,18 @@ function GameRoleHistory({ matrix }: { matrix: Matrix }) {
         (b.scheduled_on ?? "").localeCompare(a.scheduled_on ?? "") || timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at)));
       return <details key={round.id} className="game-role-history-round" style={roundColorStyle(round.number)} open={index === 0}>
         <summary><strong>Jornada {round.number}</strong><span>{weekLabel(round.starts_on)} · {matches.length} {matches.length === 1 ? "cruce" : "cruces"}</span></summary>
-        <ul className="game-role-history-list">{matches.map(cross => <li key={`${cross.home_team_id}:${cross.away_team_id}`} data-played={cross.played}>
-          <strong>{names.get(cross.home_team_id)} vs. {names.get(cross.away_team_id)}</strong>
-          <span>{cross.scheduled_on ? `${dateLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))} · ${timeLabel(cross.starts_at)}–${timeLabel(cross.ends_at)}` : "Sin horario"}</span>
-          <span className="game-role-history-status">{cross.played ? "✓ Jugado" : cross.scheduled_on ? "Pendiente" : "× Sin asignar horario"}</span>
-        </li>)}</ul>
+        <ul className="game-role-history-list">{matches.map(cross => {
+          const home = teams.get(cross.home_team_id);
+          const away = teams.get(cross.away_team_id);
+          if (!home || !away) return null;
+          const score = matchScore(cross);
+          return <li key={`${home.id}:${away.id}`} data-played={cross.played}>
+            <strong>{home.name} vs. {away.name}</strong>
+            <span>{cross.scheduled_on ? `${dateLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))} · ${timeLabel(cross.starts_at)}–${timeLabel(cross.ends_at)}` : "Sin horario"}</span>
+            <span className="game-role-history-status">{cross.played ? (score ? `✓ Jugado · ${score}` : "✓ Jugado") : cross.scheduled_on ? "Pendiente" : "× Sin asignar horario"}</span>
+            {cross.played && matrix.standings && <Button type="button" onClick={() => onEdit(home, away, cross)}>{score ? "Editar marcador" : "Capturar marcador"}</Button>}
+          </li>;
+        })}</ul>
       </details>;
     })}
   </Card>;
@@ -246,10 +261,17 @@ function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
       if (editor.kind === "cross") {
         const roundId = form.get("round_id");
         const scheduledOn = form.get("scheduled_on");
+        const played = form.has("played");
+        const homeGoals = form.get("home_goals");
+        const awayGoals = form.get("away_goals");
+        if (played && Boolean(homeGoals) !== Boolean(awayGoals)) throw new Error("Captura los goles de ambos equipos.");
         await onSave("PUT", {
           home_team_id: editor.home.id, away_team_id: editor.away.id, round_id: roundId ? Number(roundId) : null,
           schedule: scheduledOn ? { scheduled_on: scheduledOn, starts_at: form.get("starts_at"), ends_at: form.get("ends_at") } : null,
-          played: form.has("played"),
+          played,
+          ...(played && matrix.standings ? {
+            score: homeGoals && awayGoals ? { home_goals: Number(homeGoals), away_goals: Number(awayGoals) } : null,
+          } : {}),
         });
       } else {
         const number = Number(form.get("number"));
@@ -286,6 +308,7 @@ function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor
   const [day, setDay] = useState(editor.current?.scheduled_on ?? "");
   const [start, setStart] = useState(timeLabel(editor.current?.starts_at));
   const [end, setEnd] = useState(timeLabel(editor.current?.ends_at));
+  const [played, setPlayed] = useState(editor.current?.played ?? false);
   const round = matrix.rounds.find(row => row.id === roundId);
   const hasSchedule = Boolean(day || start || end);
   const occupied = matrix.crosses.filter(cross => cross.scheduled_on && cross.scheduled_on === day
@@ -325,7 +348,16 @@ function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor
         {start && end && <p role="status">{end <= start ? "La hora de fin debe ser posterior a la de inicio." : overlap ? "El rango elegido se cruza con otro partido." : "El rango elegido está disponible."}</p>}
       </div>}
       {hasSchedule && <Button type="button" onClick={() => { setDay(""); setStart(""); setEnd(""); }}>Quitar horario</Button>}
-      <Label className="game-roles-played-input"><Input type="checkbox" name="played" defaultChecked={editor.current?.played} /> Marcar como jugado</Label>
+      <Label className="game-roles-played-input"><Input type="checkbox" name="played" checked={played} onChange={event => setPlayed(event.target.checked)} /> Marcar como jugado</Label>
+      {matrix.standings && <div hidden={!played}>
+        <fieldset className="game-roles-score" disabled={!played}>
+          <legend>Marcador</legend>
+          <div className="game-roles-hour-fields">
+            <Label>Goles local<Input name="home_goals" type="number" min={0} max={999} defaultValue={editor.current?.home_goals ?? ""} /></Label>
+            <Label>Goles visitante<Input name="away_goals" type="number" min={0} max={999} defaultValue={editor.current?.away_goals ?? ""} /></Label>
+          </div>
+        </fieldset>
+      </div>}
     </>}
   </>;
 }
