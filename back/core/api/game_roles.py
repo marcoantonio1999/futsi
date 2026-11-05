@@ -1,15 +1,17 @@
 from datetime import date, timedelta
 
+from django.core import signing
 from django.db import transaction
+from django.http import Http404
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from rest_framework import serializers
+from rest_framework import permissions, serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api.enrollments import EnrollmentStaffPermission, enrollment_sites
-from core.models import GameRoleTeamNote, Team, Tournament
+from core.models import GameRoleRound, GameRoleTeamNote, Team, Tournament
 from core.services.standings import build_standings
 
 
@@ -100,6 +102,46 @@ class GameRoleTeamNotesView(GameRoleView):
             get_object_or_404(tournament.game_role_rounds, pk=data["round_id"])
         tournament.game_role_team_notes.get_or_create(**data)
         return Response({"team_notes": team_notes(tournament)})
+
+
+ROLE_LINK_SALT = "futsi.public-game-role.v1"
+ROLE_LINK_SIGNER = signing.Signer(salt=ROLE_LINK_SALT, sep=".")
+
+
+def round_schedule(round_row):
+    matches = tournament_crosses(round_row.tournament).filter(
+        round=round_row, scheduled_on__isnull=False,
+    ).order_by("scheduled_on", "starts_at", "pk").values(
+        "scheduled_on", "starts_at", "ends_at", "home_team__name", "away_team__name", "played",
+    )
+    return {
+        "tournament": round_row.tournament.name,
+        "site": round_row.tournament.site.name,
+        "number": round_row.number,
+        "starts_on": round_row.starts_on,
+        "matches": list(matches),
+    }
+
+
+class GameRoleShareView(GameRoleView):
+    def get(self, request, tournament_id, round_id):
+        tournament = self.tournament(request, tournament_id)
+        round_row = get_object_or_404(tournament.game_role_rounds, pk=round_id)
+        token = ROLE_LINK_SIGNER.sign(str(round_row.pk))
+        return Response({**round_schedule(round_row), "token": token}, headers={"Cache-Control": "no-store"})
+
+
+class PublicGameRoleView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, token):
+        try:
+            round_id = int(ROLE_LINK_SIGNER.unsign(token))
+        except (signing.BadSignature, ValueError):
+            raise Http404 from None
+        round_row = get_object_or_404(GameRoleRound.objects.select_related("tournament__site"), pk=round_id)
+        return Response(round_schedule(round_row), headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
 class GameRoleMatrixView(GameRoleView):

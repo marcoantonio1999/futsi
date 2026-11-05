@@ -1,0 +1,20 @@
+.game-role-public { min-height: 100dvh; background: #edf3ef; padding: clamp(12px, 5vw, 48px); color: #173629; }
+.game-role-public > * { max-width: 680px; margin-inline: auto; }
+.game-role-sheet { background: #fff; color: #173629; border: 1px solid #d4e1d9; border-radius: 14px; overflow: hidden; overflow-wrap: anywhere; }
+.game-role-sheet header { background: #174734; color: #fff; padding: 20px; }
+.game-role-sheet header > small { letter-spacing: .12em; font-weight: 700; }
+.game-role-sheet h1 { font-size: clamp(24px, 6vw, 36px); margin: 6px 0; line-height: 1.15; font-weight: 800; }
+.game-role-sheet header p { margin: 0; }
+.game-role-sheet section { padding: 14px; }
+.game-role-sheet section + section { border-top: 1px solid #d4e1d9; }
+.game-role-sheet h2 { font-size: 15px; font-weight: 750; text-transform: capitalize; margin: 0 0 8px; }
+.game-role-sheet ul { list-style: none; margin: 0; padding: 0; }
+.game-role-sheet li { display: grid; gap: 4px 12px; grid-template-columns: auto minmax(0, 1fr); padding: 10px 0; border-top: 1px solid #e3ebe6; }
+.game-role-sheet li > small { grid-column: 2; }
+.game-role-sheet-empty { padding: 16px; }
+.game-role-share-dialog { width: min(560px, calc(100vw - 24px)); }
+.enrollment-page .game-role-share-action { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; border-radius: 8px; background: #174734; color: white; }
+@media (max-width: 370px) {
+  .game-role-sheet li { grid-template-columns: minmax(0, 1fr); }
+  .game-role-sheet li > small { grid-column: 1; }
+}

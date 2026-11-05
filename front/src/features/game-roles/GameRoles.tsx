@@ -5,6 +5,7 @@ import type { Site, StandingRow, Tournament } from "../../types";
 import { useEnrollmentScrollReady, useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
 import { GameRoleNotes, scheduleSuggestion, type GameRoleNote } from "./GameRoleNotes";
 import { GameRoleStatistics } from "./GameRoleStatistics";
+import { GameRoleShare } from "./GameRoleShare";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -76,6 +77,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
   const [selectedId, setSelectedId] = useEnrollmentViewState(`gameRoles.round.${tournamentId}`, 0);
   const [view, setView] = useEnrollmentViewState<"matrix" | "history" | "statistics">("gameRoles.view", "matrix");
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [shareRoundId, setShareRoundId] = useState<number | null>(null);
   useEnrollmentScrollReady(Boolean(matrix));
 
   useEffect(() => {
@@ -141,6 +143,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
         </div>
         <p className="game-roles-mobile-week">{weekLabel(selected.starts_on)}</p>
         <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada {selected.number}</Button>
+        <Button type="button" className="primary" onClick={() => setShareRoundId(selected.id)}>Generar rol de juego</Button>
       </> : <p>Agrega la primera jornada para asignar cruces.</p>}
     </Card>
 
@@ -192,6 +195,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
       selectedRound={selected} onSave={saveNote} />}
     </>}
     {editor && <MatrixEditor editor={editor} matrix={matrix} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
+    {shareRoundId !== null && <GameRoleShare path={`${path}rounds/${shareRoundId}/share/`} token={token} onClose={() => setShareRoundId(null)} />}
   </>;
 }
 

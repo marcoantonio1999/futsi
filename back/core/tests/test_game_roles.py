@@ -87,6 +87,29 @@ class GameRoleMatrixTests(TestCase):
         outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/team-notes/"
         self.assertEqual(self.client.post(outside, permit, format="json").status_code, 404)
 
+    def test_shared_round_reads_current_public_schedule_only(self):
+        first = self.add_round()
+        second = self.add_round(2, "2026-11-14")
+        schedule = {"scheduled_on": "2026-11-08", "starts_at": "10:00", "ends_at": "11:00"}
+        self.set_cross(first["id"], schedule=schedule)
+        self.set_cross(first["id"], self.away, self.home)
+        self.client.post(self.url + "team-notes/", {
+            "kind": "permit", "team_id": self.home.pk, "round_id": first["id"], "note": "Nota interna",
+        }, format="json")
+        shared = self.client.get(self.url + f"rounds/{first['id']}/share/").json()
+        public = APIClient()
+        path = f"/api/public/game-roles/{shared['token']}/"
+        response = public.get(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(len(response.json()["matches"]), 1)
+        self.assertNotIn("team_notes", response.json())
+        self.assertNotIn("home_goals", response.json()["matches"][0])
+        self.assertEqual(public.get(path.rstrip("/") + "x/").status_code, 404)
+        self.assertEqual(public.get(self.url + f"rounds/{first['id']}/share/").status_code, 401)
+        self.set_cross(second["id"], schedule={**schedule, "scheduled_on": "2026-11-15"})
+        self.assertEqual(public.get(path).json()["matches"], [])
+
     def test_standings_rank_final_scores_by_points_difference_and_goals(self):
         round_id = self.add_round()["id"]
         other_teams = [Team.objects.create(tournament=self.tournament, name=name)

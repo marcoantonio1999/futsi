@@ -16,6 +16,7 @@ const AccountingPortal = lazy(() => import("./components/views/accounting").then
 const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults").then((module) => ({ default: module.AdultLeagueDashboardPanel })));
 const AdminShell = lazy(() => import("./components/layout/AdminShell").then((module) => ({ default: module.AdminShell })));
 const PublicEnrollmentPermit = lazy(() => import('./features/enrollments/EnrollmentPermits').then(module => ({default:module.PublicEnrollmentPermit})));
+const PublicGameRole = lazy(() => import('./features/game-roles/GameRoleShare').then(module => ({default:module.PublicGameRole})));
 const PublicPlayerEnrollment = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerEnrollment })));
 const PublicPlayerWithdrawal = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerWithdrawal })));
 const EnrollmentDashboard = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentDashboard })));
@@ -33,6 +34,7 @@ export default function App() {
   if (!isSoccerWa && hash.startsWith('#/examen/')) return <Suspense fallback={<main>Cargando evaluación…</main>}><PublicExam key={hash} invitation={hash.slice('#/examen/'.length)} /></Suspense>;
   if (!isSoccerWa && (hash === '#/examenes' || hash.startsWith('#/examenes/'))) return <Suspense fallback={<main>Cargando Exámenes…</main>}><ExamPortal /></Suspense>;
   if (!isSoccerWa && hash.startsWith("#/permiso/")) return <Suspense fallback={<main>Cargando permiso…</main>}><PublicEnrollmentPermit key={hash} invitation={hash.slice("#/permiso/".length)} /></Suspense>;
+  if (!isSoccerWa && hash.startsWith("#/rol-de-juego/")) return <Suspense fallback={<main>Cargando rol…</main>}><PublicGameRole key={hash} token={hash.slice("#/rol-de-juego/".length)} /></Suspense>;
   if (!isSoccerWa && hash.startsWith("#/baja/")) {
     return <Suspense fallback={<main>Cargando baja…</main>}><PublicPlayerWithdrawal invitation={hash.slice("#/baja/".length)} /></Suspense>;
   }
