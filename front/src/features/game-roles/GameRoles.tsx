@@ -119,10 +119,6 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
       <Button type="button" aria-pressed={view === "matrix"} onClick={() => setView("matrix")}>Matriz</Button>
       <Button type="button" aria-pressed={view === "history"} onClick={() => setView("history")}>Historial</Button>
       {matrix.standings && <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>Estadísticas</Button>}
-      {view === "matrix" && matrix.team_notes && <>
-        <Button type="button" onClick={() => document.getElementById("game-role-notes-permit")?.scrollIntoView()}>Permisos</Button>
-        <Button type="button" onClick={() => document.getElementById("game-role-notes-preferred")?.scrollIntoView()}>Sugerencias de horario</Button>
-      </>}
     </nav>
     {view === "statistics" && matrix.standings
       ? <GameRoleStatistics rows={matrix.standings} withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} />

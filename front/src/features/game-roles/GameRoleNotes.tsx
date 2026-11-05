@@ -31,7 +31,7 @@ export function GameRoleNotes({ notes, teams, rounds, selectedRound, onSave }: {
     {(["permit", "preferred"] as const).map(kind => {
       const permit = kind === "permit";
       const rows = notes.filter(row => (row.kind === "permit") === permit);
-      return <Card as="section" className="game-role-notes" id={`game-role-notes-${kind}`} key={kind}>
+      return <Card as="section" className="game-role-notes" key={kind}>
         <header className="game-role-panel-header">
           <h2>{titles[kind]}</h2>
           <Button type="button" className="primary" disabled={!activeTeams.length || (permit && !rounds.length)} onClick={() => setForm(kind)}>
