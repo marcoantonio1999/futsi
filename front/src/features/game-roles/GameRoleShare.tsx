@@ -96,7 +96,7 @@ async function downloadScheduleImage(schedule: Schedule) {
   ctx.fillRect(0, 0, width, height);
   ctx.fillStyle = "#174734";
   ctx.fillRect(0, 0, width, headerHeight);
-  label("FUTSI  /  ROL DE JUEGO", padding, 28, "700 22px system-ui, sans-serif", "#c9e6d6");
+  label("ROL DE JUEGO", padding, 28, "700 22px system-ui, sans-serif", "#c9e6d6");
   label(`Jornada ${schedule.number}`, padding, 63, "800 54px system-ui, sans-serif", "#ffffff");
   subtitle.forEach((line, index) => label(line, padding, 126 + index * 34, subtitleFont, "#ffffff"));
   let y = headerHeight;
