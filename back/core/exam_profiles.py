@@ -129,7 +129,7 @@ def filter_skill_ranges(rows, ranges):
 
 
 def filtered_attempts(rows, params, profiles=False):
-    rows = score_rows(rows)
+    rows = score_rows(rows).annotate(first_phase_score=F('profile_score'))
     ranges = skill_ranges(params)
     if ranges:
         rows = filter_skill_ranges(rows, ranges)
@@ -171,6 +171,32 @@ def filtered_attempts(rows, params, profiles=False):
         rows = rows.filter(submitted_at__isnull=False).exclude(grading_status='graded')
     elif status == 'unsubmitted':
         rows = rows.filter(submitted_at__isnull=True)
+    if not profiles:
+        bounds = {}
+        for field, limit in [('first_min_score', 10), ('second_min_score', 30)]:
+            value = params.get(field)
+            if value not in (None, ''):
+                try:
+                    number = float(value)
+                    if not math.isfinite(number) or not 0 <= number <= limit:
+                        raise ValueError
+                except (ValueError, TypeError):
+                    raise ValidationError({'detail': f'La calificación mínima debe estar entre 0 y {limit}.'})
+                bounds[field] = number
+        if 'first_min_score' in bounds:
+            rows = rows.filter(first_phase_score__gte=bounds['first_min_score'])
+        if 'second_min_score' in bounds:
+            from types import SimpleNamespace
+            from core.exam_second_stage import complementary_grade
+            matched = []
+            for row in rows.values('id', 'second_stage_attempt__submitted_at', 'second_stage_attempt__grading_status', 'second_stage_attempt__grading').iterator(chunk_size=200):
+                if row['second_stage_attempt__submitted_at'] is None:
+                    continue
+                child = SimpleNamespace(grading_status=row['second_stage_attempt__grading_status'], grading=row['second_stage_attempt__grading'])
+                result = complementary_grade(child)
+                if result and result['total'] >= bounds['second_min_score']:
+                    matched.append(row['id'])
+            rows = rows.filter(pk__in=matched)
     for field, operator in [('min_score', 'gte'), ('max_score', 'lte')]:
         value = params.get(field)
         if value not in (None, ''):
