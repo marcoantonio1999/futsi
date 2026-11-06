@@ -72,10 +72,10 @@ C:\Users\daniel\AppData\Local\Android\Sdk
 3. Seleccionar `front/android`.
 4. Esperar Gradle Sync.
 5. Build > Build Bundle(s) / APK(s) > Build APK(s).
-6. El APK debug queda normalmente en:
+6. Seleccionar la variante `futsiDebug`. El APK debug queda normalmente en:
 
 ```text
-front/android/app/build/outputs/apk/debug/app-debug.apk
+front/android/app/build/outputs/apk/futsi/debug/app-futsi-debug.apk
 ```
 
 ## Generar APK por terminal despues de instalar Java/Android Studio
@@ -87,7 +87,7 @@ front/android/app/build/outputs/apk/debug/app-debug.apk
 APK generado:
 
 ```text
-front\android\app\build\outputs\apk\debug\app-debug.apk
+front\android\app\build\outputs\apk\futsi\debug\app-futsi-debug.apk
 ```
 
 ## APK conectado a produccion
@@ -105,5 +105,5 @@ Luego:
 cd front
 npm.cmd run cap:sync
 cd android
-.\gradlew.bat assembleDebug
+.\gradlew.bat assembleFutsiDebug
 ```

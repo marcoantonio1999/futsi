@@ -264,6 +264,19 @@ El siguiente sprint debe priorizar hardening antes de piloto productivo:
 
 La guia esta en `docs/SPRINT3_SEGURIDAD_QA.md`.
 
+## Inscripciones BPower para Android
+
+[Descargar el APK de pruebas 1.0.2](https://github.com/marcoantonio1999/futsi/releases/download/inscripciones-v1.0.2/Inscripciones-BPower-1.0.2-pruebas.apk)
+
+Incluye Sábana, Roles de juego y descarga del rol como imagen. Para recibir avisos, abre **Roles de juego**, selecciona un torneo y permite las notificaciones de Android. El primer aviso se programa al terminar el último partido agendado. Si ya tocaste **Compartir por WhatsApp** en ese celular, ese aviso se cancela. El aviso del día siguiente se mantiene y está programado para las 9:00 a. m., hora de Ciudad de México.
+
+Para compilar esta edición desde Windows, instala las dependencias de `front` con `npm ci` y ejecuta desde la raíz del repositorio:
+
+```powershell
+$env:VITE_API_URL = 'https://futsi.onrender.com/api'
+.\tools\build_android_debug_apk.ps1 -Edition inscripciones
+```
+
 ## Android APK
 
 La app Android conserva React/Vite y se empaqueta con Capacitor. El proyecto nativo esta en `front/android`.

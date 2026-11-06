@@ -41,7 +41,7 @@ export default function App() {
   if (!isSoccerWa && hash.startsWith("#/inscripcion/")) {
     return <Suspense fallback={<main className="min-h-screen bg-white p-8">Cargando registro…</main>}><PublicPlayerEnrollment invitation={hash.slice("#/inscripcion/".length)} /></Suspense>;
   }
-  return <FutsiApplication enrollmentAdmin={isEnrollmentAdminHash(hash)} />;
+  return <FutsiApplication enrollmentAdmin={import.meta.env.VITE_APP_BRAND === "inscripciones" || isEnrollmentAdminHash(hash)} />;
 }
 
 function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {

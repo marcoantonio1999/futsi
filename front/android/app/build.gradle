@@ -20,6 +20,16 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    flavorDimensions "edition"
+    productFlavors {
+        futsi { dimension "edition" }
+        inscripciones {
+            dimension "edition"
+            applicationId "mx.bpoweracademy.inscripciones"
+            versionCode 3
+            versionName "1.0.2"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

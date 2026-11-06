@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API_URL, apiRequest } from "../../api";
 import { Button, Dialog } from "../../components/ui/enrollment-ui";
+import { roleReminders } from "./roleReminders";
 import "./gameRoleShare.css";
 
 type Match = {
@@ -126,20 +127,29 @@ async function downloadScheduleImage(schedule: Schedule) {
     }
   }
   if (!groups.length) label("Todavía no hay partidos programados.", padding, y + 22, subtitleFont, "#173629");
+  const tournament = schedule.tournament.trim().replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80);
+  const filename = `rol-${tournament}-jornada-${schedule.number}.png`;
+  const native = (window as Window & {
+    Capacitor?: { Plugins?: { EnrollmentPrint?: { saveRolePng(input: { filename: string; data: string }): Promise<void> } } };
+  }).Capacitor?.Plugins?.EnrollmentPrint;
+  if (native) {
+    await native.saveRolePng({ filename, data: canvas.toDataURL("image/png").split(",")[1] });
+    return true;
+  }
   const png = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error()), "image/png"));
   const href = URL.createObjectURL(png);
   const link = document.createElement("a");
-  const tournament = schedule.tournament.trim().replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80);
   link.href = href;
-  link.download = `rol-${tournament}-jornada-${schedule.number}.png`;
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+  return false;
 }
 
-export function GameRoleShare({ path, token, onClose }: { path: string; token: string; onClose: () => void }) {
+export function GameRoleShare({ path, token, reminderKey, onClose }: { path: string; token: string; reminderKey: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [schedule, setSchedule] = useState<(Schedule & { token: string }) | null>(null);
   const [status, setStatus] = useState("");
@@ -162,13 +172,17 @@ export function GameRoleShare({ path, token, onClose }: { path: string; token: s
     {schedule ? <><ScheduleSheet schedule={schedule} />
       <label>Enlace público<input value={url} readOnly onFocus={event => event.currentTarget.select()} /></label>
       <footer>
-        <Button type="button" onClick={() => void downloadScheduleImage(schedule).catch(
+        <Button type="button" onClick={() => void downloadScheduleImage(schedule).then(
+          saved => { if (saved) setStatus("Imagen guardada."); },
           () => setStatus("No se pudo descargar la imagen."),
         )}>Descargar imagen</Button>
         <Button type="button" onClick={() => void navigator.clipboard.writeText(url).then(
           () => setStatus("Enlace copiado."), () => setStatus("Selecciona y copia el enlace público."),
         )}>Copiar enlace</Button>
-        <a className="game-role-share-action" href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a>
+        <a className="game-role-share-action" href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noopener noreferrer"
+          onClick={() => void roleReminders?.shared({ key: reminderKey }).catch(
+            () => setStatus("No se pudo cancelar el recordatorio de cierre."),
+          )}>Compartir por WhatsApp</a>
       </footer>
     </> : !status && <p role="status">Generando rol…</p>}
     {status && <p role="status">{status}</p>}

@@ -1,3 +1,5 @@
+param([ValidateSet("futsi", "inscripciones")][string]$Edition = "futsi")
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -19,9 +21,12 @@ $env:ANDROID_HOME = $androidSdk
 $env:ANDROID_SDK_ROOT = $androidSdk
 $env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
 
+$env:VITE_APP_BRAND = $Edition
+
 Push-Location $front
 try {
     npm.cmd run cap:sync
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo sincronizar Capacitor." }
 }
 finally {
     Pop-Location
@@ -29,13 +34,15 @@ finally {
 
 Push-Location $android
 try {
-    .\gradlew.bat assembleDebug
+    $variant = $Edition.Substring(0, 1).ToUpperInvariant() + $Edition.Substring(1)
+    .\gradlew.bat "assemble${variant}Debug"
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo compilar el APK." }
 }
 finally {
     Pop-Location
 }
 
-$apk = Join-Path $android "app\build\outputs\apk\debug\app-debug.apk"
+$apk = Join-Path $android "app\build\outputs\apk\$Edition\debug\app-$Edition-debug.apk"
 if (-not (Test-Path $apk)) {
     throw "No se genero el APK esperado en $apk"
 }

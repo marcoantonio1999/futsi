@@ -1,6 +1,7 @@
 import { EnrollmentApproval } from './EnrollmentApproval';
 import { Signature } from './EnrollmentSignaturePad';
 import { EnrollmentPermits } from './EnrollmentPermits';
+import { roleReminders } from '../game-roles/roleReminders';
 import { GameRoles } from '../game-roles/GameRoles';
 import { Button, Card, Dialog, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -691,7 +692,10 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
     </aside>
     <div className="operator-page">
       <header className="operator-header enrollment-admin-header no-print">{mobileViewport && <Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button>}<h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "validate" ? "Validar" : enrollmentSection === "permits" ? "Permisos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : enrollmentSection === "game-roles" ? "Roles de juego" : "Sábana"}</h1><div>
-        <Button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}><LogOut size={19} /><span>Cerrar sesión</span></Button>
+        <Button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => {
+          if (roleReminders) void roleReminders.clear().finally(onLogout).catch(() => undefined);
+          else onLogout();
+        }}><LogOut size={19} /><span>Cerrar sesión</span></Button>
       </div></header>
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}

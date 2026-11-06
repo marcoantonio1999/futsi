@@ -6,6 +6,7 @@ import { useEnrollmentScrollReady, useEnrollmentViewState } from "../enrollments
 import { GameRoleNotes, scheduleSuggestion, type GameRoleNote } from "./GameRoleNotes";
 import { GameRoleStatistics } from "./GameRoleStatistics";
 import { GameRoleShare } from "./GameRoleShare";
+import { roleReminders } from "./roleReminders";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -65,11 +66,11 @@ export function GameRoles({ token, tournaments, sites, loading }: {
         </option>)}
       </NativeSelect></Label>
     </Card>
-    {tournament && <TournamentMatrix key={tournament.id} token={token} tournamentId={tournament.id} />}
+    {tournament && <TournamentMatrix key={tournament.id} token={token} tournamentId={tournament.id} tournamentName={tournament.name} />}
   </>;
 }
 
-function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId: number }) {
+function TournamentMatrix({ token, tournamentId, tournamentName }: { token: string; tournamentId: number; tournamentName: string }) {
   const path = `/player-enrollments/game-roles/${tournamentId}/`;
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -78,7 +79,48 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
   const [view, setView] = useEnrollmentViewState<"matrix" | "history" | "statistics">("gameRoles.view", "matrix");
   const [editor, setEditor] = useState<Editor | null>(null);
   const [shareRoundId, setShareRoundId] = useState<number | null>(null);
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState("");
   useEnrollmentScrollReady(Boolean(matrix));
+
+  useEffect(() => {
+    const reminders = roleReminders;
+    if (!reminders) return;
+    const refresh = () => void reminders.status()
+      .then(({ enabled }) => setRemindersEnabled(enabled))
+      .catch(() => setReminderMessage("No se pudo consultar el permiso de notificaciones."));
+    refresh();
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
+
+  useEffect(() => {
+    if (!roleReminders || !matrix?.schedule_enabled || !remindersEnabled) return;
+    const endsByRound = new Map<number, string>();
+    for (const cross of matrix.crosses) {
+      if (!cross.scheduled_on || !cross.ends_at) continue;
+      const ends = `${cross.scheduled_on} ${cross.ends_at.slice(0, 5)}`;
+      if (ends > (endsByRound.get(cross.round_id) ?? "")) endsByRound.set(cross.round_id, ends);
+    }
+    const rounds = matrix.rounds.flatMap(round => {
+      const ends = endsByRound.get(round.id);
+      return ends ? [{ id: round.id, number: round.number, ends }] : [];
+    });
+    setReminderMessage("");
+    void roleReminders.sync({ tournament: String(tournamentId), name: tournamentName, rounds })
+      .catch(() => setReminderMessage("No se pudieron programar los recordatorios."));
+  }, [matrix, remindersEnabled, tournamentId, tournamentName]);
+
+  async function enableReminders() {
+    if (!roleReminders) return;
+    try {
+      const { enabled } = await roleReminders.enable();
+      setRemindersEnabled(enabled);
+      setReminderMessage(enabled ? "" : "Permite las notificaciones de Inscripciones en los ajustes de Android.");
+    } catch {
+      setReminderMessage("No se pudo activar el permiso de notificaciones.");
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -117,6 +159,13 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
   }
 
   return <>
+    {roleReminders && <Card as="section" className="operator-controls" aria-label="Notificaciones de jornadas">
+      <h2>Notificaciones de jornadas</h2>
+      <p>Recibe un aviso al terminar la jornada y otro al día siguiente.</p>
+      {remindersEnabled ? <p>Notificaciones activadas en este celular.</p>
+        : <Button type="button" onClick={() => void enableReminders()}>Activar notificaciones</Button>}
+      {reminderMessage && <p role="status">{reminderMessage}</p>}
+    </Card>}
     <nav className="game-role-views" aria-label="Vistas de Roles de juego">
       <Button type="button" aria-pressed={view === "matrix"} onClick={() => setView("matrix")}>Matriz</Button>
       <Button type="button" aria-pressed={view === "history"} onClick={() => setView("history")}>Historial</Button>
@@ -195,7 +244,7 @@ function TournamentMatrix({ token, tournamentId }: { token: string; tournamentId
       selectedRound={selected} onSave={saveNote} />}
     </>}
     {editor && <MatrixEditor editor={editor} matrix={matrix} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
-    {shareRoundId !== null && <GameRoleShare path={`${path}rounds/${shareRoundId}/share/`} token={token} onClose={() => setShareRoundId(null)} />}
+    {shareRoundId !== null && <GameRoleShare path={`${path}rounds/${shareRoundId}/share/`} token={token} reminderKey={`${tournamentId}/${shareRoundId}`} onClose={() => setShareRoundId(null)} />}
   </>;
 }
 

@@ -1,13 +1,15 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
+const enrollments = process.env.VITE_APP_BRAND === "inscripciones";
+
 const config: CapacitorConfig = {
-  appId: "com.futsi.app",
-  appName: "Futsi",
+  appId: enrollments ? "mx.bpoweracademy.inscripciones" : "com.futsi.app",
+  appName: enrollments ? "Inscripciones BPower" : "Futsi",
   webDir: "dist",
-  bundledWebRuntime: false,
   server: {
-    androidScheme: "http",
-    cleartext: true,
+    androidScheme: enrollments ? "https" : "http",
+    hostname: enrollments ? "futsi.bpoweracademy.mx" : "localhost",
+    cleartext: !enrollments,
   },
 };
 
