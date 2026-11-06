@@ -581,7 +581,28 @@ class WhatsAppConversationViewSet(
         key = "whatsapp-attention:v3:individual-last-seven-days:" + sha256(scope.encode()).hexdigest()
         result = None if settings.FUTSI_ENV == "test" else cache.get(key)
         if result is None:
-            result = attention_notifications(self.visible_conversations())
+            visible = self.visible_conversations()
+            result = attention_notifications(visible)
+            from core.services.whatsapp_bridge_report import bridge_report
+            from django.utils.dateparse import parse_datetime
+            from datetime import timedelta
+            from django.db import DatabaseError
+            try:
+                # Isolate this optional report: a failure must not hide existing alerts.
+                with transaction.atomic():
+                    bridge = bridge_report(visible)
+            except DatabaseError:
+                bridge = {'period_end': None, 'findings': []}
+                result['bridge_unavailable'] = True
+            cutoff = parse_datetime(bridge['period_end']) if bridge['period_end'] else None
+            if cutoff and timezone.now() - timedelta(days=7) <= cutoff <= timezone.now():
+                alerts = [{"id": f"bridge:{item['conversation_id']}:{item['period_start']}",
+                    "kind": "bridge", "business_address": item['channel'],
+                    "channel_label": item['channel_label'], "conversation_id": item['conversation_id'],
+                    "bridge_category": item['category'], "seconds": 0}
+                    for item in bridge['findings']]
+                result['total'] += len(alerts)
+                result['items'] = (alerts + result['items'])[:100]
             if settings.FUTSI_ENV != "test":
                 cache.set(key, result, 60)
         response = Response(result)
@@ -682,6 +703,13 @@ class WhatsAppConversationViewSet(
     def quality_audit(self, request):
         from core.services.whatsapp_quality_report import quality_report
         response = Response(quality_report(self.get_queryset(), request.query_params))
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=False, methods=["get"], url_path="bridge-audit")
+    def bridge_audit(self, request):
+        from core.services.whatsapp_bridge_report import bridge_report
+        response = Response(bridge_report(self.get_queryset()))
         response["Cache-Control"] = "private, no-store"
         return response
 

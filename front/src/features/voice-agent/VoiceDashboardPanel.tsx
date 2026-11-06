@@ -27,6 +27,7 @@ import { VeronicaFiltersPanel } from "./VeronicaFiltersPanel";
 import { CommunicationScopePicker } from "./CommunicationScopePicker";
 import { ChatExportPanel } from "./ChatExportPanel";
 import { WhatsAppQualityPanel } from "./WhatsAppQualityPanel";
+import { WhatsAppBridgePanel } from "./WhatsAppBridgePanel";
 import { ContactClassificationPanel } from "./ContactClassificationPanel";
 import { AuditPeriodPicker, lastCompletedQualityWeek } from "./AuditPeriodPicker";
 import { mondayKey } from "./communicationUtils";
@@ -267,7 +268,7 @@ export function VoiceDashboardPanel({
       {section === "collections" && !isSoccerWa && <DebtCommunicationsPanel token={token} scopeQuery={query} onOpenDebts={onOpenDebts} />}
       {auditPage && section !== "chat-quality" && <AuditPeriodPicker days={auditPeriodDays} start={auditStart} onDaysChange={setAuditPeriodDays} onStartChange={setAuditStart} />}
       {section === "summary" && <><CommunicationsSummary data={voiceData} periodDays={auditPeriodDays} periodStart={auditStart} canReview={canReviewCalls} onNavigate={onSelectSection} onOpenInbox={openInbox} /><ContactClassificationPanel compact token={token} scopeQuery={query} /></>}
-      {section === "chat-quality" && <><AuditPeriodPicker weeklyQuality days={7} start={qualityWeek} onStartChange={setQualityWeek} /><WhatsAppQualityPanel token={token} scopeQuery={query} week={qualityWeek} onOpenConversation={openConversation} /></>}
+      {section === "chat-quality" && <><AuditPeriodPicker weeklyQuality days={7} start={qualityWeek} onStartChange={setQualityWeek} /><WhatsAppQualityPanel token={token} scopeQuery={query} week={qualityWeek} onOpenConversation={openConversation} />{isSoccerWa && <WhatsAppBridgePanel token={token} scopeQuery={query} onOpenConversation={openConversation} />}</>}
 
       {section === "bookings" && !isSoccerWa ? (
         <TrialBookingsPanel

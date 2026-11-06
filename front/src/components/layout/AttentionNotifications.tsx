@@ -5,9 +5,9 @@ import type { User } from "../../types";
 import { durationLabel } from "../../features/voice-agent/communicationUtils";
 import "./attention-notifications.css";
 
-type Alert = { id: string; kind: "average" | "pending"; seconds: number; business_address: string;
-  channel_site_name: string; channel_label: string; conversation_id?: number; contact_name?: string; sample_count?: number };
-type Alerts = { items: Alert[]; total: number; generated_at: string };
+type Alert = { id: string; kind: "average" | "pending" | "bridge"; seconds: number; business_address: string;
+  channel_site_name: string; channel_label: string; conversation_id?: number; contact_name?: string; sample_count?: number; bridge_category?: string };
+type Alerts = { items: Alert[]; total: number; generated_at: string; bridge_unavailable?: boolean };
 
 export function AttentionNotifications({ token, user, onOpenChats }: { token: string; user: User; onOpenChats: () => void }) {
   const enabled = ["admin", "owner", "dev", "site_coordinator", "coach"].includes(user.role);
@@ -55,11 +55,12 @@ export function AttentionNotifications({ token, user, onOpenChats }: { token: st
     {open && <section id="attention-notifications-panel" className="attention-popover" aria-label="Notificaciones de atención">
       <header><strong>Notificaciones</strong><div><button type="button" title="Marcar como leídas" aria-label="Marcar como leídas" onClick={markRead}><CheckCheck size={18} /></button><button type="button" aria-label="Cerrar notificaciones" onClick={() => setOpen(false)}><X size={18} /></button></div></header>
       {error && <p className="attention-fetch-error" role="alert">No se pudieron cargar las alertas. Recarga la página para volver a consultar.</p>}
+      {data?.bridge_unavailable && <p className="attention-fetch-error" role="alert">No se pudieron consultar las alertas de puentes.</p>}
       <div className="attention-alert-list" aria-live="polite">
         {!data && !error && <p className="attention-empty">Consultando…</p>}
         {data && !data.items.length && <p className="attention-empty">Sin alertas de atención</p>}
         {data?.items.map(a => <article key={a.id} className={`attention-alert ${a.kind} ${read.includes(a.id) ? "read" : ""}`}>
-          <Clock3 size={18} /><div><strong>{a.kind === "average" ? "Promedio mayor a 1 hora" : "Chat sin respuesta por más de 2 horas"}</strong><p>{a.channel_label || a.channel_site_name || "Número sin sede"}</p><p>{a.kind === "pending" ? a.contact_name : `Últimos 7 días · ${a.sample_count} respuestas`}</p><b>{durationLabel(a.seconds)}</b>
+          <Clock3 size={18} /><div><strong>{a.kind === "bridge" ? (a.bridge_category === "discouraged" ? "Posible desaliento en puente" : "Sin invitación para el puente") : a.kind === "average" ? "Promedio mayor a 1 hora" : "Chat sin respuesta por más de 2 horas"}</strong><p>{a.channel_label || a.channel_site_name || "Número sin sede"}</p>{a.kind === "bridge" ? <p>Oportunidad detectada en un chat de torneo.</p> : <><p>{a.kind === "pending" ? a.contact_name : `Últimos 7 días · ${a.sample_count} respuestas`}</p><b>{durationLabel(a.seconds)}</b></>}
           {user.role !== "coach" && <button type="button" onClick={() => { sessionStorage.setItem("futsi:attention-chat", JSON.stringify(a)); setOpen(false); onOpenChats(); window.dispatchEvent(new Event("futsi:open-attention-chat")); }}>Ver chats →</button>}</div>
         </article>)}
       </div>
