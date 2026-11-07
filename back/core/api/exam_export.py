@@ -75,7 +75,6 @@ def append_row(sheet, values, header=False):
 def add_filter_table(sheet, headers, count, name):
     """Native Excel table: filter and sort each column, including numeric scores."""
     ref = f'A1:{get_column_letter(len(headers))}{max(1, count + 1)}'
-    sheet.auto_filter.ref = ref
     if count:
         table = Table(displayName=name, ref=ref)
         table.tableColumns = [TableColumn(id=i, name=header) for i, header in enumerate(headers, 1)]
@@ -83,6 +82,8 @@ def add_filter_table(sheet, headers, count, name):
         table.tableStyleInfo = TableStyleInfo(name='TableStyleMedium2', showFirstColumn=False,
                                              showLastColumn=False, showRowStripes=True, showColumnStripes=False)
         sheet.add_table(table)
+    else:
+        sheet.auto_filter.ref = ref
 
 
 def criterion_detail(item):
@@ -153,14 +154,17 @@ class ExamExportView(APIView):
             append_row(second_details, second_detail_headers, header=True)
         result_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Correo', 'Teléfono', 'Fecha del examen (CDMX)',
             'Inicio (CDMX)', 'Entrega (CDMX)', 'Duración (min)', 'Tiempo de referencia (min)', 'Estado',
-            'Calificación / 10', 'Requiere revisión', 'Observaciones', 'Origen']
+            'Primera fase: calificación / 10', 'Segunda fase: estado', 'Segunda fase: total / 30',
+            'Segunda fase: promedio / 10', 'Segunda fase: proactividad / 10',
+            'Segunda fase: responsabilidad / 10', 'Segunda fase: WhatsApp / 10',
+            'Requiere revisión', 'Observaciones', 'Origen']
         result_headers += [f'{label} / 10' for label, _ in SKILLS.values()]
         skill = request.query_params.get('skill', '')
         if skill:
             result_headers += ['Habilidad seleccionada', 'Calificación de habilidad / 10']
         answer_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Pregunta', 'Tipo', 'Enunciado',
             'Opciones', 'Respuesta del participante', 'Respuesta correcta / criterio', 'Puntos / 10', 'Requiere revisión', 'Comentario']
-        for sheet, headers, widths in [(results, result_headers, [14,34,32,36,20,24,24,24,20,24,28,22,22,65,24] + [32] * len(SKILLS) + ([36,30] if skill else [])),
+        for sheet, headers, widths in [(results, result_headers, [14,34,32,36,20,24,24,24,20,24,28,28,27,26,28,30,32,28,22,65,24] + [32] * len(SKILLS) + ([36,30] if skill else [])),
                                       (answers, answer_headers, [14,34,32,14,20,65,65,65,65,18,22,65])]:
             sheet.freeze_panes = 'D2'
             sheet.row_dimensions[1].height = 34
@@ -189,19 +193,28 @@ class ExamExportView(APIView):
             observations = (f"{metadata.get('correct_count')} aciertos de {metadata.get('question_count')}. Nota calculada con aciertos. Sin fecha, contactos, tiempos ni respuestas individuales en el archivo." if totals_only else 'Sin horas ni duración registradas' if offline else '')
             areas = attempt_skills(snapshot.get('questions'), attempt.grading_status, grading.get('questions')) if submitted else {}
             skill_scores = [areas.get(key, (None, 0))[0] for key in SKILLS]
+            child = getattr(attempt, 'second_stage_attempt', None)
+            child_submitted = bool(child and child.submitted_at)
+            child_grade = child.grading if child_submitted and isinstance(child.grading, dict) else {}
+            total = complementary_grade(child) if child_submitted else None
+            has_second = bool(getattr(attempt.exam, 'second_stage', None))
+            stage_status = (('Sin iniciar' if not child else 'En curso' if not child_submitted else
+                             STATUSES.get(child.grading_status, 'Revisar estado')) if has_second else '')
+            phase_points = []
+            for qid in ('1', '2', '3'):
+                item = (child_grade.get('questions') or {}).get(qid, {})
+                value = item.get('points') if isinstance(item, dict) and child and child.grading_status == 'graded' else None
+                phase_points.append(value if numeric(value) and 0 <= value <= 10 else None)
             append_row(results, [attempt.id, title, attempt.name, attempt.email, attempt.phone, completed,
                 None if offline else local_clock(attempt.started_at), None if offline else local_clock(attempt.submitted_at),
                 None if offline or not submitted else round(max(0,(attempt.submitted_at-attempt.started_at).total_seconds())/60,2),
                 None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado') if submitted else 'Sin entregar', score,
+                stage_status, total['total'] if total else None, round(total['total'] / 3, 2) if total else None, *phase_points,
                 'Sí' if review else 'No', grading.get('error') or observations,
                 'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'] + skill_scores + ([SKILLS[skill][0], attempt.skill_score] if skill else []))
             if second_sheet and (exam or getattr(attempt.exam, 'second_stage', None)):
                 second_count += 1
                 stage = eligibility(attempt)
-                child = getattr(attempt, 'second_stage_attempt', None)
-                child_submitted = bool(child and child.submitted_at)
-                child_grade = child.grading if child_submitted and isinstance(child.grading, dict) else {}
-                total = complementary_grade(child) if child_submitted else None
                 details = []
                 for qid in ('1', '2', '3'):
                     item = (child_grade.get('questions') or {}).get(qid, {})
@@ -209,7 +222,6 @@ class ExamExportView(APIView):
                     if not numeric(points) or not 0 <= points <= 10:
                         points = None
                     details += [points, child.answers.get(qid, '') if child_submitted else '', item.get('reason', '')]
-                stage_status = 'Sin iniciar' if not child else 'En curso' if not child_submitted else STATUSES.get(child.grading_status, 'Revisar estado')
                 append_row(second_sheet, [attempt.id, attempt.name, attempt.email, attempt.phone, score, stage['management'], stage['sales'],
                     {'eligible': 'Entregada', 'incomplete': 'Sin entregar'}[stage['status']],
                     stage_status, total['total'] if total else None,

@@ -26,9 +26,18 @@ def test_second_stage_in_both_exports_with_filterable_numeric_and_detail_tables(
     assert wb.sheetnames==['Evaluaciones','Respuestas','Segunda fase','Respuestas segunda fase']
     assert wb['Evaluaciones'].max_row==2  # The child is not duplicated as a first-stage row.
     for sheet in wb:
-        assert sheet.auto_filter.ref and len(sheet.tables)==1
+        assert sheet.auto_filter.ref is None and len(sheet.tables)==1
         table=next(iter(sheet.tables.values()))
-        assert table.autoFilter and table.autoFilter.ref==sheet.auto_filter.ref
+        assert table.autoFilter and table.autoFilter.ref==table.ref
+    evaluations=list(wb['Evaluaciones'].values)
+    combined=dict(zip(evaluations[0],evaluations[1]))
+    assert combined['Primera fase: calificación / 10']==10
+    assert combined['Segunda fase: estado']=='Calificado'
+    assert combined['Segunda fase: total / 30']==24
+    assert combined['Segunda fase: promedio / 10']==8
+    assert combined['Segunda fase: proactividad / 10']==8
+    assert combined['Segunda fase: responsabilidad / 10']==7
+    assert combined['Segunda fase: WhatsApp / 10']==9
     summary=list(wb['Segunda fase'].values)
     result=dict(zip(summary[0],summary[1]))
     assert result['Total / 30']==24 and result['Promedio segunda / 10']==8

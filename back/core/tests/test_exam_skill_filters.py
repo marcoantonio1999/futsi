@@ -34,9 +34,10 @@ def test_skill_order_range_top_export_and_missing_breakdown(auth_client):
     w = book(c.get('/api/recruitment-exams/export/', {**params, 'exam':exam['id'], 'top':'10'}))
     rows = list(w['Evaluaciones'].values)
     assert [r[0] for r in rows[1:]] == [ids[1], ids[2]]
-    assert rows[1][11] == 4 and rows[1][21:] == ('Ventas y marketing', 9)
-    assert w['Evaluaciones'].auto_filter.ref == 'A1:W3'
-    assert rows[1][15:21] == (9,) * 6
+    assert rows[1][11] == 4 and rows[1][27:] == ('Ventas y marketing', 9)
+    assert w['Evaluaciones'].auto_filter.ref is None
+    assert w['Evaluaciones'].tables['Evaluaciones'].autoFilter.ref == 'A1:AC3'
+    assert rows[1][21:27] == (9,) * 6
     assert c.get(endpoint, {'skill':'invented'}).status_code == 400
     assert c.get('/api/recruitment-exams/export/', {'exam':exam['id'], 'skill':'invented'}).status_code == 400
     assert c.get(endpoint).json()['count'] == 5
@@ -73,15 +74,15 @@ def test_export_always_includes_all_skills_without_filter(auth_client, scope):
     params = {'exam':exam['id']} if scope == 'exam' else {}
     w = book(c.get('/api/recruitment-exams/export/', params))
     rows = list(w['Evaluaciones'].values)
-    assert rows[0][15:] == tuple(f'{label} / 10' for label, _ in SKILLS.values())
+    assert rows[0][21:] == tuple(f'{label} / 10' for label, _ in SKILLS.values())
     by_id = {row[0]: row for row in rows[1:]}
     assert by_id[a.id][11] == 7
-    assert by_id[a.id][15:] == (0,1,2,3,4,5)
-    assert by_id[total_only.id][15:] == (None,) * 6
-    assert by_id[partial.id][15:] == (0,None,2,3,4,5)
-    assert by_id[pending.id][15:] == (None,) * 6
+    assert by_id[a.id][21:] == (0,1,2,3,4,5)
+    assert by_id[total_only.id][21:] == (None,) * 6
+    assert by_id[partial.id][21:] == (0,None,2,3,4,5)
+    assert by_id[pending.id][21:] == (None,) * 6
     if scope == 'exam':
-        assert by_id[unfinished.id][15:] == (None,) * 6
+        assert by_id[unfinished.id][21:] == (None,) * 6
     else:
         assert unfinished.id not in by_id
 
@@ -120,6 +121,6 @@ def test_multiple_skills_require_all_ranges_and_export_all_pages(auth_client):
     assert top['count'] == 55 and top['filters']['top_threshold'] == 7
     rows = list(book(c.get('/api/recruitment-exams/export/',{**params,'exam':exam['id']}))['Evaluaciones'].values)
     assert len(rows) == 56 and {r[0] for r in rows[1:]} == set(ids)
-    assert all(r[15:21] == (8,)*6 for r in rows[1:])
+    assert all(r[21:27] == (8,)*6 for r in rows[1:])
     assert c.get(url,{'skill_ranges':json.dumps({'sales':{}})}).json()['count'] == 56
     assert c.get(url,{**params,'skill':'sales'}).status_code == 400

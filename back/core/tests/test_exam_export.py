@@ -40,7 +40,8 @@ def test_all_pages_all_exams_and_read_only(auth_client):
     assert w['Evaluaciones']['L2'].value==0
     assert w['Evaluaciones']['L2'].data_type=='n'
     assert book(c.get(URL,{'exam':first['id']}))['Evaluaciones'].max_row==67
-    assert w['Evaluaciones'].freeze_panes=='D2' and w['Evaluaciones'].auto_filter.ref=='A1:U67'
+    assert w['Evaluaciones'].freeze_panes=='D2' and w['Evaluaciones'].auto_filter.ref is None
+    assert w['Evaluaciones'].tables['Evaluaciones'].autoFilter.ref=='A1:AA67'
     assert 'access_token' not in str(list(w['Evaluaciones'].values))
 
 
@@ -79,7 +80,7 @@ def test_details_formula_safety_dates_and_offline_ambiguity(auth_client):
         grading={'score':10,'review':False,'accepted_multiple_answers':['1'],
                  'questions':{'1':{'points':10,'reason':'Doble marca aceptada: incluye la correcta.','review':False}}})
     resolved=book(c.get(URL))
-    assert resolved['Evaluaciones']['L3'].value==10 and resolved['Evaluaciones']['M3'].value=='No'
+    assert resolved['Evaluaciones']['L3'].value==10 and resolved['Evaluaciones']['S3'].value=='No'
     assert resolved['Respuestas']['H4'].value=='Varias opciones: A, B'
     assert resolved['Respuestas']['J4'].value==10 and resolved['Respuestas']['K4'].value=='No'
     assert resolved['Respuestas']['L4'].value=='Doble marca aceptada: incluye la correcta.'
