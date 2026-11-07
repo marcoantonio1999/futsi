@@ -11,6 +11,8 @@ from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.worksheet.table import Table, TableColumn, TableStyleInfo
+from openpyxl.worksheet.filters import AutoFilter
 from openpyxl.utils import get_column_letter
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
@@ -70,6 +72,38 @@ def append_row(sheet, values, header=False):
     sheet.append(cells)
 
 
+def add_filter_table(sheet, headers, count, name):
+    """Native Excel table: filter and sort each column, including numeric scores."""
+    ref = f'A1:{get_column_letter(len(headers))}{max(1, count + 1)}'
+    sheet.auto_filter.ref = ref
+    if count:
+        table = Table(displayName=name, ref=ref)
+        table.tableColumns = [TableColumn(id=i, name=header) for i, header in enumerate(headers, 1)]
+        table.autoFilter = AutoFilter(ref=ref)
+        table.tableStyleInfo = TableStyleInfo(name='TableStyleMedium2', showFirstColumn=False,
+                                             showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+        sheet.add_table(table)
+
+
+def criterion_detail(item):
+    criteria = item.get('criteria', []) if isinstance(item, dict) else []
+    labels = {'iniciativa': 'Iniciativa', 'acciones': 'Acciones', 'resultado': 'Resultado',
+              'prioridades': 'Prioridades', 'perseverancia': 'Perseverancia', 'cumplimiento': 'Cumplimiento',
+              'empatia_cercania': 'Empatía y cercanía', 'valor_sin_inventar': 'Beneficios',
+              'accion_comercial': 'Acción comercial', 'seguimiento': 'Seguimiento'}
+    return '\n'.join(f"{labels.get(c.get('id'), c.get('id', 'Criterio'))}: {c.get('points', '')} puntos. {c.get('reason', '')}"
+                     for c in criteria if isinstance(c, dict)) if isinstance(criteria, list) else ''
+
+
+def second_rubric(child, qid):
+    grade = child.grading if isinstance(child.grading, dict) else {}
+    if grade.get('rubric_version') == 'human_review_v2_20261104':
+        return {'1': 'Iniciativa: hasta 3; acciones: hasta 4; resultado: hasta 3.',
+                '2': 'Prioridades: hasta 4; perseverancia: hasta 3; cumplimiento: hasta 3.',
+                '3': 'Empatía y cercanía: hasta 2; beneficios: hasta 2; acción comercial: hasta 4; seguimiento: hasta 2.'}.get(qid, '')
+    return child.grading_key.get(qid, '') if isinstance(child.grading_key, dict) else ''
+
+
 class ExamExportView(APIView):
     permission_classes = [CanManageExams]
 
@@ -89,24 +123,34 @@ class ExamExportView(APIView):
         if exam_id:
             rows, _ = filtered_attempts(RecruitmentExamAttempt.objects.filter(exam_id=int(exam_id)), request.query_params)
         else:
-            rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False).order_by('exam_id', 'id')
-        rows = rows.select_related('exam', 'second_stage_attempt').defer('access_token', 'start_key', 'identity_email', 'identity_phone',
+            rows = RecruitmentExamAttempt.objects.filter(submitted_at__isnull=False, first_stage_attempt__isnull=True).order_by('exam_id', 'id')
+        rows = rows.select_related('exam', 'exam__second_stage', 'second_stage_attempt').defer('access_token', 'start_key', 'identity_email', 'identity_phone',
             'exam__public_token', 'exam__answer_key')
         workbook = Workbook(write_only=True)
         results = workbook.create_sheet('Evaluaciones')
         answers = workbook.create_sheet('Respuestas')
-        second_sheet = workbook.create_sheet('Segunda fase') if exam and hasattr(exam, 'second_stage') else None
-        second_headers = ['ID primera entrega', 'Participante', 'Gestión / 10', 'Ventas / 10', 'Primera fase',
-                          'Estado segunda fase', 'Total / 30', 'Filtro sugerido',
+        second_sheet = workbook.create_sheet('Segunda fase') if not exam or hasattr(exam, 'second_stage') else None
+        second_details = workbook.create_sheet('Respuestas segunda fase') if second_sheet else None
+        second_headers = ['ID primera entrega', 'Participante', 'Correo', 'Teléfono', 'Primera fase / 10', 'Gestión / 10', 'Ventas / 10', 'Primera fase',
+                          'Estado segunda fase', 'Total / 30', 'Promedio segunda / 10', 'Filtro sugerido',
                           'Proactividad / 10', 'Respuesta proactividad', 'Justificación proactividad',
                           'Responsabilidad / 10', 'Respuesta responsabilidad', 'Justificación responsabilidad',
                           'Comercial / 10', 'Respuesta comercial', 'Justificación comercial', 'Requiere revisión', 'Identidad por verificar']
         if second_sheet:
             second_sheet.freeze_panes = 'C2'
             second_sheet.row_dimensions[1].height = 34
-            for i, width in enumerate([20, 32, 18, 18, 26, 28, 18, 26, 20, 65, 65, 22, 65, 65, 20, 65, 65, 22, 24], 1):
+            for i, width in enumerate([20, 32, 36, 20, 20, 18, 18, 22, 26, 18, 22, 22, 20, 65, 65, 22, 65, 65, 20, 65, 65, 22, 24], 1):
                 second_sheet.column_dimensions[get_column_letter(i)].width = width
             append_row(second_sheet, second_headers, header=True)
+        second_detail_headers = ['ID primera entrega', 'ID segunda entrega', 'Participante', 'Correo', 'Teléfono',
+            'Pregunta', 'Enunciado', 'Respuesta del participante', 'Puntos / 10', 'Criterios de calificación', 'Justificación',
+            'Desglose por criterio', 'Requiere revisión']
+        if second_details:
+            second_details.freeze_panes = 'F2'
+            second_details.row_dimensions[1].height = 34
+            for i, width in enumerate([20,20,32,36,20,15,65,65,18,65,65,70,20], 1):
+                second_details.column_dimensions[get_column_letter(i)].width = width
+            append_row(second_details, second_detail_headers, header=True)
         result_headers = ['ID entrega', 'Examen / puesto', 'Participante', 'Correo', 'Teléfono', 'Fecha del examen (CDMX)',
             'Inicio (CDMX)', 'Entrega (CDMX)', 'Duración (min)', 'Tiempo de referencia (min)', 'Estado',
             'Calificación / 10', 'Requiere revisión', 'Observaciones', 'Origen']
@@ -123,7 +167,7 @@ class ExamExportView(APIView):
             for index, width in enumerate(widths, 1):
                 sheet.column_dimensions[get_column_letter(index)].width = width
             append_row(sheet, headers, header=True)
-        count = detail_count = 0
+        count = detail_count = second_count = second_detail_count = 0
         for attempt in rows.iterator(chunk_size=200):
             count += 1
             if count >= 1048576:
@@ -151,7 +195,8 @@ class ExamExportView(APIView):
                 None if totals_only else snapshot.get('duration_minutes'), STATUSES.get(attempt.grading_status, 'Revisar estado') if submitted else 'Sin entregar', score,
                 'Sí' if review else 'No', grading.get('error') or observations,
                 'Carga de Excel' if totals_only else 'Carga manual de PDF' if offline else 'Formulario web'] + skill_scores + ([SKILLS[skill][0], attempt.skill_score] if skill else []))
-            if second_sheet:
+            if second_sheet and (exam or getattr(attempt.exam, 'second_stage', None)):
+                second_count += 1
                 stage = eligibility(attempt)
                 child = getattr(attempt, 'second_stage_attempt', None)
                 child_submitted = bool(child and child.submitted_at)
@@ -165,12 +210,27 @@ class ExamExportView(APIView):
                         points = None
                     details += [points, child.answers.get(qid, '') if child_submitted else '', item.get('reason', '')]
                 stage_status = 'Sin iniciar' if not child else 'En curso' if not child_submitted else STATUSES.get(child.grading_status, 'Revisar estado')
-                append_row(second_sheet, [attempt.id, attempt.name, stage['management'], stage['sales'],
+                append_row(second_sheet, [attempt.id, attempt.name, attempt.email, attempt.phone, score, stage['management'], stage['sales'],
                     {'eligible': 'Entregada', 'incomplete': 'Sin entregar'}[stage['status']],
                     stage_status, total['total'] if total else None,
+                    round(total['total'] / 3, 2) if total else None,
                     ('Cumple' if total['meets_suggested_priority'] else 'No alcanza') if total else '',
                     *details, 'Sí' if child_grade.get('review') else 'No' if total else '',
                     'Sí' if child and child.snapshot.get('second_stage_identity_review') else 'No' if child else ''])
+                if child_submitted:
+                    for question in child.snapshot.get('questions', []):
+                        second_detail_count += 1
+                        if second_detail_count >= 1048576:
+                            raise ValidationError({'detail': 'El archivo excede el límite de filas de Excel. Exporta por examen.'})
+                        qid = question.get('id')
+                        item = (child_grade.get('questions') or {}).get(qid, {})
+                        points = item.get('points') if child.grading_status == 'graded' else None
+                        if not numeric(points) or not 0 <= points <= 10:
+                            points = None
+                        append_row(second_details, [attempt.id, child.id, attempt.name, attempt.email or child.email,
+                            attempt.phone or child.phone, qid, question.get('prompt', ''), child.answers.get(qid, ''),
+                            points, second_rubric(child, qid), item.get('reason', ''), criterion_detail(item),
+                            'Sí' if item.get('review') else 'No' if points is not None else ''])
             # Unsubmitted drafts are not delivered answers and must not be exported.
             if not submitted:
                 continue
@@ -191,10 +251,11 @@ class ExamExportView(APIView):
                     answer_text(question, attempt.grading_key.get(qid)) if qid in attempt.grading_key else 'Sin clave registrada',
                     points, 'Sí' if (marks and qid not in accepted) or grade.get('review') else 'No',
                     'Confirmar selección con Vero' if marks and qid not in accepted else grade.get('reason','')])
-        results.auto_filter.ref = f'A1:{get_column_letter(len(result_headers))}{max(1,count+1)}'
-        answers.auto_filter.ref = f'A1:L{max(1,detail_count+1)}'
+        add_filter_table(results, result_headers, count, 'Evaluaciones')
+        add_filter_table(answers, answer_headers, detail_count, 'RespuestasPrimera')
         if second_sheet:
-            second_sheet.auto_filter.ref = f'A1:{get_column_letter(len(second_headers))}{max(1,count+1)}'
+            add_filter_table(second_sheet, second_headers, second_count, 'ResultadosSegunda')
+            add_filter_table(second_details, second_detail_headers, second_detail_count, 'RespuestasSegunda')
         output = BytesIO()
         workbook.save(output)
         scope = f'examen-{int(exam_id)}' if exam_id else 'todos-los-examenes'

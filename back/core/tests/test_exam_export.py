@@ -31,7 +31,7 @@ def test_all_pages_all_exams_and_read_only(auth_client):
     before=list(RecruitmentExamAttempt.objects.order_by('id').values())
     with CaptureQueriesContext(connection) as queries:
         w=book(c.get(URL))
-    assert w.sheetnames==['Evaluaciones','Respuestas']
+    assert w.sheetnames==['Evaluaciones','Respuestas','Segunda fase','Respuestas segunda fase']
     assert w['Evaluaciones'].max_row==67
     assert len(queries)<6
     sql=' '.join(q['sql'].lower() for q in queries)
