@@ -15,7 +15,7 @@ from core.api.exams import CanManageExams
 from core.exam_models import RecruitmentApplication, RecruitmentExam, RecruitmentExamAttempt
 from core.exam_identity import exam_email, exam_phone
 from core.exam_profiles import normalized, clean_string
-from core.employment_forms import SECTIONS, FIELDS, FORM_URL, form_text, candidates, auto_link, link_application
+from core.employment_forms import SECTIONS, FIELDS, FORM_URL, form_text, candidates, auto_link, link_application, PREFIERO_NO_RESPONDER, NO_APLICA
 
 
 class FormThrottle(AnonRateThrottle):
@@ -48,13 +48,21 @@ class PublicEmploymentFormView(APIView):
         fields=data.get('fields')
         if not isinstance(fields,dict) or set(fields)-{f['key'] for f in FIELDS}:
             raise ValidationError({'detail':'Revisa los campos del formulario.'})
+        # A retry of a previously saved form remains idempotent even after the
+        # required fields change; it must not create or replace an application.
+        existing=RecruitmentApplication.objects.filter(submit_key=key).first()
+        if existing:
+            email=fields.get('correo','');phone=fields.get('telefono','')
+            if not isinstance(email,str) or not isinstance(phone,str) or existing.identity_email!=exam_email(email) or existing.identity_phone!=exam_phone(phone):
+                return Response({'detail':'El identificador ya fue usado. Abre un formulario nuevo.'},status=409)
+            return Response(receipt(existing))
         cleaned={}
         for f in FIELDS:
             value=clean_string(fields.get(f['key'],''),180 if f['key'] in {'puesto_solicitado','nombres','apellido_paterno','apellido_materno','firma_solicitante'} else 2000,f['label'])
             if f['required'] and not value:
                 raise ValidationError({'detail':f'Completa: {f["label"]}.'})
-            if value and f['sensitive'] and data.get('sensitive_consent') is not True:
-                raise ValidationError({'detail':'Autoriza expresamente los datos sensibles opcionales o déjalos vacíos.'})
+            if value and f['sensitive'] and value.casefold()!=PREFIERO_NO_RESPONDER.casefold() and data.get('sensitive_consent') is not True:
+                raise ValidationError({'detail':'Autoriza expresamente los datos sensibles que proporcionaste o elige «Prefiero no responder».'})
             cleaned[f['key']]=value
         if len(form_text(cleaned))>60000: raise ValidationError({'detail':'El formulario supera el límite de texto permitido.'})
         email=cleaned['correo']
@@ -62,7 +70,7 @@ class PublicEmploymentFormView(APIView):
         except DjangoValidationError: raise ValidationError({'detail':'Escribe un correo electrónico válido.'})
         if len(email)>254 or len(cleaned['telefono'])>30 or not 8<=len(exam_phone(cleaned['telefono']))<=15:
             raise ValidationError({'detail':'Revisa tu correo y teléfono.'})
-        name=' '.join(cleaned[k] for k in ['nombres','apellido_paterno','apellido_materno'] if cleaned[k])
+        name=' '.join(cleaned[k] for k in ['nombres','apellido_paterno','apellido_materno'] if cleaned[k] and cleaned[k].casefold()!=NO_APLICA.casefold())
         if len(name)>180: raise ValidationError({'detail':'El nombre completo supera 180 caracteres.'})
         exam=None
         if data.get('exam_token'):

@@ -16,7 +16,8 @@ def clear_cache():
 
 
 def payload(**fields):
-    return dict(submit_key=str(uuid.uuid4()),consent=True,fields={
+    defaults={f['key']:('Prefiero no responder' if f['sensitive'] else 'No aplica') for f in FIELDS if f['allow_na']}
+    return dict(submit_key=str(uuid.uuid4()),consent=True,fields={**defaults,
         'nombres':'Persona','apellido_paterno':'Ficticia','correo':'persona1@example.invalid','telefono':'5500000001',
         'puesto_solicitado':'Prueba de evaluación','firma_solicitante':'Persona Ficticia',**fields})
 
@@ -45,6 +46,31 @@ def test_same_fields_as_pdf_plus_email_and_signature():
     keys={f['key'] for f in FIELDS}
     assert len(keys)==len(FIELDS)==80
     assert {'nombres','correo','enfermedad_cronica','empleo_4_separacion','estudio_actual_grado','firma_solicitante'}<=keys
+
+
+@pytest.mark.parametrize('key', [f['key'] for f in FIELDS])
+def test_every_question_rejects_missing_or_whitespace(key):
+    data=payload();data['fields'][key]='  '
+    response=submit(data)
+    assert response.status_code==400
+    assert not RecruitmentApplication.objects.exists()
+
+
+def test_explicit_not_applicable_and_sensitive_refusals_are_accepted():
+    data=payload();response=submit(data)
+    assert response.status_code==201,response.content
+    row=RecruitmentApplication.objects.get()
+    assert row.name=='Persona Ficticia'
+    assert row.fields['empleo_4_compania']=='No aplica'
+    assert row.fields['enfermedad_cronica']=='Prefiero no responder'
+    assert row.fields['_sensitive_consent']=='no'
+
+
+def test_old_partial_submit_can_be_retried_without_new_fields():
+    data=payload();assert submit(data).status_code==201
+    data['fields']={k:data['fields'][k] for k in ('correo','telefono')}
+    assert submit(data).status_code==200
+    assert RecruitmentApplication.objects.count()==1
 
 
 @pytest.mark.parametrize('changes',[
