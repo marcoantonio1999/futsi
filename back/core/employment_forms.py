@@ -65,12 +65,15 @@ def link_application(application, attempt, actor=None):
 
 
 def auto_link(application):
-    matches=candidates(application)
+    # A generic application's position may differ from the exam title. Only
+    # link when exactly one submitted first-stage attempt matches either
+    # contact and that same attempt matches both; explicit exam links remain scoped.
+    matches=candidates(application,same_vacancy=False)
     if len(matches)==1 and matches[0].identity_email==application.identity_email and matches[0].identity_phone==application.identity_phone:
         attempt=RecruitmentExamAttempt.objects.select_for_update().get(pk=matches[0].pk)
         link_application(application,attempt)
     else:
-        application.link_status='review' if matches or candidates(application,same_vacancy=False) else 'pending'
+        application.link_status='review' if matches else 'pending'
         application.save(update_fields=['link_status'])
 
 

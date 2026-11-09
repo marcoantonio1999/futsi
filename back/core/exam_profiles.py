@@ -241,6 +241,8 @@ def filtered_attempts(rows, params, profiles=False):
             When(profile__cv_search__regex=keyword_pattern(term),then=Value(True)),
             default=Value(False),output_field=BooleanField()) for i,term in enumerate(terms)})
     if profiles:
+        from core.recruitment_form_filters import filter_form_fields
+        rows = filter_form_fields(rows, params)
         if params.get('position'):
             position=params['position'][:180]
             inherited=Q(profile__isnull=True) | Q(profile__position='')
