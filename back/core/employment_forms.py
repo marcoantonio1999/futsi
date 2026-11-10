@@ -7,14 +7,8 @@ from core.exam_profiles import normalized
 FORM_URL = 'https://futsi.bpoweracademy.mx/#/postulacion'
 
 
-ESSENTIAL_FIELDS = {'puesto_solicitado', 'nombres', 'apellido_paterno', 'correo', 'telefono', 'firma_solicitante'}
-NO_APLICA = 'No aplica'
-PREFIERO_NO_RESPONDER = 'Prefiero no responder'
-
-
 def field(key, label, required=False, kind='text', sensitive=False):
-    return dict(key=key, label=label, required=True, kind=kind, sensitive=sensitive,
-                allow_na=key not in ESSENTIAL_FIELDS)
+    return dict(key=key, label=label, required=required, kind=kind, sensitive=sensitive)
 
 
 SECTIONS = [
@@ -27,7 +21,7 @@ SECTIONS = [
     dict(title='Datos escolares', groups=[dict(title=title, fields=[field(f'estudios_{i}_escuela','Nombre de la escuela'),field(f'estudios_{i}_carrera','Carrera profesional'),field(f'estudios_{i}_titulo','Título recibido')]) for i,title in enumerate(['Preparatoria','Licenciatura','Estudios o cursos adicionales'],1)] +
         [dict(title='Estudios que está efectuando en la actualidad',fields=[field('estudio_actual_escuela','Escuela'),field('estudio_actual_horario','Horario'),field('estudio_actual_carrera','Curso o carrera'),field('estudio_actual_grado','Grado')])]),
     dict(title='Conocimientos generales',fields=[field('otros_idiomas','Otros idiomas que habla'),field('funciones_oficina','Funciones de oficina que domina'),field('otras_funciones','Otros trabajos o funciones que domina'),field('software','Software que maneja')]),
-    dict(title='Empleo actual y anteriores',description='Comience por el empleo más reciente. Si una pregunta no corresponde a su experiencia, marque «No aplica».',groups=[dict(title=title,fields=[field(f'empleo_{i}_{key}',label) for key,label in [
+    dict(title='Empleo actual y anteriores',description='Comience por el empleo más reciente. Si no tiene experiencia, puede dejar estos campos vacíos.',groups=[dict(title=title,fields=[field(f'empleo_{i}_{key}',label) for key,label in [
         ('compania','Nombre de la compañía'),('tiempo_servicio','Tiempo que prestó sus servicios'),('periodo_desde','Desde'),('periodo_hasta','Hasta'),('direccion','Dirección'),('puesto','Puesto desempeñado'),('sueldo','Sueldo mensual'),('telefono','Teléfono'),('jefe','Nombre de su jefe directo'),('referencias','¿Podemos solicitar referencias?'),('separacion','Motivo de separación')]]) for i,title in enumerate(['Actual o último empleo','Empleo anterior 01','Empleo anterior 02','Empleo anterior 03'],1)] +
         [dict(title='¿En cuál de sus empleos permaneció más tiempo?',fields=[field('mayor_antiguedad_compania','Nombre de la compañía'),field('mayor_antiguedad_tiempo','Tiempo que prestó sus servicios')])]),
     dict(title='Datos económicos',fields=[field('conyuge_trabaja','¿Su cónyuge trabaja?',sensitive=True),field('como_nos_conocio','¿Cómo nos conoció?'),field('firma_solicitante','Nombre completo del solicitante',True)]),

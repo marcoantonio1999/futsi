@@ -8,10 +8,7 @@ try {
  for(const width of [320,390,1440]) {
   const context=await browser.newContext({viewport:{width,height:950}}),page=await context.newPage(),errors=[],writes=[];
   const email=`seen-${width}-${Date.now()}@example.invalid`,name=`Revisión Ficticia ${width}`;
-  const schema=await (await context.request.get(base+'/api/public-employment-form/')).json();
-  const fields=schema.sections.flatMap(s=>s.fields||s.groups.flatMap(g=>g.fields));
-  const alternatives=Object.fromEntries(fields.filter(f=>f.allow_na).map(f=>[f.key,f.sensitive?'Prefiero no responder':'No aplica']));
-  const submitted=await context.request.post(base+'/api/public-employment-form/',{data:{submit_key:crypto.randomUUID(),consent:true,fields:{...alternatives,nombres:name,apellido_paterno:'QA',correo:email,telefono:'5500000000',puesto_solicitado:'Revisión QA',firma_solicitante:name}}});
+  const submitted=await context.request.post(base+'/api/public-employment-form/',{data:{submit_key:crypto.randomUUID(),consent:true,fields:{nombres:name,apellido_paterno:'QA',correo:email,telefono:'5500000000',puesto_solicitado:'Revisión QA',firma_solicitante:name}}});
   assert.equal(submitted.status(),201);
   const login=await context.request.post(base+'/api/auth/login/',{data:{username:'exam_profiles_qa',password:'fictional-local-profile-2026'}});
   assert.equal(login.status(),200);const {token}=await login.json(),headers={Authorization:'Token '+token};

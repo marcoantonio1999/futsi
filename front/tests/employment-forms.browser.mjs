@@ -26,30 +26,14 @@ try {
     await page.goto(base+'/#/postulacion/'+exam.public_token);
     await page.getByRole('heading',{name:'Solicitud de empleo',exact:true}).waitFor();
     await page.getByLabel('Nombre(s) *',{exact:true}).waitFor();
-    await page.getByRole('button',{name:'Enviar postulación',exact:true}).click();
-    assert.equal(requests,0,'The browser must not submit unanswered questions');
     await page.getByLabel('Nombre(s) *',{exact:true}).fill('Persona QA');
     await page.getByLabel('Apellido paterno *',{exact:true}).fill('Ficticia');
     await page.getByLabel('Correo electrónico *',{exact:true}).fill(`form${width}-${exam.id}@example.invalid`);
     const phone=`5500${String(exam.id).padStart(4,'0')}${width===320?'01':width===390?'02':'03'}`;
-    await page.locator('input[name="telefono"]').fill(phone);
-    await page.getByLabel('Software que maneja *',{exact:true}).fill('Excel, Python');
+    await page.getByLabel('Teléfono *',{exact:true}).fill(phone);
+    await page.getByLabel('Software que maneja',{exact:true}).fill('Excel, Python');
     await page.getByLabel('Nombre completo del solicitante *',{exact:true}).fill('Persona QA Ficticia');
-    const preparatoria=page.getByRole('group',{name:'Preparatoria'});
-    await preparatoria.getByLabel('Nombre de la escuela *').fill('Escuela ficticia');
-    await preparatoria.getByRole('button',{name:'Marcar campos vacíos de esta sección como «No aplica»'}).click();
-    assert.equal(await preparatoria.getByLabel('Nombre de la escuela *').inputValue(),'Escuela ficticia');
-    assert.equal(await preparatoria.locator('.employment-na input:checked').count(),2);
-    for(const container of await page.locator('.employment-field').all()) {
-      const option=container.locator('.employment-na input');
-      if(await option.count() && !await option.isChecked() && !(await container.locator('input:not([type=checkbox])').inputValue())) await option.check();
-    }
     await page.getByRole('checkbox',{name:/Autorizo a BPower Academy/}).check();
-    const requiredAnswer=page.locator('.employment-field').filter({has:page.locator('input[name="otras_funciones"]')}).locator('.employment-na input');
-    await requiredAnswer.uncheck();
-    await page.getByRole('button',{name:'Enviar postulación',exact:true}).click();
-    assert.equal(requests,0,'One unanswered question must block submission');
-    await requiredAnswer.check();
     assert.equal(await page.getByLabel('Puesto que solicita *',{exact:true}).inputValue(),title);
     assert.equal(await page.getByLabel('Puesto que solicita *',{exact:true}).getAttribute('readonly'),'');
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -60,7 +44,7 @@ try {
     await page.screenshot({path:`C:/Users/daniel/Documents/marco/mexprod/outputs/employment-form-header-${width}.png`});
     await page.getByRole('button',{name:'Enviar postulación',exact:true}).click();
     await page.getByRole('alert').filter({hasText:'Fallo de conexión ficticio'}).waitFor();
-    assert.equal(requests,1);assert.equal(await page.getByLabel('Software que maneja *',{exact:true}).inputValue(),'Excel, Python');
+    assert.equal(requests,1);assert.equal(await page.getByLabel('Software que maneja',{exact:true}).inputValue(),'Excel, Python');
     await page.getByRole('button',{name:'Enviar postulación',exact:true}).click();
     await page.getByRole('heading',{name:'Gracias. Recibimos tu postulación.',exact:true}).waitFor();
     assert.equal(requests,2);assert.equal(await page.getByRole('button',{name:'Enviar postulación',exact:true}).count(),0);
