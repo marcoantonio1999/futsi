@@ -16,9 +16,9 @@ def clear_cache():
 
 
 def payload(**fields):
-    return dict(submit_key=str(uuid.uuid4()),consent=True,fields={
+    return dict(submit_key=str(uuid.uuid4()),consent=True,sensitive_consent=True,fields={
         'nombres':'Persona','apellido_paterno':'Ficticia','correo':'persona1@example.invalid','telefono':'5500000001',
-        'puesto_solicitado':'Prueba de evaluación','firma_solicitante':'Persona Ficticia',**fields})
+        'puesto_solicitado':'Prueba de evaluación','firma_solicitante':'Persona Ficticia','edad':'29','sueldo_deseado':'15000',**fields})
 
 
 def submit(data=None):
@@ -51,7 +51,7 @@ def test_same_fields_as_pdf_plus_email_and_signature():
     {'consent':False},{'fields':{}},{'fields':{'file':'binary'}},{'submit_key':'not-uuid'},
     {'website':'spam.invalid'},{'fields':payload(correo='bad')['fields']},
     {'fields':payload(telefono='a')['fields']},{'fields':payload(nombres='x'*181)['fields']},
-    {'fields':payload(enfermedad_cronica='Dato ficticio')['fields']},
+    {'sensitive_consent':False}, {'fields':payload(edad='')['fields']}, {'fields':payload(sueldo_deseado='')['fields']},
 ])
 def test_invalid_inputs_never_create_records(changes):
     data=payload();data.update(changes)

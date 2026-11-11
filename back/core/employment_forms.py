@@ -12,10 +12,10 @@ def field(key, label, required=False, kind='text', sensitive=False):
 
 
 SECTIONS = [
-    dict(title='Postulación', fields=[field('puesto_solicitado','Puesto que solicita',True),field('sueldo_deseado','Sueldo mensual deseado')]),
+    dict(title='Postulación', fields=[field('puesto_solicitado','Puesto que solicita',True),field('sueldo_deseado','Sueldo mensual deseado',True)]),
     dict(title='Datos personales', fields=[field('apellido_paterno','Apellido paterno',True),field('apellido_materno','Apellido materno'),
         field('nombres','Nombre(s)',True),field('correo','Correo electrónico',True,'email'),field('telefono','Teléfono',True,'tel'),
-        field('edad','Edad',sensitive=True),field('sexo','Sexo',sensitive=True),field('estado_civil','Estado civil',sensitive=True),
+        field('edad','Edad',True,sensitive=True),field('sexo','Sexo',sensitive=True),field('estado_civil','Estado civil',sensitive=True),
         field('dependientes','Personas dependientes',sensitive=True),field('enfermedad_cronica','¿Padece una enfermedad crónica? ¿Cuál?',sensitive=True),
         field('tiempo_traslado','Tiempo de traslado al empleo (Santa Fe)'),field('medio_transporte','¿Automóvil propio u otro medio de transporte? Especifique.')]),
     dict(title='Datos escolares', groups=[dict(title=title, fields=[field(f'estudios_{i}_escuela','Nombre de la escuela'),field(f'estudios_{i}_carrera','Carrera profesional'),field(f'estudios_{i}_titulo','Título recibido')]) for i,title in enumerate(['Preparatoria','Licenciatura','Estudios o cursos adicionales'],1)] +
