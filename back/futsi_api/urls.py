@@ -8,7 +8,7 @@ from core.api.exam_statistics import ExamStatisticsView
 from core.api.exam_export import ExamExportView
 from core.api.employment_forms import PublicEmploymentFormView, EmploymentFormsAdminView
 from core.api.bulk import BulkView
-from core.api.enrollments import PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentValidationView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView, EnrollmentUploadView
+from core.api.enrollments import EnrollmentIdentityExtractionView, PublicEnrollmentView, PublicWithdrawalView, PublicWithdrawalPhotoView, EnrollmentAdminView, EnrollmentValidationView, EnrollmentDocumentView, EnrollmentCatalogView, EnrollmentTournamentDeletionView, EnrollmentTeamDeletionView, EnrollmentUploadView
 from core.api.team_reuse import TeamReuseView
 from core.api.sanctions import PlayerSanctionView
 from core.api.disciplinary import DisciplinaryHistoryView, BlacklistView, BlacklistRevokeView, DisciplinaryPhotoView, BlacklistPhotoView
@@ -122,6 +122,7 @@ urlpatterns = [
     path("api/player-enrollments/tournaments/<int:pk>/", EnrollmentTournamentDeletionView.as_view()),
     path("api/player-enrollments/documents/<int:pk>/", EnrollmentDocumentView.as_view()),
     path("api/player-enrollments/public/<str:token>/", PublicEnrollmentView.as_view()),
+    path("api/player-enrollments/public/<str:token>/extract-identity/", EnrollmentIdentityExtractionView.as_view()),
     path("api/player-enrollments/public/<str:token>/uploads/", EnrollmentUploadView.as_view(), {'purpose': 'enroll'}),
     path("api/player-enrollments/withdrawal/<str:token>/", PublicWithdrawalView.as_view()),
     path("api/player-enrollments/withdrawal/<str:token>/uploads/", EnrollmentUploadView.as_view(), {'purpose': 'withdraw'}),

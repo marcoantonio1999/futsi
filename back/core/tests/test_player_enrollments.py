@@ -42,6 +42,42 @@ class PlayerEnrollmentTests(TestCase):
     def new_invitation(self):
         return PlayerEnrollmentInvitation.objects.create(created_by=self.emilio, expires_at=timezone.now() + timedelta(days=1), team_record=self.team, team=self.team.name, tournament=self.tournament.name)
 
+    @override_settings(OPENAI_API_KEY="test-key", OPENAI_WHATSAPP_MODEL="test-model")
+    @patch("core.api.enrollments.urllib.request.urlopen")
+    def test_ine_extraction_returns_fields_for_review(self, provider):
+        import json
+        provider.return_value.__enter__.return_value = BytesIO(json.dumps({
+            "status": "completed",
+            "output": [{"content": [{"type": "output_text", "text": json.dumps({
+                "given_names": "Ana", "paternal_surname": "Pérez",
+                "maternal_surname": "López", "birth_date": "1995-01-01",
+            })}]}],
+        }).encode())
+        response = self.client.post(self.url + "extract-identity/", {"ine_front": image_file("ine.png")}, format="multipart")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["given_names"], "Ana")
+        self.assertEqual(response.data["birth_date"], "1995-01-01")
+        self.assertFalse(PlayerEnrollment.objects.exists())
+
+    def test_adult_paper_registration_accepts_front_and_optional_phone(self):
+        data = self.payload()
+        data["paper_signature"] = "true"
+        data["phone"] = ""
+        data.pop("player_signature")
+        data.pop("ine_back")
+        response = self.client.post(self.url, data, format="multipart")
+        self.assertEqual(response.status_code, 201)
+        row = PlayerEnrollment.objects.get()
+        self.assertEqual(row.phone, "")
+        self.assertIn("paper_signature", row.document_checklist)
+        self.assertEqual(set(row.documents.values_list("kind", flat=True)), {"player_photo", "ine_front"})
+        self.client.force_authenticate(self.emilio)
+        ids = list(row.documents.values_list("id", flat=True))
+        response = self.client.post(f"/api/player-enrollments/{row.pk}/validate/", {
+            "confirmed": True, "documents_reviewed": ids,
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+
     def test_full_name_requires_each_component_before_upload(self):
         for field in ('given_names', 'paternal_surname', 'maternal_surname'):
             for value in (None, '', '   ', '123', '---', 'Pérez123'):

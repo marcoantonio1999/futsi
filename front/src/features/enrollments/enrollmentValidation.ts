@@ -31,7 +31,7 @@ export function playerFieldErrors(values: Record<string, string>, minor: boolean
   if (!names.some(key => errors[key]) && validateEnrollmentName(names.map(key => values[key] || ''))) {
     names.forEach(key => { errors[key] = 'El nombre completo no debe superar 160 caracteres.'; });
   }
-  if (!(values.phone || '').trim()) errors.phone = 'Escribe tu teléfono de contacto.';
+  if (minor && !(values.phone || '').trim()) errors.phone = 'Escribe tu teléfono de contacto.';
   if (minor && !(values.guardian_name || '').trim()) errors.guardian_name = 'Escribe el nombre del padre o tutor.';
   return errors;
 }

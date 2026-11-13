@@ -174,6 +174,33 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   const [step, setStep] = useState(0), [accepted, setAccepted] = useState(false);
   const [birthDate, setBirthDate] = useState(""), minor = under18(birthDate);
   const [identity, setIdentity] = useState("ine");
+  const [extracted, setExtracted] = useState({given_names: "", paternal_surname: "", maternal_surname: ""});
+  const [readBusy, setReadBusy] = useState(false);
+  const [paperData, setPaperData] = useState<{name: string; phone: string; photo: string; ine: string} | null>(null);
+  const paperFlow = !minor && identity === "ine";
+  async function readIdentity() {
+    if (!files.ine_front || !files.player_photo) {
+      setError("Adjunta el frente del INE y la selfie para procesar los datos.");
+      return;
+    }
+    setError(""); setReadBusy(true);
+    try {
+      const body = new FormData();
+      body.append("ine_front", files.ine_front);
+      const response = await fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/extract-identity/", {method:"POST", body, signal:AbortSignal.timeout(60000)});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "No se pudo leer el INE.");
+      setExtracted({given_names: result.given_names || "", paternal_surname: result.paternal_surname || "", maternal_surname: result.maternal_surname || ""});
+      setBirthDate(result.birth_date || "");
+      if (result.birth_date && under18(result.birth_date)) {
+        setError("El INE indica que el jugador es menor. Completa los documentos del menor.");
+        return;
+      }
+      navigate(2);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo leer el INE.");
+    } finally { setReadBusy(false); }
+  }
   const [defaults, setDefaults] = useState<Defaults | null>(null);
   const [files, setFiles] = useState<Record<string, Blob | null>>({});
   const [processingFiles, setProcessingFiles] = useState<Record<string, boolean>>({});
@@ -217,9 +244,9 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   }
   const kind = minor ? "minor" : identity;
   const documentKinds = minor ? ["minor_credential", "guardian_ine_front", "guardian_ine_back"]
-    : identity === "ine" ? ["ine_front", "ine_back"] : identity === "curp" ? ["curp"] : ["identity_document"];
+    : identity === "ine" ? ["ine_front"] : identity === "curp" ? ["curp"] : ["identity_document"];
   const signatureKind = minor ? 'guardian_signature' : 'player_signature';
-  const required = ["player_photo", signatureKind, ...documentKinds];
+  const required = paperFlow ? ["player_photo", ...documentKinds] : ["player_photo", signatureKind, ...documentKinds];
   function navigate(next: number) { setError(""); setFieldErrors({}); setStep(next); if (content.current) content.current.scrollTop = 0; }
   function identityErrors() {
     const issues = documentErrors(documentKinds, files, labels);
@@ -246,7 +273,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     if (Object.keys(identityIssues).length) { showIssues(identityIssues, 1); return; }
     const nameForm = new FormData(formElement);
     const issues = { ...documentErrors(['player_photo'], files, labels), ...playerFieldErrors(Object.fromEntries([...nameForm].map(([key, value]) => [key, String(value)])), minor) };
-    for (const signature of [signatureKind]) {
+    for (const signature of paperFlow ? [] : [signatureKind]) {
       if (!files[signature]) issues[signature] = `Falta ${labels[signature].toLocaleLowerCase()}.`;
     }
     if (Object.keys(issues).length) { showIssues(issues); return; }
@@ -255,6 +282,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     try {
       const form = new FormData(formElement);
       form.set("birth_date", birthDate); form.set("identity_type", kind); form.set("accepted_terms", "true");
+      if (paperFlow) form.set("paper_signature", "true");
       const endpoint = "/player-enrollments/public/" + encodeURIComponent(invitation) + "/";
       if (!defaults?.direct_upload) required.forEach(item => form.append(item, files[item]!,
         item.includes("signature") ? item + ".png" : (files[item] as File).name));
@@ -274,6 +302,10 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         }
         throw new Error(body.detail || Object.values(body).flat().join(" ") || "No se pudo guardar. Intenta de nuevo.");
       }
+      if (paperFlow && files.player_photo && files.ine_front) setPaperData({
+        name: [form.get("given_names"), form.get("paternal_surname"), form.get("maternal_surname")].join(" "),
+        phone: String(form.get("phone") || ""), photo: URL.createObjectURL(files.player_photo), ine: URL.createObjectURL(files.ine_front),
+      });
       setDone(true);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo guardar."); }
     finally { saving.current = false; setBusy(false); }
@@ -283,7 +315,16 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   </Label></EnrollmentField>;
   return <main className={`enrollment-page public-enrollment-wizard${embedded ? ' enrollment-wizard-embedded' : ''}`}>
     <div className="enrollment-public-brand no-print"><EnrollmentBrand /></div>
-    {done ? <Card as="section" className="registration-sheet"><h1>Inscripción recibida</h1><p>Tus datos, documentos y firmas quedaron guardados. Tu inscripción está pendiente de revisión por ventanilla antes de aparecer en la sábana.</p></Card> :
+    {done ? <Card as="section" className="registration-sheet"><div className="no-print"><h1>Inscripción recibida</h1><p>La inscripción está pendiente de validación.</p>
+      {paperData && <Button type="button" onClick={() => window.print()}>Imprimir hoja para firma</Button>}</div>
+      {paperData && <section className="enrollment-paper-signature"><h1>Hoja de inscripción</h1><p><strong>Nombre:</strong> {paperData.name}</p><p><strong>Fecha de nacimiento:</strong> {birthDate}</p>
+        <p><strong>Equipo:</strong> {defaults?.team} · <strong>Torneo:</strong> {defaults?.tournament}</p><p><strong>Teléfono:</strong> {paperData.phone || "No registrado"}</p>
+        <div style={{display:"flex",gap:20,alignItems:"start"}}>
+          <img src={paperData.photo} alt="Foto del jugador" style={{width:120,maxHeight:160,objectFit:"contain"}} />
+          <img src={paperData.ine} alt="Frente del INE" style={{width:240,maxHeight:160,objectFit:"contain"}} />
+        </div>
+        <Terms items={defaults?.terms || []} /><p style={{marginTop:60}}>________________________________<br/>Firma del jugador</p></section>}
+    </Card> :
       <Card as="form" className="registration-sheet enrollment-wizard-sheet" onSubmit={submit} noValidate onChange={(event: React.FormEvent<HTMLFormElement>) => {
         const input = event.target;
         if (!(input instanceof HTMLInputElement) || !fieldErrors[input.name]) return;
@@ -302,6 +343,10 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               {consent}
             </section>
             <section hidden={step !== 1}>
+              <p>Para mayores de edad, adjunta el frente del INE y una selfie. Al procesar los datos, la imagen del INE se enviará a OpenAI para leer el nombre y la fecha de nacimiento. Revisa y corrige los datos antes de guardar. Para menores, indica la fecha y adjunta sus documentos.</p>
+              {!minor && identity === "ine" && <div className="enrollment-wizard-uploads">
+                <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>
+              </div>}
               <div className="enrollment-wizard-identity-fields">
               <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday forceNative={embedded} value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>
               {!minor && <Label>Identificación<NativeSelect value={identity} onChange={event => setIdentity(event.target.value)}>
@@ -311,24 +356,25 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
                 <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
                   onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} /></EnrollmentField>)}</div>
+              {!minor && identity === "ine" && <Button type="button" disabled={readBusy || processingPhoto} onClick={() => void readIdentity()}>{readBusy ? "Procesando datos…" : "Procesar datos del INE"}</Button>}
             </section>
             <section hidden={step !== 2}>
               <div className="enrollment-wizard-player">
-                <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>
+                {!paperFlow && <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>}
                 <div className="player-fields">
-                  <EnrollmentField name="given_names" full error={fieldErrors.given_names}><Label>Nombre(s)<Input {...accessibility('given_names')} name="given_names" required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></Label></EnrollmentField>
-                  <EnrollmentField name="paternal_surname" error={fieldErrors.paternal_surname}><Label>Apellido paterno<Input {...accessibility('paternal_surname')} name="paternal_surname" required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></Label></EnrollmentField>
-                  <EnrollmentField name="maternal_surname" error={fieldErrors.maternal_surname}><Label>Apellido materno<Input {...accessibility('maternal_surname')} name="maternal_surname" required maxLength={80} disabled={step !== 2} /></Label></EnrollmentField>
+                  <EnrollmentField name="given_names" full error={fieldErrors.given_names}><Label>Nombre(s)<Input {...accessibility('given_names')} name="given_names" key={extracted.given_names} defaultValue={extracted.given_names} required maxLength={80} autoComplete="given-name" disabled={step !== 2} /></Label></EnrollmentField>
+                  <EnrollmentField name="paternal_surname" error={fieldErrors.paternal_surname}><Label>Apellido paterno<Input {...accessibility('paternal_surname')} name="paternal_surname" key={extracted.paternal_surname} defaultValue={extracted.paternal_surname} required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></Label></EnrollmentField>
+                  <EnrollmentField name="maternal_surname" error={fieldErrors.maternal_surname}><Label>Apellido materno<Input {...accessibility('maternal_surname')} name="maternal_surname" key={extracted.maternal_surname} defaultValue={extracted.maternal_surname} required maxLength={80} disabled={step !== 2} /></Label></EnrollmentField>
                   {defaults.is_delegate && <p className="full">Esta es la primera inscripción del equipo. Esta persona quedará registrada como delegado.</p>}
                   <Label>Equipo<Input readOnly value={defaults.team} /></Label>
                   <Label>Torneo<Input readOnly value={defaults.tournament} /></Label>
-                  <Label>Fecha de nacimiento<Input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></Label>
-                  <EnrollmentField name="phone" error={fieldErrors.phone}><Label>Teléfono de contacto<Input {...accessibility('phone')} name="phone" required type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></Label></EnrollmentField>
+                  {paperFlow ? <EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date_review" required birthday value={birthDate} max={maxDate} onChange={setBirthDate} /> : <Label>Fecha de nacimiento<Input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></Label>}
+                  <EnrollmentField name="phone" error={fieldErrors.phone}><Label>Teléfono de contacto (opcional para adultos)<Input {...accessibility('phone')} name="phone" required={minor} type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></Label></EnrollmentField>
                   <EnrollmentField name="phone_secondary" error={fieldErrors.phone_secondary}><Label>Teléfono de emergencia (opcional)<Input {...accessibility('phone_secondary')} name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></Label></EnrollmentField>
                   {minor && <EnrollmentField name="guardian_name" full error={fieldErrors.guardian_name}><Label>Nombre del padre o tutor<Input {...accessibility('guardian_name')} name="guardian_name" required maxLength={160} disabled={step !== 2} /></Label></EnrollmentField>}
                 </div>
               </div>
-              <div className="enrollment-wizard-signatures"><EnrollmentField key={signatureKind} name={signatureKind} error={fieldErrors[signatureKind]}><Signature label={labels[signatureKind]} onChange={blob => attach(signatureKind, blob)} /></EnrollmentField></div>
+              {!paperFlow && <div className="enrollment-wizard-signatures"><EnrollmentField key={signatureKind} name={signatureKind} error={fieldErrors[signatureKind]}><Signature label={labels[signatureKind]} onChange={blob => attach(signatureKind, blob)} /></EnrollmentField></div>}
               {minor && <p>El padre o tutor autoriza la participación del menor y acepta los compromisos anteriores.</p>}
             </section>
           </>}
@@ -337,7 +383,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         {error && <p className="error" role="alert">{error}</p>}
         {defaults && <footer className="enrollment-wizard-actions">
           {step > 0 && <Button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</Button>}
-          {step < 2 ? <Button type="button" className="primary" disabled={processingPhoto} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</Button>
+          {step < 2 ? <Button type="button" className="primary" disabled={processingPhoto || readBusy} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</Button>
             : <Button className="primary" disabled={busy || processingPhoto}>{processingPhoto ? "Procesando foto…" : busy ? "Guardando…" : "Confirmar inscripción"}</Button>}
         </footer>}
         </div>

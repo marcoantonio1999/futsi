@@ -20,3 +20,10 @@
   .local-enrollment-header button { align-self:flex-end; }
   .local-enrollment-content { padding:6px; }
 }
+
+@media print {
+  .enrollment-admin-layout:has(.enrollment-paper-signature) > :not(.local-enrollment-dialog) { display:none !important; }
+  .local-enrollment-dialog:has(.enrollment-paper-signature) { display:block !important; position:static; width:auto; max-width:none; height:auto; max-height:none; margin:0; padding:0; border:0; overflow:visible; }
+  .local-enrollment-dialog:has(.enrollment-paper-signature) .local-enrollment-header { display:none !important; }
+  .local-enrollment-dialog:has(.enrollment-paper-signature) .local-enrollment-content { display:block; height:auto; max-height:none; overflow:visible; }
+}

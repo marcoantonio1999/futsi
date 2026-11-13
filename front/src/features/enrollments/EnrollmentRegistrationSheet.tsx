@@ -40,7 +40,7 @@ function DocumentReady({id,onReady}:{id:number;onReady:(id:number,ready:boolean)
   useEffect(()=>{onReady(id,true);},[id,onReady]);return null;
 }
 
-export function EnrollmentRegistrationSheet({enrollmentId,token,onBack}:{enrollmentId:number;token:string;onBack:()=>void}) {
+export function EnrollmentRegistrationSheet({enrollmentId,token,onBack,backLabel="Volver a jugadores"}:{enrollmentId:number;token:string;onBack:()=>void;backLabel?:string}) {
   const [record,setRecord]=useState<Enrollment|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [readyDocuments,setReadyDocuments]=useState<Record<number,boolean>>({});
   const documentReady=useCallback((id:number,ready:boolean)=>setReadyDocuments(previous=>previous[id]===ready?previous:{...previous,[id]:ready}),[]);
@@ -54,7 +54,7 @@ export function EnrollmentRegistrationSheet({enrollmentId,token,onBack}:{enrollm
   const visibleDocuments=record?.documents.filter(doc=>!['player_signature','guardian_signature'].includes(doc.kind)||doc.kind===enrollmentSignatureKind(record))||[];
   const printReady=!!record&&visibleDocuments.every(doc=>readyDocuments[doc.id]===true);
   return <section className="registration-sheet signed-sheet registration-detail" aria-label="Hoja de inscripción firmada">
-    <div className="registration-detail-toolbar no-print"><button type="button" onClick={onBack}>Volver a jugadores</button><h2>Hoja de inscripción</h2><button type="button" className="primary" disabled={!printReady} onClick={()=>{if(printReady)window.print();}}>Imprimir / guardar PDF</button></div>
+    <div className="registration-detail-toolbar no-print"><button type="button" onClick={onBack}>{backLabel}</button><h2>Hoja de inscripción</h2><button type="button" className="primary" disabled={!printReady} onClick={()=>{if(printReady)window.print();}}>Imprimir / guardar PDF</button></div>
     {record&&!printReady&&<p role="status" className="no-print">Espera a que carguen todos los documentos para imprimir. Si alguno no está disponible, recarga la hoja.</p>}
     {error ? <p role="alert" className="error">{error} <button type="button" onClick={()=>setRetry(value=>value+1)}>Volver a intentar</button></p> : !record ? <p role="status">Cargando inscripción…</p> : <>
       <div className="sheet-top"><section className="documentation-frame"><h2>Documentación presentada</h2>
@@ -63,10 +63,10 @@ export function EnrollmentRegistrationSheet({enrollmentId,token,onBack}:{enrollm
       </section><section className="player-frame"><div className="photo-and-signatures">
         <div>{record.documents.filter(doc=>doc.kind==='player_photo').map(doc=><PrivateDocument key={doc.id} document={doc} token={token} onReady={documentReady}/>)}</div>
         <div>{record.documents.filter(doc=>doc.kind===enrollmentSignatureKind(record)).map(doc=><PrivateDocument key={doc.id} document={doc} token={token} onReady={documentReady}/>)}
-        {!record.documents.some(doc=>doc.kind===enrollmentSignatureKind(record))&&<p>{record.identity_type==='minor'?'Firma del tutor no disponible.':'Firma del jugador no disponible.'}</p>}</div>
+        {!record.documents.some(doc=>doc.kind===enrollmentSignatureKind(record))&&<p>{record.identity_type==='minor'?'Firma del tutor no disponible.':'________________________________ · Firma del jugador.'}</p>}</div>
       </div><div className="player-fields"><p className="full">NOMBRE<br/><strong>{record.name}</strong></p><p>EQUIPO<br/>{record.team}</p><p>TORNEO<br/>{record.tournament}</p>
         <p>TELÉFONO DE CONTACTO<br/>{record.phone}</p><p>TELÉFONO DE EMERGENCIA<br/>{record.phone_secondary||'No registrado'}</p>
-        <p>NACIMIENTO<br/>{record.birth_date}</p><p>FIRMADO<br/>{new Date(record.signed_at).toLocaleString('es-MX')}</p>
+        <p>NACIMIENTO<br/>{record.birth_date}</p><p>REGISTRADO<br/>{new Date(record.signed_at).toLocaleString('es-MX')}</p>
       </div></section></div>
       <section className="commitments"><h2>Compromisos Generales</h2>{record.terms_text.map((term,index)=><p key={index}>{term}</p>)}
         {record.guardian_name&&<p>Yo {record.guardian_name}, como tutor de {record.name}, autorizo la participación del menor, deslindando de toda responsabilidad a la liga, al club, al colegio y a su personal.</p>}

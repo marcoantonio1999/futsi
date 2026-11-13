@@ -3,6 +3,7 @@ import { apiRequest } from "../../api";
 import { Button, Card, Input, Label } from "../../components/ui/enrollment-ui";
 import { fetchEnrollmentDocument } from "./fetchEnrollmentDocument";
 import { renderRegistrationPdf } from "./renderRegistrationPdf";
+import { EnrollmentRegistrationSheet } from "./EnrollmentRegistrationSheet";
 import "./enrollmentApproval.css";
 type Doc = { id: number; kind: string };
 type RecordRow = {
@@ -47,6 +48,7 @@ export function EnrollmentApproval({
     [search, setSearch] = useState(""),
     [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<RecordRow | null>(null);
+  const [showSheet, setShowSheet] = useState(false);
   const [ready, setReady] = useState<number[]>([]);
   const [documents, setDocuments] = useState<Record<number, {url?: string; mime?: string; pages?: string[]; error?: string}>>({});
   const [loading, setLoading] = useState(true),
@@ -144,9 +146,11 @@ export function EnrollmentApproval({
         ]
       : [
           "player_photo",
-          "player_signature",
+          ...(selected.identity_type === "ine" && selected.document_checklist?.includes("paper_signature")
+            ? []
+            : ["player_signature"]),
           ...(selected.identity_type === "ine"
-            ? ["ine_front", "ine_back"]
+            ? selected.document_checklist?.includes("paper_signature") ? ["ine_front"] : ["ine_front", "ine_back"]
             : selected.identity_type === "curp"
               ? ["curp"]
               : ["identity_document"]),
@@ -185,6 +189,7 @@ export function EnrollmentApproval({
       setSaving(false);
     }
   }
+  if (selected && showSheet) return <EnrollmentRegistrationSheet enrollmentId={selected.id} token={token} backLabel="Volver a validación" onBack={() => setShowSheet(false)} />;
   return (
     <section className="enrollment-approval no-print">
       <header>
@@ -208,6 +213,7 @@ export function EnrollmentApproval({
           >
             Volver a pendientes
           </Button>
+          <Button type="button" onClick={() => setShowSheet(true)}>Ver hoja para imprimir</Button>
           <Card className="enrollment-approval-sheet">
             <h3>Hoja de inscripción · Folio {selected.id}</h3>
             <dl>
