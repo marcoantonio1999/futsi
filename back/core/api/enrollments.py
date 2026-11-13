@@ -284,11 +284,42 @@ class EnrollmentIdentityExtractionView(APIView):
         if not invitation.team_record_id or not invitation.team_record.is_active or not invitation.team_record.tournament.is_active:
             raise ValidationError("El equipo o torneo ya no está disponible.")
         assert_capacity(invitation.team_record)
-        if not settings.OPENAI_API_KEY:
-            return Response({"detail": "La lectura automática no está disponible en este momento."}, status=503)
         content, mime = validated_file(request.FILES.get("ine_front"), "ine_front")
         if mime not in ("image/jpeg", "image/png"):
             raise ValidationError({"ine_front": "Adjunta una foto JPG o PNG del frente del INE."})
+        if not settings.OPENAI_API_KEY:
+            base = str(settings.WHATSAPP_SERVICE_URL or "").rstrip("/")
+            token_value = str(settings.WHATSAPP_SERVICE_TOKEN or "")
+            if not base.startswith("https://") or not token_value:
+                return Response({"detail": "La lectura automática no está disponible en este momento."}, status=503)
+            from PIL import ImageOps
+            with Image.open(BytesIO(content)) as original:
+                image = ImageOps.exif_transpose(original).convert("RGB")
+                image.thumbnail((2000, 2000))
+                output = BytesIO()
+                image.save(output, "JPEG", quality=78)
+            content, mime = output.getvalue(), "image/jpeg"
+            if len(content) > 1_500_000:
+                return Response({"detail": "La imagen es demasiado grande. Vuelve a tomar la foto del INE."}, status=400)
+            bridge_data = json.dumps({"image": base64.b64encode(content).decode("ascii"), "mime": mime}).encode()
+            bridge_request = urllib.request.Request(
+                base + "/api/internal/enrollment-identity/", data=bridge_data,
+                headers={"Authorization": "Bearer " + token_value, "Content-Type": "application/json"}, method="POST",
+            )
+            try:
+                from core.exam_grading import NoRedirect
+                with urllib.request.build_opener(NoRedirect()).open(bridge_request, timeout=60) as bridge_response:
+                    bridge_result = json.load(bridge_response)
+                fields = ("given_names", "paternal_surname", "maternal_surname", "birth_date")
+                if set(bridge_result) != set(fields) or any(
+                    not isinstance(bridge_result[field], str) or len(bridge_result[field]) > 100 for field in fields
+                ):
+                    raise ValueError()
+            except (OSError, TimeoutError, ValueError, KeyError, TypeError):
+                return Response({"detail": "No se pudo leer el INE. Revisa la imagen y vuelve a intentarlo."}, status=503)
+            response = Response(bridge_result)
+            response["Cache-Control"] = "no-store"
+            return response
         properties = {name: {"type": "string"} for name in (
             "given_names", "paternal_surname", "maternal_surname", "birth_date",
         )}

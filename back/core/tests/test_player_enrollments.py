@@ -59,6 +59,17 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(response.data["birth_date"], "1995-01-01")
         self.assertFalse(PlayerEnrollment.objects.exists())
 
+    @override_settings(OPENAI_API_KEY="", WHATSAPP_SERVICE_URL="https://service.example", WHATSAPP_SERVICE_TOKEN="test-internal")
+    @patch("urllib.request.build_opener")
+    def test_ine_extraction_uses_private_whatsapp_bridge(self, opener):
+        import json
+        result = {"given_names": "Ana", "paternal_surname": "Pérez", "maternal_surname": "López", "birth_date": "1995-01-01"}
+        opener.return_value.open.return_value.__enter__.return_value = BytesIO(json.dumps(result).encode())
+        response = self.client.post(self.url + "extract-identity/", {"ine_front": image_file("ine.png")}, format="multipart")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, result)
+        self.assertEqual(opener.return_value.open.call_args.args[0].full_url, "https://service.example/api/internal/enrollment-identity/")
+
     def test_adult_paper_registration_accepts_front_and_optional_phone(self):
         data = self.payload()
         data["paper_signature"] = "true"
