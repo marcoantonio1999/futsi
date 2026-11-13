@@ -2,6 +2,7 @@ import { Button, Card } from '../../components/ui/enrollment-ui';
 import { useEffect, useRef, useState } from "react";
 import { sampleLighting, type LightingResult } from './photoLighting';
 import { LightingIndicator } from './LightingIndicator';
+import { enableContinuousFocus } from './cameraFocus';
 
 export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: {
   selfie: boolean; onCapture: (file: File) => void; onClose: () => void; embedded?: boolean;
@@ -42,7 +43,10 @@ export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: 
         stream = await navigator.mediaDevices.getUserMedia({ audio: false,
           video: { facingMode: { ideal: selfie ? "user" : "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
         if (stopped) { stream.getTracks().forEach(track => track.stop()); return; }
-        const facing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+        const track = stream.getVideoTracks()[0];
+        if (track && !selfie) await enableContinuousFocus(track);
+        if (stopped) { stream.getTracks().forEach(item => item.stop()); return; }
+        const facing = track?.getSettings().facingMode;
         // Mirror only the live front-camera preview. Capture keeps original pixels
         // so documents and saved photographs are never reversed.
         setMirrored(facing === 'user' || (facing !== 'environment' && selfie));
@@ -84,6 +88,7 @@ export function CameraCapture({ selfie, onCapture, onClose, embedded = false }: 
   }}>
     <Card as="section" className="enrollment-camera-dialog" role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label="Tomar foto">
       <header><h2>Tomar foto</h2><Button ref={closeButton} type="button" onClick={onClose} aria-label="Cerrar cámara">✕</Button></header>
+      {!selfie && <p>Coloca la identificación en un lugar iluminado y ajusta la distancia hasta que el texto se vea nítido.</p>}
       {selfie && <p className="camera-face-notice">Por favor, retira lentes, gorra, cubrebocas y cualquier objeto que tape tu cara. Mantén el rostro completo visible.</p>}
       <video ref={video} className={mirrored ? 'enrollment-camera-mirrored' : undefined} autoPlay muted playsInline onLoadedData={() => setReady(true)} />
       {!error && (ready ? <LightingIndicator result={lightingUnavailable ? null : lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} /> : <p role="status">Esperando acceso a la cámara. Si el navegador solicita permiso, elige Permitir.</p>)}
