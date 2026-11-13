@@ -248,8 +248,6 @@ def validated_file(upload, kind, *, transform=True):
             if not transform:
                 if max(image.size) > 2400:
                     raise ValidationError('La imagen tiene dimensiones demasiado grandes. Vuelve a seleccionarla desde el formulario.')
-                if kind == 'player_photo' and min(image.size) < 1000:
-                    raise ValidationError({'player_photo': 'Usa una selfie de al menos 1000 × 1000 píxeles, sin ampliar una foto pequeña.'})
                 return content, "image/png" if image.format == "PNG" else "image/jpeg"
             if kind == "player_photo":
                 from PIL import ImageOps

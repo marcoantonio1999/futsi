@@ -5,7 +5,6 @@ async function prepare(file: Blob, kind: string): Promise<Blob> {
   const image = await createImageBitmap(file, {imageOrientation: 'from-image'});
   try {
     const selfie = kind === 'player_photo';
-    if (selfie && Math.min(image.width, image.height) < 1000) throw new Error('Usa una selfie de al menos 1000 × 1000 píxeles. Toma otra foto con mayor resolución; no amplíes una pequeña.');
     const scale = Math.min(1, (selfie ? 2400 : 2000) / Math.max(image.width, image.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale);
@@ -13,7 +12,7 @@ async function prepare(file: Blob, kind: string): Promise<Blob> {
     if (!ctx) throw new Error('No se pudo preparar la imagen.');
     ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height);ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo preparar la imagen.')), 'image/jpeg', selfie ? .9 : .85));
-    if (selfie && (Math.min(canvas.width, canvas.height) < 1000 || blob.size > 3_000_000)) throw new Error('Elige una selfie nítida de al menos 1000 × 1000 píxeles y hasta 3 MB.');
+    if (selfie && blob.size > 3_000_000) throw new Error('Elige una selfie de hasta 3 MB.');
     return blob;
   } finally { image.close(); }
 }

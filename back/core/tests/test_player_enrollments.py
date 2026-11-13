@@ -736,6 +736,18 @@ class PlayerEnrollmentTests(TestCase):
             self.assertLessEqual(saved.height, 2400)
             self.assertGreaterEqual(min(saved.size), 1000)
 
+    def test_small_player_photo_is_accepted_for_direct_and_multipart_uploads(self):
+        buffer = BytesIO()
+        Image.new("RGB", (400, 600), "green").save(buffer, "JPEG")
+        for transform in (False, True):
+            with self.subTest(transform=transform):
+                content, mime = validated_file(
+                    SimpleUploadedFile("small.jpg", buffer.getvalue()), "player_photo", transform=transform
+                )
+                self.assertEqual(mime, "image/jpeg")
+                with Image.open(BytesIO(content)) as saved:
+                    self.assertEqual(saved.size, (400, 600))
+
     def test_enrollment_upload_size_limits_remain_enforced(self):
         for kind, limit in (("player_photo", ENROLLMENT_FILE_MAX_BYTES), ("ine_front", ENROLLMENT_FILE_MAX_BYTES), ("player_signature", 500_000)):
             with self.subTest(kind=kind), self.assertRaises(ValidationError):
