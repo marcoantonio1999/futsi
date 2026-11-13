@@ -33,7 +33,7 @@ import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
 import { CameraCapture } from "./CameraCapture";
-import { IdentityCrop } from "./IdentityCrop";
+import { autoCropIdentity } from "./autoCropIdentity";
 import { compressEnrollmentPhoto } from "./compressEnrollmentPhoto";
 import { enrollmentDirectUpload } from './enrollmentDirectUpload';
 import { fetchEnrollmentDocument } from './fetchEnrollmentDocument';
@@ -107,7 +107,6 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
 }) {
   const upload = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [cropFile, setCropFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
   const [name, setName] = useState(""), [preview, setPreview] = useState("");
   const [lighting, setLighting] = useState<LightingResult | null>(null);
@@ -123,7 +122,8 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
     previewRef.current = ""; setPreview(""); setName(""); setUploadError(""); onChange(null);
     setProcessing(true); onProcessing?.(true);
     try {
-      const prepared = file ? await compressEnrollmentPhoto(file) : null;
+      const source = file && scanner ? await autoCropIdentity(file) : file;
+      const prepared = source ? await compressEnrollmentPhoto(source) : null;
       if (version !== selection.current) return;
       const url = prepared?.type.startsWith("image/") ? URL.createObjectURL(prepared) : "";
       previewRef.current = url; setPreview(url);
@@ -142,7 +142,7 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
       if (!response.ok || !response.headers.get("content-type")?.startsWith("image/jpeg")) throw new Error("No se pudo escanear. Revisa la conexión y el controlador del escáner.");
       const blob = await response.blob();
       if (!blob.size || blob.size > ENROLLMENT_FILE_MAX_BYTES) throw new Error("La imagen escaneada no es válida.");
-      setCropFile(new File([blob], "ine-escaneada.jpg", {type: "image/jpeg"}));
+      await select(new File([blob], "ine-escaneada.jpg", {type: "image/jpeg"}));
     } catch (reason) {
       setUploadError(reason instanceof TypeError ? "No se pudo conectar. Inicia el conector de escáner en esta computadora y permite el acceso local en el navegador." : reason instanceof Error ? reason.message : "No se pudo escanear.");
     } finally { setScanning(false); onProcessing?.(false); }
@@ -166,16 +166,14 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
     <Input ref={upload} type="file" hidden accept={photo ? "image/jpeg,image/png" : "image/jpeg,image/png,application/pdf"}
       onChange={event => {
         const file = event.target.files?.[0] || null;
-        if (scanner && file?.type.startsWith("image/")) setCropFile(file);
-        else void select(file);
+        void select(file);
         event.target.value = "";
       }} />
     {cameraOpen && <CameraCapture selfie={photo} onClose={() => setCameraOpen(false)}
-      onCapture={file => { if (scanner) setCropFile(file); else void select(file); setCameraOpen(false); }} />}
-    {cropFile && <IdentityCrop file={cropFile} onCancel={() => setCropFile(null)} onApply={file => { setCropFile(null); void select(file); }} />}
+      onCapture={file => { void select(file); setCameraOpen(false); }} />}
     {processing && <small role="status">Comprimiendo foto…</small>}
     {uploadError && <p className="error" role="alert">{uploadError}</p>}
-    {scanner && <p><small>En Windows, abre el conector de escáner y selecciona la Brother y ajusta el área al frente del INE. <a href="https://github.com/marcoantonio1999/futsi/releases/download/conector-escaner-v1.0.0/Conector-escaner-Inscripciones.zip">Descargar conector para Windows</a></small></p>}
+    {scanner && <p><small>En Windows, abre el conector de escáner y selecciona la Brother; el recorte se hará automáticamente. <a href="https://github.com/marcoantonio1999/futsi/releases/download/conector-escaner-v1.0.0/Conector-escaner-Inscripciones.zip">Descargar conector para Windows</a></small></p>}
     <small>{name || (photo ? "JPG o PNG · compresión automática a máximo 3 MB" : "Fotos: compresión automática a máximo 3 MB · PDF: máximo 20 MB")}</small>
   </Card>;
 }
@@ -286,7 +284,10 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   }, [invitation, embedded]);
   function attach(kind: string, file: Blob | null) {
     setFiles(current => ({ ...current, [kind]: file }));
-    if (kind === "minor_credential") { setExtracted({given_names: "", paternal_surname: "", maternal_surname: ""}); setDocumentAge(""); setExtractedCurp(""); }
+    if (kind === "minor_credential" || kind === "ine_front") {
+      setExtracted({given_names: "", paternal_surname: "", maternal_surname: ""}); setDocumentAge(""); setExtractedCurp("");
+      if (kind === "ine_front") setBirthDate("");
+    }
     if (file && file.size <= ENROLLMENT_FILE_MAX_BYTES) clearIssue(kind);
   }
   const kind = minor ? "minor" : identity;
