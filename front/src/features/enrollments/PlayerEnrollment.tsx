@@ -204,22 +204,37 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   const [minorMode, setMinorMode] = useState(false);
   const [extracted, setExtracted] = useState({given_names: "", paternal_surname: "", maternal_surname: ""});
   const [readBusy, setReadBusy] = useState(false);
+  const [documentAge, setDocumentAge] = useState("");
   const [paperData, setPaperData] = useState<{name: string; phone: string; photo: string; ine: string} | null>(null);
   const paperFlow = !minor && identity === "ine";
   async function readIdentity() {
-    if (!files.ine_front || !files.player_photo) {
-      setError("Adjunta el frente del INE y la selfie para procesar los datos.");
+    if (minorMode ? !files.minor_credential : !files.ine_front || !files.player_photo) {
+      setError(minorMode ? "Adjunta el documento del menor para procesar los datos." : "Adjunta el frente del INE y la selfie para procesar los datos.");
       return;
     }
     setError(""); setReadBusy(true);
     try {
       const body = new FormData();
-      body.append("ine_front", files.ine_front);
+      const file = minorMode ? files.minor_credential! : files.ine_front!;
+      let image = file;
+      if (file.type === "application/pdf") {
+        const { renderRegistrationPdf } = await import("./renderRegistrationPdf");
+        const pages = await renderRegistrationPdf(file, AbortSignal.timeout(60000));
+        if (!pages.length) throw new Error("El PDF no contiene páginas.");
+        image = await (await fetch(pages[0])).blob();
+      }
+      body.append(minorMode ? "minor_credential" : "ine_front", image, "documento.jpg");
+      body.append("document_type", minorMode ? "minor" : "ine");
       const response = await fetch(API_URL + "/player-enrollments/public/" + encodeURIComponent(invitation) + "/extract-identity/", {method:"POST", body, signal:AbortSignal.timeout(60000)});
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || "No se pudo leer el INE.");
       setExtracted({given_names: result.given_names || "", paternal_surname: result.paternal_surname || "", maternal_surname: result.maternal_surname || ""});
-      setBirthDate(result.birth_date || "");
+      if (result.birth_date) setBirthDate(result.birth_date);
+      setDocumentAge(result.age || "");
+      if (minorMode) {
+        if (!result.birth_date) setError("No se encontró la fecha de nacimiento. Agrégala para continuar.");
+        return;
+      }
       if (result.birth_date && under18(result.birth_date)) {
         setMinorMode(true);
         setError("El INE indica que el jugador es menor. Completa los documentos del menor.");
@@ -269,10 +284,11 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   }, [invitation, embedded]);
   function attach(kind: string, file: Blob | null) {
     setFiles(current => ({ ...current, [kind]: file }));
+    if (kind === "minor_credential") { setExtracted({given_names: "", paternal_surname: "", maternal_surname: ""}); setDocumentAge(""); }
     if (file && file.size <= ENROLLMENT_FILE_MAX_BYTES) clearIssue(kind);
   }
   const kind = minor ? "minor" : identity;
-  const documentKinds = minor ? ["minor_credential", "guardian_ine_front", "guardian_ine_back"]
+  const documentKinds = (minorMode || minor) ? ["minor_credential", "guardian_ine_front"]
     : identity === "ine" ? ["ine_front"] : identity === "curp" ? ["curp"] : ["identity_document"];
   const signatureKind = minor ? 'guardian_signature' : 'player_signature';
   const required = paperFlow ? ["player_photo", ...documentKinds] : ["player_photo", signatureKind, ...documentKinds];
@@ -372,7 +388,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               {consent}
             </section>
             <section hidden={step !== 1}>
-              <p>Para mayores de edad, adjunta el frente del INE y una selfie. Al procesar los datos, la imagen del INE se enviará a OpenAI para leer el nombre y la fecha de nacimiento. Revisa y corrige los datos antes de guardar.</p>
+              <p>{minorMode ? "Adjunta el documento del menor y el frente del INE del padre o tutor. El documento del menor se enviará a OpenAI para leer los datos visibles; revísalos y corrígelos antes de guardar." : "Para mayores de edad, adjunta el frente del INE y una selfie. Al procesar los datos, la imagen del INE se enviará a OpenAI para leer el nombre y la fecha de nacimiento. Revisa y corrige los datos antes de guardar."}</p>
               <Button type="button" onClick={() => { setMinorMode(value => !value); setBirthDate(""); setIdentity("ine"); setError(""); }}>{minorMode ? "Registrar adulto" : "Registrar menor de edad"}</Button>
               {!minorMode && !minor && identity === "ine" && <div className="enrollment-wizard-uploads">
                 <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>
@@ -383,10 +399,11 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
                 <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option><option value="curp">CURP</option>
               </NativeSelect></Label>}
               </div>
-              {(!minorMode || minor) && <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
+              {<div className="enrollment-wizard-uploads">{documentKinds.map(item =>
                 <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]} scanner={item === "ine_front"}
                   onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} /></EnrollmentField>)}</div>}
-              {!minorMode && !minor && identity === "ine" && <Button type="button" disabled={readBusy || processingPhoto} onClick={() => void readIdentity()}>{readBusy ? "Procesando datos…" : "Procesar datos del INE"}</Button>}
+              {(minorMode || (!minor && identity === "ine")) && <Button type="button" disabled={readBusy || processingPhoto} onClick={() => void readIdentity()}>{readBusy ? "Procesando datos…" : minorMode ? "Procesar documento del menor" : "Procesar datos del INE"}</Button>}
+              {minorMode && documentAge && <p>Edad indicada en el documento: {documentAge}. Verifica que sea correcta.</p>}
             </section>
             <section hidden={step !== 2}>
               <div className="enrollment-wizard-player">
@@ -398,7 +415,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
                   {defaults.is_delegate && <p className="full">Esta es la primera inscripción del equipo. Esta persona quedará registrada como delegado.</p>}
                   <Label>Equipo<Input readOnly value={defaults.team} /></Label>
                   <Label>Torneo<Input readOnly value={defaults.tournament} /></Label>
-                  {paperFlow ? <EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date_review" required birthday value={birthDate} max={maxDate} onChange={setBirthDate} /> : <Label>Fecha de nacimiento<Input readOnly value={birthDate ? birthDate.split("-").reverse().join("/") : ""} /></Label>}
+                  <EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date_review" required birthday value={birthDate} max={maxDate} onChange={setBirthDate} />
                   <EnrollmentField name="phone" error={fieldErrors.phone}><Label>Teléfono de contacto (opcional para adultos)<Input {...accessibility('phone')} name="phone" required={minor} type="tel" maxLength={30} defaultValue={defaults.delegate_phone || ""} disabled={step !== 2} /></Label></EnrollmentField>
                   <EnrollmentField name="phone_secondary" error={fieldErrors.phone_secondary}><Label>Teléfono de emergencia (opcional)<Input {...accessibility('phone_secondary')} name="phone_secondary" type="tel" maxLength={30} disabled={step !== 2} /></Label></EnrollmentField>
                   {minor && <EnrollmentField name="guardian_name" full error={fieldErrors.guardian_name}><Label>Nombre del padre o tutor<Input {...accessibility('guardian_name')} name="guardian_name" required maxLength={160} disabled={step !== 2} /></Label></EnrollmentField>}

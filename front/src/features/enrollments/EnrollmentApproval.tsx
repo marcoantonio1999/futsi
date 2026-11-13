@@ -157,7 +157,6 @@ export function EnrollmentApproval({
           "player_photo",
           "minor_credential",
           "guardian_ine_front",
-          "guardian_ine_back",
           "guardian_signature",
         ]
       : [

@@ -70,6 +70,30 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(response.data, result)
         self.assertEqual(opener.return_value.open.call_args.args[0].full_url, "https://service.example/api/internal/enrollment-identity/")
 
+    @override_settings(OPENAI_API_KEY="", WHATSAPP_SERVICE_URL="https://service.example", WHATSAPP_SERVICE_TOKEN="test-internal")
+    @patch("urllib.request.build_opener")
+    def test_minor_document_ocr_uses_bridge_and_preserves_explicit_age(self, opener):
+        import json
+        result = {"given_names": "Ana", "paternal_surname": "Pérez", "maternal_surname": "López", "birth_date": "", "age": "10"}
+        opener.return_value.open.return_value.__enter__.return_value = BytesIO(json.dumps(result).encode())
+        response = self.client.post(self.url + "extract-identity/", {"minor_credential": image_file("doc.png"), "document_type": "minor"}, format="multipart")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, result)
+        self.assertEqual(json.loads(opener.return_value.open.call_args.args[0].data)["document_type"], "minor")
+        self.assertFalse(PlayerEnrollment.objects.exists())
+
+    def test_minor_without_guardian_back_can_be_registered_and_approved(self):
+        data = self.payload(minor=True)
+        del data["guardian_ine_back"]
+        response = self.client.post(self.url, data, format="multipart")
+        self.assertEqual(response.status_code, 201, response.data)
+        row = PlayerEnrollment.objects.get()
+        self.assertNotIn("guardian_ine_back", row.documents.values_list("kind", flat=True))
+        self.client.force_authenticate(self.emilio)
+        ids = list(row.documents.values_list("id", flat=True))
+        response = self.client.post(f"/api/player-enrollments/{row.pk}/validate/", {"confirmed": True, "documents_reviewed": ids}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
     def test_adult_paper_registration_accepts_front_and_optional_phone(self):
         data = self.payload()
         data["paper_signature"] = "true"
@@ -849,7 +873,7 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(response.content, content)
 
     def test_minor_requires_one_child_document_and_tutor_identity(self):
-        for kind in ("guardian_ine_front", "guardian_ine_back", "minor_credential"):
+        for kind in ("guardian_ine_front", "minor_credential"):
             data = self.payload(minor=True); del data[kind]
             self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
 
