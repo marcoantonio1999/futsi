@@ -74,12 +74,12 @@ class PlayerEnrollmentTests(TestCase):
     @patch("urllib.request.build_opener")
     def test_minor_document_ocr_uses_bridge_and_preserves_explicit_age(self, opener):
         import json
-        result = {"given_names": "Ana", "paternal_surname": "Pérez", "maternal_surname": "López", "birth_date": "", "age": "10"}
+        result = {"given_names": "Ana", "paternal_surname": "Pérez", "maternal_surname": "López", "birth_date": "", "age": "10", "curp": "PELA150101MDFRPN01"}
         opener.return_value.open.return_value.__enter__.return_value = BytesIO(json.dumps(result).encode())
         response = self.client.post(self.url + "extract-identity/", {"minor_credential": image_file("doc.png"), "document_type": "minor"}, format="multipart")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, result)
-        self.assertEqual(json.loads(opener.return_value.open.call_args.args[0].data)["document_type"], "minor")
+        self.assertEqual(json.loads(opener.return_value.open.call_args.args[0].data)["document_type"], "minor_curp")
         self.assertFalse(PlayerEnrollment.objects.exists())
 
     def test_minor_without_guardian_back_can_be_registered_and_approved(self):
@@ -93,6 +93,27 @@ class PlayerEnrollmentTests(TestCase):
         ids = list(row.documents.values_list("id", flat=True))
         response = self.client.post(f"/api/player-enrollments/{row.pk}/validate/", {"confirmed": True, "documents_reviewed": ids}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
+
+    def test_minor_optional_curp_is_saved_and_returned_only_to_staff(self):
+        data = self.payload(minor=True)
+        data["curp_text"] = "pela150101mdfrpn01"
+        response = self.client.post(self.url, data, format="multipart")
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(PlayerEnrollment.objects.get().curp_text, "PELA150101MDFRPN01")
+        self.client.force_authenticate(self.emilio)
+        response = self.client.get("/api/player-enrollments/")
+        self.assertEqual(response.data["results"][0]["curp_text"], "PELA150101MDFRPN01")
+        self.client.force_authenticate(None)
+        self.assertIn(self.client.get("/api/player-enrollments/").status_code, (401, 403))
+
+    def test_invalid_optional_curp_is_rejected_before_upload(self):
+        data = self.payload(minor=True)
+        data["curp_text"] = "incorrecta"
+        response = self.client.post(self.url, data, format="multipart")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("curp_text", response.data)
+        self.assertFalse(PlayerEnrollment.objects.exists())
+        self.assertFalse(self.storage)
 
     def test_adult_paper_registration_accepts_front_and_optional_phone(self):
         data = self.payload()

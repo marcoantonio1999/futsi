@@ -35,6 +35,7 @@ class PlayerEnrollment(models.Model):
     identity_type = models.CharField(max_length=20, default="ine")
     phone = models.CharField(max_length=30)
     phone_secondary = models.CharField(max_length=30, blank=True)
+    curp_text = models.CharField(max_length=18, blank=True, default="")
     guardian_name = models.CharField(max_length=160, blank=True)
     payment_reference = models.CharField(max_length=80, blank=True)
     document_checklist = models.JSONField(default=list)
