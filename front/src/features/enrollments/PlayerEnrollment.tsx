@@ -202,6 +202,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   const [minorMode, setMinorMode] = useState(false);
   const [extracted, setExtracted] = useState({given_names: "", paternal_surname: "", maternal_surname: ""});
   const [readBusy, setReadBusy] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
   const [documentAge, setDocumentAge] = useState("");
   const [extractedCurp, setExtractedCurp] = useState("");
   const [paperData, setPaperData] = useState<{name: string; phone: string; photo: string; ine: string} | null>(null);
@@ -211,7 +212,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
       setError(minorMode ? "Adjunta el documento del menor para procesar los datos." : "Adjunta el frente del INE y la selfie para procesar los datos.");
       return;
     }
-    setError(""); setReadBusy(true);
+    setError(""); setReadFailed(false); setReadBusy(true);
     try {
       const body = new FormData();
       const file = minorMode ? files.minor_credential! : files.ine_front!;
@@ -242,6 +243,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
       }
       navigate(2);
     } catch (reason) {
+      setReadFailed(true);
       setError(reason instanceof Error ? reason.message : "No se pudo leer el INE.");
     } finally { setReadBusy(false); }
   }
@@ -285,6 +287,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   function attach(kind: string, file: Blob | null) {
     setFiles(current => ({ ...current, [kind]: file }));
     if (kind === "minor_credential" || kind === "ine_front") {
+      setReadFailed(false);
       setExtracted({given_names: "", paternal_surname: "", maternal_surname: ""}); setDocumentAge(""); setExtractedCurp("");
       if (kind === "ine_front") setBirthDate("");
     }
@@ -406,6 +409,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
                 <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]} scanner={item === "ine_front"}
                   onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} /></EnrollmentField>)}</div>}
               {(minorMode || (!minor && identity === "ine")) && <Button type="button" disabled={readBusy || processingPhoto} onClick={() => void readIdentity()}>{readBusy ? "Procesando datos…" : minorMode ? "Procesar documento del menor" : "Procesar datos del INE"}</Button>}
+              {readFailed && !minorMode && identity === "ine" && <Button type="button" onClick={() => navigate(2)}>Capturar datos manualmente</Button>}
               {minorMode && documentAge && <p>Edad indicada en el documento: {documentAge}. Verifica que sea correcta.</p>}
             </section>
             <section hidden={step !== 2}>
