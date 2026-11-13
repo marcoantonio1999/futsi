@@ -174,6 +174,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   const [step, setStep] = useState(0), [accepted, setAccepted] = useState(false);
   const [birthDate, setBirthDate] = useState(""), minor = under18(birthDate);
   const [identity, setIdentity] = useState("ine");
+  const [minorMode, setMinorMode] = useState(false);
   const [extracted, setExtracted] = useState({given_names: "", paternal_surname: "", maternal_surname: ""});
   const [readBusy, setReadBusy] = useState(false);
   const [paperData, setPaperData] = useState<{name: string; phone: string; photo: string; ine: string} | null>(null);
@@ -193,6 +194,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
       setExtracted({given_names: result.given_names || "", paternal_surname: result.paternal_surname || "", maternal_surname: result.maternal_surname || ""});
       setBirthDate(result.birth_date || "");
       if (result.birth_date && under18(result.birth_date)) {
+        setMinorMode(true);
         setError("El INE indica que el jugador es menor. Completa los documentos del menor.");
         return;
       }
@@ -250,7 +252,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   function navigate(next: number) { setError(""); setFieldErrors({}); setStep(next); if (content.current) content.current.scrollTop = 0; }
   function identityErrors() {
     const issues = documentErrors(documentKinds, files, labels);
-    const dateError = birthDateError(birthDate, maxDate);
+    const dateError = birthDateError(birthDate, maxDate) || (minorMode && birthDate && !minor ? "Para un adulto selecciona Registrar adulto." : "");
     return dateError ? { birth_date: dateError, ...issues } : issues;
   }
   function next() {
@@ -343,20 +345,21 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               {consent}
             </section>
             <section hidden={step !== 1}>
-              <p>Para mayores de edad, adjunta el frente del INE y una selfie. Al procesar los datos, la imagen del INE se enviará a OpenAI para leer el nombre y la fecha de nacimiento. Revisa y corrige los datos antes de guardar. Para menores, indica la fecha y adjunta sus documentos.</p>
-              {!minor && identity === "ine" && <div className="enrollment-wizard-uploads">
+              <p>Para mayores de edad, adjunta el frente del INE y una selfie. Al procesar los datos, la imagen del INE se enviará a OpenAI para leer el nombre y la fecha de nacimiento. Revisa y corrige los datos antes de guardar.</p>
+              <Button type="button" onClick={() => { setMinorMode(value => !value); setBirthDate(""); setIdentity("ine"); setError(""); }}>{minorMode ? "Registrar adulto" : "Registrar menor de edad"}</Button>
+              {!minorMode && !minor && identity === "ine" && <div className="enrollment-wizard-uploads">
                 <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>
               </div>}
               <div className="enrollment-wizard-identity-fields">
-              <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday forceNative={embedded} value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>
-              {!minor && <Label>Identificación<NativeSelect value={identity} onChange={event => setIdentity(event.target.value)}>
+              {(minorMode || identity !== "ine") && <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday forceNative={embedded} value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>}
+              {!minorMode && !minor && <Label>Identificación<NativeSelect value={identity} onChange={event => setIdentity(event.target.value)}>
                 <option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option><option value="curp">CURP</option>
               </NativeSelect></Label>}
               </div>
-              <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
+              {(!minorMode || minor) && <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
                 <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
-                  onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} /></EnrollmentField>)}</div>
-              {!minor && identity === "ine" && <Button type="button" disabled={readBusy || processingPhoto} onClick={() => void readIdentity()}>{readBusy ? "Procesando datos…" : "Procesar datos del INE"}</Button>}
+                  onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} /></EnrollmentField>)}</div>}
+              {!minorMode && !minor && identity === "ine" && <Button type="button" disabled={readBusy || processingPhoto} onClick={() => void readIdentity()}>{readBusy ? "Procesando datos…" : "Procesar datos del INE"}</Button>}
             </section>
             <section hidden={step !== 2}>
               <div className="enrollment-wizard-player">
@@ -383,7 +386,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         {error && <p className="error" role="alert">{error}</p>}
         {defaults && <footer className="enrollment-wizard-actions">
           {step > 0 && <Button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</Button>}
-          {step < 2 ? <Button type="button" className="primary" disabled={processingPhoto || readBusy} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</Button>
+          {step < 2 ? (step === 1 && !minorMode && identity === "ine" ? null : <Button type="button" className="primary" disabled={processingPhoto || readBusy} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</Button>)
             : <Button className="primary" disabled={busy || processingPhoto}>{processingPhoto ? "Procesando foto…" : busy ? "Guardando…" : "Confirmar inscripción"}</Button>}
         </footer>}
         </div>
