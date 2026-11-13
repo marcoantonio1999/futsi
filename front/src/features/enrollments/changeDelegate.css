@@ -1,4 +1,4 @@
-.change-delegate-dialog{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 40px);padding:0;border:1px solid #e1e4e7;border-radius:20px;overflow:auto;color:#202825;background:#fff;box-shadow:0 20px 70px #0003}
+.change-delegate-dialog{position:fixed;inset:0;margin:auto;box-sizing:border-box;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 40px);padding:0;border:1px solid #e1e4e7;border-radius:20px;overflow:auto;color:#202825;background:#fff;box-shadow:0 20px 70px #0003}
 .change-delegate-dialog::backdrop{background:#0008}
 .change-delegate-dialog header,.change-delegate-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px}
 .change-delegate-dialog header{border-bottom:1px solid #e1e4e7}
