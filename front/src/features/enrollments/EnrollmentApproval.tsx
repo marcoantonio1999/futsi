@@ -16,6 +16,7 @@ type RecordRow = {
   phone: string;
   phone_secondary: string;
   guardian_name: string;
+  curp_text?: string;
   identity_type: string;
   payment_reference?: string;
   document_checklist?: string[];
@@ -241,6 +242,7 @@ export function EnrollmentApproval({
                 ["Teléfono", selected.phone],
                 ["Teléfono adicional", selected.phone_secondary || "—"],
                 ["Tutor", selected.guardian_name || "—"],
+                ...(selected.identity_type === "minor" ? [["CURP", selected.curp_text || "No registrada"]] : []),
                 ["Identificación", selected.identity_type],
                 ["Referencia de pago", selected.payment_reference || "—"],
                 [

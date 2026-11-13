@@ -205,6 +205,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   const [extracted, setExtracted] = useState({given_names: "", paternal_surname: "", maternal_surname: ""});
   const [readBusy, setReadBusy] = useState(false);
   const [documentAge, setDocumentAge] = useState("");
+  const [extractedCurp, setExtractedCurp] = useState("");
   const [paperData, setPaperData] = useState<{name: string; phone: string; photo: string; ine: string} | null>(null);
   const paperFlow = !minor && identity === "ine";
   async function readIdentity() {
@@ -231,6 +232,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
       setExtracted({given_names: result.given_names || "", paternal_surname: result.paternal_surname || "", maternal_surname: result.maternal_surname || ""});
       if (result.birth_date) setBirthDate(result.birth_date);
       setDocumentAge(result.age || "");
+      setExtractedCurp(result.curp || "");
       if (minorMode) {
         if (!result.birth_date) setError("No se encontró la fecha de nacimiento. Agrégala para continuar.");
         return;
@@ -284,7 +286,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
   }, [invitation, embedded]);
   function attach(kind: string, file: Blob | null) {
     setFiles(current => ({ ...current, [kind]: file }));
-    if (kind === "minor_credential") { setExtracted({given_names: "", paternal_surname: "", maternal_surname: ""}); setDocumentAge(""); }
+    if (kind === "minor_credential") { setExtracted({given_names: "", paternal_surname: "", maternal_surname: ""}); setDocumentAge(""); setExtractedCurp(""); }
     if (file && file.size <= ENROLLMENT_FILE_MAX_BYTES) clearIssue(kind);
   }
   const kind = minor ? "minor" : identity;
@@ -336,7 +338,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         : await fetch(API_URL + endpoint, { method: "POST", body: form, signal: AbortSignal.timeout(180000) });
       const body = await response.json().catch(() => { throw new Error("El servidor no respondió correctamente. Intenta de nuevo."); });
       if (!response.ok) {
-        const fieldNames = ['birth_date', ...required, 'given_names', 'paternal_surname', 'maternal_surname', 'phone', 'phone_secondary', 'guardian_name', 'accepted_terms'];
+        const fieldNames = ['birth_date', ...required, 'given_names', 'paternal_surname', 'maternal_surname', 'phone', 'phone_secondary', 'guardian_name', 'curp_text', 'accepted_terms'];
         const issues: EnrollmentErrors = {};
         if (body && typeof body === 'object') for (const name of fieldNames) {
           if (body[name]) issues[name] = Array.isArray(body[name]) ? body[name].join(' ') : String(body[name]);
@@ -413,6 +415,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
                   <EnrollmentField name="paternal_surname" error={fieldErrors.paternal_surname}><Label>Apellido paterno<Input {...accessibility('paternal_surname')} name="paternal_surname" key={extracted.paternal_surname} defaultValue={extracted.paternal_surname} required maxLength={80} autoComplete="family-name" disabled={step !== 2} /></Label></EnrollmentField>
                   <EnrollmentField name="maternal_surname" error={fieldErrors.maternal_surname}><Label>Apellido materno<Input {...accessibility('maternal_surname')} name="maternal_surname" key={extracted.maternal_surname} defaultValue={extracted.maternal_surname} required maxLength={80} disabled={step !== 2} /></Label></EnrollmentField>
                   {defaults.is_delegate && <p className="full">Esta es la primera inscripción del equipo. Esta persona quedará registrada como delegado.</p>}
+                  {minor && <EnrollmentField name="curp_text" full error={fieldErrors.curp_text}><Label>CURP del menor (opcional)<Input {...accessibility('curp_text')} name="curp_text" key={extractedCurp} defaultValue={extractedCurp} maxLength={18} autoCapitalize="characters" onChange={() => clearIssue("curp_text")} disabled={step !== 2} /></Label></EnrollmentField>}
                   <Label>Equipo<Input readOnly value={defaults.team} /></Label>
                   <Label>Torneo<Input readOnly value={defaults.tournament} /></Label>
                   <EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date_review" required birthday value={birthDate} max={maxDate} onChange={setBirthDate} />
