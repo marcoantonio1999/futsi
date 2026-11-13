@@ -1,0 +1,12 @@
+Conector de escáner para Inscripciones BPower
+
+1. En la computadora Windows de la cancha, instala el controlador de escáner Brother DCP-T530DW.
+2. Conecta la Brother por USB o red y verifica que Windows la reconozca como escáner.
+3. Extrae todos los archivos de este ZIP en una carpeta.
+4. Abre Iniciar-conector.cmd y deja su ventana abierta.
+5. En Inscripciones, junto a INE frente, selecciona Escanear INE.
+6. Si el navegador pide acceso a la red local, concédelo. En la ventana de Windows, selecciona la Brother y recorta el área al frente del INE.
+7. Revisa la imagen en el formulario y selecciona Procesar datos del INE.
+8. Cierra la ventana del conector cuando termines.
+
+La imagen se usa para el formulario y el archivo temporal del escaneo se elimina al terminar. La opción de escaneo físico debe probarse en la computadora conectada a la Brother.

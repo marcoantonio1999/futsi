@@ -101,11 +101,12 @@ export function under18(date: string, today = new Date()) {
 }
 
 
-function Upload({ label, photo = false, onChange, onProcessing }: {
-  label: string; photo?: boolean; onChange: (file: File | null) => void; onProcessing?: (busy: boolean) => void;
+function Upload({ label, photo = false, scanner = false, onChange, onProcessing }: {
+  label: string; photo?: boolean; scanner?: boolean; onChange: (file: File | null) => void; onProcessing?: (busy: boolean) => void;
 }) {
   const upload = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [name, setName] = useState(""), [preview, setPreview] = useState("");
   const [lighting, setLighting] = useState<LightingResult | null>(null);
   const [lightingUnavailable, setLightingUnavailable] = useState(false);
@@ -128,6 +129,22 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
     } catch (reason) { if (version === selection.current) setUploadError(reason instanceof Error ? reason.message : "No se pudo procesar la foto."); }
     finally { if (version === selection.current) { setProcessing(false); onProcessing?.(false); } }
   }
+  async function scanDocument() {
+    setUploadError(""); setScanning(true); onProcessing?.(true);
+    try {
+      const response = await fetch("http://127.0.0.1:47631/scan", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        signal: AbortSignal.timeout(180000),
+      });
+      if (response.status === 409) throw new Error("El escaneo fue cancelado.");
+      if (!response.ok || !response.headers.get("content-type")?.startsWith("image/jpeg")) throw new Error("No se pudo escanear. Revisa la conexión y el controlador del escáner.");
+      const blob = await response.blob();
+      if (!blob.size || blob.size > ENROLLMENT_FILE_MAX_BYTES) throw new Error("La imagen escaneada no es válida.");
+      await select(new File([blob], "ine-escaneada.jpg", {type: "image/jpeg"}));
+    } catch (reason) {
+      setUploadError(reason instanceof TypeError ? "No se pudo conectar. Inicia el conector de escáner en esta computadora y permite el acceso local en el navegador." : reason instanceof Error ? reason.message : "No se pudo escanear.");
+    } finally { setScanning(false); onProcessing?.(false); }
+  }
   return <Card as="section" className={"upload-box " + (photo ? "player-photo" : "")}>
     <p>{label}</p>
     {photo && <small>Sin lentes, gorras u objetos que tapen la cara.</small>}
@@ -142,6 +159,7 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
     <div className="upload-actions">
       <Button type="button" onClick={() => upload.current?.click()}>Adjuntar</Button>
       <Button type="button" onClick={() => setCameraOpen(true)}>Tomar foto</Button>
+      {scanner && <Button type="button" disabled={scanning || processing} onClick={() => void scanDocument()}>{scanning ? "Escaneando…" : "Escanear INE"}</Button>}
     </div>
     <Input ref={upload} type="file" hidden accept={photo ? "image/jpeg,image/png" : "image/jpeg,image/png,application/pdf"}
       onChange={event => select(event.target.files?.[0] || null)} />
@@ -149,6 +167,7 @@ function Upload({ label, photo = false, onChange, onProcessing }: {
       onCapture={file => { select(file); setCameraOpen(false); }} />}
     {processing && <small role="status">Comprimiendo foto…</small>}
     {uploadError && <p className="error" role="alert">{uploadError}</p>}
+    {scanner && <p><small>En Windows, abre el conector de escáner y selecciona la Brother y ajusta el área al frente del INE. <a href="https://github.com/marcoantonio1999/futsi/releases/download/conector-escaner-v1.0.0/Conector-escaner-Inscripciones.zip">Descargar conector para Windows</a></small></p>}
     <small>{name || (photo ? "JPG o PNG · compresión automática a máximo 3 MB" : "Fotos: compresión automática a máximo 3 MB · PDF: máximo 20 MB")}</small>
   </Card>;
 }
@@ -357,7 +376,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               </NativeSelect></Label>}
               </div>
               {(!minorMode || minor) && <div className="enrollment-wizard-uploads">{documentKinds.map(item =>
-                <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]}
+                <EnrollmentField key={item + kind} name={item} error={fieldErrors[item]}><Upload label={item === "identity_document" ? (identity === "passport" ? "Pasaporte" : "Cartilla") : labels[item]} scanner={item === "ine_front"}
                   onChange={file => attach(item, file)} onProcessing={value => processing(item, value)} /></EnrollmentField>)}</div>}
               {!minorMode && !minor && identity === "ine" && <Button type="button" disabled={readBusy || processingPhoto} onClick={() => void readIdentity()}>{readBusy ? "Procesando datos…" : "Procesar datos del INE"}</Button>}
             </section>
