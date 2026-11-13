@@ -284,3 +284,38 @@
 .tournament-dialog .sanction-return-toggle{display:flex;align-items:center;gap:10px;min-height:44px;margin:12px 0}
 .tournament-dialog .sanction-return-toggle input{width:22px;min-width:22px;height:22px;margin:0}
 .tournament-dialog .sanction-return-date input[type="date"]{box-sizing:border-box;display:block;width:100%;min-width:0;min-height:44px;padding:10px 12px;font-size:16px;border:1px solid #d3ddd6;border-radius:8px;background:white;color:#24362b}
+@media screen and (min-width: 1100px) {
+  .enrollment-roster-layout .enrollment-admin-header {
+    padding: 8px 14px;
+    margin-bottom: 10px;
+  }
+  .enrollment-team-roster-view { gap: 8px; }
+  .enrollment-team-roster-view > .operator-controls {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    padding: 10px 12px;
+  }
+  .enrollment-team-roster-view .enrollment-delegate-toolbar {
+    flex: 0 0 auto;
+    margin: 0;
+    gap: 8px;
+  }
+  .enrollment-team-roster-view .enrollment-delegate-toolbar p {
+    max-width: 150px;
+    font-size: 13px;
+  }
+  .enrollment-team-roster-view .control-grid {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(105px, 1fr)) auto;
+    align-items: end;
+    gap: 8px;
+  }
+  .enrollment-team-roster-view .control-grid label { min-width: 0; margin: 0; }
+  .enrollment-team-roster-view .control-grid input { width: 100%; min-width: 0; }
+  .enrollment-team-roster-scroll .match-paper {
+    zoom: .55;
+  }
+}
