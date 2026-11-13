@@ -23,7 +23,7 @@ function useNativeDatePicker() {
 // shadcn/ui Base Date Picker composition (Popover + React DayPicker), with scoped
 // BPower styles so the legacy enrollment form's input/button rules cannot leak in.
 function CalendarPopover({ title, children, container }: { title: string; children: ReactNode; container?: HTMLElement | null }) {
-  return <Popover.Portal container={container}><Popover.Positioner className="enrollment-date-positioner" sideOffset={6} align="start" collisionPadding={4} sticky collisionAvoidance={{side:'shift',align:'shift'}}>
+  return <Popover.Portal container={container ?? undefined}><Popover.Positioner className="enrollment-date-positioner" sideOffset={6} align="start" collisionPadding={4} sticky collisionAvoidance={{side:'shift',align:'shift'}}>
     <Popover.Popup className="enrollment-date-popup" data-slot="popover-content">
       <header className="enrollment-date-heading"><Popover.Title>{title}</Popover.Title><Popover.Close className="enrollment-date-close" aria-label="Cerrar calendario"><X size={18} /></Popover.Close></header>
       {children}
