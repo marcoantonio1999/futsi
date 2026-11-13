@@ -1,0 +1,17 @@
+.identity-crop-dialog,.enrollment-image-dialog{position:fixed;inset:0;margin:auto;box-sizing:border-box;width:min(820px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:20px;background:#fff;border:1px solid #dce5df;border-radius:14px;color:#17241e}
+.identity-crop-dialog::backdrop,.enrollment-image-dialog::backdrop{background:#0009}
+.identity-crop-dialog header,.enrollment-image-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.identity-crop-dialog h2,.enrollment-image-dialog h2{margin:0;font-size:20px}
+.identity-crop-dialog p{margin:10px 0}
+.identity-crop-image{position:relative;width:fit-content;max-width:100%;margin:auto;line-height:0;overflow:hidden}
+.identity-crop-image img{display:block;max-width:100%;max-height:45dvh;width:auto;height:auto}
+.identity-crop-selection{position:absolute;box-sizing:border-box;border:3px solid #16804d;box-shadow:0 0 0 2000px #0008;pointer-events:none}
+.identity-crop-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 20px;margin:14px 0}
+.identity-crop-controls label{display:grid;gap:4px;font-size:14px}
+.identity-crop-controls input{width:100%;min-height:44px}
+.identity-crop-dialog footer,.enrollment-image-dialog footer{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.enrollment-image-viewer{overflow:auto;max-height:65dvh;margin:12px 0;background:#edf3ef}
+.enrollment-image-viewer img{display:block;max-width:none;height:auto}
+@media(max-width:600px){.identity-crop-dialog,.enrollment-image-dialog{padding:14px}.identity-crop-controls{grid-template-columns:1fr}.identity-crop-dialog footer button,.enrollment-image-dialog button{min-height:44px}}
+.identity-crop-dialog p{text-transform:none}
+.identity-crop-controls input{accent-color:#246343}

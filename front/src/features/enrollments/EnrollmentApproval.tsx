@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../../api";
-import { Button, Card, Input, Label } from "../../components/ui/enrollment-ui";
+import { Button, Card, Dialog, Input, Label } from "../../components/ui/enrollment-ui";
 import { fetchEnrollmentDocument } from "./fetchEnrollmentDocument";
 import { renderRegistrationPdf } from "./renderRegistrationPdf";
 import { EnrollmentRegistrationSheet } from "./EnrollmentRegistrationSheet";
 import "./enrollmentApproval.css";
+import "./identityCrop.css";
 type Doc = { id: number; kind: string };
 type RecordRow = {
   id: number;
@@ -35,6 +36,20 @@ const labels: Record<string, string> = {
   ine_back: "INE reverso",
   identity_document: "Pasaporte / cartilla",
 };
+function DocumentZoom({url, title, onClose}: {url: string; title: string; onClose: () => void}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [zoom, setZoom] = useState(100);
+  useEffect(() => { dialog.current?.showModal(); }, []);
+  return <Dialog ref={dialog} className="enrollment-image-dialog no-print" aria-label={`Ampliar ${title}`} onCancel={event => {event.preventDefault(); onClose();}}>
+    <header><h2>{title}</h2><Button type="button" onClick={onClose} aria-label="Cerrar imagen">✕</Button></header>
+    <div className="enrollment-image-viewer" tabIndex={0} aria-label="Imagen ampliada, desplázate para ver el documento">
+      <img src={url} alt={title} style={{width:`${zoom}%`}} />
+    </div>
+    <footer><Button type="button" onClick={() => setZoom(value => Math.max(100, value - 50))} disabled={zoom === 100}>Reducir</Button>
+      <span aria-live="polite">{zoom}%</span><Button type="button" onClick={() => setZoom(value => Math.min(300, value + 50))} disabled={zoom === 300}>Ampliar</Button>
+      <Button type="button" onClick={onClose}>Cerrar</Button></footer>
+  </Dialog>;
+}
 export function EnrollmentApproval({
   token,
   onChanged,
@@ -48,6 +63,7 @@ export function EnrollmentApproval({
     [search, setSearch] = useState(""),
     [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<RecordRow | null>(null);
+  const [zoomImage, setZoomImage] = useState<{url:string; title:string} | null>(null);
   const [showSheet, setShowSheet] = useState(false);
   const [ready, setReady] = useState<number[]>([]);
   const [documents, setDocuments] = useState<Record<number, {url?: string; mime?: string; pages?: string[]; error?: string}>>({});
@@ -205,6 +221,7 @@ export function EnrollmentApproval({
           {error}
         </p>
       )}
+      {zoomImage && <DocumentZoom url={zoomImage.url} title={zoomImage.title} onClose={() => setZoomImage(null)} />}
       {selected ? (
         <>
           <Button
@@ -271,11 +288,11 @@ export function EnrollmentApproval({
                   <h4>{title}</h4>
                   {preview?.error ? <p role="alert" className="error">{preview.error} No se puede validar hasta cargarlo.</p>
                     : !preview?.url && !preview?.pages ? <p role="status">Cargando documento privado…</p>
-                    : preview.mime === 'application/pdf' ? <div className="enrollment-pdf-pages">{preview.pages?.map((url, index) => <img key={index} src={url} alt={`${title} · Página ${index+1}`} onLoad={event => {
-                      const images = event.currentTarget.parentElement?.querySelectorAll('img');
+                    : preview.mime === 'application/pdf' ? <div className="enrollment-pdf-pages">{preview.pages?.map((url, index) => <div key={url}><button type="button" className="enrollment-preview-open" onClick={() => setZoomImage({url,title:`${title} · Página ${index+1}`})} aria-label={`Ampliar ${title} · Página ${index+1}`}><img src={url} alt={`${title} · Página ${index+1}`} onLoad={event => {
+                      const images = event.currentTarget.closest('.enrollment-pdf-pages')?.querySelectorAll('img');
                       if (images && Array.from(images).every(image => image.complete && image.naturalWidth > 0)) documentReady(document.id);
-                    }} onError={() => documentFailed(document.id)} />)}</div>
-                    : <img src={preview.url} alt={title} onLoad={() => documentReady(document.id)} onError={() => documentFailed(document.id)} />}
+                    }} onError={() => documentFailed(document.id)} /></button></div>)}</div>
+                    : <button type="button" className="enrollment-preview-open" onClick={() => setZoomImage({url:preview.url!, title})} aria-label={`Ampliar ${title}`}><img src={preview.url} alt={title} onLoad={() => documentReady(document.id)} onError={() => documentFailed(document.id)} /></button>}
                 </article>;
               })}
             </div>

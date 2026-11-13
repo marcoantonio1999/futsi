@@ -33,6 +33,7 @@ import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
 import { CameraCapture } from "./CameraCapture";
+import { IdentityCrop } from "./IdentityCrop";
 import { compressEnrollmentPhoto } from "./compressEnrollmentPhoto";
 import { enrollmentDirectUpload } from './enrollmentDirectUpload';
 import { fetchEnrollmentDocument } from './fetchEnrollmentDocument';
@@ -106,6 +107,7 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
 }) {
   const upload = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
   const [name, setName] = useState(""), [preview, setPreview] = useState("");
   const [lighting, setLighting] = useState<LightingResult | null>(null);
@@ -140,7 +142,7 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
       if (!response.ok || !response.headers.get("content-type")?.startsWith("image/jpeg")) throw new Error("No se pudo escanear. Revisa la conexión y el controlador del escáner.");
       const blob = await response.blob();
       if (!blob.size || blob.size > ENROLLMENT_FILE_MAX_BYTES) throw new Error("La imagen escaneada no es válida.");
-      await select(new File([blob], "ine-escaneada.jpg", {type: "image/jpeg"}));
+      setCropFile(new File([blob], "ine-escaneada.jpg", {type: "image/jpeg"}));
     } catch (reason) {
       setUploadError(reason instanceof TypeError ? "No se pudo conectar. Inicia el conector de escáner en esta computadora y permite el acceso local en el navegador." : reason instanceof Error ? reason.message : "No se pudo escanear.");
     } finally { setScanning(false); onProcessing?.(false); }
@@ -162,9 +164,15 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
       {scanner && <Button type="button" disabled={scanning || processing} onClick={() => void scanDocument()}>{scanning ? "Escaneando…" : "Escanear INE"}</Button>}
     </div>
     <Input ref={upload} type="file" hidden accept={photo ? "image/jpeg,image/png" : "image/jpeg,image/png,application/pdf"}
-      onChange={event => select(event.target.files?.[0] || null)} />
+      onChange={event => {
+        const file = event.target.files?.[0] || null;
+        if (scanner && file?.type.startsWith("image/")) setCropFile(file);
+        else void select(file);
+        event.target.value = "";
+      }} />
     {cameraOpen && <CameraCapture selfie={photo} onClose={() => setCameraOpen(false)}
-      onCapture={file => { select(file); setCameraOpen(false); }} />}
+      onCapture={file => { if (scanner) setCropFile(file); else void select(file); setCameraOpen(false); }} />}
+    {cropFile && <IdentityCrop file={cropFile} onCancel={() => setCropFile(null)} onApply={file => { setCropFile(null); void select(file); }} />}
     {processing && <small role="status">Comprimiendo foto…</small>}
     {uploadError && <p className="error" role="alert">{uploadError}</p>}
     {scanner && <p><small>En Windows, abre el conector de escáner y selecciona la Brother y ajusta el área al frente del INE. <a href="https://github.com/marcoantonio1999/futsi/releases/download/conector-escaner-v1.0.0/Conector-escaner-Inscripciones.zip">Descargar conector para Windows</a></small></p>}

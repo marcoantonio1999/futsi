@@ -123,3 +123,5 @@
 .enrollment-approval h3 {font-size:17px;font-weight:700}
 .enrollment-approval h4 {font-weight:650}
 @media(max-width:640px){.enrollment-approval > [data-slot="card"]{padding:16px}}
+.enrollment-preview-open{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
+.enrollment-preview-open:focus-visible{outline:3px solid #7baa8d;outline-offset:2px}

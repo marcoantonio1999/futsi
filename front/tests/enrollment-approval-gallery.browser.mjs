@@ -19,9 +19,14 @@ try{
  await page.goto('http://127.0.0.1:5213/tests/enrollment-register-preview.html#/admin/inscripciones/validate');await page.getByRole('button',{name:'Revisar inscripción',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('.enrollment-approval-docs article').length===5);
  await page.waitForTimeout(100);assert.deepEqual([...requests].sort((a,b)=>a-b),[11,12,13,14,15]);
- assert.equal(await page.locator('.enrollment-approval input[type=checkbox]').count(),0);assert.equal(await page.locator('.enrollment-approval-docs button').count(),0);
+ assert.equal(await page.locator('.enrollment-approval input[type=checkbox]').count(),0);
  const approve=page.getByRole('button',{name:'Validar inscripción',exact:true});assert(await approve.isDisabled());release();await approve.waitFor();await page.waitForFunction(()=>!Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='Validar inscripción').disabled);
  assert.equal(await page.locator('.enrollment-approval-docs img').count(),5);assert.equal(await page.locator('.enrollment-pdf-pages img').count(),1);
+ await page.getByRole('button',{name:'Ampliar INE frente',exact:true}).click();
+ const zoom=page.getByRole('dialog',{name:'Ampliar INE frente'});await zoom.waitFor();
+ await zoom.getByRole('button',{name:'Ampliar',exact:true}).click();assert(await zoom.getByText('150%').isVisible());
+ await zoom.getByRole('button',{name:'Cerrar imagen'}).click();await zoom.waitFor({state:'hidden'});
+
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert((await approve.boundingBox()).height>=44);
  if(process.env.TEST_OUTPUT)await page.screenshot({path:`${process.env.TEST_OUTPUT}/validar-galeria-${width}.png`,fullPage:true});
  await approve.click();await page.getByRole('alert').filter({hasText:'Error de prueba'}).waitFor();assert.equal(requests.length,5);failSave=false;await approve.click();await page.getByText('Inscripción validada. Ya puede aparecer en la sábana.',{exact:true}).waitFor();
