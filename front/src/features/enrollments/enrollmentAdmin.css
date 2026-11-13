@@ -319,3 +319,38 @@
     zoom: .55;
   }
 }
+@media screen {
+  .enrollment-admin-layout .enrollment-tournament-workspace.enrollment-tournament-create {
+    padding: 24px;
+  }
+  .enrollment-tournament-create .tournament-create {
+    width: 100%;
+    max-width: 900px;
+  }
+  .enrollment-tournament-create .tournament-create-card {
+    margin-top: 16px;
+    padding: 24px;
+  }
+  .enrollment-tournament-create .tournament-create-card input,
+  .enrollment-tournament-create .tournament-create-card select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px !important;
+    padding: 10px 12px;
+    border: 1px solid var(--input);
+    border-radius: 8px !important;
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-weight: 400;
+  }
+}
+@media screen and (max-width: 600px) {
+  .enrollment-admin-layout .enrollment-tournament-workspace.enrollment-tournament-create {
+    padding: 16px;
+  }
+  .enrollment-tournament-create .tournament-create-card { padding: 16px; }
+  .enrollment-tournament-create .tournament-create-card input,
+  .enrollment-tournament-create .tournament-create-card select { font-size: 16px; }
+}
