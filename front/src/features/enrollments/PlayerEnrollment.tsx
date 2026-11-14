@@ -193,10 +193,10 @@ function Terms({ items, guardian, player }: { items: string[]; guardian?: string
   </section>;
 }
 
-export function PublicPlayerEnrollment({ invitation, embedded = false, onCompleted, onBusyChange }: {
-  invitation: string; embedded?: boolean; onCompleted?: (completed: boolean) => void; onBusyChange?: (busy: boolean) => void;
+export function PublicPlayerEnrollment({ invitation, embedded = false, staffToken, onCompleted, onBusyChange }: {
+  invitation: string; embedded?: boolean; staffToken?: string; onCompleted?: (completed: boolean) => void; onBusyChange?: (busy: boolean) => void;
 }) {
-  const [step, setStep] = useState(0), [accepted, setAccepted] = useState(false);
+  const [step, setStep] = useState(embedded ? 1 : 0), [accepted, setAccepted] = useState(false);
   const [birthDate, setBirthDate] = useState(""), minor = under18(birthDate);
   const [identity, setIdentity] = useState("ine");
   const [minorMode, setMinorMode] = useState(false);
@@ -316,7 +316,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     event.preventDefault();
     if (saving.current) return;
     if (step !== 2) { next(); return; }
-    if (!accepted) { showIssues({ accepted_terms: 'Acepta los compromisos para continuar.' }, 0); return; }
+    if (!embedded && !accepted) { showIssues({ accepted_terms: 'Acepta los compromisos para continuar.' }, 0); return; }
     if (processingPhoto) { setError("Espera a que termine de comprimirse la foto."); return; }
     setError("");
     const formElement = event.currentTarget;
@@ -332,14 +332,15 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
     saving.current = true; setBusy(true);
     try {
       const form = new FormData(formElement);
-      form.set("birth_date", birthDate); form.set("identity_type", kind); form.set("accepted_terms", "true");
+      form.set("birth_date", birthDate); form.set("identity_type", kind); form.set("accepted_terms", embedded ? "false" : "true");
+      if (embedded) form.set("local_registration", "true");
       if (paperFlow) form.set("paper_signature", "true");
       const endpoint = "/player-enrollments/public/" + encodeURIComponent(invitation) + "/";
       if (!defaults?.direct_upload) required.forEach(item => form.append(item, files[item]!,
         item.includes("signature") ? item + ".png" : (files[item] as File).name));
       const response = defaults?.direct_upload
-        ? await enrollmentDirectUpload(endpoint, Object.fromEntries(required.map(item => [item, files[item]!])), form)
-        : await fetch(API_URL + endpoint, { method: "POST", body: form, signal: AbortSignal.timeout(180000) });
+        ? await enrollmentDirectUpload(endpoint, Object.fromEntries(required.map(item => [item, files[item]!])), form, embedded ? staffToken : undefined)
+        : await fetch(API_URL + endpoint, { method: "POST", headers: embedded && staffToken ? {Authorization: `Token ${staffToken}`} : undefined, body: form, signal: AbortSignal.timeout(180000) });
       const body = await response.json().catch(() => { throw new Error("El servidor no respondió correctamente. Intenta de nuevo."); });
       if (!response.ok) {
         const fieldNames = ['birth_date', ...required, 'given_names', 'paternal_surname', 'maternal_surname', 'phone', 'phone_secondary', 'guardian_name', 'curp_text', 'accepted_terms'];
@@ -383,7 +384,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         const updated = playerFieldErrors(values, minor);
         setFieldErrors(current => Object.fromEntries(Object.entries(current).filter(([key]) => !['given_names', 'paternal_surname', 'maternal_surname', 'phone', 'guardian_name'].includes(key) || !!updated[key]).map(([key, message]) => [key, updated[key] || message])));
       }}>
-        <header className="enrollment-wizard-header"><span>Paso {step + 1} de 3</span><h1>{["Aviso y aceptación", "Fecha e identificación", "Selfie y datos del jugador"][step]}</h1></header>
+        <header className="enrollment-wizard-header"><span>Paso {embedded ? step : step + 1} de {embedded ? 2 : 3}</span><h1>{["Aviso y aceptación", "Fecha e identificación", "Selfie y datos del jugador"][step]}</h1></header>
         <div ref={content} className="enrollment-wizard-content">
           {!defaults ? <p>{error ? "Solicita otro enlace si este ya no está disponible." : "Cargando…"}</p> : <>
             <section hidden={step !== 0}>
@@ -437,7 +438,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
         <div className="enrollment-wizard-footer">
         {error && <p className="error" role="alert">{error}</p>}
         {defaults && <footer className="enrollment-wizard-actions">
-          {step > 0 && <Button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</Button>}
+          {step > (embedded ? 1 : 0) && <Button type="button" disabled={busy} onClick={() => navigate(step - 1)}>Atrás</Button>}
           {step < 2 ? (step === 1 && !minorMode && identity === "ine" ? null : <Button type="button" className="primary" disabled={processingPhoto || readBusy} onClick={next}>{processingPhoto ? "Procesando foto…" : step === 0 ? "Aceptar y continuar" : "Siguiente"}</Button>)
             : <Button className="primary" disabled={busy || processingPhoto}>{processingPhoto ? "Procesando foto…" : busy ? "Guardando…" : "Confirmar inscripción"}</Button>}
         </footer>}
@@ -870,7 +871,7 @@ function EnrollmentDashboardContent({ token, onLogout, restricted = false }: {
       </section>}
     </div>
     <Dialog ref={localDialogRef} className="local-enrollment-dialog no-print" aria-labelledby="local-enrollment-title" onCancel={event => { event.preventDefault(); closeLocalRegistration(); }}>
-      {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">{localRegistration.purpose === "withdraw" ? "Baja local" : "Registro local"}</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div><Button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localRegistration.purpose === 'withdraw' ? (localCompleted ? 'Finalizar baja local' : 'Cerrar baja local') : (localCompleted ? 'Finalizar registro local' : 'Cerrar registro local')}</Button></header><div className="local-enrollment-content"><>{localRegistration.purpose === "withdraw" ? <PublicPlayerWithdrawal key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /> : <PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} />}</></div></>}
+      {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">{localRegistration.purpose === "withdraw" ? "Baja local" : "Registro local"}</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div><Button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localRegistration.purpose === 'withdraw' ? (localCompleted ? 'Finalizar baja local' : 'Cerrar baja local') : (localCompleted ? 'Finalizar registro local' : 'Cerrar registro local')}</Button></header><div className="local-enrollment-content"><>{localRegistration.purpose === "withdraw" ? <PublicPlayerWithdrawal key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /> : <PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded staffToken={token} onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} />}</></div></>}
     </Dialog>
   </main>;
 }

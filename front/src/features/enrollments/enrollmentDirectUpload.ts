@@ -18,7 +18,7 @@ async function prepare(file: Blob, kind: string): Promise<Blob> {
 }
 
 /** One explicit upload attempt. No retries, polling, file proxy, or API token sent to R2. */
-export async function enrollmentDirectUpload(endpoint: string, files: Record<string, Blob>, form: FormData): Promise<Response> {
+export async function enrollmentDirectUpload(endpoint: string, files: Record<string, Blob>, form: FormData, staffToken?: string): Promise<Response> {
   const prepared = await Promise.all(Object.entries(files).map(async ([kind, file]) => {
     const content = await prepare(file, kind);
     const digest = await crypto.subtle.digest('SHA-256', await content.arrayBuffer());
@@ -42,6 +42,6 @@ export async function enrollmentDirectUpload(endpoint: string, files: Record<str
     const values = form.getAll(key).filter((value): value is string => typeof value === 'string');
     if (values.length) payload[key] = values.length > 1 || key === 'enrollment_ids' || key === 'document_checklist' ? values : values[0];
   }
-  return fetch(API_URL + endpoint, {method: 'POST', headers: {'Content-Type': 'application/json'},
+  return fetch(API_URL + endpoint, {method: 'POST', headers: {'Content-Type': 'application/json', ...(staffToken ? {Authorization: `Token ${staffToken}`} : {})},
     body: JSON.stringify({...payload, uploaded_documents: receipts}), signal: AbortSignal.timeout(180000)});
 }
