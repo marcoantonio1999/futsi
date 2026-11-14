@@ -140,6 +140,7 @@
 .enrollment-wizard-header h1{margin:6px 0 0}
 .enrollment-wizard-content{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:20px 24px}
 .enrollment-wizard-content [hidden]{display:none!important}
+@media screen { .enrollment-wizard-person-switch{display:flex;justify-content:flex-end;margin-bottom:16px} .enrollment-wizard-person-switch button{min-height:44px;max-width:100%} }
 .enrollment-wizard-content .commitments{margin-top:0}
 .enrollment-wizard-actions{display:flex;justify-content:flex-end;gap:14px;flex-shrink:0;padding:18px 24px;border-top:1px solid #e4e7e5}
 .enrollment-wizard-actions button{min-width:112px;min-height:44px;border-radius:8px}

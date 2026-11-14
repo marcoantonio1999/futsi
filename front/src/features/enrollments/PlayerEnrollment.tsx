@@ -394,8 +394,8 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, onComplet
               {consent}
             </section>
             <section hidden={step !== 1}>
-              <p>{minorMode ? "Adjunta el documento del menor y el frente del INE del padre o tutor. El documento del menor se enviará a OpenAI para leer los datos visibles; revísalos y corrígelos antes de guardar." : "Para mayores de edad, adjunta el frente del INE y una selfie. Al procesar los datos, la imagen del INE se enviará a OpenAI para leer el nombre y la fecha de nacimiento. Revisa y corrige los datos antes de guardar."}</p>
-              <Button type="button" onClick={() => { setMinorMode(value => !value); setBirthDate(""); setIdentity("ine"); setError(""); }}>{minorMode ? "Registrar adulto" : "Registrar menor de edad"}</Button>
+              <div className="enrollment-wizard-person-switch"><Button type="button" className="primary" onClick={() => { setMinorMode(value => !value); setBirthDate(""); setIdentity("ine"); setError(""); }}>{minorMode ? "Registrar adulto" : "Registrar menor de edad"}</Button></div>
+              {minorMode && <p>Adjunta el documento del menor y el frente del INE del padre o tutor. El documento del menor se enviará a OpenAI para leer los datos visibles; revísalos y corrígelos antes de guardar.</p>}
               {!minorMode && !minor && identity === "ine" && <div className="enrollment-wizard-uploads">
                 <EnrollmentField name="player_photo" error={fieldErrors.player_photo}><Upload label="Selfie del jugador" photo onChange={file => attach("player_photo", file)} onProcessing={value => processing("player_photo", value)} /></EnrollmentField>
               </div>}
