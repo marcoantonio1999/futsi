@@ -16,7 +16,7 @@ try{for(const width of [320,390,1440]){
  const print=page.getByRole('button',{name:'Imprimir',exact:true});assert((await print.boundingBox()).height>=44);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  const popupPromise=page.waitForEvent('popup');await print.click();const popup=await popupPromise;
  await popup.getByText('FIN DE RESPUESTA',{exact:false}).waitFor();
- await popup.waitForFunction(()=>{const img=document.querySelector('header img');return img?.complete && img.naturalWidth>0;});
+ await popup.waitForFunction(()=>{const img=document.querySelector('img.watermark');return img?.complete && img.naturalWidth>0;});
  assert.equal(await popup.locator('.field').count(),Object.keys(fields).length);assert.equal(await popup.locator('img').count(),1);assert(await popup.getByText('<img src=x onerror=alert(1)> Excel',{exact:false}).count());
  if(width===1440)await popup.pdf({path:'C:/Users/daniel/Documents/marco/mexprod/tmp/employment-print-qa.pdf',format:'Letter',printBackground:true,preferCSSPageSize:true});
  await context.close();
