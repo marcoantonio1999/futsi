@@ -199,7 +199,7 @@ class EnrollmentInput(serializers.Serializer):
     guardian_name = serializers.CharField(max_length=160, required=False, allow_blank=True, default="")
     payment_reference = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
     document_checklist = serializers.ListField(child=serializers.ChoiceField(choices=["credential", "waiver", "other", "birth_certificate", "curp", "guardian_ine"]), required=False, default=list)
-    accepted_terms = serializers.BooleanField()
+    accepted_terms = serializers.BooleanField(required=False, default=False)
     def validate(self, data):
         data["curp_text"] = data["curp_text"].strip().upper()
         if data["curp_text"] and (len(data["curp_text"]) != 18 or any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZÑ0123456789" for c in data["curp_text"])):
@@ -218,7 +218,8 @@ class EnrollmentInput(serializers.Serializer):
             raise ValidationError("El nombre completo puede tener hasta 160 caracteres.")
         if data["birth_date"] > timezone.localdate() or data["birth_date"].year < timezone.localdate().year - 110:
             raise ValidationError("Revisa la fecha de nacimiento.")
-        if not data.pop("accepted_terms"):
+        accepted = data.pop("accepted_terms")
+        if not accepted and not self.context.get("local_registration"):
             raise ValidationError("Debes aceptar los compromisos del formato.")
         if is_minor(data["birth_date"]) and not data["phone"]:
             raise ValidationError({"phone": "Escribe el teléfono de contacto."})
@@ -387,7 +388,16 @@ class PublicEnrollmentView(APIView):
         return Response({"direct_upload": enrollment_r2.enabled(), "team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "max_players_per_team": invitation.team_record.tournament.max_players_per_team, "is_delegate": first, "delegate_name": '', "delegate_phone": '', "terms_version": TERMS_VERSION, "terms": TERMS})
 
     def post(self, request, token):
-        serializer = EnrollmentInput(data=request.data)
+        local_registration = str(request.data.get("local_registration", "false")).lower() == "true"
+        if local_registration:
+            from core.authentication import ExpiringTokenAuthentication
+            authenticated = ExpiringTokenAuthentication().authenticate(request)
+            if not authenticated or not enrollment_staff(authenticated[0]):
+                raise PermissionDenied("El registro local requiere una sesión autorizada.")
+            invitation = get_object_or_404(PlayerEnrollmentInvitation, token=token, purpose="enroll")
+            if not invitations_for(authenticated[0]).filter(pk=invitation.pk).exists():
+                raise PermissionDenied("No tienes acceso a esta inscripción.")
+        serializer = EnrollmentInput(data=request.data, context={"local_registration": local_registration})
         serializer.is_valid(raise_exception=True)
         fields = serializer.validated_data
         assert_not_blacklisted(fields['name'], fields['birth_date'])
@@ -438,7 +448,7 @@ class PublicEnrollmentView(APIView):
                 if saved_path:
                     paths[-1] = path = saved_path
                 documents.append(dict(kind=kind, storage_path=path, content=b"", content_type=mime, sha256=digest))
-            return self.save_enrollment(request, token, fields, documents=documents)
+            return self.save_enrollment(request, token, fields, documents=documents, local_registration=local_registration)
         except Exception as exc:
             for path in paths:
                 try:
@@ -450,7 +460,7 @@ class PublicEnrollmentView(APIView):
             logger.exception("ENROLLMENT_STORAGE_SAVE_FAILED")
             return Response({"detail": "No se pudieron guardar los archivos. Intenta nuevamente."}, status=503)
 
-    def save_enrollment(self, request, token, fields, documents):
+    def save_enrollment(self, request, token, fields, documents, local_registration=False):
         with transaction.atomic():
             invitation = get_object_or_404(PlayerEnrollmentInvitation.objects.select_for_update(of=('self',)).select_related('team_record__tournament'), token=token, purpose='enroll')
             if enrollment_invitation_expired(invitation):
@@ -461,6 +471,8 @@ class PublicEnrollmentView(APIView):
                 raise ValidationError('El equipo o torneo del enlace ya no está disponible. Solicita un enlace nuevo.')
             fields.update(team=invitation.team, tournament=invitation.tournament, team_record=invitation.team_record)
             checklist = fields.pop("document_checklist", [])
+            if local_registration:
+                checklist.append("local_registration")
             if request.data.get("paper_signature") == "true" and fields["identity_type"] == "ine" and not is_minor(fields["birth_date"]):
                 checklist.append("paper_signature")
             with capacity_guard(invitation.team_record, "enrollment") as team:

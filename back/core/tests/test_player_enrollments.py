@@ -115,6 +115,25 @@ class PlayerEnrollmentTests(TestCase):
         self.assertFalse(PlayerEnrollment.objects.exists())
         self.assertFalse(self.storage)
 
+    def test_local_registration_without_checkbox_requires_authorized_staff_and_retains_terms(self):
+        from rest_framework.authtoken.models import Token
+        data = self.payload(); data["accepted_terms"] = "false"; data["local_registration"] = "true"
+        self.assertIn(self.client.post(self.url, data, format="multipart").status_code, (401, 403))
+        self.assertFalse(PlayerEnrollment.objects.exists())
+        key = Token.objects.create(user=self.emilio).key
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + key)
+        data = self.payload(); data["accepted_terms"] = "false"; data["local_registration"] = "true"
+        response = self.client.post(self.url, data, format="multipart")
+        self.assertEqual(response.status_code, 201, response.data)
+        row = PlayerEnrollment.objects.get()
+        self.assertTrue(row.terms_text)
+        self.assertIn("local_registration", row.document_checklist)
+
+    def test_public_registration_still_requires_acceptance(self):
+        data = self.payload(); data["accepted_terms"] = "false"
+        self.assertEqual(self.client.post(self.url, data, format="multipart").status_code, 400)
+        self.assertFalse(PlayerEnrollment.objects.exists())
+
     def test_adult_paper_registration_accepts_front_and_optional_phone(self):
         data = self.payload()
         data["paper_signature"] = "true"
