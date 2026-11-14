@@ -12,7 +12,14 @@ try{for(const width of [320,390,1440]){
  await page.addInitScript(()=>{localStorage.setItem('futsi_token','fake');const open=window.open.bind(window);window.open=(...args)=>{const child=open(...args);if(child)child.print=()=>{};return child;};});
  await page.route('**/api/**',async route=>{const u=new URL(route.request().url());let data;if(u.pathname==='/api/auth/me/')data={role:'collaborator',section_permissions:['veronica_only']};else if(u.pathname==='/api/recruitment-exams/')data={results:[]};else if(u.pathname==='/api/recruitment-applications/')data={public_url:'https://example.invalid',sections:schema.sections,count:1,page:1,results:[row]};else if(u.pathname==='/api/recruitment-applications/10/')data=row;else throw Error(u.pathname);await route.fulfill({json:data});});
  await page.goto('http://127.0.0.1:5210/#/examenes/formatos-postulaciones');
+ const link=page.getByRole('button',{name:'Enviar link',exact:true}),received=page.getByRole('button',{name:'Postulaciones recibidas',exact:true});
+ assert.equal(await received.getAttribute('aria-pressed'),'true');assert.equal(await page.getByLabel('Enlace para postulantes').count(),0);
+ await link.click();assert.equal(await link.getAttribute('aria-pressed'),'true');assert.equal(await page.getByLabel('Enlace para postulantes').inputValue(),'https://example.invalid');assert.equal(await page.getByRole('button',{name:'Ver todos los datos'}).count(),0);
+ assert((await link.boundingBox()).height>=44);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await received.click();
  await page.getByRole('button',{name:'Ver todos los datos'}).click();
+ assert.equal(await page.getByLabel('Enlace para postulantes').count(),0);
+ await link.click();await received.click();assert(await page.getByRole('button',{name:'Imprimir',exact:true}).isVisible());
  const print=page.getByRole('button',{name:'Imprimir',exact:true});assert((await print.boundingBox()).height>=44);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  const popupPromise=page.waitForEvent('popup');await print.click();const popup=await popupPromise;
  await popup.getByText('FIN DE RESPUESTA',{exact:false}).waitFor();
