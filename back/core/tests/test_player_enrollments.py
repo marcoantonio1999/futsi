@@ -82,6 +82,29 @@ class PlayerEnrollmentTests(TestCase):
         self.assertEqual(json.loads(opener.return_value.open.call_args.args[0].data)["document_type"], "minor_curp")
         self.assertFalse(PlayerEnrollment.objects.exists())
 
+    @override_settings(OPENAI_API_KEY="", WHATSAPP_SERVICE_URL="https://service.example", WHATSAPP_SERVICE_TOKEN="test-internal")
+    @patch("urllib.request.build_opener")
+    def test_auto_document_identification_returns_type_and_fields(self, opener):
+        import json
+        result = {"given_names": "Ana", "paternal_surname": "Pérez", "maternal_surname": "López", "birth_date": "1995-01-01", "detected_type": "passport"}
+        opener.return_value.open.return_value.__enter__.return_value = BytesIO(json.dumps(result).encode())
+        response = self.client.post(self.url + "extract-identity/", {"ine_front": image_file("document.png"), "document_type": "auto"}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data, result)
+        self.assertEqual(json.loads(opener.return_value.open.call_args.args[0].data)["document_type"], "auto")
+
+    def test_passport_paper_signature_requires_only_document_and_photo(self):
+        data = self.payload(); data["identity_type"] = "passport"; data["paper_signature"] = "true"
+        del data["ine_front"]; del data["ine_back"]; del data["player_signature"]
+        data["identity_document"] = image_file("pasaporte.png")
+        response = self.client.post(self.url, data, format="multipart")
+        self.assertEqual(response.status_code, 201, response.data)
+        row = PlayerEnrollment.objects.get()
+        self.assertIn("paper_signature", row.document_checklist)
+        self.client.force_authenticate(self.emilio)
+        response = self.client.post(f"/api/player-enrollments/{row.pk}/validate/", {"confirmed": True, "documents_reviewed": list(row.documents.values_list("id", flat=True))}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
     def test_minor_without_guardian_back_can_be_registered_and_approved(self):
         data = self.payload(minor=True)
         del data["guardian_ine_back"]
