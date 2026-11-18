@@ -37,7 +37,7 @@ const labels: Record<string, string> = {
   ine_back: "INE reverso",
   identity_document: "Pasaporte / cartilla",
 };
-function DocumentZoom({url, title, onClose}: {url: string; title: string; onClose: () => void}) {
+export function DocumentZoom({url, title, onClose}: {url: string; title: string; onClose: () => void}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [zoom, setZoom] = useState(100);
   useEffect(() => { dialog.current?.showModal(); }, []);
@@ -162,7 +162,7 @@ export function EnrollmentApproval({
         ]
       : [
           "player_photo",
-          ...(selected.identity_type === "ine" && selected.document_checklist?.includes("paper_signature")
+          ...(selected.document_checklist?.includes("paper_signature")
             ? []
             : ["player_signature"]),
           ...(selected.identity_type === "ine"
