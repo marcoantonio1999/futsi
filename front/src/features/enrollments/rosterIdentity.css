@@ -37,8 +37,10 @@
 @media print{
   /* Keep the safety margin inside the document and let tall content paginate
      instead of cropping it. Browser headers remain a print-dialog preference. */
-  .enrollment-team-roster-scroll .match-paper.photo-paper{page:enrollment-roster;width:210mm;height:auto;min-height:0;padding:10mm 14mm;overflow:visible;break-inside:avoid-page}
+  .enrollment-team-roster-scroll .match-paper.photo-paper{page:enrollment-roster;width:210mm;height:297mm;min-height:0;box-sizing:border-box;padding:8mm 14mm;overflow:visible;break-inside:avoid-page}
   .roster-watermark-frame>.roster-watermark{opacity:.11;print-color-adjust:exact;-webkit-print-color-adjust:exact}
   .photo-paper .alignment-title{margin-bottom:3mm!important}
   .photo-paper .match-paper-header{margin-bottom:2mm}
+  .enrollment-team-roster-scroll .photo-paper .match-player-box{height:21mm}
+  .enrollment-team-roster-scroll .photo-paper .match-paper-column{gap:1.5mm}
 }
