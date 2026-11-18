@@ -10,6 +10,8 @@
   .local-enrollment-header p { margin:6px 0 0;overflow-wrap:anywhere;font-size:14px; }
   .local-enrollment-header button { min-height:44px;flex-shrink:0; }
   .local-enrollment-content { flex:1;min-height:0;overflow:auto;padding:12px; }
+  .local-enrollment-finish { flex-shrink:0;display:flex;justify-content:flex-end;padding:14px 18px;background:white;border-top:1px solid #dce7df; }
+  .enrollment-page .local-enrollment-dialog .local-enrollment-finish button[data-slot="button"] { min-height:56px!important;min-width:240px;padding:12px 24px!important;font-size:17px!important;font-weight:700!important;background:#246343!important;color:#fff!important;border-color:#246343!important; }
   .local-enrollment-content .enrollment-wizard-embedded { height:100%;min-height:0;padding:0; }
   .local-enrollment-content .enrollment-public-brand { display:none; }
   .local-enrollment-content .enrollment-wizard-sheet { min-height:0; }
@@ -19,6 +21,8 @@
   .local-enrollment-header { align-items:flex-start;flex-direction:column;padding:12px;gap:8px; }
   .local-enrollment-header button { align-self:flex-end; }
   .local-enrollment-content { padding:6px; }
+  .local-enrollment-finish { padding:12px; }
+  .enrollment-page .local-enrollment-dialog .local-enrollment-finish button[data-slot="button"] { width:100%;min-width:0; }
 }
 
 @media print {
