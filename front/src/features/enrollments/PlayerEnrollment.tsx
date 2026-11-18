@@ -154,13 +154,17 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
   return <Card as="section" className={"upload-box " + (photo ? "player-photo" : "")}>
     <p>{label}</p>
     {photo && <small>Sin lentes, gorras u objetos que tapen la cara.</small>}
-    {preview && <img key={preview} src={preview} alt={label + " adjunta"} onLoad={event => {
+    {preview && (scanner ? <button type="button" className="upload-document-preview" onClick={() => setZoomOpen(true)} aria-label="Abrir imagen del documento"><img key={preview} src={preview} alt={label + " adjunta"} onLoad={event => {
       if (previewRef.current !== preview) return;
       try {
         const source = event.currentTarget;
         setLighting(sampleLighting(source, source.naturalWidth, source.naturalHeight, document.createElement('canvas')));
       } catch { setLightingUnavailable(true); }
-    }} onError={() => { if (previewRef.current === preview) setLightingUnavailable(true); }} />}
+    }} onError={() => { if (previewRef.current === preview) setLightingUnavailable(true); }} /></button> : <img key={preview} src={preview} alt={label + " adjunta"} onLoad={event => {
+      if (previewRef.current !== preview) return;
+      try { const source = event.currentTarget; setLighting(sampleLighting(source, source.naturalWidth, source.naturalHeight, document.createElement("canvas"))); }
+      catch { setLightingUnavailable(true); }
+    }} onError={() => { if (previewRef.current === preview) setLightingUnavailable(true); }} />)}
     {preview && scanner && <Button type="button" onClick={() => setZoomOpen(true)}>Ampliar documento</Button>}
     {preview && zoomOpen && <DocumentZoom url={preview} title="Documento escaneado" onClose={() => setZoomOpen(false)} />}
     {preview && <LightingIndicator result={lighting} checking={!lighting && !lightingUnavailable} unavailable={lightingUnavailable} />}

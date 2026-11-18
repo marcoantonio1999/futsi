@@ -30,7 +30,14 @@ export function detectIdentityBounds(image: ImageData, lowContrast = false): Ide
   // Scanned credentials can be only slightly darker than white paper.
   threshold=Math.max(lowContrast ? 4 : 20,threshold);
   const edges=new Uint8Array(width*height);
-  for (let i=0;i<edges.length;i++) if (gradients[i]>=threshold) edges[i]=1;
+  // Scanner page borders can run the full page and merge into a nearby card.
+  // Ignore only the thin outer strip; never include it in contour expansion.
+  const borderX = Math.max(2, Math.round(width * .015));
+  const borderY = Math.max(2, Math.round(height * .015));
+  for (let y=borderY; y<height-borderY; y++) for (let x=borderX; x<width-borderX; x++) {
+    const i=y*width+x;
+    if (gradients[i]>=threshold) edges[i]=1;
+  }
 
   // Connect nearby edge fragments before inspecting connected contours.
   const radius=Math.max(2,Math.round(Math.min(width,height)*.012));

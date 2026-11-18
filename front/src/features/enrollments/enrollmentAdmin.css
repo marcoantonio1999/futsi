@@ -355,3 +355,5 @@
   .enrollment-tournament-create .tournament-create-card input,
   .enrollment-tournament-create .tournament-create-card select { font-size: 16px; }
 }
+
+@media screen { .upload-document-preview { display:block; max-width:100%; min-height:44px; padding:0; border:0; background:transparent; cursor:zoom-in; } }

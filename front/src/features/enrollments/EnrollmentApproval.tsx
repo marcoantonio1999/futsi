@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label } from "../../components/ui/enrollment-ui";
 import { fetchEnrollmentDocument } from "./fetchEnrollmentDocument";
+import { autoCropIdentity } from "./autoCropIdentity";
 import { renderRegistrationPdf } from "./renderRegistrationPdf";
 import { EnrollmentRegistrationSheet } from "./EnrollmentRegistrationSheet";
 import "./enrollmentApproval.css";
@@ -93,7 +94,7 @@ export function EnrollmentApproval({
   const [zoomImage, setZoomImage] = useState<{url:string; title:string} | null>(null);
   const [showSheet, setShowSheet] = useState(false);
   const [ready, setReady] = useState<number[]>([]);
-  const [documents, setDocuments] = useState<Record<number, {url?: string; mime?: string; pages?: string[]; error?: string}>>({});
+  const [documents, setDocuments] = useState<Record<number, {url?: string; originalUrl?: string; mime?: string; pages?: string[]; error?: string}>>({});
   const [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
@@ -143,8 +144,21 @@ export function EnrollmentApproval({
             const pages = await renderRegistrationPdf(blob, controller.signal);
             if (!controller.signal.aborted) setDocuments(previous => ({...previous, [document.id]: {pages, mime: blob.type}}));
           } else {
-            const url = URL.createObjectURL(blob); urls.push(url);
-            setDocuments(previous => ({...previous, [document.id]: {url, mime: blob.type}}));
+            const originalFile = new File([blob], 'documento', {type: blob.type});
+            let image = originalFile;
+            if (document.kind === 'ine_front') {
+              try {
+                const bitmap = await createImageBitmap(blob);
+                const pageShaped = bitmap.height > bitmap.width;
+                bitmap.close();
+                if (pageShaped) image = await autoCropIdentity(originalFile);
+              } catch { /* Keep the original available for review. */ }
+            }
+            if (controller.signal.aborted) return;
+            const url = URL.createObjectURL(image); urls.push(url);
+            const originalUrl = image !== originalFile ? URL.createObjectURL(blob) : undefined;
+            if (originalUrl) urls.push(originalUrl);
+            setDocuments(previous => ({...previous, [document.id]: {url, originalUrl, mime: blob.type}}));
           }
         })
         .catch(reason => {
@@ -320,6 +334,7 @@ export function EnrollmentApproval({
                       if (images && Array.from(images).every(image => image.complete && image.naturalWidth > 0)) documentReady(document.id);
                     }} onError={() => documentFailed(document.id)} /></button></div>)}</div>
                     : <button type="button" className="enrollment-preview-open" onClick={() => setZoomImage({url:preview.url!, title})} aria-label={`Ampliar ${title}`}><img src={preview.url} alt={title} onLoad={() => documentReady(document.id)} onError={() => documentFailed(document.id)} /></button>}
+                  {preview?.originalUrl && <Button type="button" onClick={() => setZoomImage({url: preview.originalUrl!, title: `${title} · imagen completa`})}>Ver imagen completa</Button>}
                 </article>;
               })}
             </div>

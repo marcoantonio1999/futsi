@@ -31,3 +31,8 @@ test("detects a pale credential on a white scan",()=>{
   const box=detectIdentityBounds(image, true);
   assert(box.left>3 && box.left<=16 && box.right>=61 && box.right<80 && box.bottom<45);
 });
+
+test("detects a credential near the scanner page border",()=>{
+  const box=detectIdentityBounds(sample({x:12,y:45,w:180,h:110}), true);
+  assert(box.left<=3 && box.top<=8 && box.right>=48 && box.right<60 && box.bottom>=25 && box.bottom<35);
+});
