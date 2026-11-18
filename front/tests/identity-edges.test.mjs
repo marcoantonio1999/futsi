@@ -24,3 +24,10 @@ test("detects a vertically oriented card",()=>{
   const box=detectIdentityBounds(sample({x:70,y:80,w:110,h:180}));
   assert(box.left>3 && box.right>=45 && box.bottom>=43 && box.bottom<60);
 });
+
+test("detects a pale credential on a white scan",()=>{
+  const image=sample(null), {width,data}=image;
+  for(let y=75;y<185;y++) for(let x=65;x<245;x++) {const i=(y*width+x)*4;data[i]=data[i+1]=data[i+2]=242;}
+  const box=detectIdentityBounds(image, true);
+  assert(box.left>3 && box.left<=16 && box.right>=61 && box.right<80 && box.bottom<45);
+});

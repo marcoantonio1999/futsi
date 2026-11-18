@@ -1,7 +1,7 @@
 export type IdentityBox = { left: number; top: number; right: number; bottom: number };
 const full: IdentityBox = {left:0, top:0, right:100, bottom:100};
 
-export function detectIdentityBounds(image: ImageData): IdentityBox {
+export function detectIdentityBounds(image: ImageData, lowContrast = false): IdentityBox {
   const {width, height, data} = image;
   if (width < 20 || height < 20) return full;
   const gray = new Uint8Array(width * height), gradients = new Uint16Array(width * height);
@@ -27,7 +27,8 @@ export function detectIdentityBounds(image: ImageData): IdentityBox {
     const score=background*foreground*delta*delta;
     if (score>maximum) {maximum=score; threshold=level;}
   }
-  threshold=Math.max(20,threshold);
+  // Scanned credentials can be only slightly darker than white paper.
+  threshold=Math.max(lowContrast ? 4 : 20,threshold);
   const edges=new Uint8Array(width*height);
   for (let i=0;i<edges.length;i++) if (gradients[i]>=threshold) edges[i]=1;
 

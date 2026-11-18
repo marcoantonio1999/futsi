@@ -2,7 +2,7 @@ import { detectIdentityBounds } from './identityEdges';
 
 // Only crop scans that look like a white page. Photos and uncertain detections
 // stay intact, so the OCR can still see the entire identification.
-export async function autoCropIdentity(file: File): Promise<File> {
+export async function autoCropIdentity(file: File, scanned = false): Promise<File> {
   if (!file.type.startsWith('image/')) return file;
   let image: ImageBitmap | undefined;
   try {
@@ -22,8 +22,8 @@ export async function autoCropIdentity(file: File): Promise<File> {
       if (pixels.data[i] > 210 && pixels.data[i+1] > 210 && pixels.data[i+2] > 210) white++;
       total++;
     }
-    if (!total || white / total < .75) return file;
-    const box = detectIdentityBounds(pixels);
+    if (!total || (!scanned && white / total < .75)) return file;
+    const box = detectIdentityBounds(pixels, scanned);
     if (box.left === 0 && box.top === 0 && box.right === 100 && box.bottom === 100) return file;
     const x = Math.floor(image.width * box.left / 100), y = Math.floor(image.height * box.top / 100);
     const width = Math.min(image.width - x, Math.ceil(image.width * box.right / 100) - x);

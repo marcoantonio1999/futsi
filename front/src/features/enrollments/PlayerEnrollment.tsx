@@ -116,7 +116,7 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
   const selection = useRef(0);
   const [processing, setProcessing] = useState(false), [uploadError, setUploadError] = useState("");
   useEffect(() => () => { selection.current++; if (previewRef.current) URL.revokeObjectURL(previewRef.current); onProcessing?.(false); }, []);
-  async function select(file: File | null) {
+  async function select(file: File | null, scanned = false) {
     setZoomOpen(false);
     const version = ++selection.current;
     setLighting(null); setLightingUnavailable(false);
@@ -124,9 +124,10 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
     previewRef.current = ""; setPreview(""); setName(""); setUploadError(""); onChange(null);
     setProcessing(true); onProcessing?.(true);
     try {
-      const source = file && scanner ? await autoCropIdentity(file) : file;
+      const source = file && scanner ? await autoCropIdentity(file, scanned) : file;
       const prepared = source ? await compressEnrollmentPhoto(source) : null;
       if (version !== selection.current) return;
+      if (scanned && source === file) setUploadError("No se detectaron los bordes del documento. Revisa la imagen y vuelve a escanear si es necesario.");
       const url = prepared?.type.startsWith("image/") ? URL.createObjectURL(prepared) : "";
       previewRef.current = url; setPreview(url);
       setName(prepared ? `${prepared.name} · ${(prepared.size / 1_000_000).toFixed(2)} MB${prepared !== file ? " · comprimida" : ""}` : ""); onChange(prepared);
@@ -144,7 +145,7 @@ function Upload({ label, photo = false, scanner = false, onChange, onProcessing 
       if (!response.ok || !response.headers.get("content-type")?.startsWith("image/jpeg")) throw new Error("No se pudo escanear. Revisa la conexión y el controlador del escáner.");
       const blob = await response.blob();
       if (!blob.size || blob.size > ENROLLMENT_FILE_MAX_BYTES) throw new Error("La imagen escaneada no es válida.");
-      await select(new File([blob], "documento-escaneado.jpg", {type: "image/jpeg"}));
+      await select(new File([blob], "documento-escaneado.jpg", {type: "image/jpeg"}), true);
       setZoomOpen(true);
     } catch (reason) {
       setUploadError(reason instanceof TypeError ? "No se pudo conectar. Inicia el conector de escáner en esta computadora y permite el acceso local en el navegador." : reason instanceof Error ? reason.message : "No se pudo escanear.");
