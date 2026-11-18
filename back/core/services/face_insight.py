@@ -206,6 +206,9 @@ def student_reference_path(student) -> str | None:
             pass
     photo_url = getattr(student, "photo_url", "") or getattr(student, "avatar_url", "")
     if photo_url:
+        if photo_url.startswith('r2://'):
+            from .adult_photos import download_reference
+            return download_reference(student)
         parsed_storage_uri = parse_storage_uri(photo_url)
         if parsed_storage_uri:
             bucket, object_path = parsed_storage_uri

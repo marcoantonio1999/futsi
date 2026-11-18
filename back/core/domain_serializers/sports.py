@@ -124,6 +124,13 @@ class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):
 
 
 class PlayerSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if (instance.photo_url or '').startswith('r2://'):
+            from core.services.adult_photos import display_url
+            data['photo_url'] = display_url(instance)
+        return data
+
     team_name = serializers.CharField(source="team.name", read_only=True)
     tournament = serializers.IntegerField(source="team.tournament_id", read_only=True)
     tournament_name = serializers.CharField(source="team.tournament.name", read_only=True)

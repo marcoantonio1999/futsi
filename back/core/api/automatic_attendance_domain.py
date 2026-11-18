@@ -317,6 +317,9 @@ def has_configured_reference(person: object) -> bool:
     if photo and getattr(photo, "name", ""):
         return True
     photo_url = getattr(person, "photo_url", "") or ""
+    if photo_url.startswith('r2://'):
+        from core.services.adult_photos import reference
+        return reference(person) is not None
     return photo_url.startswith("supabase://") or photo_url.startswith("/media/") or photo_url.startswith("media/")
 
 
