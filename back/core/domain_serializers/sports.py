@@ -14,7 +14,7 @@ class TournamentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tournament
-        fields = "__all__"
+        exclude = ("game_role_team_order",)
 
     def update(self, instance, validated_data):
         with transaction.atomic():

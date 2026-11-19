@@ -167,7 +167,7 @@ class GameRoleMatrixView(GameRoleView):
                    for cross in crosses if cross["played"] and cross["home_goals"] is not None and cross["away_goals"] is not None)
         standings = build_standings(((team["id"], team["name"], tournament.pk) for team in teams), results)
         return Response({
-            "teams": teams, "rounds": rounds, "crosses": crosses,
+            "teams": teams, "matrix_team_ids": tournament.game_role_team_order, "rounds": rounds, "crosses": crosses,
             "starts_on": tournament.starts_on, "schedule_enabled": True, "team_notes": team_notes(tournament), "standings": standings,
         })
 
@@ -188,6 +188,14 @@ class GameRoleMatrixView(GameRoleView):
     @transaction.atomic
     def patch(self, request, tournament_id):
         tournament = self.tournament(request, tournament_id, lock=True)
+        if "add_team_id" in request.data:
+            team_id = serializers.IntegerField(min_value=1).run_validation(request.data["add_team_id"])
+            if not tournament.teams.filter(pk=team_id, is_active=True).exists():
+                raise ValidationError("Selecciona un equipo activo de este torneo.")
+            if team_id not in tournament.game_role_team_order:
+                tournament.game_role_team_order = [*tournament.game_role_team_order, team_id]
+                tournament.save(update_fields=["game_role_team_order", "updated_at"])
+            return self.matrix(tournament)
         lookup = serializers.IntegerField(min_value=1)
         round_id = lookup.run_validation(request.data.get("round_id"))
         row = get_object_or_404(tournament.game_role_rounds, pk=round_id)

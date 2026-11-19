@@ -51,6 +51,20 @@ class GameRoleMatrixTests(TestCase):
         self.assertFalse(Round.objects.exists())
         self.assertFalse(Match.objects.exists())
 
+    def test_matrix_teams_are_added_manually_in_order_without_changing_history(self):
+        first = self.add_round()
+        self.assertEqual(self.set_cross(first["id"]).status_code, 200)
+        self.assertEqual(self.client.get(self.url).json()["matrix_team_ids"], [])
+        for team in (self.away, self.home, self.away):
+            response = self.client.patch(self.url, {"add_team_id": team.pk}, format="json")
+            self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.patch(self.url, {"add_team_id": self.other.pk}, format="json")
+        self.assertEqual(response.status_code, 400)
+        matrix = self.client.get(self.url).json()
+        self.assertEqual(matrix["matrix_team_ids"], [self.away.pk, self.home.pk])
+        self.assertEqual(len(matrix["crosses"]), 1)
+        self.assertEqual(len(matrix["teams"]), 2)
+
     def test_tournament_scope_and_input_validation(self):
         second = self.add_round(2)
         outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/"
