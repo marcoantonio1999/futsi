@@ -24,8 +24,8 @@ try {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
       if (pathname.endsWith("/catalog/")) return route.fulfill({ json: {
-        sites: [{ id: 1, name: "Franco" }], teams,
-        tournaments: [{ id: 1, name: "Liga de prueba", site: 1, is_active: true }],
+        sites: [{ id: 27, name: "Colegio Franco" }], teams,
+        tournaments: [{ id: 1, name: "Nocturno", site: 27, is_active: true }],
       } });
       return route.fulfill({ json: { results: [], count: 0 } });
     });
@@ -40,6 +40,27 @@ try {
     const teamPicker = page.getByRole("dialog", { name: "Agregar equipo" });
     assert.deepEqual(await teamPicker.locator('option:not([value=""])').allTextContents(), [teams[4].name]);
     await teamPicker.getByRole("button", { name: "Cancelar" }).click();
+    const date = page.getByLabel("Fecha", { exact: true });
+    const slots = page.getByRole("list", { name: "Horarios de la fecha" });
+    const slotTimes = () => slots.locator("strong").allTextContents();
+    assert.equal(await date.inputValue(), "2026-11-26");
+    assert.deepEqual(await slotTimes(), ["01:00–02:00", "21:50–22:40", "22:40–23:30"]);
+    await date.fill("2026-11-23");
+    assert.deepEqual(await slotTimes(), ["22:40–23:30"]);
+    assert.equal(await slots.locator(".game-role-slot-color").count(), 1);
+    await date.fill("2026-11-27");
+    await page.getByText("Este día no tiene horarios preestablecidos.").waitFor();
+    assert.equal(await slots.count(), 0);
+    await date.fill("2026-11-26");
+    await slots.getByRole("button", { name: "21:50–22:40 Disponible" }).click();
+    const assign = page.getByRole("dialog", { name: /Asignar partido/ });
+    await assign.getByLabel("Equipo local").selectOption("3");
+    await assign.getByLabel("Equipo visitante").selectOption("4");
+    await assign.getByRole("button", { name: "Continuar" }).click();
+    const editor = page.getByRole("dialog", { name: "Jornada y horario del partido" });
+    assert.equal(await editor.getByLabel("Hora de inicio").inputValue(), "21:50");
+    assert.equal(await editor.getByLabel("Hora de fin").inputValue(), "22:40");
+    await editor.getByRole("button", { name: "Cancelar" }).click();
     for (const view of ["Matriz", "Historial"]) {
       await page.getByRole("button", { name: view, exact: true }).click();
       const history = page.getByRole("region", { name: "Historial de partidos" });

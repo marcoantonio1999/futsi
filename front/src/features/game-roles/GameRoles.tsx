@@ -7,6 +7,7 @@ import { GameRoleNotes, scheduleSuggestion, type GameRoleNote } from "./GameRole
 import { GameRoleStatistics } from "./GameRoleStatistics";
 import { GameRoleShare } from "./GameRoleShare";
 import { roleReminders } from "./roleReminders";
+import { roleSchedule, roleSlots, type RoleSchedule, type RoleSlot as Slot } from "./roleSchedule";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -20,19 +21,7 @@ type Matrix = {
   teams: Team[]; matrix_team_ids?: number[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null;
   schedule_enabled?: boolean; team_notes?: GameRoleNote[]; standings?: StandingRow[];
 };
-type Slot = { day: string; start: string; end: string };
 type CrossEditor = { kind: "cross"; home: Team; away: Team; current?: Cross; slot?: Slot };
-const startTimes = [
-  "09:00", "09:50", "10:40", "11:30", "12:20", "13:10", "14:00", "14:50", "15:40",
-  "16:30", "17:20", "18:10", "19:00", "19:50", "20:10", "21:00", "21:50", "22:40",
-];
-function slotsFor(day: string): Slot[] {
-  return startTimes.map(start => {
-    const [hour, minute] = start.split(":").map(Number);
-    const end = hour * 60 + minute + 50;
-    return { day, start, end: [Math.floor(end / 60), end % 60].map(value => String(value).padStart(2, "0")).join(":") };
-  });
-}
 function overlaps(slot: Slot, cross: Cross) {
   return slot.day === cross.scheduled_on && cross.starts_at !== null && cross.ends_at !== null
     && slot.start < cross.ends_at.slice(0, 5) && slot.end > cross.starts_at.slice(0, 5);
@@ -81,11 +70,12 @@ export function GameRoles({ token, tournaments, sites, loading }: {
         </option>)}
       </NativeSelect></Label>
     </Card>
-    {tournament && <TournamentMatrix key={tournament.id} token={token} tournamentId={tournament.id} tournamentName={tournament.name} />}
+    {tournament && <TournamentMatrix key={tournament.id} token={token} tournamentId={tournament.id} tournamentName={tournament.name} siteId={tournament.site} />}
   </>;
 }
 
-function TournamentMatrix({ token, tournamentId, tournamentName }: { token: string; tournamentId: number; tournamentName: string }) {
+function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { token: string; tournamentId: number; tournamentName: string; siteId: number }) {
+  const schedule = roleSchedule(siteId, tournamentName);
   const path = `/player-enrollments/game-roles/${tournamentId}/`;
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -169,13 +159,24 @@ function TournamentMatrix({ token, tournamentId, tournamentName }: { token: stri
   });
   const availableTeams = matrix.teams.filter(team => team.is_active && !matrixTeamIds.has(team.id));
   const assignableTeams = matrixTeams.filter(team => team.is_active);
-  const nextScheduledDay = selected && matrix.crosses
-    .flatMap(cross => cross.round_id === selected.id && cross.scheduled_on ? [cross.scheduled_on] : [])
-    .sort()[0];
-  const day = selected
-    ? (scheduleDay >= selected.starts_on && scheduleDay <= addDays(selected.starts_on, 6) ? scheduleDay : nextScheduledDay || selected.starts_on)
-    : "";
-  const slots = day ? slotsFor(day) : [];
+  const week = selected ? Array.from({ length: 7 }, (_, index) => addDays(selected.starts_on, index)) : [];
+  const scheduledDays = new Set(matrix.crosses
+    .filter(cross => cross.round_id === selected?.id && cross.scheduled_on)
+    .map(cross => cross.scheduled_on));
+  const templateDays = week.filter(date => roleSlots(schedule, date).length);
+  const day = week.includes(scheduleDay) ? scheduleDay
+    : templateDays.find(date => scheduledDays.has(date)) ?? templateDays[0]
+    ?? week.find(date => scheduledDays.has(date)) ?? week[0] ?? "";
+  const slots = roleSlots(schedule, day);
+  const booked = matrix.crosses.filter(cross => cross.scheduled_on === day && cross.starts_at && cross.ends_at);
+  const availability = [
+    ...slots.filter(slot => !booked.some(cross => overlaps(slot, cross))).map(slot => ({ slot, cross: undefined })),
+    ...booked.map(cross => {
+      const start = timeLabel(cross.starts_at), end = timeLabel(cross.ends_at);
+      const color = slots.find(slot => slot.start === start && slot.end === end)?.color;
+      return { slot: { day, start, end, color }, cross };
+    }),
+  ].sort((a, b) => a.slot.start.localeCompare(b.slot.start));
   const openCross = (home: Team, away: Team, current?: Cross) => {
     const slot = current ? undefined : slots.find(item => !matrix.crosses.some(cross => overlaps(item, cross)));
     setEditor({ kind: "cross", home, away, current, slot });
@@ -236,19 +237,20 @@ function TournamentMatrix({ token, tournamentId, tournamentName }: { token: stri
             <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
             <Button type="button" className="primary" onClick={() => setShareRoundId(selected.id)}>Generar rol de juego</Button>
           </div>
-          <ul className="game-role-slots" aria-label="Horarios de la fecha">{slots.map(slot => {
-            const conflicts = matrix.crosses.filter(cross => overlaps(slot, cross));
-            return <li key={slot.start}><Button type="button" disabled={!conflicts.length && assignableTeams.length < 2}
+          {!slots.length && <p>{schedule ? "Este día no tiene horarios preestablecidos." : "Este torneo no tiene horarios preestablecidos."}</p>}
+          {!!availability.length && <ul className="game-role-slots" aria-label="Horarios de la fecha">{availability.map(({ slot, cross }) => {
+            const home = cross && teamsById.get(cross.home_team_id), away = cross && teamsById.get(cross.away_team_id);
+            const color = slot.color ? { "--game-role-slot-color": slot.color } as CSSProperties : undefined;
+            return <li key={cross ? `${cross.home_team_id}:${cross.away_team_id}` : slot.start} style={color}><Button type="button" disabled={cross ? !home || !away : assignableTeams.length < 2}
               onClick={() => {
-                if (!conflicts.length) { setSlotToAssign(slot); return; }
-                const [cross] = conflicts;
-                const home = teamsById.get(cross.home_team_id), away = teamsById.get(cross.away_team_id);
-                if (home && away) openCross(home, away, cross);
+                if (!cross) setSlotToAssign(slot);
+                else if (home && away) openCross(home, away, cross);
               }}>
+              {slot.color && <i className="game-role-slot-color" aria-hidden="true" />}
               <strong>{slot.start}–{slot.end}</strong>
-              <span>{conflicts.length ? conflicts.map(cross => `${teamsById.get(cross.home_team_id)?.name} vs. ${teamsById.get(cross.away_team_id)?.name}`).join(" · ") : "Disponible"}</span>
+              <span>{cross ? `${home?.name} vs. ${away?.name}` : "Disponible"}</span>
             </Button></li>;
-          })}</ul>
+          })}</ul>}
         </> : <p>Agrega una jornada para consultar horarios.</p>}
       </Card>
       <GameRoleHistory matrix={matrix} onEdit={openCross} />
@@ -310,7 +312,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName }: { token: stri
         setEditor({ kind: "cross", home, away, current, slot: slotToAssign });
         setSlotToAssign(null);
       }} />}
-    {editor && <MatrixEditor editor={editor} matrix={matrix} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
+    {editor && <MatrixEditor editor={editor} matrix={matrix} schedule={schedule} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
     {shareRoundId !== null && <GameRoleShare path={`${path}rounds/${shareRoundId}/share/`} token={token} reminderKey={`${tournamentId}/${shareRoundId}`} onClose={() => setShareRoundId(null)} />}
   </>;
 }
@@ -392,8 +394,8 @@ function TeamSelection({ teams, slot, onClose, onSubmit }: {
   </Dialog>;
 }
 
-function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
-  editor: Editor; matrix: Matrix; selected: Round | undefined; onClose: () => void;
+function MatrixEditor({ editor, matrix, schedule, selected, onClose, onSave }: {
+  editor: Editor; matrix: Matrix; schedule: RoleSchedule; selected: Round | undefined; onClose: () => void;
   onSave: (method: string, data: object, roundNumber?: number) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -447,7 +449,7 @@ function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <form onSubmit={submit}>
       <h2 id="game-roles-dialog-title">{editor.kind === "cross" ? "Jornada y horario del partido" : round ? "Editar jornada" : "Agregar jornada"}</h2>
-      {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} selected={selected} /> : <>
+      {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} schedule={schedule} selected={selected} /> : <>
         <Label>Número de jornada<Input type="number" name="number" min={1} max={999} required defaultValue={round?.number ?? Math.min(999, (last?.number ?? 0) + 1)} /></Label>
         <Label>Inicio de la semana<Input type="date" name="starts_on" required defaultValue={round?.starts_on ?? (last ? addDays(last.starts_on, 7) : matrix.starts_on ?? "")} /></Label>
         <p>La jornada abarca siete días desde la fecha de inicio.</p>
@@ -461,7 +463,7 @@ function MatrixEditor({ editor, matrix, selected, onClose, onSave }: {
   </Dialog>;
 }
 
-function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor; matrix: Matrix; selected?: Round }) {
+function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: CrossEditor; matrix: Matrix; schedule: RoleSchedule; selected?: Round }) {
   const [roundId, setRoundId] = useState((editor.slot ? selected?.id : editor.current?.round_id) ?? selected?.id ?? 0);
   const [day, setDay] = useState(editor.slot?.day ?? editor.current?.scheduled_on ?? "");
   const [start, setStart] = useState(editor.slot?.start ?? timeLabel(editor.current?.starts_at));
@@ -472,7 +474,17 @@ function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor
   const occupied = matrix.crosses.filter(cross => cross.scheduled_on && cross.scheduled_on === day
     && (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id))
     .sort((a, b) => timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at)));
-  const overlap = occupied.some(cross => start < timeLabel(cross.ends_at) && end > timeLabel(cross.starts_at));
+  const availableSlots = roleSlots(schedule, day).filter(slot => !occupied.some(cross => overlaps(slot, cross)));
+  const overlap = occupied.some(cross => overlaps({ day, start, end }, cross));
+  function changeDay(nextDay: string) {
+    setDay(nextDay);
+    if (!schedule && nextDay) return;
+    const freeSlots = roleSlots(schedule, nextDay).filter(slot => !matrix.crosses.some(cross =>
+      (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id) && overlaps(slot, cross)));
+    const slot = freeSlots.find(row => row.start === start && row.end === end) ?? freeSlots[0];
+    setStart(slot?.start ?? "");
+    setEnd(slot?.end ?? "");
+  }
   const teams = new Map(matrix.teams.map(team => [team.id, team.name]));
   const teamNotes = matrix.team_notes?.filter(row =>
     (row.team_id === editor.home.id || row.team_id === editor.away.id) && (row.kind !== "permit" || row.round_id === roundId)) ?? [];
@@ -484,7 +496,9 @@ function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor
         const next = matrix.rounds.find(row => row.id === Number(event.target.value));
         setRoundId(Number(event.target.value));
         if (!next || (day && (day < next.starts_on || day > addDays(next.starts_on, 6)))) {
-          setDay(next?.starts_on ?? ""); setStart(""); setEnd("");
+          const first = next && Array.from({ length: 7 }, (_, index) => addDays(next.starts_on, index))
+            .find(date => roleSlots(schedule, date).length);
+          changeDay(first ?? "");
         }
       }}>
       <option value="">Sin jornada</option>
@@ -499,22 +513,15 @@ function CrossScheduleFields({ editor, matrix, selected }: { editor: CrossEditor
     </div>}
     {round && <>
       <Label>Fecha del partido<Input type="date" name="scheduled_on" value={day} required={Boolean(start || end)}
-        min={round.starts_on} max={addDays(round.starts_on, 6)} onChange={event => {
-          const nextDay = event.target.value;
-          setDay(nextDay);
-          if (!nextDay) { setStart(""); setEnd(""); return; }
-          const first = slotsFor(nextDay).find(slot => !matrix.crosses.some(cross =>
-            (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id) && overlaps(slot, cross)));
-          if (!start || !end) { setStart(first?.start ?? ""); setEnd(first?.end ?? ""); }
-        }} /></Label>
-      {day && <Label>Horario disponible<NativeSelect value={start && end ? `${start}–${end}` : ""} onChange={event => {
+        min={round.starts_on} max={addDays(round.starts_on, 6)} onChange={event => changeDay(event.target.value)} /></Label>
+      {!!availableSlots.length && <Label>Horario disponible<NativeSelect value={start && end ? `${start}–${end}` : ""} onChange={event => {
         const [slotStart, slotEnd] = event.target.value.split("–");
         if (slotStart && slotEnd) { setStart(slotStart); setEnd(slotEnd); }
       }}>
         <option value="">Selecciona un horario</option>
-        {slotsFor(day).filter(slot => !occupied.some(cross => overlaps(slot, cross))).map(slot =>
+        {availableSlots.map(slot =>
           <option key={slot.start} value={`${slot.start}–${slot.end}`}>{slot.start}–{slot.end}</option>)}
-        {start && end && !slotsFor(day).some(slot => slot.start === start && slot.end === end && !occupied.some(cross => overlaps(slot, cross)))
+        {start && end && !availableSlots.some(slot => slot.start === start && slot.end === end)
           && <option value={`${start}–${end}`}>{start}–{end}</option>}
       </NativeSelect></Label>}
       <div className="game-roles-hour-fields">
