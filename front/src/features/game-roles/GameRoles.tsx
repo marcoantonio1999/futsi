@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { BarChart3, CalendarDays, ChevronLeft } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, Pencil } from "lucide-react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, StandingRow, Tournament } from "../../types";
@@ -457,16 +457,22 @@ function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Te
             const home = teams.get(cross.home_team_id), away = teams.get(cross.away_team_id);
             if (!home || !away) return null;
             const score = matchScore(cross);
+            const teamsLabel = `${home.name} vs. ${away.name}`;
+            const action = cross.played && matrix.standings ? (score ? "Editar marcador" : "Capturar marcador") : "Editar partido";
+            const date = cross.scheduled_on ? weekdayLabel.format(new Date(cross.scheduled_on + "T00:00:00Z")) : "Sin horario";
             return <li key={`${round.id}:${cross.home_team_id}:${cross.away_team_id}`} style={roundColorStyle(round.number)}>
-              <div className="game-role-history-match">
-                <span className="game-role-history-round">Jornada {round.number}</span>
-                <strong>{home.name} vs. {away.name}</strong>
-                <span>{cross.scheduled_on ? `${dateLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))} · ${timeLabel(cross.starts_at)}–${timeLabel(cross.ends_at)}` : "Sin horario"}</span>
-              </div>
-              <div className="game-role-history-actions">
-                {score && <span className="game-role-history-score">{score}</span>}
-                <Button type="button" onClick={() => onEdit(home, away, cross)}>{cross.played && matrix.standings ? (score ? "Editar marcador" : "Capturar marcador") : "Editar partido"}</Button>
-              </div>
+              <Button type="button" className="game-role-history-row" onClick={() => onEdit(home, away, cross)}
+                aria-label={`${action}: ${teamsLabel}, jornada ${round.number}, ${date}`}
+                title={`${teamsLabel} · ${action}`}>
+                <strong>{teamsLabel}</strong>
+                <span className="game-role-history-meta">
+                  <span className="game-role-history-round">J{round.number}</span>
+                  {cross.scheduled_on ? <time dateTime={cross.scheduled_on}>{date}</time> : <span>{date}</span>}
+                  {cross.scheduled_on && <span>{timeLabel(cross.starts_at)}–{timeLabel(cross.ends_at)}</span>}
+                  {score && <span aria-label={`Marcador ${score}`}>{score}</span>}
+                </span>
+                <Pencil aria-hidden="true" />
+              </Button>
             </li>;
           })}
         </ul> : <p>{column.empty}</p>}

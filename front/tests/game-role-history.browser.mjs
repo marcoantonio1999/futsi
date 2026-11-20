@@ -99,26 +99,18 @@ try {
     await editor.getByRole("status").filter({ hasText: "La hora de fin debe ser posterior a la de inicio." }).waitFor();
     await editor.getByRole("button", { name: "Cancelar" }).click();
     const history = page.getByRole("region", { name: "Historial de partidos" });
-    const capture = history.getByRole("button", { name: "Capturar marcador" });
+    const capture = history.getByRole("button", { name: /^Capturar marcador:/ });
     await capture.waitFor();
-    const geometry = await history.getByRole("list", {name: "Jugados"}).locator("li").evaluate(row => {
-      const title = row.querySelector("strong");
-      const time = row.querySelector("strong + span");
-      const lines = element => {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        return Array.from(range.getClientRects());
-      };
-      const titleLines = lines(title);
-      const timeLines = lines(time);
-      return {
-        titleLines: titleLines.length, timeLines: timeLines.length,
-        width: title.getBoundingClientRect().width, rowWidth: row.clientWidth,
-        overflow: row.scrollWidth > row.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth,
-      };
-    });
-    assert(geometry.width >= geometry.rowWidth - 2, JSON.stringify({width, ...geometry}));
-    assert(geometry.titleLines <= 5 && geometry.timeLines <= 3 && !geometry.overflow, JSON.stringify({width, ...geometry}));
+    assert(await capture.getByText("jueves 26 de nov", {exact: true}).isVisible());
+    const geometry = await capture.evaluate(row => ({
+      height: row.getBoundingClientRect().height,
+      width: row.getBoundingClientRect().width,
+      columnWidth: row.closest("ul").clientWidth,
+      background: getComputedStyle(row).backgroundColor,
+    }));
+    assert(geometry.height >= 44 && geometry.height <= 64, JSON.stringify({width, ...geometry}));
+    assert(Math.abs(geometry.width - geometry.columnWidth) <= 1, JSON.stringify({width, ...geometry}));
+    assert.equal(geometry.background, "rgb(18, 70, 160)");
     await capture.click();
     const dialog = page.getByRole("dialog", { name: "Jornada y horario del partido" });
     assert(await dialog.getByLabel("Goles local").isVisible());
