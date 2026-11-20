@@ -298,7 +298,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
       {!matrixTeams.length ? <p>Agrega los equipos del torneo uno por uno para armar la matriz.</p> :
         <>
         <div ref={gridViewport} className="game-roles-grid-scroll" role="region" aria-label="Matriz de cruces por equipo">
-          <table className="game-roles-grid" style={{ "--game-role-team-count": visibleColumns.length } as CSSProperties}>
+          <table className="game-roles-grid">
             <colgroup><col className="game-role-row-label" />{visibleColumns.map(team => <col key={team.id} />)}</colgroup>
             <thead><tr><th>Visitante / Local</th>{visibleColumns.map(team => <th key={team.id} scope="col"><span className="game-role-column-name" title={team.name}>{team.name}{!team.is_active && " · Inactivo"}</span></th>)}</tr></thead>
             <tbody>{visibleRows.map(away => <tr key={away.id}>

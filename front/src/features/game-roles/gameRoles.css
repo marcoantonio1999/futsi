@@ -114,7 +114,7 @@
 
 .game-roles-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+  grid-template-columns: minmax(0, 1fr) minmax(310px, 40%);
   grid-template-areas: "matrix rounds";
   align-items: start;
   gap: 16px;
@@ -166,7 +166,7 @@
 
 .game-roles-grid {
   --game-role-row-width: 128px;
-  width: calc(var(--game-role-row-width) + var(--game-role-team-count) * 48px);
+  width: 100%;
   min-width: 0;
   table-layout: fixed;
   border-spacing: 0;
@@ -342,18 +342,20 @@
     max-height: none;
     overflow: hidden;
   }
-  .game-roles-grid {
-    width: calc(var(--role-grid-label) + var(--game-role-team-count) * var(--role-grid-column));
-  }
+  .game-roles-grid { height: 100%; }
+  .game-roles-grid thead { height: var(--role-grid-heading); }
   .game-role-row-label { width: var(--role-grid-label); }
   .game-roles-grid thead th { height: var(--role-grid-heading); padding: 2px; }
   .game-role-column-name { max-height: calc(var(--role-grid-heading) - 8px); font-size: 11px; }
   .game-roles-grid tbody :is(th, td) { height: var(--role-grid-row); padding: 0; }
+  .game-roles-grid tbody td { position: relative; }
   .game-role-row-name { display: block; margin-inline: 4px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell {
+    position: absolute;
+    inset: 0;
     width: 100%;
     min-width: 0;
-    height: calc(var(--role-grid-row) - 1px);
+    height: 100%;
     min-height: 0 !important;
     padding: 0 !important;
     font-size: 11px !important;
@@ -417,7 +419,7 @@
   }
 
   .enrollment-game-roles-layout .game-roles-workspace {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+    grid-template-columns: minmax(0, 1fr) minmax(310px, 40%);
     gap: 10px;
   }
   .game-roles-grid-scroll {

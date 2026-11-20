@@ -38,9 +38,17 @@ try {
   for (const [width, height] of [[320,568], [390,740], [1024,668], [1280,720], [1440,900], [1890,990]]) {
     const page = await browser.newPage({ viewport: { width, height } });
     page.setDefaultTimeout(5000);
+    const smallMatrix = {
+      ...matrix, matrix_team_ids: teams.slice(0, 6).map(team => team.id),
+      crosses: matrix.crosses.filter(cross => cross.home_team_id <= 6 && cross.away_team_id <= 6),
+    };
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/game-roles/3/")) {
+        if (route.request().method() === "PATCH") smallMatrix.matrix_team_ids.push(route.request().postDataJSON().add_team_id);
+        return route.fulfill({ json: smallMatrix });
+      }
       const share = pathname.endsWith("/share/") && pathname.split("/").at(-3);
       if (share) {
         const round = matrix.rounds.find(row => row.id === Number(share));
@@ -66,6 +74,7 @@ try {
         tournaments: [
           { id: 1, name: "UEFA", site: 27, is_active: true },
           { id: 2, name: "Torneo sin equipos", site: 27, is_active: true },
+          { id: 3, name: "Torneo de seis equipos", site: 27, is_active: true },
         ],
       } });
       return route.fulfill({ json: { results: [], count: 0 } });
@@ -224,6 +233,34 @@ try {
       await navigation.getByRole("button", {name:"Siguiente rol"}).click();
       await next.getByText("Agrega una jornada para programar partidos.").waitFor();
       assert.equal(await next.getByRole("button", {name:"Compartir rol de juego"}).count(), 0);
+    }
+    if (width === 1440) {
+      await tournamentSelect.selectOption("3");
+      await grid.waitFor();
+      const firstCross = grid.getByRole("button").first();
+      await firstCross.waitFor();
+      const fill = () => grid.evaluate(frame => {
+        const table = frame.querySelector("table");
+        return { width: Math.abs(table.getBoundingClientRect().width - frame.clientWidth),
+          height: Math.abs(table.getBoundingClientRect().height - frame.clientHeight) };
+      });
+      assert.equal(await grid.getByRole("rowheader").count(), 6);
+      const before = await firstCross.boundingBox();
+      const beforeFill = await fill();
+      assert(beforeFill.width <= 1 && beforeFill.height <= 1, JSON.stringify(beforeFill));
+      await page.getByRole("button", {name:"Agregar equipo", exact:true}).click();
+      const picker = page.getByRole("dialog", {name:"Agregar equipo", exact:true});
+      await picker.locator("select").selectOption("7");
+      await picker.getByRole("button", {name:"Agregar equipo", exact:true}).click();
+      await picker.waitFor({state:"hidden"});
+      assert.equal(await grid.getByRole("rowheader").count(), 7);
+      const after = await firstCross.boundingBox();
+      const afterFill = await fill();
+      assert(after.width < before.width && after.height < before.height, JSON.stringify({before, after}));
+      assert(afterFill.width <= 1 && afterFill.height <= 1, JSON.stringify(afterFill));
+      const side = await page.locator(".game-roles-rounds").boundingBox();
+      const workspace = await page.locator(".game-roles-workspace").boundingBox();
+      assert(Math.abs(side.width / workspace.width - 0.4) < 0.01);
     }
     assert.equal(await page.evaluate(() => window.scrollY), 0);
     console.log(`Roles sin desplazamiento a ${width} × ${height}`);
