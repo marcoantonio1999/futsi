@@ -217,6 +217,14 @@ try {
       assert(await shareDialog.getByRole("heading", {name:title, exact:true}).isVisible());
     }
     assert(await shareDialog.getByRole("img", {name:"BPower"}).isVisible());
+    const logo = shareDialog.getByRole("img", {name:"BPower"});
+    assert.equal(await logo.evaluate(node => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)");
+    const watermark = shareDialog.locator(".game-role-report-watermark");
+    assert(await watermark.evaluate(node => {
+      const style = getComputedStyle(node);
+      return style.backgroundImage !== "none" && Number(style.opacity) > 0 && Number(style.opacity) <= 0.15
+        && Math.abs(node.clientHeight - node.parentElement.clientHeight) <= 1;
+    }));
     assert(await shareDialog.getByText(/Jornada 15 del torneo/).isVisible());
     assert(await shareDialog.getByText("3–1", {exact:true}).isVisible());
     assert(await shareDialog.locator(".game-role-sheet").evaluate(node => node.scrollWidth <= node.clientWidth + 1));

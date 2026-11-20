@@ -92,6 +92,7 @@ const social = "www.facebook.com/supergol.bosques";
 
 export function ScheduleSheet({ schedule }: { schedule: Schedule }) {
   return <article className="game-role-sheet">
+    <div className="game-role-report-watermark" style={{ backgroundImage: `url(${bpowerLogo})` }} aria-hidden="true" />
     <header>
       <img src={bpowerLogo} alt="BPower" />
       <div><h1>{schedule.tournament}</h1><p>Jornada {schedule.number} · {schedule.site}</p></div>
@@ -135,10 +136,10 @@ export async function renderScheduleImage(schedule: Schedule) {
     const units = block.widths ?? [1];
     const sizes = units.map(unit => columnWidth * unit / units.reduce((a, b) => a + b));
     const rows = [
-      ...(block.qualified ? [{ values: ["Zona de Clasificación"], sizes: [columnWidth], fill: "#dfeee7" }] : []),
-      ...(block.columns ? [{ values: block.columns, sizes, fill: "#dfeee7" }] : []),
-      ...block.rows.map((values, index) => ({ values, sizes, fill: index < (block.qualified ?? 0) ? "#fbefc8" : index % 2 ? "#f3f7f5" : "#ffffff" })),
-      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [columnWidth], fill: "#ffffff" }] : []),
+      ...(block.qualified ? [{ values: ["Zona de Clasificación"], sizes: [columnWidth], fill: "rgba(240, 244, 242, .78)" }] : []),
+      ...(block.columns ? [{ values: block.columns, sizes, fill: "rgba(240, 244, 242, .78)" }] : []),
+      ...block.rows.map((values, index) => ({ values, sizes, fill: index < (block.qualified ?? 0) ? "rgba(240, 239, 220, .44)" : null })),
+      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [columnWidth], fill: null }] : []),
     ].map(row => {
       const cells = row.values.map((value, i) => wrap(String(value), row.sizes[i] - 12));
       return { ...row, cells, height: Math.max(...cells.map(cell => cell.length)) * 27 + 12 };
@@ -150,32 +151,40 @@ export async function renderScheduleImage(schedule: Schedule) {
   canvas.width = width;
   canvas.height = 135 + bodyHeight + (showSocial ? 44 : 0);
   ctx.textBaseline = "top";
-  ctx.fillStyle = "#edf4ef";
-  ctx.fillRect(0, 0, width, canvas.height);
-  ctx.fillStyle = "#174734";
-  ctx.fillRect(0, 0, width, 114);
   ctx.fillStyle = "#fff";
-  ctx.fillRect(padding, 14, 86, 86);
-  const logoHeight = 78 * logo.naturalHeight / logo.naturalWidth;
-  ctx.drawImage(logo, padding + 4, (114 - logoHeight) / 2, 78, logoHeight);
+  ctx.fillRect(0, 0, width, canvas.height);
+  const logoRatio = logo.naturalHeight / logo.naturalWidth;
+  const watermarkWidth = Math.min(width * 1.3, canvas.height * 0.88 / logoRatio);
+  const watermarkHeight = watermarkWidth * logoRatio;
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = 0.10;
+  ctx.drawImage(logo, (width - watermarkWidth) / 2, (canvas.height - watermarkHeight) / 2, watermarkWidth, watermarkHeight);
+  ctx.globalAlpha = 1;
+  ctx.drawImage(logo, padding - 8, (114 - 122 * logoRatio) / 2, 122, 122 * logoRatio);
+  ctx.restore();
+  ctx.fillStyle = "#173629";
   ctx.font = "700 37px system-ui, sans-serif";
-  ctx.fillText(schedule.tournament, 136, 17, width - 166);
+  ctx.fillText(schedule.tournament, 151, 19, width - 181);
   ctx.font = font;
-  ctx.fillText(`Jornada ${schedule.number} · ${schedule.site}`, 136, 67, width - 166);
+  ctx.fillStyle = "#53675c";
+  ctx.fillText(`Jornada ${schedule.number} · ${schedule.site}`, 151, 67, width - 181);
+  ctx.fillStyle = "#dce5df";
+  ctx.fillRect(padding, 113, width - 2 * padding, 1);
   for (const [index, blocks] of prepared.entries()) {
     const x = padding + index * (columnWidth + gap);
     let y = 135;
     for (const { block, rows } of blocks) {
-      ctx.fillStyle = "#246343";
-      ctx.fillRect(x, y, columnWidth, 44);
       ctx.font = "700 23px system-ui, sans-serif";
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = "#174734";
       ctx.fillText(block.title, x + 10, y + 8, columnWidth - 20);
       y += 44;
       ctx.font = font;
       for (const row of rows) {
-        ctx.fillStyle = row.fill;
-        ctx.fillRect(x, y, columnWidth, row.height);
+        if (row.fill) {
+          ctx.fillStyle = row.fill;
+          ctx.fillRect(x, y, columnWidth, row.height);
+        }
         ctx.fillStyle = "#173629";
         let cellX = x;
         row.cells.forEach((cell, i) => {
@@ -183,6 +192,8 @@ export async function renderScheduleImage(schedule: Schedule) {
           cellX += row.sizes[i];
         });
         y += row.height;
+        ctx.fillStyle = "#dce5df";
+        ctx.fillRect(x, y - 1, columnWidth, 1);
       }
       y += gap;
     }

@@ -1,22 +1,65 @@
 .game-role-public { min-height: 100dvh; background: #edf3ef; padding: clamp(10px, 3vw, 36px); color: #173629; }
 .game-role-public > * { max-width: 1120px; margin-inline: auto; }
-.game-role-sheet { container-type: inline-size; background: #edf4ef; color: #173629; border: 1px solid #d4e1d9; border-radius: 12px; overflow: hidden; overflow-wrap: break-word; }
-.game-role-sheet header { display: flex; align-items: center; gap: 14px; background: #174734; color: #fff; padding: 12px 16px; }
-.game-role-sheet header img { width: 58px; height: 58px; object-fit: contain; border-radius: 6px; background: #fff; }
+.game-role-sheet {
+  container-type: inline-size;
+  position: relative;
+  isolation: isolate;
+  background: #fff;
+  color: #173629;
+  border: 1px solid #dce5df;
+  border-radius: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+}
+.game-role-report-watermark {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: 130% auto;
+  background-repeat: no-repeat;
+  mix-blend-mode: multiply;
+  opacity: 0.10;
+  pointer-events: none;
+  z-index: -1;
+}
+.game-role-sheet header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid #dce5df;
+}
+.game-role-sheet header img {
+  flex: none;
+  width: clamp(65px, 13cqw, 112px);
+  height: 67px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
 .game-role-sheet h1 { font-size: clamp(20px, 4vw, 30px); margin: 0; line-height: 1.2; color: inherit; }
-.game-role-sheet header p { margin: 4px 0 0; }
-.game-role-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; }
-.game-role-report-grid > div { display: grid; align-content: start; gap: 10px; min-width: 0; }
-.game-role-report-block { border: 1px solid #d4e1d9; border-radius: 6px; overflow: hidden; background: white; font-size: 12px; }
-.game-role-sheet .game-role-report-block h2 { margin: 0; padding: 6px 8px; background: #246343; color: #fff; font-size: 13px; font-weight: 700; }
-.game-role-report-block p { margin: 0; padding: 4px 8px; }
-.game-role-report-zone { background: #fbefc8; font-weight: 650; }
-.game-role-sheet .game-role-report-block table { width: 100%; max-width: 100%; min-width: 0; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 11px; }
-.game-role-report-block :is(th, td) { padding: 4px; border-bottom: 1px solid #e3ebe6; }
-.game-role-report-block th { background: #dfeee7; white-space: nowrap; }
-.game-role-report-block tr:nth-child(even) { background: #f3f7f5; }
-.game-role-report-block tr[data-qualified="true"] { background: #fbefc8; }
-.game-role-report-social { padding: 0 12px 12px; font-size: 12px; }
+.game-role-sheet header p { margin: 4px 0 0; color: #53675c; }
+.game-role-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 14px; }
+.game-role-report-grid > div { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.game-role-report-block { min-width: 0; font-size: 12px; }
+.game-role-sheet .game-role-report-block h2 { margin: 0 0 5px; color: #174734; font-size: 13px; font-weight: 700; }
+.game-role-report-block p { margin: 0; padding: 4px 0; }
+.game-role-report-zone { color: #53675c; font-weight: 650; }
+.game-role-sheet .game-role-report-block table {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  text-align: left;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.game-role-sheet .game-role-report-block :is(th, td) { padding: 5px 4px; border-bottom: 1px solid #e1e7e4; }
+.game-role-sheet .game-role-report-block th { background: rgba(240, 244, 242, .78); color: #53675c; white-space: nowrap; font-weight: 650; }
+.game-role-report-block tr[data-qualified="true"] { background: rgba(240, 239, 220, .44); }
+.game-role-sheet .game-role-report-social { display: block; margin: 0; padding: 0 14px 14px; font-size: 12px; }
+.game-role-sheet .game-role-report-social a { padding: 0; border: 0; background: transparent; color: #246343; text-decoration: underline; }
 .game-roles-dialog.game-role-share-dialog[open] {
   box-sizing: border-box;
   display: grid;
@@ -59,7 +102,7 @@
 }
 @container (max-width: 790px) {
   .game-role-report-grid { grid-template-columns: minmax(0, 1fr); padding: 7px; gap: 8px; }
-  .game-role-report-block :is(th, td) { padding-inline: 2px; }
+  .game-role-sheet .game-role-report-block :is(th, td) { padding-inline: 2px; }
 }
 @media (max-width: 600px) {
   .game-roles-dialog.game-role-share-dialog[open] { width: calc(100vw - 12px); max-height: calc(100dvh - 12px); }
