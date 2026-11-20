@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Button, Card, Dialog, Input, Label, NativeSelect, Textarea } from "../../components/ui/enrollment-ui";
+import { Button, Dialog, Input, Label, NativeSelect, Textarea } from "../../components/ui/enrollment-ui";
 
 type NoteKind = "permit" | "preferred" | "unavailable";
 type NoteFormKind = "permit" | "preferred";
@@ -23,33 +23,41 @@ export function GameRoleNotes({ notes, teams, rounds, selectedRound, onSave }: {
   notes: GameRoleNote[]; teams: Team[]; rounds: Round[]; selectedRound?: Round;
   onSave: (payload: object) => Promise<void>;
 }) {
-  const [form, setForm] = useState<NoteFormKind | null>(null);
+  const [kind, setKind] = useState<NoteFormKind | null>(null);
+  const [adding, setAdding] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
   const names = new Map(teams.map(team => [team.id, team.name]));
   const numbers = new Map(rounds.map(round => [round.id, round.number]));
   const activeTeams = teams.filter(team => team.is_active);
-  return <div className="game-role-notes-grid">
-    {(["permit", "preferred"] as const).map(kind => {
-      const permit = kind === "permit";
-      const rows = notes.filter(row => (row.kind === "permit") === permit);
-      return <Card as="section" className="game-role-notes" key={kind}>
-        <header className="game-role-panel-header">
-          <h2>{titles[kind]}</h2>
-          <Button type="button" className="primary" disabled={!activeTeams.length || (permit && !rounds.length)} onClick={() => setForm(kind)}>
-            {permit ? "Agregar permiso" : "Agregar sugerencia"}
-          </Button>
-        </header>
-        <p>{permit ? "Permisos de equipo por jornada." : "Días y horarios que los equipos prefieren o tienen ocupados."}</p>
-        {permit && !rounds.length && <p>Agrega una jornada para registrar un permiso.</p>}
-        {rows.length ? <ul className="game-role-note-list">{rows.map(row => <li key={row.id}>
-          <strong>{names.get(row.team_id)}</strong>
-          <span>{permit ? `Jornada ${numbers.get(row.round_id ?? 0)}` : scheduleSuggestion(row)}</span>
-          {row.note && <p>{row.note}</p>}
-        </li>)}</ul> : <p>{permit ? "Todavía no hay permisos registrados." : "Todavía no hay sugerencias registradas."}</p>}
-      </Card>;
-    })}
-    {form && <GameRoleNoteForm kind={form} teams={activeTeams} rounds={rounds} selectedRound={selectedRound}
-      onClose={() => setForm(null)} onSave={onSave} />}
-  </div>;
+  const permit = kind === "permit";
+  const rows = notes.filter(row => (row.kind === "permit") === permit);
+  const close = () => { setKind(null); setAdding(false); };
+
+  useEffect(() => {
+    if (kind && !adding) dialog.current?.showModal();
+  }, [kind, adding]);
+
+  return <>
+    <Button type="button" onClick={() => setKind("permit")}>Permisos</Button>
+    <Button type="button" onClick={() => setKind("preferred")}>Sugerencias</Button>
+    {kind && !adding && <Dialog ref={dialog} className="game-roles-dialog" aria-labelledby="game-role-notes-title"
+      onCancel={event => { event.preventDefault(); close(); }}>
+      <h2 id="game-role-notes-title">{titles[kind]}</h2>
+      {rows.length ? <ul className="game-role-note-list">{rows.map(row => <li key={row.id}>
+        <strong>{names.get(row.team_id)}</strong>
+        <span>{permit ? `Jornada ${numbers.get(row.round_id ?? 0)}` : scheduleSuggestion(row)}</span>
+        {row.note && <p>{row.note}</p>}
+      </li>)}</ul> : <p>{permit ? "Todavía no hay permisos registrados." : "Todavía no hay sugerencias registradas."}</p>}
+      {permit && !rounds.length && <p>Agrega una jornada para registrar un permiso.</p>}
+      <footer>
+        <Button type="button" onClick={close}>Cerrar</Button>
+        <Button type="button" className="primary" disabled={!activeTeams.length || (permit && !rounds.length)}
+          onClick={() => setAdding(true)}>{permit ? "Agregar permiso" : "Agregar sugerencia"}</Button>
+      </footer>
+    </Dialog>}
+    {kind && adding && <GameRoleNoteForm kind={kind} teams={activeTeams} rounds={rounds} selectedRound={selectedRound}
+      onClose={() => setAdding(false)} onSave={onSave} />}
+  </>;
 }
 
 function GameRoleNoteForm({ kind, teams, rounds, selectedRound, onClose, onSave }: {

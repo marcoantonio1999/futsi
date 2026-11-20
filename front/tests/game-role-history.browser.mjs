@@ -40,6 +40,7 @@ try {
     const teamPicker = page.getByRole("dialog", { name: "Agregar equipo" });
     assert.deepEqual(await teamPicker.locator('option:not([value=""])').allTextContents(), [teams[4].name]);
     await teamPicker.getByRole("button", { name: "Cancelar" }).click();
+    if (width < 1024) await page.getByRole("button", { name: "Horarios", exact: true }).click();
     const date = page.getByLabel("Fecha", { exact: true });
     const slots = page.getByRole("list", { name: "Horarios de la fecha" });
     const slotTimes = () => slots.locator("strong").allTextContents();
@@ -61,7 +62,7 @@ try {
     assert.equal(await editor.getByLabel("Hora de inicio").inputValue(), "21:50");
     assert.equal(await editor.getByLabel("Hora de fin").inputValue(), "22:40");
     await editor.getByRole("button", { name: "Cancelar" }).click();
-    for (const view of ["Matriz", "Historial"]) {
+    for (const view of width < 1024 ? ["Historial"] : ["Matriz", "Historial"]) {
       await page.getByRole("button", { name: view, exact: true }).click();
       const history = page.getByRole("region", { name: "Historial de partidos" });
       const capture = history.getByRole("button", { name: "Capturar marcador" });
