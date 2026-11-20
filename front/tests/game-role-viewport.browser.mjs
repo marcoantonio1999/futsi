@@ -83,8 +83,14 @@ try {
       assert.notEqual(await grid.getByRole("rowheader").first().textContent(), first);
       await page.getByRole("button", { name: "Visitantes: anterior" }).click();
     }
+    const tournamentSelect = page.getByLabel("Torneo", {exact:true});
     if (width < 1024) {
       assert((await grid.getByRole("button").first().boundingBox()).height >= 44);
+      assert((await tournamentSelect.boundingBox()).height >= 44);
+    } else {
+      assert((await tournamentSelect.boundingBox()).height <= 32);
+      assert.equal(await tournamentSelect.evaluate(node => getComputedStyle(node).fontSize), "12px");
+      assert((await page.getByRole("button", {name:"Cerrar sesión"}).boundingBox()).height <= 32);
     }
     const navigation = page.getByRole("navigation", {name:"Vistas de Roles de juego"});
     assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Estadísticas"]);

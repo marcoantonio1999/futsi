@@ -372,14 +372,68 @@
 }
 
 @media screen and (min-width: 1024px) {
-  .enrollment-page.enrollment-game-roles-layout { grid-template-columns: 220px minmax(0, 1fr); }
-  .enrollment-game-roles-layout .enrollment-admin-header h1 { font-size: 19px; }
-  .enrollment-page.enrollment-game-roles-layout :is(.game-role-views,.game-roles-workspace,.game-role-history) button:not(.game-roles-cell) {
-    min-height: 30px !important;
-    padding: 3px 8px !important;
-    font-size: 12px !important;
+  .enrollment-page.enrollment-game-roles-layout {
+    grid-template-columns: 188px minmax(0, 1fr);
+    font-size: 12px;
+    line-height: 1.4;
   }
-  .enrollment-game-roles-layout .game-roles-workspace { grid-template-columns: minmax(0, 1fr) minmax(280px, 34%); }
+  .enrollment-game-roles-layout .enrollment-admin-sidebar { padding: 12px 10px; }
+  .enrollment-game-roles-layout .enrollment-sidebar-brand .enrollment-brand img { width: 42px; height: 42px; }
+  .enrollment-game-roles-layout .enrollment-sidebar-brand .enrollment-brand-name { font-size: 13px; }
+  .enrollment-game-roles-layout .enrollment-sidebar-brand .enrollment-brand-name strong { font-size: 21px; }
+  .enrollment-game-roles-layout .enrollment-admin-sidebar > p { margin-bottom: 12px; }
+  .enrollment-game-roles-layout .enrollment-admin-sidebar nav { gap: 4px; }
+  .enrollment-game-roles-layout .enrollment-sidebar-heading,
+  .enrollment-page.enrollment-game-roles-layout .enrollment-admin-sidebar nav button {
+    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .enrollment-game-roles-layout .enrollment-admin-header { padding: 4px 9px; }
+  .enrollment-game-roles-layout .enrollment-admin-header h1 { font-size: 16px; }
+  .enrollment-page.enrollment-game-roles-layout :is(.game-role-panel-header, .game-role-statistics) h2 { font-size: 13px; }
+  .enrollment-game-roles-layout .game-roles-intro label { max-width: 25rem; }
+  .enrollment-page.enrollment-game-roles-layout :is(.game-roles-intro, .game-roles-rounds) label { font-size: 12px; line-height: 1.35; }
+  .enrollment-page.enrollment-game-roles-layout :is(.game-roles-intro, .game-roles-rounds) select[data-slot="native-select"]:not([multiple]):not([size]) {
+    min-height: 30px !important;
+    padding: 3px 27px 3px 8px !important;
+    font-size: 12px !important;
+    line-height: 1.35;
+    background-position: right 8px center;
+    background-size: 13px;
+  }
+  .enrollment-page.enrollment-game-roles-layout :is(.enrollment-admin-header, .game-role-views, .game-roles-workspace, .game-role-statistics) button:not(.game-roles-cell) {
+    min-height: 28px !important;
+    padding: 3px 8px !important;
+    font-size: 11px !important;
+    line-height: 15px !important;
+  }
+
+  .enrollment-game-roles-layout .game-roles-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+    gap: 10px;
+  }
+  .game-roles-grid-scroll {
+    --role-grid-label: 128px;
+    --role-grid-column: 38px;
+    --role-grid-heading: 76px;
+    --role-grid-row: 24px;
+  }
+  .enrollment-page.enrollment-game-roles-layout .game-roles-grid { font-size: 12px; }
+  .enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell {
+    font-size: 10px !important;
+    line-height: 1 !important;
+  }
+  .game-role-history-match { gap: 2px; }
+  .game-role-history-match span, .game-role-history-status { font-size: 11px; }
+  .enrollment-page.enrollment-game-roles-layout .game-role-hours .game-role-slots button {
+    min-height: 30px !important;
+    justify-content: flex-start !important;
+    text-align: left;
+    padding: 2px 6px !important;
+  }
 }
 
 @media screen and (max-width: 1023px) {
@@ -390,6 +444,9 @@
   .enrollment-game-roles-layout .operator-page { gap: 5px; }
   .enrollment-game-roles-layout .enrollment-admin-header h1 { font-size: 17px; }
   .enrollment-page .game-role-views button { min-height: 44px !important; }
+  .enrollment-page .game-role-panel-header h2 { font-size: 14px; }
+  .game-role-history-match { font-size: 13px; }
+  .game-role-history-match span { font-size: 12px; }
   .enrollment-page .game-role-notes .game-role-panel-header h2 { font-size: 13px; }
   .enrollment-page .game-role-notes button {
     min-height: 44px !important;
