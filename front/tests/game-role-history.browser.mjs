@@ -53,7 +53,7 @@ try {
     assert.deepEqual(await date.locator('optgroup[label="Días de juego"] option').evaluateAll(options => options.map(option => option.value)),
       ["2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03"]);
     await roundSelect.selectOption("1");
-    assert.deepEqual(await slotTimes(), ["01:00–02:00", "21:50–22:40", "22:40–23:30"]);
+    assert.deepEqual(await slotTimes(), ["21:50–22:40", "22:40–23:30"]);
     await date.selectOption("2026-11-23");
     assert.deepEqual(await slotTimes(), ["22:40–23:30"]);
     assert.equal(await slots.locator(".game-role-slot-color").count(), 0);

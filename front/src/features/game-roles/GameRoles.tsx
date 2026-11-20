@@ -230,19 +230,11 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
     ?? week.find(date => scheduledDays.has(date)) ?? week[0] ?? "";
   const slots = roleSlots(schedule, day);
   const booked = matrix.crosses.filter(cross => cross.scheduled_on === day && cross.starts_at && cross.ends_at);
-  const availability = [
-    ...slots.filter(slot => !booked.some(cross => overlaps(slot, cross))).map(slot => ({ slot, cross: undefined })),
-    ...booked.map(cross => {
-      const start = timeLabel(cross.starts_at), end = timeLabel(cross.ends_at);
-      const color = slots.find(slot => slot.start === start && slot.end === end)?.color;
-      return { slot: { day, start, end, color }, cross };
-    }),
-  ].sort((a, b) => a.slot.start.localeCompare(b.slot.start));
-  const slotPages = Math.max(1, Math.ceil(availability.length / slotsPerPage));
+  const availableSlots = slots.filter(slot => !booked.some(cross => overlaps(slot, cross)));
+  const slotPages = Math.max(1, Math.ceil(availableSlots.length / slotsPerPage));
   const slotPage = Math.min(slotPageIndex, slotPages - 1);
   const openCross = (home: Team, away: Team, current?: Cross) => {
-    const slot = current ? undefined : slots.find(item => !matrix.crosses.some(cross => overlaps(item, cross)));
-    setEditor({ kind: "cross", home, away, current, slot });
+    setEditor({ kind: "cross", home, away, current, slot: current ? undefined : availableSlots[0] });
   };
   const roundById = new Map(matrix.rounds.map(round => [round.id, round]));
   const crossByTeams = new Map(matrix.crosses.map(cross => [`${cross.home_team_id}:${cross.away_team_id}`, cross]));
@@ -347,17 +339,14 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
             <Button type="button" className="primary" onClick={() => setShareRoundId(selected.id)}>Generar rol de juego</Button>
           </div>
           {!slots.length && <p>{schedule ? "Este día no tiene horarios preestablecidos." : "Este torneo no tiene horarios preestablecidos."}</p>}
-          {!!availability.length && <ul className="game-role-slots" aria-label="Horarios de la fecha">{availability.slice(slotPage * slotsPerPage, (slotPage + 1) * slotsPerPage).map(({ slot, cross }) => {
-            const home = cross && teamsById.get(cross.home_team_id), away = cross && teamsById.get(cross.away_team_id);
-            return <li key={cross ? `${cross.home_team_id}:${cross.away_team_id}` : slot.start}><Button type="button" disabled={cross ? !home || !away : assignableTeams.length < 2}
-              onClick={() => {
-                if (!cross) setSlotToAssign(slot);
-                else if (home && away) openCross(home, away, cross);
-              }}>
-              <strong>{slot.start}–{slot.end}</strong>
-              <span>{cross ? `${home?.name} vs. ${away?.name}` : "Disponible"}</span>
-            </Button></li>;
-          })}</ul>}
+          {slots.length > 0 && availableSlots.length === 0 && <p>No quedan horarios disponibles para esta fecha.</p>}
+          {availableSlots.length > 0 && <ul className="game-role-slots" aria-label="Horarios de la fecha">
+            {availableSlots.slice(slotPage * slotsPerPage, (slotPage + 1) * slotsPerPage).map(slot =>
+              <li key={slot.start}><Button type="button" disabled={assignableTeams.length < 2} onClick={() => setSlotToAssign(slot)}>
+                <strong>{slot.start}–{slot.end}</strong>
+                <span>Disponible</span>
+              </Button></li>)}
+          </ul>}
           <RolePageButtons page={slotPage} count={slotPages} onChange={setSlotPage} label="Horarios" />
         </> : <p>Agrega una jornada para consultar horarios.</p>}
       </Card>

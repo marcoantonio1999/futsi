@@ -96,6 +96,8 @@ try {
     assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Estadísticas"]);
     const slots = page.getByRole("list", {name:"Horarios de la fecha"});
     await slots.scrollIntoViewIfNeeded();
+    assert.equal(await slots.getByRole("button", {name:/^14:(00|50)/}).count(), 0);
+    assert(await slots.getByRole("button", {name:"15:40–16:30 Disponible"}).isVisible());
     await inside(page, slots.getByRole("button"));
     const nextSlot = page.getByRole("button", {name:"Horarios: siguiente"});
     if (await nextSlot.isVisible()) {
@@ -106,7 +108,7 @@ try {
       await inside(page, slots.getByRole("button"));
       assert.notEqual(await slots.getByRole("button").first().textContent(), first);
     } else {
-      assert.equal(await slots.getByRole("button").count(), 8);
+      assert.equal(await slots.getByRole("button").count(), 6);
     }
     const history = page.getByRole("region", {name:"Historial de partidos"});
     const capture = history.getByRole("button", {name:"Capturar marcador"});
