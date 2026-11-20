@@ -221,6 +221,9 @@ try {
       assert(await shareDialog.getByRole("heading", {name:title, exact:true}).isVisible());
     }
     assert(await shareDialog.getByRole("img", {name:"BPower"}).isVisible());
+    assert(await shareDialog.locator(".game-role-report-facebook").isVisible());
+    assert.equal(await shareDialog.getByRole("link", {name:"www.facebook.com/supergol.bosques"}).getAttribute("href"),
+      "https://www.facebook.com/supergol.bosques");
     const logo = shareDialog.getByRole("img", {name:"BPower"});
     assert.equal(await logo.evaluate(node => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)");
     const watermark = shareDialog.locator(".game-role-report-watermark");
@@ -243,7 +246,12 @@ try {
     assert(await bracket.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     const reportStandings = shareDialog.locator('[data-standings="true"]');
     assert.equal(await reportStandings.locator('tr[data-cutoff="true"]').count(), 1);
-    assert.equal(await reportStandings.locator("tbody td:last-child").first().evaluate(node => getComputedStyle(node).fontWeight), "800");
+    assert(await reportStandings.getByText("Zona de clasificación · 1.º a 8.º", {exact:true}).isVisible());
+    assert(await reportStandings.getByText("Fuera de zona · 9.º en adelante", {exact:true}).isVisible());
+    const outside = reportStandings.locator('tr[data-zone="outside"]:not([data-zone-label])');
+    assert.equal(await outside.count(), 2);
+    assert.equal(await outside.first().evaluate(row => getComputedStyle(row).backgroundColor), "rgb(255, 240, 239)");
+    assert.equal(await reportStandings.locator("tbody td:last-child:not([colspan])").first().evaluate(node => getComputedStyle(node).fontWeight), "800");
     assert(await shareDialog.locator(".game-role-sheet").evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     const preview = shareDialog.locator(".game-role-share-body");
     const layout = await preview.evaluate(node => {

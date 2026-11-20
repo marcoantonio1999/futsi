@@ -70,23 +70,42 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
   ];
 }
 
+const zoneColors = {
+  qualified: { row: "#edf7ef", label: "#d9eddf", points: "#dcefe1", text: "#245b39" },
+  outside: { row: "#fff0ef", label: "#f8dedc", points: "#f8dedc", text: "#943934" },
+};
+
+function reportRows(block: Block) {
+  return block.rows.flatMap((values, index) => {
+    const zone = block.qualified ? (index < block.qualified ? "qualified" : "outside") : null;
+    const label = zone === "qualified" && index === 0 ? `Zona de clasificación · 1.º a ${block.qualified}.º`
+      : zone === "outside" && index === block.qualified ? `Fuera de zona · ${index + 1}.º en adelante` : "";
+    const row = { values, zone, isLabel: false, cutoff: index + 1 === block.qualified && index + 1 < block.rows.length } as const;
+    return label ? [{ ...row, values: [label], isLabel: true, cutoff: false }, row] : [row];
+  });
+}
+
 function ReportBlock({ block }: { block: Block }) {
   return <section className="game-role-report-block" data-standings={block.standings}>
     <h2>{block.title}</h2>
-    {block.qualified ? <p className="game-role-report-zone">Zona de Clasificación</p> : null}
     {block.bracket ? <GameRoleBracket hasByes={block.bracket.hasByes} /> : block.columns ? <table>
       {block.widths && <colgroup>{block.widths.map((width, index, widths) =>
         <col key={index} style={{ width: `${width / widths.reduce((sum, value) => sum + value, 0) * 100}%` }} />)}
       </colgroup>}
       <thead><tr>{block.columns.map((column, i) => <th scope="col" key={i}>{column}</th>)}</tr></thead>
-      <tbody>{block.rows.length ? block.rows.map((row, i) => <tr key={i} data-cutoff={i + 1 === block.qualified && i + 1 < block.rows.length}>
-        {row.map((cell, j) => <td key={j}>{cell}</td>)}
-      </tr>) : <tr><td colSpan={block.columns.length}>{block.empty}</td></tr>}</tbody>
+      <tbody>{block.rows.length ? reportRows(block).map(({ values, zone, isLabel, cutoff }, i) =>
+        <tr key={i} data-zone={zone ?? undefined} data-zone-label={isLabel || undefined} data-cutoff={cutoff}>
+          {isLabel ? <td colSpan={block.columns!.length}>{values[0]}</td>
+            : values.map((cell, j) => <td key={j}>{cell}</td>)}
+        </tr>) : <tr><td colSpan={block.columns.length}>{block.empty}</td></tr>}</tbody>
     </table> : block.rows.length ? block.rows.map(([line]) => <p key={line}>{line}</p>) : <p>{block.empty}</p>}
   </section>;
 }
 
 const social = "www.facebook.com/supergol.bosques";
+const facebookBlue = "#0866ff";
+const facebookMark = "M14.4 23v-9.4h3.1l.5-3.6h-3.6V7.7c0-1 .3-1.8 1.8-1.8h1.9V2.7c-.3 0-1.5-.2-2.8-.2-2.8 0-4.8 1.7-4.8 4.9V10H7.3v3.6h3.2V23Z";
+
 
 export function ScheduleSheet({ schedule, live = false }: { schedule: Schedule; live?: boolean }) {
   return <article className="game-role-sheet">
@@ -104,7 +123,11 @@ export function ScheduleSheet({ schedule, live = false }: { schedule: Schedule; 
       </div>)}
     </div>
     {schedule.site.trim().toLowerCase() === "colegio franco" && <footer className="game-role-report-social">
-      Síguenos en Facebook <a href={`https://${social}`} target="_blank" rel="noreferrer">{social}</a>
+      <svg className="game-role-report-facebook" aria-hidden="true" viewBox="0 0 24 24" width="19" height="19">
+        <circle cx="12" cy="12" r="12" fill={facebookBlue} />
+        <path d={facebookMark} fill="#fff" />
+      </svg>
+      <span>Síguenos en Facebook <a href={`https://${social}`} target="_blank" rel="noreferrer">{social}</a></span>
     </footer>}
   </article>;
 }
@@ -139,14 +162,12 @@ export async function renderScheduleImage(schedule: Schedule) {
     const units = block.widths ?? [1];
     const sizes = units.map(unit => contentWidth * unit / units.reduce((a, b) => a + b));
     const rows = [
-      ...(block.qualified ? [{ values: ["Zona de Clasificación"], sizes: [contentWidth], fill: null, heading: false, cutoff: false }] : []),
-      ...(block.columns ? [{ values: block.columns, sizes, fill: block.standings ? "#246343" : "#f0f4f2", heading: true, cutoff: false }] : []),
-      ...block.rows.map((values, index) => ({
-        values, sizes, heading: false,
-        fill: block.standings && index % 2 === 1 ? "rgba(236, 246, 240, .68)" : null,
-        cutoff: index + 1 === block.qualified && index + 1 < block.rows.length,
+      ...(block.columns ? [{ values: block.columns, sizes, fill: block.standings ? "#246343" : "#f0f4f2", heading: true, cutoff: false, zone: null, isLabel: false }] : []),
+      ...reportRows(block).map(row => ({
+        ...row, sizes: row.isLabel ? [contentWidth] : sizes, heading: false,
+        fill: row.zone ? zoneColors[row.zone][row.isLabel ? "label" : "row"] : null,
       })),
-      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [contentWidth], fill: null, heading: false, cutoff: false }] : []),
+      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [contentWidth], fill: null, heading: false, cutoff: false, zone: null, isLabel: false }] : []),
     ].map(row => {
       const cells = row.values.map((value, i) => wrap(String(value), row.sizes[i] - 12));
       return { ...row, cells, height: Math.max(...cells.map(cell => cell.length)) * 27 + 12 };
@@ -206,11 +227,11 @@ export async function renderScheduleImage(schedule: Schedule) {
           const ranking = block.standings && !row.heading && row.cells.length > 1;
           const points = ranking && i === row.cells.length - 1;
           if (points) {
-            ctx.fillStyle = "rgba(210, 234, 217, .65)";
+            ctx.fillStyle = row.zone ? zoneColors[row.zone].points : "#edf7ef";
             ctx.fillRect(cellX, y, row.sizes[i], row.height);
           }
-          ctx.font = points || (ranking && i < 2) ? `700 ${font}` : font;
-          ctx.fillStyle = block.standings && row.heading ? "#fff" : "#173629";
+          ctx.font = row.isLabel || points || (ranking && i < 2) ? `700 ${font}` : font;
+          ctx.fillStyle = block.standings && row.heading ? "#fff" : row.zone && (row.isLabel || i === 0 || points) ? zoneColors[row.zone].text : "#173629";
           cell.forEach((line, j) => ctx.fillText(line, cellX + 6, y + 6 + 27 * j, row.sizes[i] - 12));
           cellX += row.sizes[i];
         });
@@ -224,7 +245,17 @@ export async function renderScheduleImage(schedule: Schedule) {
   if (showSocial) {
     ctx.fillStyle = "#174734";
     ctx.font = font;
-    ctx.fillText(`Síguenos en Facebook · ${social}`, padding, 135 + bodyHeight);
+    const socialTop = 135 + bodyHeight;
+    ctx.fillText(`Síguenos en Facebook · ${social}`, padding + 34, socialTop);
+    ctx.save();
+    ctx.translate(padding, socialTop);
+    ctx.beginPath();
+    ctx.arc(12, 12, 12, 0, 2 * Math.PI);
+    ctx.fillStyle = facebookBlue;
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.fill(new Path2D(facebookMark));
+    ctx.restore();
   }
   return canvas;
 }
