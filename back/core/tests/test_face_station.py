@@ -397,8 +397,8 @@ def test_station_quick_creates_student_with_selected_crop_and_is_idempotent(
     assert student.group_name == ""
     assert student.category == ""
     assert student.photo_url.startswith("supabase://student-private-photos/")
-    assert student.guardian.phone == "PENDIENTE"
-    assert Guardian.objects.filter(pk=student.guardian_id).count() == 1
+    assert student.guardian_id is None
+    assert Guardian.objects.filter(pk=student.guardian_id).count() == 0
     assert Student.objects.filter(full_name="Alumna Nueva FaceGuard").count() == 1
     assert len(upload_calls) == 1
     assert upload_calls[0][0] == "student"

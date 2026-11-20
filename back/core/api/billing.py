@@ -258,7 +258,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment = self.get_object()
         if payment.method != "cash" or payment.status != "awaiting_confirmation":
             return Response({"detail": "Este pago no espera aceptacion de efectivo."}, status=status.HTTP_400_BAD_REQUEST)
-        if request.user.role == "guardian" and not ((payment.student_id and payment.student.guardian.user_id == request.user.id) or (payment.charge_id and payment.charge.retained_guardian_id and payment.charge.retained_guardian.user_id == request.user.id)):
+        if request.user.role == "guardian" and not ((payment.student_id and payment.student.guardian_id and payment.student.guardian.user_id == request.user.id) or (payment.charge_id and payment.charge.retained_guardian_id and payment.charge.retained_guardian.user_id == request.user.id)):
             return Response({"detail": "No puedes aceptar pagos de otro representante."}, status=status.HTTP_403_FORBIDDEN)
         if payment.charge and payment.amount > charge_balance(payment.charge):
             return Response(
@@ -280,7 +280,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Este pago no esta en proceso."}, status=status.HTTP_400_BAD_REQUEST)
         if request.user.role == "guardian" and payment.channel != "card_link":
             return Response({"detail": "Solo puedes simular el pago de un link enviado a tu portal."}, status=status.HTTP_403_FORBIDDEN)
-        if request.user.role == "guardian" and not ((payment.student_id and payment.student.guardian.user_id == request.user.id) or (payment.charge_id and payment.charge.retained_guardian_id and payment.charge.retained_guardian.user_id == request.user.id)):
+        if request.user.role == "guardian" and not ((payment.student_id and payment.student.guardian_id and payment.student.guardian.user_id == request.user.id) or (payment.charge_id and payment.charge.retained_guardian_id and payment.charge.retained_guardian.user_id == request.user.id)):
             return Response({"detail": "No puedes pagar links de otro representante."}, status=status.HTTP_403_FORBIDDEN)
         if payment.charge and payment.amount > charge_balance(payment.charge):
             return Response(

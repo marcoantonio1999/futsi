@@ -16,7 +16,7 @@ export type Student = {
   id: number;
   site: number;
   site_name?: string;
-  guardian: number;
+  guardian: number | null;
   guardian_name?: string;
   guardian_phone?: string;
   full_name: string;
