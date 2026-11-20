@@ -77,8 +77,8 @@ export function GameRoles({ token, tournaments, sites, loading }: {
   </>;
 }
 
-function ScheduleDateSelect({ round, schedule, value, onChange, editor = false, required = false }: {
-  round: Round; schedule: RoleSchedule; value: string; onChange: (day: string) => void; editor?: boolean; required?: boolean;
+function MatchDateSelect({ round, schedule, value, onChange, required }: {
+  round: Round; schedule: RoleSchedule; value: string; onChange: (day: string) => void; required: boolean;
 }) {
   const week = Array.from({ length: 7 }, (_, index) => addDays(round.starts_on, index));
   const regularDays = week.filter(day => roleSlots(schedule, day).length > 0);
@@ -86,10 +86,9 @@ function ScheduleDateSelect({ round, schedule, value, onChange, editor = false, 
   const options = (days: string[]) => days.map(day =>
     <option key={day} value={day}>{weekdayLabel.format(new Date(day + "T00:00:00Z"))}</option>);
 
-  const label = editor ? "Fecha del partido" : "Fecha";
-  return <Label>{label}
-    <NativeSelect aria-label={label} name={editor ? "scheduled_on" : undefined} required={required} value={value} onChange={event => onChange(event.target.value)}>
-      {editor && <option value="">Sin fecha</option>}
+  return <Label>Fecha del partido
+    <NativeSelect aria-label="Fecha del partido" name="scheduled_on" required={required} value={value} onChange={event => onChange(event.target.value)}>
+      <option value="">Sin fecha</option>
       {regularDays.length ? <>
         <optgroup label="Días de juego">{options(regularDays)}</optgroup>
         <optgroup label="Otras fechas de la jornada">{options(otherDays)}</optgroup>
@@ -225,13 +224,13 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   const scheduledDays = new Set(matrix.crosses
     .filter(cross => cross.round_id === selected?.id && cross.scheduled_on)
     .map(cross => cross.scheduled_on));
-  const templateDays = week.filter(date => roleSlots(schedule, date).length);
-  const day = week.includes(scheduleDay) ? scheduleDay
-    : templateDays.find(date => scheduledDays.has(date)) ?? templateDays[0]
-    ?? week.find(date => scheduledDays.has(date)) ?? week[0] ?? "";
-  const slots = roleSlots(schedule, day);
-  const booked = matrix.crosses.filter(cross => cross.scheduled_on === day && cross.starts_at && cross.ends_at);
-  const availableSlots = slots.filter(slot => !booked.some(cross => overlaps(slot, cross)));
+  const availableDays = week.map(day => ({
+    day,
+    slots: roleSlots(schedule, day).filter(slot => !matrix.crosses.some(cross => overlaps(slot, cross))),
+  })).filter(date => date.slots.length > 0);
+  const selectedDay = availableDays.find(date => date.day === scheduleDay)
+    ?? availableDays.find(date => scheduledDays.has(date.day)) ?? availableDays[0];
+  const availableSlots = selectedDay?.slots ?? [];
   const slotPages = Math.max(1, Math.ceil(availableSlots.length / slotsPerPage));
   const slotPage = Math.min(slotPageIndex, slotPages - 1);
   const openCross = (home: Team, away: Team, current?: Cross) => {
@@ -342,15 +341,16 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
             <Label>Jornada<NativeSelect value={selected.id} onChange={event => { setSelectedId(Number(event.target.value)); setSlotPage(0); }}>
               {matrix.rounds.map(round => <option key={round.id} value={round.id}>Jornada {round.number}</option>)}
             </NativeSelect></Label>
-            <ScheduleDateSelect round={selected} schedule={schedule} value={day}
-              onChange={date => { setScheduleDay(date); setSlotPage(0); }} />
+            {selectedDay && <Label>Fecha<NativeSelect aria-label="Fecha" value={selectedDay.day}
+              onChange={event => { setScheduleDay(event.target.value); setSlotPage(0); }}>
+              {availableDays.map(({ day }) => <option key={day} value={day}>{weekdayLabel.format(new Date(day + "T00:00:00Z"))}</option>)}
+            </NativeSelect></Label>}
           </div>
           <div className="game-role-panel-header">
             <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
             <Button type="button" className="primary" onClick={() => setShare({ roundId: selected.id })}>Generar rol de juego</Button>
           </div>
-          {!slots.length && <p>{schedule ? "Este día no tiene horarios preestablecidos." : "Este torneo no tiene horarios preestablecidos."}</p>}
-          {slots.length > 0 && availableSlots.length === 0 && <p>No quedan horarios disponibles para esta fecha.</p>}
+          {!selectedDay && <p>{schedule ? "No quedan horarios disponibles en esta jornada." : "Este torneo no tiene horarios preestablecidos."}</p>}
           {availableSlots.length > 0 && <ul className="game-role-slots" aria-label="Horarios de la fecha">
             {availableSlots.slice(slotPage * slotsPerPage, (slotPage + 1) * slotsPerPage).map(slot =>
               <li key={slot.start}><Button type="button" disabled={assignableTeams.length < 2} onClick={() => setSlotToAssign(slot)}>
@@ -630,7 +630,7 @@ function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: C
       </li>)}</ul>
     </div>}
     {round && <>
-      <ScheduleDateSelect round={round} schedule={schedule} value={day} onChange={changeDay} editor required={Boolean(start || end)} />
+      <MatchDateSelect round={round} schedule={schedule} value={day} onChange={changeDay} required={Boolean(start || end)} />
       {availableSlots.length > 0 ? <>
         <Label>Horario disponible<NativeSelect aria-label="Horario disponible" required value={start && end ? `${start}–${end}` : ""} onChange={event => {
           const [slotStart, slotEnd] = event.target.value.split("–");
