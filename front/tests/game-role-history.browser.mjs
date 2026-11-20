@@ -12,7 +12,7 @@ const teams = [
 ];
 const matrix = {
   teams, matrix_team_ids: [3, 4], schedule_enabled: true, standings: [],
-  rounds: [{ id: 1, number: 1, starts_on: "2026-11-23" }],
+  rounds: [{ id: 1, number: 1, starts_on: "2026-11-23" }, { id: 2, number: 2, starts_on: "2026-11-30" }],
   crosses: [{ home_team_id: 1, away_team_id: 2, round_id: 1, scheduled_on: "2026-11-26",
     starts_at: "01:00", ends_at: "02:00", played: true, home_goals: null, away_goals: null }],
 };
@@ -45,14 +45,23 @@ try {
     const slots = page.getByRole("list", { name: "Horarios de la fecha" });
     const slotTimes = () => slots.locator("strong").allTextContents();
     assert.equal(await date.inputValue(), "2026-11-26");
+    assert.deepEqual(await date.locator('optgroup[label="Días de juego"] option').evaluateAll(options => options.map(option => option.value)),
+      ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26"]);
+    assert.match(await date.locator('option[value="2026-11-23"]').textContent(), /lunes.*23/);
+    const roundSelect = page.locator(".game-role-hours select").first();
+    await roundSelect.selectOption("2");
+    assert.equal(await date.inputValue(), "2026-11-30");
+    assert.deepEqual(await date.locator('optgroup[label="Días de juego"] option').evaluateAll(options => options.map(option => option.value)),
+      ["2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03"]);
+    await roundSelect.selectOption("1");
     assert.deepEqual(await slotTimes(), ["01:00–02:00", "21:50–22:40", "22:40–23:30"]);
-    await date.fill("2026-11-23");
+    await date.selectOption("2026-11-23");
     assert.deepEqual(await slotTimes(), ["22:40–23:30"]);
     assert.equal(await slots.locator(".game-role-slot-color").count(), 1);
-    await date.fill("2026-11-27");
+    await date.selectOption("2026-11-27");
     await page.getByText("Este día no tiene horarios preestablecidos.").waitFor();
     assert.equal(await slots.count(), 0);
-    await date.fill("2026-11-26");
+    await date.selectOption("2026-11-26");
     await slots.getByRole("button", { name: "21:50–22:40 Disponible" }).click();
     const assign = page.getByRole("dialog", { name: /Asignar partido/ });
     await assign.getByLabel("Equipo local").selectOption("3");
@@ -61,6 +70,10 @@ try {
     const editor = page.getByRole("dialog", { name: "Jornada y horario del partido" });
     assert.equal(await editor.getByLabel("Hora de inicio").inputValue(), "21:50");
     assert.equal(await editor.getByLabel("Hora de fin").inputValue(), "22:40");
+    const editorDate = editor.getByLabel("Fecha del partido");
+    await editorDate.selectOption("2026-11-23");
+    assert.equal(await editor.getByLabel("Hora de inicio").inputValue(), "22:40");
+    assert.equal(await editor.getByLabel("Hora de fin").inputValue(), "23:30");
     await editor.getByRole("button", { name: "Cancelar" }).click();
     for (const view of width < 1024 ? ["Historial"] : ["Matriz", "Historial"]) {
       await page.getByRole("button", { name: view, exact: true }).click();

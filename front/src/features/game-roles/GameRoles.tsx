@@ -49,6 +49,7 @@ function addDays(value: string, days: number) {
 }
 
 const dateLabel = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const weekdayLabel = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" });
 const timeLabel = (value: string | null | undefined) => value?.slice(0, 5) ?? "";
 const matchScore = (cross: Cross | undefined) => cross?.home_goals != null && cross.away_goals != null
   ? `${cross.home_goals}–${cross.away_goals}` : null;
@@ -73,6 +74,27 @@ export function GameRoles({ token, tournaments, sites, loading }: {
     </Card>
     {tournament && <TournamentMatrix key={tournament.id} token={token} tournamentId={tournament.id} tournamentName={tournament.name} siteId={tournament.site} />}
   </>;
+}
+
+function ScheduleDateSelect({ round, schedule, value, onChange, editor = false, required = false }: {
+  round: Round; schedule: RoleSchedule; value: string; onChange: (day: string) => void; editor?: boolean; required?: boolean;
+}) {
+  const week = Array.from({ length: 7 }, (_, index) => addDays(round.starts_on, index));
+  const regularDays = week.filter(day => roleSlots(schedule, day).length > 0);
+  const otherDays = week.filter(day => !regularDays.includes(day));
+  const options = (days: string[]) => days.map(day =>
+    <option key={day} value={day}>{weekdayLabel.format(new Date(day + "T00:00:00Z"))}</option>);
+
+  const label = editor ? "Fecha del partido" : "Fecha";
+  return <Label>{label}
+    <NativeSelect aria-label={label} name={editor ? "scheduled_on" : undefined} required={required} value={value} onChange={event => onChange(event.target.value)}>
+      {editor && <option value="">Sin fecha</option>}
+      {regularDays.length ? <>
+        <optgroup label="Días de juego">{options(regularDays)}</optgroup>
+        <optgroup label="Otras fechas de la jornada">{options(otherDays)}</optgroup>
+      </> : options(week)}
+    </NativeSelect>
+  </Label>;
 }
 
 const slotPageSize = () => matchMedia("(max-width: 600px) and (max-height: 640px)").matches ? 2
@@ -271,8 +293,8 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
             <Label>Jornada<NativeSelect value={selected.id} onChange={event => { setSelectedId(Number(event.target.value)); setSlotPage(0); }}>
               {matrix.rounds.map(round => <option key={round.id} value={round.id}>Jornada {round.number}</option>)}
             </NativeSelect></Label>
-            <Label>Fecha<Input type="date" min={selected.starts_on} max={addDays(selected.starts_on, 6)}
-              value={day} onChange={event => { setScheduleDay(event.target.value); setSlotPage(0); }} /></Label>
+            <ScheduleDateSelect round={selected} schedule={schedule} value={day}
+              onChange={date => { setScheduleDay(date); setSlotPage(0); }} />
           </div>
           <div className="game-role-panel-header">
             <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
@@ -563,8 +585,7 @@ function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: C
       </li>)}</ul>
     </div>}
     {round && <>
-      <Label>Fecha del partido<Input type="date" name="scheduled_on" value={day} required={Boolean(start || end)}
-        min={round.starts_on} max={addDays(round.starts_on, 6)} onChange={event => changeDay(event.target.value)} /></Label>
+      <ScheduleDateSelect round={round} schedule={schedule} value={day} onChange={changeDay} editor required={Boolean(start || end)} />
       {!!availableSlots.length && <Label>Horario disponible<NativeSelect value={start && end ? `${start}–${end}` : ""} onChange={event => {
         const [slotStart, slotEnd] = event.target.value.split("–");
         if (slotStart && slotEnd) { setStart(slotStart); setEnd(slotEnd); }
