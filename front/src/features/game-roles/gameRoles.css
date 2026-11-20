@@ -38,16 +38,31 @@
 .game-role-history-round summary span { display: block; margin: 4px 0 0 16px; font-size: 13px; }
 .game-role-history-list { margin: 0 12px 10px; }
 .game-role-history-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 8px 16px;
   border-top: 1px solid #dce4e0;
   padding-block: 10px;
+}
+.game-role-history-match {
+  flex: 1 1 18rem;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
   overflow-wrap: anywhere;
 }
+.game-role-history-match span { font-size: 13px; }
+.game-role-history-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.game-role-history-actions button { white-space: normal; }
 .game-role-history-status {
-  justify-self: start;
   padding: 4px 8px;
   border: 1px solid var(--game-roles-round-color);
   border-radius: 5px;
@@ -212,7 +227,7 @@
 
 @media screen and (max-width: 1023px) {
   .game-roles-workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "matrix" "rounds"; }
-  .game-role-notes-grid, .game-role-history-list li { grid-template-columns: minmax(0, 1fr); }
+  .game-role-notes-grid { grid-template-columns: minmax(0, 1fr); }
   .game-roles-matrix, .game-role-notes, .game-role-history { padding: 12px; }
   .game-roles-grid-scroll { max-height: 60dvh; scroll-padding-inline-start: 84px; }
   .game-roles-grid { --game-role-row-width: 88px; }

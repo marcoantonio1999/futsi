@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || "playwright");
+const origin = process.env.TEST_ENROLLMENT_ORIGIN || "http://127.0.0.1:5242";
+const browser = await chromium.launch({ channel: "chrome", headless: true });
+const teams = [
+  { id: 1, name: "FRANCO CANADIENSE", is_active: true },
+  { id: 2, name: "CACOMIXTLES DEL COLEGIO FRANCO", is_active: true },
+];
+const matrix = {
+  teams, matrix_team_ids: [1, 2], schedule_enabled: true, standings: [],
+  rounds: [{ id: 1, number: 1, starts_on: "2026-11-23" }],
+  crosses: [{ home_team_id: 1, away_team_id: 2, round_id: 1, scheduled_on: "2026-11-26",
+    starts_at: "01:00", ends_at: "02:00", played: true, home_goals: null, away_goals: null }],
+};
+
+try {
+  for (const width of [320, 390, 1100, 1440, 1890]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await page.route("**/api/**", route => {
+      const { pathname } = new URL(route.request().url());
+      if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/catalog/")) return route.fulfill({ json: {
+        sites: [{ id: 1, name: "Franco" }], teams,
+        tournaments: [{ id: 1, name: "Liga de prueba", site: 1, is_active: true }],
+      } });
+      return route.fulfill({ json: { results: [], count: 0 } });
+    });
+    await page.goto(origin + "/tests/enrollment-register-preview.html#/admin/inscripciones/game-roles");
+    await page.getByLabel("Torneo", { exact: true }).selectOption("1");
+    for (const view of ["Matriz", "Historial"]) {
+      await page.getByRole("button", { name: view, exact: true }).click();
+      const history = page.getByRole("region", { name: "Historial de partidos" });
+      const capture = history.getByRole("button", { name: "Capturar marcador" });
+      await capture.waitFor();
+      const geometry = await history.locator(".game-role-history-list li").evaluate(row => {
+        const title = row.querySelector("strong");
+        const time = row.querySelector("strong + span");
+        const lines = element => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return Array.from(range.getClientRects());
+        };
+        const titleLines = lines(title);
+        const timeLines = lines(time);
+        return {
+          titleLines: titleLines.length, timeLines: timeLines.length,
+          width: title.getBoundingClientRect().width, rowWidth: row.clientWidth,
+          overflow: row.scrollWidth > row.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      assert(geometry.width >= Math.min(geometry.rowWidth, 170), JSON.stringify({width, view, ...geometry}));
+      assert(geometry.titleLines <= 5 && geometry.timeLines <= 3 && !geometry.overflow, JSON.stringify({width, view, ...geometry}));
+      await capture.click();
+      const dialog = page.getByRole("dialog", { name: "Jornada y horario del partido" });
+      assert(await dialog.getByLabel("Goles local").isVisible());
+      await dialog.getByRole("button", { name: "Cancelar" }).click();
+    }
+    console.log(`Historial y captura de marcador verificados a ${width} px`);
+    await page.close();
+  }
+} finally {
+  await browser.close();
+}
