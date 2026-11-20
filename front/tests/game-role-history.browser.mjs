@@ -40,7 +40,6 @@ try {
     const teamPicker = page.getByRole("dialog", { name: "Agregar equipo" });
     assert.deepEqual(await teamPicker.locator('option:not([value=""])').allTextContents(), [teams[4].name]);
     await teamPicker.getByRole("button", { name: "Cancelar" }).click();
-    if (width < 1024) await page.getByRole("button", { name: "Horarios", exact: true }).click();
     const date = page.getByLabel("Fecha", { exact: true });
     const slots = page.getByRole("list", { name: "Horarios de la fecha" });
     const slotTimes = () => slots.locator("strong").allTextContents();
@@ -89,34 +88,31 @@ try {
     await editor.getByLabel("Hora de fin").fill("11:00");
     await editor.getByRole("status").filter({ hasText: "La hora de fin debe ser posterior a la de inicio." }).waitFor();
     await editor.getByRole("button", { name: "Cancelar" }).click();
-    for (const view of width < 1024 ? ["Historial"] : ["Matriz", "Historial"]) {
-      await page.getByRole("button", { name: view, exact: true }).click();
-      const history = page.getByRole("region", { name: "Historial de partidos" });
-      const capture = history.getByRole("button", { name: "Capturar marcador" });
-      await capture.waitFor();
-      const geometry = await history.locator(".game-role-history-list li").evaluate(row => {
-        const title = row.querySelector("strong");
-        const time = row.querySelector("strong + span");
-        const lines = element => {
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          return Array.from(range.getClientRects());
-        };
-        const titleLines = lines(title);
-        const timeLines = lines(time);
-        return {
-          titleLines: titleLines.length, timeLines: timeLines.length,
-          width: title.getBoundingClientRect().width, rowWidth: row.clientWidth,
-          overflow: row.scrollWidth > row.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth,
-        };
-      });
-      assert(geometry.width >= Math.min(geometry.rowWidth, 170), JSON.stringify({width, view, ...geometry}));
-      assert(geometry.titleLines <= 5 && geometry.timeLines <= 3 && !geometry.overflow, JSON.stringify({width, view, ...geometry}));
-      await capture.click();
-      const dialog = page.getByRole("dialog", { name: "Jornada y horario del partido" });
-      assert(await dialog.getByLabel("Goles local").isVisible());
-      await dialog.getByRole("button", { name: "Cancelar" }).click();
-    }
+    const history = page.getByRole("region", { name: "Historial de partidos" });
+    const capture = history.getByRole("button", { name: "Capturar marcador" });
+    await capture.waitFor();
+    const geometry = await history.locator(".game-role-history-list li").evaluate(row => {
+      const title = row.querySelector("strong");
+      const time = row.querySelector("strong + span");
+      const lines = element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return Array.from(range.getClientRects());
+      };
+      const titleLines = lines(title);
+      const timeLines = lines(time);
+      return {
+        titleLines: titleLines.length, timeLines: timeLines.length,
+        width: title.getBoundingClientRect().width, rowWidth: row.clientWidth,
+        overflow: row.scrollWidth > row.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    assert(geometry.width >= Math.min(geometry.rowWidth, 170), JSON.stringify({width, ...geometry}));
+    assert(geometry.titleLines <= 5 && geometry.timeLines <= 3 && !geometry.overflow, JSON.stringify({width, ...geometry}));
+    await capture.click();
+    const dialog = page.getByRole("dialog", { name: "Jornada y horario del partido" });
+    assert(await dialog.getByLabel("Goles local").isVisible());
+    await dialog.getByRole("button", { name: "Cancelar" }).click();
     console.log(`Historial y captura de marcador verificados a ${width} px`);
     await page.close();
   }

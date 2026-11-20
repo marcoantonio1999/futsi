@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card } from "../../components/ui/enrollment-ui";
+import { Card } from "../../components/ui/enrollment-ui";
 import type { StandingRow } from "../../types";
 import { RolePageButtons } from "./RolePageButtons";
 
@@ -15,7 +15,6 @@ const columns = [
 ] as const;
 
 export function GameRoleStatistics({ rows, withoutScore }: { rows: StandingRow[]; withoutScore: number }) {
-  const [view, setView] = useState<"positions" | "goals">("positions");
   const [positionIndex, setPositionPage] = useState(0);
   const [goalsIndex, setGoalsPage] = useState(0);
   const pageSize = 4;
@@ -26,17 +25,13 @@ export function GameRoleStatistics({ rows, withoutScore }: { rows: StandingRow[]
   const goalsPages = Math.ceil(scorers.length / pageSize);
   const positionPage = Math.min(positionIndex, Math.max(0, positionPages - 1));
   const goalsPage = Math.min(goalsIndex, Math.max(0, goalsPages - 1));
-  return <div className="game-role-statistics" data-view={view}>
-    <div className="game-role-statistics-tabs">
-      <Button type="button" aria-pressed={view === "positions"} onClick={() => setView("positions")}>Posiciones</Button>
-      <Button type="button" aria-pressed={view === "goals"} onClick={() => setView("goals")}>Goleo</Button>
-    </div>
+  return <div className="game-role-statistics">
     {withoutScore > 0 && <p className="game-role-score-notice" role="status">
       {withoutScore === 1 ? "1 partido jugado sin marcador." : `${withoutScore} partidos jugados sin marcador.`}
     </p>}
     <Card as="section" className="game-role-history game-role-standings" aria-labelledby="game-role-standings-title">
       <h2 id="game-role-standings-title">Tabla de posiciones</h2>
-      {rows.length > 0 && <div role="region" aria-label="Posiciones por equipo">
+      <div role="region" aria-label="Posiciones por equipo">
         <table className="game-role-stat-table">
           <colgroup><col className="game-role-stat-number" /><col />{columns.map(([label]) => <col key={label} className="game-role-stat-number" />)}</colgroup>
           <thead><tr>
@@ -46,11 +41,12 @@ export function GameRoleStatistics({ rows, withoutScore }: { rows: StandingRow[]
           <tbody>{rows.slice(positionPage * pageSize, (positionPage + 1) * pageSize).map(row => <tr key={row.team} data-leader={row.is_leader}>
             <td>{scored ? row.position : "—"}</td><th scope="row" title={row.team_name}>{row.team_name}</th>
             {columns.map(([, , key]) => <td key={key}>{key === "points" ? <strong>{row[key]}</strong> : row[key]}</td>)}
-          </tr>)}</tbody>
+          </tr>)}
+            {!rows.length && <tr><td colSpan={columns.length + 2}>Aún no hay equipos.</td></tr>}
+          </tbody>
         </table>
         <RolePageButtons page={positionPage} count={positionPages} onChange={setPositionPage} label="Posiciones" />
-      </div>}
-      {!rows.length && <p>Aún no hay equipos.</p>}
+      </div>
     </Card>
     <Card as="section" className="game-role-history game-role-scorers" aria-labelledby="game-role-scorers-title">
       <h2 id="game-role-scorers-title">Tabla de goleo</h2>

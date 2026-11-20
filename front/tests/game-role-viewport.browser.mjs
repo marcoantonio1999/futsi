@@ -39,6 +39,9 @@ try {
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/game-roles/2/")) return route.fulfill({ json: {
+        ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [],
+      } });
       if (pathname.endsWith("/game-roles/1/team-notes/")) {
         const note = route.request().postDataJSON();
         assert.equal(note.kind, "preferred");
@@ -47,7 +50,10 @@ try {
       }
       if (pathname.endsWith("/catalog/")) return route.fulfill({ json: {
         sites: [{ id: 27, name: "Colegio Franco" }], teams,
-        tournaments: [{ id: 1, name: "UEFA", site: 27, is_active: true }],
+        tournaments: [
+          { id: 1, name: "UEFA", site: 27, is_active: true },
+          { id: 2, name: "Torneo sin equipos", site: 27, is_active: true },
+        ],
       } });
       return route.fulfill({ json: { results: [], count: 0 } });
     });
@@ -79,28 +85,32 @@ try {
     }
     if (width < 1024) {
       assert((await grid.getByRole("button").first().boundingBox()).height >= 44);
-      await page.getByRole("button", { name:"Horarios", exact:true }).click();
-      assert.equal(await grid.isVisible(), false);
     }
+    const navigation = page.getByRole("navigation", {name:"Vistas de Roles de juego"});
+    assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Estadísticas"]);
     const slots = page.getByRole("list", {name:"Horarios de la fecha"});
+    await slots.scrollIntoViewIfNeeded();
     await inside(page, slots.getByRole("button"));
     const nextSlot = page.getByRole("button", {name:"Horarios: siguiente"});
     if (await nextSlot.isVisible()) {
       await inside(page, nextSlot);
       const first = await slots.getByRole("button").first().textContent();
       await nextSlot.click();
+      await slots.scrollIntoViewIfNeeded();
       await inside(page, slots.getByRole("button"));
       assert.notEqual(await slots.getByRole("button").first().textContent(), first);
     } else {
       assert.equal(await slots.getByRole("button").count(), 8);
     }
-    if (width < 1024) await page.getByRole("button", {name:"Historial",exact:true}).click();
     const history = page.getByRole("region", {name:"Historial de partidos"});
-    await inside(page, history.getByRole("button", {name:"Capturar marcador"}));
+    const capture = history.getByRole("button", {name:"Capturar marcador"});
+    await capture.scrollIntoViewIfNeeded();
+    await inside(page, capture);
     await history.getByLabel("Jornada del historial").selectOption("1");
     assert.equal(await history.getByRole("button", {name:/Partidos: (siguiente|anterior)/}).count(), 0);
     const list = history.getByRole("list");
     assert.equal(await list.getByRole("listitem").count(), 14);
+    await list.scrollIntoViewIfNeeded();
     await inside(page, list);
     assert(await list.evaluate(node => node.scrollHeight > node.clientHeight));
     const lastMatch = list.getByRole("button", {name:"Editar partido"}).last();
@@ -111,7 +121,6 @@ try {
     await history.getByLabel("Jornada del historial").selectOption("2");
     assert.equal(await list.getByRole("listitem").count(), 1);
     assert.equal(await list.evaluate(node => node.scrollTop), 0);
-    await page.getByRole("button", {name:"Matriz",exact:true}).click();
     const permits = page.getByRole("region", {name:"Permisos", exact:true});
     const suggestions = page.getByRole("region", {name:"Sugerencias de horario", exact:true});
     await permits.scrollIntoViewIfNeeded();
@@ -135,10 +144,19 @@ try {
     await inside(page, standings);
     await standings.getByRole("button", { name:"Posiciones: siguiente" }).click();
     assert.equal(await standings.getByRole("rowheader").first().textContent(), teams[4].name);
-    if (width < 1024) await page.getByRole("button", { name:"Goleo", exact:true }).click();
     const scorers = page.getByRole("region", { name:"Goleo por equipo" });
     await scorers.waitFor();
+    await scorers.scrollIntoViewIfNeeded();
     await inside(page, scorers);
+    await navigation.getByRole("button", {name:"Volver a roles de juego"}).click();
+    await grid.waitFor();
+    if (width === 320) {
+      await page.getByLabel("Torneo", {exact:true}).selectOption("2");
+      await navigation.getByRole("button", {name:"Estadísticas"}).click();
+      await standings.getByText("Aún no hay equipos.").waitFor();
+      assert.equal(await standings.getByRole("columnheader").count(), 10);
+      await inside(page, standings);
+    }
     assert.equal(await page.evaluate(() => window.scrollY), 0);
     console.log(`Roles sin desplazamiento a ${width} × ${height}`);
     await page.close();

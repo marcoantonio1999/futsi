@@ -107,7 +107,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useEnrollmentViewState(`gameRoles.round.${tournamentId}`, 0);
-  const [view, setView] = useEnrollmentViewState<"matrix" | "schedule" | "history" | "statistics">("gameRoles.view", "matrix");
+  const [view, setView] = useEnrollmentViewState<"matrix" | "statistics">("gameRoles.view", "matrix");
   const [rowPageIndex, setRowPage] = useState(0);
   const [columnPageIndex, setColumnPage] = useState(0);
   const [slotPageIndex, setSlotPage] = useState(0);
@@ -267,57 +267,17 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
 
   return <>
     <nav className="game-role-views" aria-label="Vistas de Roles de juego">
-      <Button type="button" aria-pressed={view === "matrix"} onClick={() => setView("matrix")}>Matriz</Button>
-      <Button type="button" className="game-role-schedule-tab" aria-pressed={view === "schedule"} onClick={() => setView("schedule")}>Horarios</Button>
-      <Button type="button" aria-pressed={view === "history"} onClick={() => setView("history")}>Historial</Button>
-      {matrix.standings && <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>Estadísticas</Button>}
+      <Button type="button" onClick={() => setView(view === "statistics" ? "matrix" : "statistics")}>
+        {view === "statistics" ? "Volver a roles de juego" : "Estadísticas"}
+      </Button>
       {roleReminders && <Button type="button" disabled={remindersEnabled} onClick={() => void enableReminders()}>
         {remindersEnabled ? "Notificaciones activas" : "Activar notificaciones"}
       </Button>}
     </nav>
     {reminderMessage && <p role="status">{reminderMessage}</p>}
-    {view === "statistics" && matrix.standings
-      ? <div className="game-role-statistics-panel"><GameRoleStatistics rows={matrix.standings} withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} /></div>
-      : view === "history" ? <GameRoleHistory matrix={matrix} onEdit={(home, away, current) => setEditor({ kind: "cross", home, away, current })} /> : <>
-    <div className="game-roles-workspace" data-view={view} style={roundColorStyle(selected?.number ?? 1)}>
-    <aside className="game-roles-rounds">
-      <Card as="section" className="game-role-history game-role-hours">
-        <div className="game-role-panel-header">
-          <h2>Horarios</h2>
-          <Button type="button" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
-        </div>
-        {selected ? <>
-          <div className="game-roles-hour-fields">
-            <Label>Jornada<NativeSelect value={selected.id} onChange={event => { setSelectedId(Number(event.target.value)); setSlotPage(0); }}>
-              {matrix.rounds.map(round => <option key={round.id} value={round.id}>Jornada {round.number}</option>)}
-            </NativeSelect></Label>
-            <ScheduleDateSelect round={selected} schedule={schedule} value={day}
-              onChange={date => { setScheduleDay(date); setSlotPage(0); }} />
-          </div>
-          <div className="game-role-panel-header">
-            <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
-            <Button type="button" className="primary" onClick={() => setShareRoundId(selected.id)}>Generar rol de juego</Button>
-          </div>
-          {!slots.length && <p>{schedule ? "Este día no tiene horarios preestablecidos." : "Este torneo no tiene horarios preestablecidos."}</p>}
-          {!!availability.length && <ul className="game-role-slots" aria-label="Horarios de la fecha">{availability.slice(slotPage * slotsPerPage, (slotPage + 1) * slotsPerPage).map(({ slot, cross }) => {
-            const home = cross && teamsById.get(cross.home_team_id), away = cross && teamsById.get(cross.away_team_id);
-            const color = slot.color ? { "--game-role-slot-color": slot.color } as CSSProperties : undefined;
-            return <li key={cross ? `${cross.home_team_id}:${cross.away_team_id}` : slot.start} style={color}><Button type="button" disabled={cross ? !home || !away : assignableTeams.length < 2}
-              onClick={() => {
-                if (!cross) setSlotToAssign(slot);
-                else if (home && away) openCross(home, away, cross);
-              }}>
-              {slot.color && <i className="game-role-slot-color" aria-hidden="true" />}
-              <strong>{slot.start}–{slot.end}</strong>
-              <span>{cross ? `${home?.name} vs. ${away?.name}` : "Disponible"}</span>
-            </Button></li>;
-          })}</ul>}
-          <RolePageButtons page={slotPage} count={slotPages} onChange={setSlotPage} label="Horarios" />
-        </> : <p>Agrega una jornada para consultar horarios.</p>}
-      </Card>
-      <div className="game-role-side-history"><GameRoleHistory matrix={matrix} onEdit={openCross} /></div>
-    </aside>
-
+    {view === "statistics"
+      ? <div className="game-role-statistics-panel"><GameRoleStatistics rows={matrix.standings ?? []} withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} /></div>
+      : <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
         <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
@@ -368,8 +328,45 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
       {matrix.team_notes && <GameRoleNotes notes={matrix.team_notes} teams={matrix.teams} rounds={matrix.rounds}
         selectedRound={selected} onSave={saveNote} />}
     </Card>
-    </div>
-    </>}
+    <aside className="game-roles-rounds">
+      <Card as="section" className="game-role-history game-role-hours">
+        <div className="game-role-panel-header">
+          <h2>Horarios</h2>
+          <Button type="button" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
+        </div>
+        {selected ? <>
+          <div className="game-roles-hour-fields">
+            <Label>Jornada<NativeSelect value={selected.id} onChange={event => { setSelectedId(Number(event.target.value)); setSlotPage(0); }}>
+              {matrix.rounds.map(round => <option key={round.id} value={round.id}>Jornada {round.number}</option>)}
+            </NativeSelect></Label>
+            <ScheduleDateSelect round={selected} schedule={schedule} value={day}
+              onChange={date => { setScheduleDay(date); setSlotPage(0); }} />
+          </div>
+          <div className="game-role-panel-header">
+            <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
+            <Button type="button" className="primary" onClick={() => setShareRoundId(selected.id)}>Generar rol de juego</Button>
+          </div>
+          {!slots.length && <p>{schedule ? "Este día no tiene horarios preestablecidos." : "Este torneo no tiene horarios preestablecidos."}</p>}
+          {!!availability.length && <ul className="game-role-slots" aria-label="Horarios de la fecha">{availability.slice(slotPage * slotsPerPage, (slotPage + 1) * slotsPerPage).map(({ slot, cross }) => {
+            const home = cross && teamsById.get(cross.home_team_id), away = cross && teamsById.get(cross.away_team_id);
+            const color = slot.color ? { "--game-role-slot-color": slot.color } as CSSProperties : undefined;
+            return <li key={cross ? `${cross.home_team_id}:${cross.away_team_id}` : slot.start} style={color}><Button type="button" disabled={cross ? !home || !away : assignableTeams.length < 2}
+              onClick={() => {
+                if (!cross) setSlotToAssign(slot);
+                else if (home && away) openCross(home, away, cross);
+              }}>
+              {slot.color && <i className="game-role-slot-color" aria-hidden="true" />}
+              <strong>{slot.start}–{slot.end}</strong>
+              <span>{cross ? `${home?.name} vs. ${away?.name}` : "Disponible"}</span>
+            </Button></li>;
+          })}</ul>}
+          <RolePageButtons page={slotPage} count={slotPages} onChange={setSlotPage} label="Horarios" />
+        </> : <p>Agrega una jornada para consultar horarios.</p>}
+      </Card>
+      <div className="game-role-side-history"><GameRoleHistory matrix={matrix} onEdit={openCross} /></div>
+    </aside>
+
+    </div>}
     {addingTeam && <TeamSelection teams={availableTeams} onClose={() => setAddingTeam(false)}
       onSubmit={team => save("PATCH", { add_team_id: team.id })} />}
     {slotToAssign && <TeamSelection teams={assignableTeams} slot={slotToAssign}
