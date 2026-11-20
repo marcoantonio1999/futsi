@@ -107,7 +107,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useEnrollmentViewState(`gameRoles.round.${tournamentId}`, 0);
-  const [view, setView] = useEnrollmentViewState<"matrix" | "statistics">("gameRoles.view", "matrix");
+  const [view, setView] = useEnrollmentViewState<"matrix" | "statistics" | "next-role">("gameRoles.view", "matrix");
   const [rowPageIndex, setRowPage] = useState(0);
   const [columnPageIndex, setColumnPage] = useState(0);
   const [slotPageIndex, setSlotPage] = useState(0);
@@ -118,7 +118,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   const [scheduleDay, setScheduleDay] = useState("");
   const [addingTeam, setAddingTeam] = useState(false);
   const [slotToAssign, setSlotToAssign] = useState<Slot | null>(null);
-  const [shareRoundId, setShareRoundId] = useState<number | null>(null);
+  const [share, setShare] = useState<{ roundId: number; upcomingOnly?: boolean } | null>(null);
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [reminderMessage, setReminderMessage] = useState("");
   useEnrollmentScrollReady(Boolean(matrix));
@@ -259,9 +259,9 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
 
   return <>
     <nav className="game-role-views" aria-label="Vistas de Roles de juego">
-      <Button type="button" onClick={() => setView(view === "statistics" ? "matrix" : "statistics")}>
-        {view === "statistics" ? "Volver a roles de juego" : "Estadísticas"}
-      </Button>
+      {(view === "statistics" || view === "next-role") && <Button type="button" onClick={() => setView("matrix")}>Volver a roles de juego</Button>}
+      <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>Estadísticas</Button>
+      <Button type="button" aria-pressed={view === "next-role"} onClick={() => setView("next-role")}>Siguiente rol</Button>
       {roleReminders && <Button type="button" disabled={remindersEnabled} onClick={() => void enableReminders()}>
         {remindersEnabled ? "Notificaciones activas" : "Activar notificaciones"}
       </Button>}
@@ -269,7 +269,9 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
     {reminderMessage && <p role="status">{reminderMessage}</p>}
     {view === "statistics"
       ? <div className="game-role-statistics-panel"><GameRoleStatistics rows={matrix.standings ?? []} withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} /></div>
-      : <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
+      : view === "next-role"
+        ? <NextGameRole matrix={matrix} onShare={roundId => setShare({ roundId, upcomingOnly: true })} />
+        : <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
         <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
@@ -336,7 +338,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
           </div>
           <div className="game-role-panel-header">
             <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
-            <Button type="button" className="primary" onClick={() => setShareRoundId(selected.id)}>Generar rol de juego</Button>
+            <Button type="button" className="primary" onClick={() => setShare({ roundId: selected.id })}>Generar rol de juego</Button>
           </div>
           {!slots.length && <p>{schedule ? "Este día no tiene horarios preestablecidos." : "Este torneo no tiene horarios preestablecidos."}</p>}
           {slots.length > 0 && availableSlots.length === 0 && <p>No quedan horarios disponibles para esta fecha.</p>}
@@ -365,8 +367,47 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
         setSlotToAssign(null);
       }} />}
     {editor && <MatrixEditor editor={editor} matrix={matrix} schedule={schedule} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
-    {shareRoundId !== null && <GameRoleShare path={`${path}rounds/${shareRoundId}/share/`} token={token} reminderKey={`${tournamentId}/${shareRoundId}`} onClose={() => setShareRoundId(null)} />}
+    {share && <GameRoleShare path={`${path}rounds/${share.roundId}/share/`} token={token}
+      reminderKey={`${tournamentId}/${share.roundId}`} upcomingOnly={share.upcomingOnly} onClose={() => setShare(null)} />}
   </>;
+}
+
+const leagueDay = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
+
+function NextGameRole({ matrix, onShare }: { matrix: Matrix; onShare: (roundId: number) => void }) {
+  const [roundId, setRoundId] = useState(0);
+  const teamNames = new Map(matrix.teams.map(team => [team.id, team.name]));
+  const today = leagueDay.format(new Date());
+  const pending = matrix.crosses
+    .filter(cross => !cross.played && cross.scheduled_on && cross.starts_at && cross.ends_at)
+    .sort((a, b) => a.scheduled_on!.localeCompare(b.scheduled_on!) || timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at)));
+  const rounds = matrix.rounds.slice().sort((a, b) => a.starts_on.localeCompare(b.starts_on) || a.number - b.number);
+  const nextRoundId = pending.find(cross => cross.scheduled_on! >= today)?.round_id ?? pending.at(-1)?.round_id;
+  const round = rounds.find(row => row.id === roundId) ?? rounds.find(row => row.id === nextRoundId) ?? rounds.at(-1);
+  const matches = pending.filter(cross => cross.round_id === round?.id);
+
+  return <div className="game-role-statistics-panel">
+    <Card as="section" className="game-role-history game-role-next" aria-labelledby="game-role-next-title">
+      <div className="game-role-panel-header">
+        <h2 id="game-role-next-title">Próximos partidos</h2>
+        {round && <Label>Jornada<NativeSelect aria-label="Jornada del rol" value={round.id} onChange={event => setRoundId(Number(event.target.value))}>
+          {rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number} · {weekLabel(row.starts_on)}</option>)}
+        </NativeSelect></Label>}
+      </div>
+      <table className="game-role-stat-table">
+        <thead><tr><th scope="col">Fecha</th><th scope="col">Horario</th><th scope="col">Local</th><th scope="col">Visitante</th></tr></thead>
+        <tbody>{matches.map(cross => <tr key={`${cross.home_team_id}:${cross.away_team_id}`}>
+          <td>{weekdayLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))}</td>
+          <td>{timeLabel(cross.starts_at)}–{timeLabel(cross.ends_at)}</td>
+          <td>{teamNames.get(cross.home_team_id)}</td>
+          <td>{teamNames.get(cross.away_team_id)}</td>
+        </tr>)}
+          {!matches.length && <tr><td colSpan={4}>{round ? "Aún no hay próximos partidos en esta jornada." : "Agrega una jornada para programar partidos."}</td></tr>}
+        </tbody>
+      </table>
+      {round && <footer><Button type="button" className="primary" disabled={!matches.length} onClick={() => onShare(round.id)}>Compartir rol de juego</Button></footer>}
+    </Card>
+  </div>;
 }
 
 function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Team, away: Team, cross: Cross) => void }) {

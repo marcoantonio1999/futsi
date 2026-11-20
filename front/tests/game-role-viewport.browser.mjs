@@ -41,6 +41,17 @@ try {
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      const share = pathname.endsWith("/share/") && pathname.split("/").at(-3);
+      if (share) {
+        const round = matrix.rounds.find(row => row.id === Number(share));
+        const matches = matrix.crosses.filter(cross => cross.round_id === round.id && cross.scheduled_on)
+          .map(cross => ({
+            ...cross, home_team__name: teams.find(team => team.id === cross.home_team_id).name,
+            away_team__name: teams.find(team => team.id === cross.away_team_id).name,
+          }));
+        return route.fulfill({ json: { tournament: "UEFA", site: "Colegio Franco", number: round.number,
+          starts_on: round.starts_on, matches, token: "enlace-de-prueba" } });
+      }
       if (pathname.endsWith("/game-roles/2/")) return route.fulfill({ json: {
         ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [],
       } });
@@ -59,6 +70,7 @@ try {
       } });
       return route.fulfill({ json: { results: [], count: 0 } });
     });
+    await page.clock.setFixedTime(new Date("2026-11-25T12:00:00Z"));
     await page.goto(origin + "/tests/enrollment-register-preview.html#/admin/inscripciones/game-roles");
     await page.getByLabel("Torneo", { exact: true }).selectOption("1");
     const grid = page.getByRole("region", { name: "Matriz de cruces por equipo" });
@@ -95,7 +107,7 @@ try {
       assert((await page.getByRole("button", {name:"Cerrar sesión"}).boundingBox()).height <= 32);
     }
     const navigation = page.getByRole("navigation", {name:"Vistas de Roles de juego"});
-    assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Estadísticas"]);
+    assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Estadísticas", "Siguiente rol"]);
     const slots = page.getByRole("list", {name:"Horarios de la fecha"});
     await slots.scrollIntoViewIfNeeded();
     assert.equal(await slots.getByRole("button", {name:/^14:(00|50)/}).count(), 0);
@@ -167,14 +179,40 @@ try {
     await scorers.waitFor();
     await scorers.scrollIntoViewIfNeeded();
     await inside(page, scorers);
+    await navigation.getByRole("button", {name:"Siguiente rol"}).click();
+    const next = page.getByRole("region", {name:"Próximos partidos"});
+    const nextRound = next.getByLabel("Jornada del rol");
+    assert.equal(await nextRound.inputValue(), "1");
+    await nextRound.selectOption("2");
+    assert.equal(await next.getByRole("row").count(), 2);
+    assert(await next.getByText("15:00–15:50").isVisible());
+    assert.equal(await next.getByText("14:00–14:50").count(), 0);
+    await inside(page, next);
+    await next.getByRole("button", {name:"Compartir rol de juego"}).click();
+    const shareDialog = page.getByRole("dialog", {name:"Compartir rol de juego"});
+    const whatsapp = shareDialog.getByRole("link", {name:"Compartir por WhatsApp"});
+    await whatsapp.waitFor();
+    const message = new URL(await whatsapp.getAttribute("href")).searchParams.get("text");
+    assert.match(message, /Jornada 2/);
+    assert.match(message, /15:00–15:50/);
+    assert.match(message, /rol-de-juego\/enlace-de-prueba/);
+    assert.doesNotMatch(message, /14:00–14:50/);
+    const download = page.waitForEvent("download");
+    await shareDialog.getByRole("button", {name:"Descargar imagen"}).click();
+    assert.equal((await download).suggestedFilename(), "rol-UEFA-jornada-2.png");
+    await shareDialog.getByRole("button", {name:"Cerrar"}).click();
     await navigation.getByRole("button", {name:"Volver a roles de juego"}).click();
     await grid.waitFor();
     if (width === 320) {
       await page.getByLabel("Torneo", {exact:true}).selectOption("2");
       await navigation.getByRole("button", {name:"Estadísticas"}).click();
       await standings.getByText("Aún no hay equipos.").waitFor();
+
       assert.equal(await standings.getByRole("columnheader").count(), 10);
       await inside(page, standings);
+      await navigation.getByRole("button", {name:"Siguiente rol"}).click();
+      await next.getByText("Agrega una jornada para programar partidos.").waitFor();
+      assert.equal(await next.getByRole("button", {name:"Compartir rol de juego"}).count(), 0);
     }
     assert.equal(await page.evaluate(() => window.scrollY), 0);
     console.log(`Roles sin desplazamiento a ${width} × ${height}`);

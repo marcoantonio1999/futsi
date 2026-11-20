@@ -149,7 +149,9 @@ async function downloadScheduleImage(schedule: Schedule) {
   return false;
 }
 
-export function GameRoleShare({ path, token, reminderKey, onClose }: { path: string; token: string; reminderKey: string; onClose: () => void }) {
+export function GameRoleShare({ path, token, reminderKey, upcomingOnly = false, onClose }: {
+  path: string; token: string; reminderKey: string; upcomingOnly?: boolean; onClose: () => void;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [schedule, setSchedule] = useState<(Schedule & { token: string }) | null>(null);
   const [status, setStatus] = useState("");
@@ -158,9 +160,10 @@ export function GameRoleShare({ path, token, reminderKey, onClose }: { path: str
     const node = dialog.current;
     node?.showModal();
     apiRequest<Schedule & { token: string }>(path, token, { signal: controller.signal })
-      .then(setSchedule).catch(() => { if (!controller.signal.aborted) setStatus("No se pudo generar el rol de juego."); });
+      .then(result => setSchedule(upcomingOnly ? { ...result, matches: result.matches.filter(match => !match.played) } : result))
+      .catch(() => { if (!controller.signal.aborted) setStatus("No se pudo generar el rol de juego."); });
     return () => { controller.abort(); node?.close(); };
-  }, [path, token]);
+  }, [path, token, upcomingOnly]);
   const url = schedule ? `${location.origin}${location.pathname}#/rol-de-juego/${encodeURIComponent(schedule.token)}` : "";
   const message = schedule ? [
     `*Rol de juego · Jornada ${schedule.number}*`, `${schedule.tournament} · ${schedule.site}`, "",
@@ -169,7 +172,8 @@ export function GameRoleShare({ path, token, reminderKey, onClose }: { path: str
   ].join("\n") : "";
   return <Dialog ref={dialog} className="game-roles-dialog game-role-share-dialog" aria-label="Compartir rol de juego"
     onCancel={event => { event.preventDefault(); onClose(); }}>
-    {schedule ? <><ScheduleSheet schedule={schedule} />
+    {schedule && <ScheduleSheet schedule={schedule} />}
+    {schedule && (!upcomingOnly || schedule.matches.length > 0) ? <>
       <label>Enlace público<input value={url} readOnly onFocus={event => event.currentTarget.select()} /></label>
       <footer>
         <Button type="button" onClick={() => void downloadScheduleImage(schedule).then(
@@ -184,7 +188,7 @@ export function GameRoleShare({ path, token, reminderKey, onClose }: { path: str
             () => setStatus("No se pudo cancelar el recordatorio de cierre."),
           )}>Compartir por WhatsApp</a>
       </footer>
-    </> : !status && <p role="status">Generando rol…</p>}
+    </> : !schedule && !status && <p role="status">Generando rol…</p>}
     {status && <p role="status">{status}</p>}
     <footer><Button type="button" onClick={onClose}>Cerrar</Button></footer>
   </Dialog>;

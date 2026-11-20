@@ -9,6 +9,15 @@
   gap: 8px;
   margin-block: 0 16px;
 }
+.enrollment-page .game-role-views button[aria-pressed="true"] {
+  background: #e7f1ed !important;
+  border-color: #26634d !important;
+}
+.game-role-next { max-width: 56rem; }
+.game-role-next .game-role-panel-header label { min-width: 0; max-width: 100%; }
+.game-role-next .game-role-stat-table { min-width: 0; table-layout: fixed; margin-top: 8px; font-size: 12px; }
+.game-role-next .game-role-stat-table :is(th, td) { padding: 6px 4px; text-align: left; overflow-wrap: anywhere; }
+.game-role-next footer { margin-top: 10px; }
 .game-role-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .game-role-panel-header h2 { margin: 0; }
 .game-role-note-list, .game-role-history-list { padding: 0; list-style: none; }
