@@ -271,8 +271,6 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
       <Button type="button" className="game-role-schedule-tab" aria-pressed={view === "schedule"} onClick={() => setView("schedule")}>Horarios</Button>
       <Button type="button" aria-pressed={view === "history"} onClick={() => setView("history")}>Historial</Button>
       {matrix.standings && <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>Estadísticas</Button>}
-      {matrix.team_notes && <GameRoleNotes notes={matrix.team_notes} teams={matrix.teams} rounds={matrix.rounds}
-        selectedRound={selected} onSave={saveNote} />}
       {roleReminders && <Button type="button" disabled={remindersEnabled} onClick={() => void enableReminders()}>
         {remindersEnabled ? "Notificaciones activas" : "Activar notificaciones"}
       </Button>}
@@ -367,6 +365,8 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
           <RolePageButtons page={columnPage} count={columnPages} onChange={setColumnPage} label="Locales" />
         </div>
       </>}
+      {matrix.team_notes && <GameRoleNotes notes={matrix.team_notes} teams={matrix.teams} rounds={matrix.rounds}
+        selectedRound={selected} onSave={saveNote} />}
     </Card>
     </div>
     </>}

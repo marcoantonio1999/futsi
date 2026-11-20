@@ -18,7 +18,10 @@ const matrix = {
       starts_at: null, ends_at: null, played: false,
     })),
   ],
-  team_notes: [{ id: 1, kind: "permit", team_id: 1, round_id: 1, note: "Permiso de prueba" }],
+  team_notes: [
+    { id: 1, kind: "permit", team_id: 1, round_id: 1, note: "Permiso de prueba" },
+    { id: 2, kind: "unavailable", team_id: 2, weekday: 2, note: "Prefiere evitar el miércoles" },
+  ],
 };
 async function inside(page, locator) {
   for (const box of await locator.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().toJSON()))) {
@@ -36,6 +39,12 @@ try {
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/game-roles/1/team-notes/")) {
+        const note = route.request().postDataJSON();
+        assert.equal(note.kind, "preferred");
+        assert.equal(note.weekday, 3);
+        return route.fulfill({ json: { team_notes: [...matrix.team_notes, { ...note, id: 3 }] } });
+      }
       if (pathname.endsWith("/catalog/")) return route.fulfill({ json: {
         sites: [{ id: 27, name: "Colegio Franco" }], teams,
         tournaments: [{ id: 1, name: "UEFA", site: 27, is_active: true }],
@@ -102,12 +111,24 @@ try {
     await history.getByLabel("Jornada del historial").selectOption("2");
     assert.equal(await list.getByRole("listitem").count(), 1);
     assert.equal(await list.evaluate(node => node.scrollTop), 0);
-    await page.getByRole("button", {name:"Permisos",exact:true}).click();
-    const notes = page.getByRole("dialog", {name:"Permisos"});
-    assert(await notes.getByText("Permiso de prueba").isVisible());
-    await notes.getByRole("button", {name:"Agregar permiso"}).click();
-    await page.getByRole("dialog", {name:"Agregar permiso"}).getByRole("button", {name:"Cancelar"}).click();
-    await notes.getByRole("button", {name:"Cerrar"}).click();
+    await page.getByRole("button", {name:"Matriz",exact:true}).click();
+    const permits = page.getByRole("region", {name:"Permisos", exact:true});
+    const suggestions = page.getByRole("region", {name:"Sugerencias de horario", exact:true});
+    await permits.scrollIntoViewIfNeeded();
+    await inside(page, permits);
+    await inside(page, suggestions);
+    assert((await permits.boundingBox()).y >= (await grid.boundingBox()).y + (await grid.boundingBox()).height - 1);
+    assert(await permits.getByText("Permiso de prueba").isVisible());
+    assert(await suggestions.getByText("Prefiere evitar el miércoles").isVisible());
+    await permits.getByRole("button", {name:"Agregar permiso"}).click();
+    await page.getByRole("dialog", {name:"Agregar permiso de equipo"}).getByRole("button", {name:"Cancelar"}).click();
+    await suggestions.getByRole("button", {name:"Agregar sugerencia"}).click();
+    const noteForm = page.getByRole("dialog", {name:"Agregar sugerencia de horario"});
+    await noteForm.getByLabel("Equipo", {exact:true}).selectOption("3");
+    await noteForm.getByLabel("Día", {exact:true}).selectOption("3");
+    await noteForm.getByLabel("Nota (opcional)").fill("Comentario nuevo");
+    await noteForm.getByRole("button", {name:"Guardar"}).click();
+    await suggestions.getByText("Comentario nuevo").waitFor();
     await page.getByRole("button", { name:"Estadísticas", exact:true }).click();
     const standings = page.getByRole("region", { name:"Posiciones por equipo" });
     await standings.waitFor();
