@@ -6,9 +6,12 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 const teams = [
   { id: 1, name: "FRANCO CANADIENSE", is_active: true },
   { id: 2, name: "CACOMIXTLES DEL COLEGIO FRANCO", is_active: true },
+  { id: 3, name: "CABO VERDE", is_active: true },
+  { id: 4, name: "PALMEIRAS", is_active: true },
+  { id: 5, name: "OTRO EQUIPO DEL TORNEO", is_active: true },
 ];
 const matrix = {
-  teams, matrix_team_ids: [1, 2], schedule_enabled: true, standings: [],
+  teams, matrix_team_ids: [3, 4], schedule_enabled: true, standings: [],
   rounds: [{ id: 1, number: 1, starts_on: "2026-11-23" }],
   crosses: [{ home_team_id: 1, away_team_id: 2, round_id: 1, scheduled_on: "2026-11-26",
     starts_at: "01:00", ends_at: "02:00", played: true, home_goals: null, away_goals: null }],
@@ -28,6 +31,15 @@ try {
     });
     await page.goto(origin + "/tests/enrollment-register-preview.html#/admin/inscripciones/game-roles");
     await page.getByLabel("Torneo", { exact: true }).selectOption("1");
+    const grid = page.getByRole("region", { name: "Matriz de cruces por equipo" });
+    const matchCell = grid.getByRole("button", { name: /FRANCO CANADIENSE local, CACOMIXTLES DEL COLEGIO FRANCO visitante, jornada 1, Jugado/ });
+    await matchCell.waitFor({ state: "visible" });
+    assert.deepEqual(await grid.locator(".game-role-column-name").allTextContents(),
+      [teams[2].name, teams[3].name, teams[0].name, teams[1].name]);
+    await page.getByRole("button", { name: "Agregar equipo", exact: true }).click();
+    const teamPicker = page.getByRole("dialog", { name: "Agregar equipo" });
+    assert.deepEqual(await teamPicker.locator('option:not([value=""])').allTextContents(), [teams[4].name]);
+    await teamPicker.getByRole("button", { name: "Cancelar" }).click();
     for (const view of ["Matriz", "Historial"]) {
       await page.getByRole("button", { name: view, exact: true }).click();
       const history = page.getByRole("region", { name: "Historial de partidos" });

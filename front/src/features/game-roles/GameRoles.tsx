@@ -157,12 +157,17 @@ function TournamentMatrix({ token, tournamentId, tournamentName }: { token: stri
 
   const selected = matrix.rounds.find(round => round.id === selectedId) ?? matrix.rounds[0];
   const teamsById = new Map(matrix.teams.map(team => [team.id, team]));
-  const matrixTeams = (matrix.matrix_team_ids ?? []).flatMap(id => {
+  // Keep the chosen order, then show the teams needed by existing matches.
+  const matrixTeamIds = new Set(matrix.matrix_team_ids ?? []);
+  for (const cross of matrix.crosses) {
+    matrixTeamIds.add(cross.home_team_id);
+    matrixTeamIds.add(cross.away_team_id);
+  }
+  const matrixTeams = Array.from(matrixTeamIds).flatMap(id => {
     const team = teamsById.get(id);
     return team ? [team] : [];
   });
-  const selectedTeams = new Set(matrixTeams.map(team => team.id));
-  const availableTeams = matrix.teams.filter(team => team.is_active && !selectedTeams.has(team.id));
+  const availableTeams = matrix.teams.filter(team => team.is_active && !matrixTeamIds.has(team.id));
   const assignableTeams = matrixTeams.filter(team => team.is_active);
   const nextScheduledDay = selected && matrix.crosses
     .flatMap(cross => cross.round_id === selected.id && cross.scheduled_on ? [cross.scheduled_on] : [])
