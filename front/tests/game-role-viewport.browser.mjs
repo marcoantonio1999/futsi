@@ -45,6 +45,9 @@ try {
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/public/game-roles/enlace-de-prueba/")) return route.fulfill({ json: {
+        tournament: "Nocturno", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
+      } });
       if (pathname.endsWith("/game-roles/3/")) {
         if (route.request().method() === "PATCH") smallMatrix.matrix_team_ids.push(route.request().postDataJSON().add_team_id);
         return route.fulfill({ json: smallMatrix });
@@ -58,7 +61,9 @@ try {
             away_team__name: teams.find(team => team.id === cross.away_team_id).name,
           }));
         return route.fulfill({ json: { tournament: "UEFA", site: "Colegio Franco", number: round.number,
-          starts_on: round.starts_on, matches, token: "enlace-de-prueba" } });
+          starts_on: round.starts_on, matches, token: "enlace-de-prueba",
+          results_round: 1, results: [{ home_team__name: teams[0].name, away_team__name: teams[1].name, home_goals: 3, away_goals: 1 }],
+          standings: matrix.standings.slice(0, 6), scoring: [{ team: teams[0].name, goals: 3 }] } });
       }
       if (pathname.endsWith("/game-roles/2/")) return route.fulfill({ json: {
         ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [],
@@ -208,6 +213,13 @@ try {
     const shareDialog = page.getByRole("dialog", {name:"Compartir rol de juego"});
     const whatsapp = shareDialog.getByRole("link", {name:"Compartir por WhatsApp"});
     await whatsapp.waitFor();
+    for (const title of ["Sistema de Competencia", "LIGUILLA", "Resultados · Jornada 1", "Próximos Partidos", "DESCANSO", "Tabla de Posiciones", "Tabla de Goleo"]) {
+      assert(await shareDialog.getByRole("heading", {name:title, exact:true}).isVisible());
+    }
+    assert(await shareDialog.getByRole("img", {name:"BPower"}).isVisible());
+    assert(await shareDialog.getByText(/Jornada 15 del torneo/).isVisible());
+    assert(await shareDialog.getByText("3–1", {exact:true}).isVisible());
+    assert(await shareDialog.locator(".game-role-sheet").evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     const message = new URL(await whatsapp.getAttribute("href")).searchParams.get("text");
     assert.match(message, /Jornada 2/);
     assert.match(message, /15:00–15:50/);
@@ -270,6 +282,14 @@ try {
       assert(Math.abs(side.width / workspace.width - 0.4) < 0.01);
     }
     assert.equal(await page.evaluate(() => window.scrollY), 0);
+    if (width === 390) {
+      await page.goto(origin + "/#/rol-de-juego/enlace-de-prueba", {waitUntil:"domcontentloaded", timeout:15000});
+      await page.getByRole("heading", {name:"Próximos Partidos", exact:true}).waitFor();
+      assert(await page.getByText("Todavía no hay próximos partidos para esta jornada.").isVisible());
+      assert(await page.getByText(/Jornada 9 del torneo/).isVisible());
+      assert(await page.getByRole("heading", {name:"Tabla de Posiciones", exact:true}).isVisible());
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
     console.log(`Roles sin desplazamiento a ${width} × ${height}`);
     await page.close();
   }

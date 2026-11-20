@@ -1,0 +1,193 @@
+import bpowerLogo from "../enrollments/assets/bpower-roster-watermark.png";
+import type { StandingRow } from "../../types";
+
+export type Match = {
+  scheduled_on: string | null; starts_at: string | null; ends_at: string | null; played: boolean;
+  home_team__name: string; away_team__name: string; home_goals?: number | null; away_goals?: number | null;
+};
+export type Schedule = {
+  tournament: string; site: string; number: number; starts_on: string; matches: Match[];
+  results_round?: number | null; results?: Match[];
+  standings?: StandingRow[]; scoring?: { team: string; goals: number }[];
+};
+
+type Row = (string | number)[];
+type Block = {
+  title: string;
+  columns?: string[];
+  widths?: number[];
+  rows: Row[];
+  empty?: string;
+  qualified?: number;
+};
+
+const dayLabel = new Intl.DateTimeFormat("es-MX", {
+  weekday: "long", day: "numeric", month: "short", timeZone: "UTC",
+});
+export const dayName = (day: string) => dayLabel.format(new Date(day + "T00:00:00Z"));
+export const timeRange = (match: Match) => [match.starts_at, match.ends_at].filter(Boolean).map(time => time!.slice(0, 5)).join("–");
+
+function reportColumns(schedule: Schedule): [Block[], Block[]] {
+  const name = schedule.tournament.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  const league = /^(premier|nocturno|espanola|uefa|eurocopa)(?:\s|$)/.exec(name)?.[1];
+  const franco = schedule.site.trim().toLowerCase() === "colegio franco" && Boolean(league);
+  const euro = league === "eurocopa";
+  const competition = franco ? [
+    ["Clasificación por tabla de posiciones general."],
+    [`Torneo regular a ${euro || league === "uefa" ? 18 : 12} jornadas. Califican del 1ero al 8to.`],
+    ...(euro ? [] : [[`Fecha límite para registrar: Jornada ${league === "uefa" ? 15 : 9} del torneo.`]]),
+    ["Equipos con adeudos quedan automáticamente descalificados."],
+  ] : [];
+  const standings = schedule.standings ?? [];
+  return [
+    [
+      { title: "Sistema de Competencia", rows: competition, empty: "Reglas por confirmar." },
+      { title: "LIGUILLA", columns: ["Fase", "Cruce", "Cruce"], widths: [1, 2, 2],
+        rows: franco ? [
+          euro ? ["4tos F", "1ero y 2do", "Directo a Semifinal"] : ["4tos F", "1ero vs 8avo", "3ro vs 6to"],
+          ["", euro ? "3ro vs 6to" : "2do vs 7mo", "4to vs 5to"],
+          ["SF", "1ero vs 4to", "2do vs 3ro"], ["Final", "1ro vs 2do", ""],
+        ] : [], empty: "Formato por confirmar." },
+      { title: schedule.results_round ? `Resultados · Jornada ${schedule.results_round}` : "Resultados",
+        columns: ["Local", "Marcador", "Visitante"], widths: [2, 1, 2],
+        rows: (schedule.results ?? schedule.matches.filter(match => match.played)).map(match => [
+          match.home_team__name, match.home_goals == null || match.away_goals == null ? "—" : `${match.home_goals}–${match.away_goals}`, match.away_team__name,
+        ]), empty: "Todavía no hay resultados." },
+      { title: "Próximos Partidos", columns: ["Fecha", "Horario", "Local", "Visitante"], widths: [2, 1.5, 2, 2],
+        rows: schedule.matches.filter(match => !match.played && match.scheduled_on).map(match =>
+          [dayName(match.scheduled_on!), timeRange(match), match.home_team__name, match.away_team__name]),
+        empty: "Todavía no hay próximos partidos para esta jornada." },
+      { title: "DESCANSO", rows: [], empty: "—" },
+    ],
+    [
+      { title: "Tabla de Posiciones", columns: ["P", "Equipo", "JJ", "JG", "JP", "JE", "GF", "GC", "DG", "PTS"],
+        widths: [1, 5, 1, 1, 1, 1, 1, 1, 1, 1.2],
+        rows: standings.map(row => [row.position, row.team_name, row.played, row.won, row.lost, row.drawn,
+          row.goals_for, row.goals_against, row.goal_difference, row.points]),
+        qualified: franco && standings.some(row => row.played > 0) ? 8 : 0, empty: "Aún no hay equipos." },
+      { title: "Tabla de Goleo", columns: ["P", "Equipo", "GF"], widths: [1, 5, 1],
+        rows: (schedule.scoring ?? []).slice(0, 5).map((row, i) => [i + 1, row.team, row.goals]),
+        empty: "Todavía no hay marcadores registrados." },
+    ],
+  ];
+}
+
+function ReportBlock({ block }: { block: Block }) {
+  return <section className="game-role-report-block">
+    <h2>{block.title}</h2>
+    {block.qualified ? <p className="game-role-report-zone">Zona de Clasificación</p> : null}
+    {block.columns ? <table>
+      <thead><tr>{block.columns.map((column, i) => <th scope="col" key={i}>{column}</th>)}</tr></thead>
+      <tbody>{block.rows.length ? block.rows.map((row, i) => <tr key={i} data-qualified={i < (block.qualified ?? 0)}>
+        {row.map((cell, j) => <td key={j}>{cell}</td>)}
+      </tr>) : <tr><td colSpan={block.columns.length}>{block.empty}</td></tr>}</tbody>
+    </table> : block.rows.length ? block.rows.map(([line]) => <p key={line}>{line}</p>) : <p>{block.empty}</p>}
+  </section>;
+}
+
+const social = "www.facebook.com/supergol.bosques";
+
+export function ScheduleSheet({ schedule }: { schedule: Schedule }) {
+  return <article className="game-role-sheet">
+    <header>
+      <img src={bpowerLogo} alt="BPower" />
+      <div><h1>{schedule.tournament}</h1><p>Jornada {schedule.number} · {schedule.site}</p></div>
+    </header>
+    <div className="game-role-report-grid">
+      {reportColumns(schedule).map((blocks, i) => <div key={i}>
+        {blocks.map(block => <ReportBlock key={block.title} block={block} />)}
+      </div>)}
+    </div>
+    {schedule.site.trim().toLowerCase() === "colegio franco" && <footer className="game-role-report-social">
+      Síguenos en Facebook <a href={`https://${social}`} target="_blank" rel="noreferrer">{social}</a>
+    </footer>}
+  </article>;
+}
+
+export async function renderScheduleImage(schedule: Schedule) {
+  const logo = new Image();
+  logo.src = bpowerLogo;
+  await logo.decode();
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo crear la imagen.");
+  const width = 1240, padding = 30, gap = 20;
+  const columnWidth = (width - 2 * padding - gap) / 2;
+  const columns = reportColumns(schedule);
+  const font = "21px system-ui, sans-serif";
+  ctx.font = font;
+  function wrap(text: string, max: number) {
+    const lines: string[] = [];
+    let line = "";
+    for (const word of text.split(/\s+/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && ctx!.measureText(next).width > max) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    return [...lines, line];
+  }
+  const prepared = columns.map(blocks => blocks.map(block => {
+    const units = block.widths ?? [1];
+    const sizes = units.map(unit => columnWidth * unit / units.reduce((a, b) => a + b));
+    const rows = [
+      ...(block.qualified ? [{ values: ["Zona de Clasificación"], sizes: [columnWidth], fill: "#dfeee7" }] : []),
+      ...(block.columns ? [{ values: block.columns, sizes, fill: "#dfeee7" }] : []),
+      ...block.rows.map((values, index) => ({ values, sizes, fill: index < (block.qualified ?? 0) ? "#fbefc8" : index % 2 ? "#f3f7f5" : "#ffffff" })),
+      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [columnWidth], fill: "#ffffff" }] : []),
+    ].map(row => {
+      const cells = row.values.map((value, i) => wrap(String(value), row.sizes[i] - 12));
+      return { ...row, cells, height: Math.max(...cells.map(cell => cell.length)) * 27 + 12 };
+    });
+    return { block, rows, height: 44 + rows.reduce((sum, row) => sum + row.height, 0) };
+  }));
+  const bodyHeight = Math.max(...prepared.map(blocks => blocks.reduce((sum, block) => sum + block.height + gap, 0)));
+  const showSocial = schedule.site.trim().toLowerCase() === "colegio franco";
+  canvas.width = width;
+  canvas.height = 135 + bodyHeight + (showSocial ? 44 : 0);
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "#edf4ef";
+  ctx.fillRect(0, 0, width, canvas.height);
+  ctx.fillStyle = "#174734";
+  ctx.fillRect(0, 0, width, 114);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(padding, 14, 86, 86);
+  const logoHeight = 78 * logo.naturalHeight / logo.naturalWidth;
+  ctx.drawImage(logo, padding + 4, (114 - logoHeight) / 2, 78, logoHeight);
+  ctx.font = "700 37px system-ui, sans-serif";
+  ctx.fillText(schedule.tournament, 136, 17, width - 166);
+  ctx.font = font;
+  ctx.fillText(`Jornada ${schedule.number} · ${schedule.site}`, 136, 67, width - 166);
+  for (const [index, blocks] of prepared.entries()) {
+    const x = padding + index * (columnWidth + gap);
+    let y = 135;
+    for (const { block, rows } of blocks) {
+      ctx.fillStyle = "#246343";
+      ctx.fillRect(x, y, columnWidth, 44);
+      ctx.font = "700 23px system-ui, sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.fillText(block.title, x + 10, y + 8, columnWidth - 20);
+      y += 44;
+      ctx.font = font;
+      for (const row of rows) {
+        ctx.fillStyle = row.fill;
+        ctx.fillRect(x, y, columnWidth, row.height);
+        ctx.fillStyle = "#173629";
+        let cellX = x;
+        row.cells.forEach((cell, i) => {
+          cell.forEach((line, j) => ctx.fillText(line, cellX + 6, y + 6 + 27 * j, row.sizes[i] - 12));
+          cellX += row.sizes[i];
+        });
+        y += row.height;
+      }
+      y += gap;
+    }
+  }
+  if (showSocial) {
+    ctx.fillStyle = "#174734";
+    ctx.font = font;
+    ctx.fillText(`Síguenos en Facebook · ${social}`, padding, 135 + bodyHeight);
+  }
+  return canvas;
+}

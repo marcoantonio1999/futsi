@@ -109,29 +109,38 @@ ROLE_LINK_SIGNER = signing.Signer(salt=ROLE_LINK_SALT, sep=".")
 
 
 def round_schedule(round_row):
-    matches = tournament_crosses(round_row.tournament).filter(
-        round=round_row, scheduled_on__isnull=False,
-    ).order_by("scheduled_on", "starts_at", "pk").values(
-        "scheduled_on", "starts_at", "ends_at", "home_team__name", "away_team__name", "played",
+    tournament = round_row.tournament
+    crosses = tournament_crosses(tournament)
+    match_fields = (
+        "scheduled_on", "starts_at", "ends_at", "home_team__name", "away_team__name",
+        "played", "home_goals", "away_goals",
     )
+    matches = crosses.filter(round=round_row, scheduled_on__isnull=False).order_by("scheduled_on", "starts_at", "pk")
+    played = crosses.filter(played=True, round__number__lte=round_row.number)
+    results_round = played.order_by("-round__number").values_list("round__number", flat=True).first()
+    results = played.filter(round__number=results_round).order_by("scheduled_on", "starts_at", "pk")
+    team_ids = set(tournament.game_role_team_order or [])
+    for home_id, away_id in crosses.order_by().values_list("home_team_id", "away_team_id"):
+        team_ids.update((home_id, away_id))
+    scored = crosses.filter(played=True, home_goals__isnull=False, away_goals__isnull=False).order_by().values_list(
+        "home_team_id", "away_team_id", "home_goals", "away_goals",
+    )
+    teams = tournament.teams.filter(pk__in=team_ids).values_list("pk", "name", "tournament_id")
+    standings = build_standings(teams, scored)
     return {
-        "tournament": round_row.tournament.name,
-        "site": round_row.tournament.site.name,
+        "tournament": tournament.name,
+        "site": tournament.site.name,
         "number": round_row.number,
         "starts_on": round_row.starts_on,
-        "matches": list(matches),
+        "matches": list(matches.values(*match_fields[:-2])),
+        "results_round": results_round,
+        "results": list(results.values(*match_fields)),
+        "standings": standings,
+        "scoring": [
+            {"team": row["team_name"], "goals": row["goals_for"]}
+            for row in sorted(standings, key=lambda row: -row["goals_for"]) if row["played"]
+        ],
     }
-
-
-def public_scoring(tournament):
-    results = tournament_crosses(tournament).filter(
-        played=True, home_goals__isnull=False, away_goals__isnull=False,
-    ).order_by().values_list("home_team_id", "away_team_id", "home_goals", "away_goals")
-    standings = build_standings(tournament.teams.values_list("pk", "name", "tournament_id"), results)
-    return [
-        {"team": row["team_name"], "goals": row["goals_for"]}
-        for row in sorted(standings, key=lambda row: -row["goals_for"]) if row["played"]
-    ]
 
 
 class GameRoleShareView(GameRoleView):
@@ -152,7 +161,7 @@ class PublicGameRoleView(APIView):
         except (signing.BadSignature, ValueError):
             raise Http404 from None
         round_row = get_object_or_404(GameRoleRound.objects.select_related("tournament__site"), pk=round_id)
-        return Response({**round_schedule(round_row), "scoring": public_scoring(round_row.tournament)},
+        return Response(round_schedule(round_row),
                         headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 

@@ -127,6 +127,12 @@ class GameRoleMatrixTests(TestCase):
         updated = public.get(path).json()
         self.assertEqual(updated["matches"], [])
         self.assertEqual(updated["scoring"], [{"team": self.home.name, "goals": 3}, {"team": self.away.name, "goals": 1}])
+        second_report = self.client.get(self.url + f"rounds/{second['id']}/share/").json()
+        self.assertEqual(second_report["results_round"], 2)
+        self.assertEqual(second_report["results"][0]["home_goals"], 3)
+        self.assertEqual(second_report["results"][0]["away_goals"], 1)
+        self.assertEqual([row["team"] for row in second_report["standings"]], [self.home.pk, self.away.pk])
+
 
     def test_standings_rank_final_scores_by_points_difference_and_goals(self):
         round_id = self.add_round()["id"]
