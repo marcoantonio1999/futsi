@@ -545,8 +545,7 @@ function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: C
   const round = matrix.rounds.find(row => row.id === roundId);
   const hasSchedule = Boolean(day || start || end);
   const occupied = matrix.crosses.filter(cross => cross.scheduled_on && cross.scheduled_on === day
-    && (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id))
-    .sort((a, b) => timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at)));
+    && (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id));
   const availableSlots = roleSlots(schedule, day).filter(slot => !occupied.some(cross => overlaps(slot, cross)));
   const overlap = occupied.some(cross => overlaps({ day, start, end }, cross));
   function changeDay(nextDay: string) {
@@ -604,13 +603,9 @@ function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: C
         <Label>Hora de inicio<Input type="time" name="starts_at" value={start} required={hasSchedule} onChange={event => setStart(event.target.value)} /></Label>
         <Label>Hora de fin<Input type="time" name="ends_at" value={end} required={hasSchedule} onChange={event => setEnd(event.target.value)} /></Label>
       </div>}
-      {day && <div className="game-roles-availability">
-        <strong>Horarios ocupados en este torneo</strong>
-        {occupied.length ? <ul>{occupied.map(cross => <li key={`${cross.home_team_id}:${cross.away_team_id}`}>
-          {timeLabel(cross.starts_at)}–{timeLabel(cross.ends_at)} · {teams.get(cross.home_team_id)} vs. {teams.get(cross.away_team_id)}
-        </li>)}</ul> : <p>No hay horarios ocupados para esta fecha.</p>}
-        {start && end && <p role="status">{end <= start ? "La hora de fin debe ser posterior a la de inicio." : overlap ? "El rango elegido se cruza con otro partido." : "El rango elegido está disponible."}</p>}
-      </div>}
+      {day && start && end && (end <= start || overlap) && <p role="status">
+        {end <= start ? "La hora de fin debe ser posterior a la de inicio." : "El rango elegido se cruza con otro partido."}
+      </p>}
       {hasSchedule && <Button type="button" onClick={() => { setDay(""); setStart(""); setEnd(""); }}>Quitar horario</Button>}
       <Label className="game-roles-played-input"><Input type="checkbox" name="played" checked={played} onChange={event => setPlayed(event.target.checked)} /> Marcar como jugado</Label>
       {matrix.standings && <div hidden={!played}>

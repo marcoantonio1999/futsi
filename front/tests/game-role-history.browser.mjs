@@ -72,6 +72,8 @@ try {
     assert.equal(await editorSlot.inputValue(), "21:50–22:40");
     assert.equal(await editor.locator('input[type="time"]').count(), 0);
     await editorSlot.selectOption("22:40–23:30");
+    assert.equal(await editor.getByText("Horarios ocupados en este torneo").count(), 0);
+    assert.equal(await editor.getByText("El rango elegido está disponible.").count(), 0);
     assert.deepEqual(await editor.locator("form").evaluate(form => {
       const data = new FormData(form);
       return [data.get("scheduled_on"), data.get("starts_at"), data.get("ends_at")];
@@ -83,6 +85,9 @@ try {
     assert.equal(await editorSlot.count(), 0);
     assert(await editor.getByLabel("Hora de inicio").isVisible());
     assert(await editor.getByLabel("Hora de fin").isVisible());
+    await editor.getByLabel("Hora de inicio").fill("12:00");
+    await editor.getByLabel("Hora de fin").fill("11:00");
+    await editor.getByRole("status").filter({ hasText: "La hora de fin debe ser posterior a la de inicio." }).waitFor();
     await editor.getByRole("button", { name: "Cancelar" }).click();
     for (const view of width < 1024 ? ["Historial"] : ["Matriz", "Historial"]) {
       await page.getByRole("button", { name: view, exact: true }).click();
