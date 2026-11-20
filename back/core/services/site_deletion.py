@@ -244,7 +244,7 @@ def preview(site, actor):
         'items': [{'label': g['label'], 'count': len(g['rows'])} for g in data['groups']],
         'accounts': [{'username': u.username, 'role': u.get_role_display()} for g in data['groups'] if g['model'] == User for u in g['rows']],
         'retained_accounts': [{'username': u.username, 'role': u.get_role_display()} for u in data['retained']],
-        'preserved_debts': [{'student': c.student.full_name, 'guardian': c.student.guardian.full_name,
+        'preserved_debts': [{'student': c.student.full_name, 'guardian': c.student.guardian.full_name if c.student.guardian_id else '',
                              'balance': str(c._site_deletion_balance if hasattr(c, '_site_deletion_balance') else charge_balance(c))} for c in data['debts']],
         'active_guardians': len(data['active_users']),
         'preserved_payments': sum(isinstance(r, Payment) for r in data['preserved']),

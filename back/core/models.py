@@ -173,7 +173,7 @@ class StudentStatus(models.TextChoices):
 
 class Student(TimestampedModel):
     site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="students")
-    guardian = models.ForeignKey(Guardian, on_delete=models.PROTECT, related_name="students")
+    guardian = models.ForeignKey(Guardian, null=True, blank=True, on_delete=models.PROTECT, related_name="students")
     full_name = models.CharField(max_length=160)
     birth_date = models.DateField(null=True, blank=True)
     category = models.CharField(max_length=60, blank=True)

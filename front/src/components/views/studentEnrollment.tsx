@@ -22,6 +22,7 @@ export function StudentEnrollment({ data, onCreate, onCreateGuardian }: {
   onCreateGuardian: (payload: unknown) => Promise<Guardian>;
 }) {
   const [guardian, setGuardian] = useState<Guardian | null>(null);
+  const [skipGuardian, setSkipGuardian] = useState(false);
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [query, setQuery] = useState("");
   const [guardianForm, setGuardianForm] = useState(emptyGuardian);
@@ -40,7 +41,7 @@ export function StudentEnrollment({ data, onCreate, onCreateGuardian }: {
   const siblings = guardian ? data.students.filter(student => student.guardian === guardian.id) : [];
 
   function selectGuardian(person: Guardian) {
-    setGuardian(person); setError("");
+    setGuardian(person); setSkipGuardian(false); setError("");
     requestAnimationFrame(() => nameRef.current?.querySelector("input")?.focus());
   }
   async function createGuardian(event: FormEvent) {
@@ -55,10 +56,10 @@ export function StudentEnrollment({ data, onCreate, onCreateGuardian }: {
   }
   async function createStudent(event: FormEvent) {
     event.preventDefault();
-    if (!guardian || submitting.current) return;
+    if (submitting.current) return;
     submitting.current = true; setBusy(true); setError("");
     try {
-      const student = await onCreate(studentFormData({ ...form, guardian: String(guardian.id) }, photo));
+      const student = await onCreate(studentFormData({ ...form, guardian: guardian ? String(guardian.id) : "" }, photo));
       setSaved(student); setPhoto(null);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar al alumno. Revisa los datos e inténtalo de nuevo."); }
     finally { submitting.current = false; setBusy(false); }
@@ -66,22 +67,23 @@ export function StudentEnrollment({ data, onCreate, onCreateGuardian }: {
   function anotherStudent(sameGuardian: boolean) {
     setSaved(null); setError(""); setPhoto(null);
     setForm({ ...emptyStudent, site: form.site });
-    if (!sameGuardian) { setGuardian(null); setQuery(""); setMode("existing"); }
+    if (!sameGuardian) { setGuardian(null); setSkipGuardian(false); setQuery(""); setMode("existing"); }
     else requestAnimationFrame(() => nameRef.current?.querySelector("input")?.focus());
   }
   const change = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm(previous => ({ ...previous, [key]: event.target.value }));
 
   if (saved) return <section className="student-enrollment student-success" aria-live="polite">
     <CheckCircle2 size={42} /><h2>Alumno registrado</h2>
-    <p><strong>{saved.full_name}</strong> quedó asignado a <strong>{guardian?.full_name}</strong>, responsable de sus pagos.</p>
+    <p><strong>{saved.full_name}</strong> {guardian ? <>quedó asignado a <strong>{guardian.full_name}</strong>, responsable de sus pagos.</> : "quedó registrado sin tutor asignado."}</p>
     {saved.photo_url && <p className="student-hint">La foto se guardó correctamente.</p>}
-    <div className="student-actions"><button type="button" className="student-button primary" onClick={() => anotherStudent(true)}><Plus size={16} /> Agregar hermano o hermana</button><button type="button" className="student-button secondary" onClick={() => anotherStudent(false)}>Registrar con otro tutor</button></div>
+    <div className="student-actions"><button type="button" className="student-button primary" onClick={() => anotherStudent(true)}><Plus size={16} /> {guardian ? "Agregar hermano o hermana" : "Registrar otro alumno"}</button><button type="button" className="student-button secondary" onClick={() => anotherStudent(false)}>Registrar con otro tutor</button></div>
   </section>;
 
   return <div className="student-enrollment">
-    <header className="student-enrollment-header"><div><p className="student-eyebrow">Academia · Inscripción</p><h2>Nuevo alumno</h2></div><ol className="student-steps" aria-label="Pasos de inscripción"><li className={guardian ? "complete" : "active"} aria-current={!guardian ? "step" : undefined}><span>{guardian ? <Check size={14} /> : "1"}</span>Papá o tutor</li><li className={guardian ? "active" : ""} aria-current={guardian ? "step" : undefined}><span>2</span>Alumno</li></ol></header>
-    {!guardian ? <section className="student-section">
-      <div className="student-notice"><UsersRound size={23} /><div><h3>Primero debes crear un tutor o papá para asignarle un nuevo alumno.</h3><p>Será el responsable de los pagos. Si ya está registrado, selecciónalo: un mismo tutor puede tener varios niños.</p></div></div>
+    <header className="student-enrollment-header"><div><p className="student-eyebrow">Academia · Inscripción</p><h2>Nuevo alumno</h2></div><ol className="student-steps" aria-label="Pasos de inscripción"><li className={guardian || skipGuardian ? "complete" : "active"} aria-current={!guardian && !skipGuardian ? "step" : undefined}><span>{guardian || skipGuardian ? <Check size={14} /> : "1"}</span>Papá o tutor</li><li className={guardian || skipGuardian ? "active" : ""} aria-current={guardian || skipGuardian ? "step" : undefined}><span>2</span>Alumno</li></ol></header>
+    {!guardian && !skipGuardian ? <section className="student-section">
+      <div className="student-notice"><UsersRound size={23} /><div><h3>El papá o tutor es opcional para registrar al alumno.</h3><p>Puedes asignarlo ahora o completar sus datos después.</p></div></div>
+      <button type="button" className="student-button secondary mb-4" onClick={() => { setSkipGuardian(true); setError(""); }}>Continuar sin tutor</button>
       <div className="student-mode-switch"><button type="button" aria-pressed={mode === "existing"} className={mode === "existing" ? "active" : ""} onClick={() => { setMode("existing"); setError(""); }}><Search size={17} /> Buscar tutor existente</button><button type="button" aria-pressed={mode === "new"} className={mode === "new" ? "active" : ""} onClick={() => { setMode("new"); setError(""); }}><Plus size={17} /> Crear papá o tutor</button></div>
       {mode === "existing" ? <div className="student-guardian-search">
         <TextInput label="Buscar papá o tutor" type="search" placeholder="Nombre, teléfono o correo" value={query} onChange={event => setQuery(event.target.value)} />
@@ -100,15 +102,15 @@ export function StudentEnrollment({ data, onCreate, onCreateGuardian }: {
         </fieldset>
       </form>}
     </section> : <>
-      <div className="student-selected-guardian"><span className="student-person-icon"><CheckCircle2 size={23} /></span><div className="min-w-0 flex-1"><p className="student-eyebrow">Responsable de pago asignado</p><strong>{guardian.full_name}</strong><p>{guardian.phone}{siblings.length ? ` · ${siblings.length} ${siblings.length === 1 ? "alumno a su cargo" : "alumnos a su cargo"}` : ""}</p></div><button type="button" disabled={busy} className="student-button secondary" onClick={() => { setGuardian(null); setError(""); }}><ArrowLeft size={14} /> Cambiar tutor</button></div>
+      {guardian ? <div className="student-selected-guardian"><span className="student-person-icon"><CheckCircle2 size={23} /></span><div className="min-w-0 flex-1"><p className="student-eyebrow">Responsable de pago asignado</p><strong>{guardian.full_name}</strong><p>{guardian.phone}{siblings.length ? ` · ${siblings.length} ${siblings.length === 1 ? "alumno a su cargo" : "alumnos a su cargo"}` : ""}</p></div><button type="button" disabled={busy} className="student-button secondary" onClick={() => { setGuardian(null); setSkipGuardian(false); setError(""); }}><ArrowLeft size={14} /> Cambiar tutor</button></div> : <div className="student-selected-guardian"><p className="flex-1">Sin tutor asignado</p><button type="button" className="student-button secondary" onClick={() => setSkipGuardian(false)}>Asignar tutor</button></div>}
       <form onSubmit={createStudent}><fieldset disabled={busy} className="student-fields"><legend className="sr-only">Datos del alumno</legend>
         <section className="student-section"><div className="student-section-title"><h3>Datos del alumno</h3><p>Los campos con * son obligatorios.</p></div>
           <div className="student-details-layout"><div className="student-fields"><div ref={nameRef}><TextInput label="Nombre completo del niño o niña" required maxLength={160} autoComplete="off" value={form.full_name} onChange={change("full_name")} /></div><div className="student-grid"><TextInput label="Fecha de nacimiento" type="date" max={new Date().toLocaleDateString("en-CA")} value={form.birth_date} onChange={change("birth_date")} /><SelectInput label="Sede de la academia" required value={form.site} onChange={change("site")}><option value="">Selecciona una sede</option>{data.sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</SelectInput></div><div className="student-grid"><TextInput label="Categoría" placeholder="Ej. Sub-10" maxLength={60} value={form.category} onChange={change("category")} /><TextInput label="Grupo" placeholder="Ej. Lunes y miércoles · 16:00" maxLength={80} value={form.group_name} onChange={change("group_name")} /></div></div><StudentPhotoInput file={photo} onChange={setPhoto} disabled={busy} /></div>
         </section>
-        <section className="student-section"><div className="student-section-title"><h3><HeartPulse size={18} /> Salud y contacto de emergencia</h3><p>Completa lo que el equipo debe conocer para cuidar al alumno.</p></div><div className="student-grid"><TextInput label="Nombre del contacto de emergencia" maxLength={160} value={form.emergency_contact} onChange={change("emergency_contact")} /><TextInput label="Teléfono de emergencia" type="tel" maxLength={30} value={form.emergency_phone} onChange={change("emergency_phone")} /></div><button className="student-text-button" type="button" onClick={() => setForm({ ...form, emergency_contact: guardian.full_name, emergency_phone: guardian.phone })}>Usar los datos del papá o tutor</button><label className="student-textarea-label">Alergias, lesiones o cuidados especiales<textarea rows={2} placeholder="Si aplica, describe lo que debe saber el entrenador." value={form.medical_notes} onChange={change("medical_notes")} /></label></section>
+        <section className="student-section"><div className="student-section-title"><h3><HeartPulse size={18} /> Salud y contacto de emergencia</h3><p>Completa lo que el equipo debe conocer para cuidar al alumno.</p></div><div className="student-grid"><TextInput label="Nombre del contacto de emergencia" maxLength={160} value={form.emergency_contact} onChange={change("emergency_contact")} /><TextInput label="Teléfono de emergencia" type="tel" maxLength={30} value={form.emergency_phone} onChange={change("emergency_phone")} /></div>{guardian && <button className="student-text-button" type="button" onClick={() => setForm({ ...form, emergency_contact: guardian.full_name, emergency_phone: guardian.phone })}>Usar los datos del papá o tutor</button>}<label className="student-textarea-label">Alergias, lesiones o cuidados especiales<textarea rows={2} placeholder="Si aplica, describe lo que debe saber el entrenador." value={form.medical_notes} onChange={change("medical_notes")} /></label></section>
         <details className="student-section student-extra"><summary><div><h3>Inscripción y documentos</h3><p>{statusLabels[form.status as Student["status"]]} · Uniforme {form.uniform_status === "pending" ? "pendiente" : form.uniform_status === "paid" ? "pagado" : "entregado"}</p></div><ChevronDown size={18} /></summary><div className="student-fields"><div className="student-grid"><SelectInput label="Estado del alumno" value={form.status} onChange={change("status")}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput><SelectInput label="Uniforme" value={form.uniform_status} onChange={change("uniform_status")}><option value="pending">Pendiente</option><option value="paid">Pagado</option><option value="delivered">Entregado</option></SelectInput></div><TextInput label="Enlace a la responsiva (opcional)" type="url" placeholder="https://…" value={form.waiver_url} onChange={change("waiver_url")} />{form.status === "paused" && <><div className="student-grid"><TextInput label="Inicio de la pausa" type="date" value={form.pause_start} onChange={change("pause_start")} /><TextInput label="Fin de la pausa" type="date" min={form.pause_start || undefined} value={form.pause_end} onChange={change("pause_end")} /></div><TextInput label="Motivo de la pausa" maxLength={180} value={form.pause_reason} onChange={change("pause_reason")} /></>}</div></details>
         {error && <p role="alert" className="student-error">{error}</p>}
-        <div className="student-footer"><p>El alumno quedará vinculado a <strong>{guardian.full_name}</strong>.</p><button disabled={busy} className="student-button primary"><Check size={17} />{busy ? photo ? "Subiendo foto y guardando…" : "Guardando alumno…" : "Guardar alumno"}</button></div>
+        <div className="student-footer"><p>{guardian ? <>El alumno quedará vinculado a <strong>{guardian.full_name}</strong>.</> : "El alumno se registrará sin tutor asignado."}</p><button disabled={busy} className="student-button primary"><Check size={17} />{busy ? photo ? "Subiendo foto y guardando…" : "Guardando alumno…" : "Guardar alumno"}</button></div>
       </fieldset></form>
     </>}
   </div>;

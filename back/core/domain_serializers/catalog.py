@@ -79,10 +79,10 @@ class GuardianSerializer(serializers.ModelSerializer):
 
 class StudentSerializer(serializers.ModelSerializer):
     site = serializers.PrimaryKeyRelatedField(queryset=Site.objects.only("id", "name"))
-    guardian = serializers.PrimaryKeyRelatedField(queryset=Guardian.objects.only("id", "full_name", "phone"))
+    guardian = serializers.PrimaryKeyRelatedField(queryset=Guardian.objects.only("id", "full_name", "phone"), required=False, allow_null=True)
     site_name = serializers.CharField(source="site.name", read_only=True)
-    guardian_name = serializers.CharField(source="guardian.full_name", read_only=True)
-    guardian_phone = serializers.CharField(source="guardian.phone", read_only=True)
+    guardian_name = serializers.CharField(source="guardian.full_name", read_only=True, default="")
+    guardian_phone = serializers.CharField(source="guardian.phone", read_only=True, default="")
     open_charge_count = serializers.SerializerMethodField()
     balance_due = serializers.SerializerMethodField()
     active_discounts = serializers.SerializerMethodField()

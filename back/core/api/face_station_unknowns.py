@@ -161,17 +161,8 @@ def create_station_student(
     finally:
         crop_path.unlink(missing_ok=True)
 
-    guardian = Guardian.objects.create(
-        full_name=f"Datos de tutor pendientes - {full_name}"[:160],
-        phone="PENDIENTE",
-        notes=(
-            f"Registro provisional creado por {device.name} desde Face Station. "
-            "Completar los datos del tutor."
-        ),
-    )
     student = Student.objects.create(
         site=device.site,
-        guardian=guardian,
         full_name=full_name,
         group_name="",
         category="",

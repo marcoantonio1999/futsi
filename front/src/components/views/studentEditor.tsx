@@ -11,7 +11,7 @@ export function StudentEditor({ student, data, token, onBack, onUpdate }: {
   onUpdate: (studentId: number, payload: unknown) => Promise<boolean>;
 }) {
   const [form, setForm] = useState({
-    full_name: student.full_name, site: String(student.site), guardian: String(student.guardian),
+    full_name: student.full_name, site: String(student.site), guardian: student.guardian ? String(student.guardian) : "",
     birth_date: student.birth_date || "", category: student.category, group_name: student.group_name,
     status: student.status, waiver_url: student.waiver_url || "", medical_notes: student.medical_notes || "",
     emergency_contact: student.emergency_contact || "", emergency_phone: student.emergency_phone || "",
@@ -45,8 +45,9 @@ export function StudentEditor({ student, data, token, onBack, onUpdate }: {
         <div className="student-grid"><TextInput label="Categoría" maxLength={60} value={form.category} onChange={change("category")} /><TextInput label="Grupo" maxLength={80} value={form.group_name} onChange={change("group_name")} /></div>
         <div className="student-grid"><SelectInput label="Estado del alumno" value={form.status} onChange={change("status")}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectInput><SelectInput label="Uniforme" value={form.uniform_status} onChange={change("uniform_status")}><option value="pending">Pendiente</option><option value="paid">Pagado</option><option value="delivered">Entregado</option></SelectInput></div>
       </div><StudentPhotoInput file={photo} onChange={setPhoto} disabled={busy} current={<StudentAvatar student={student} token={token} />} /></div></section>
-      <section className="student-section"><div className="student-section-title"><h3>Papá o tutor responsable de pago</h3><p>Un tutor puede tener varios alumnos a su cargo.</p></div><SelectInput label="Tutor asignado" required value={form.guardian} onChange={change("guardian")}>
-        {!data.guardians.some(guardian => guardian.id === student.guardian) && <option value={student.guardian}>{student.guardian_name || "Tutor actual"}</option>}
+      <section className="student-section"><div className="student-section-title"><h3>Papá o tutor responsable de pago</h3><p>Un tutor puede tener varios alumnos a su cargo.</p></div><SelectInput label="Tutor asignado (opcional)" value={form.guardian} onChange={change("guardian")}>
+        <option value="">Sin tutor asignado</option>
+        {student.guardian && !data.guardians.some(guardian => guardian.id === student.guardian) && <option value={student.guardian}>{student.guardian_name || "Tutor actual"}</option>}
         {data.guardians.map(guardian => <option key={guardian.id} value={guardian.id}>{guardian.full_name} · {guardian.phone}</option>)}
       </SelectInput></section>
       <section className="student-section"><div className="student-section-title"><h3><HeartPulse size={18} /> Salud y emergencias</h3></div><div className="student-grid"><TextInput label="Contacto de emergencia" maxLength={160} value={form.emergency_contact} onChange={change("emergency_contact")} /><TextInput label="Teléfono de emergencia" type="tel" maxLength={30} value={form.emergency_phone} onChange={change("emergency_phone")} /></div><label className="student-textarea-label mt-4">Alergias, lesiones o cuidados especiales<textarea rows={3} value={form.medical_notes} onChange={change("medical_notes")} /></label></section>

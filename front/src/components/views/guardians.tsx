@@ -24,7 +24,9 @@ export function GuardiansPanel(props: Props) {
   const [notice, setNotice] = useState("");
   const children = useMemo(() => {
     const result = new Map<number, AppData["students"]>();
-    data.students.forEach(student => result.set(student.guardian, [...(result.get(student.guardian) || []), student]));
+    data.students.forEach(student => {
+      if (student.guardian !== null) result.set(student.guardian, [...(result.get(student.guardian) || []), student]);
+    });
     return result;
   }, [data.students]);
   const filtered = useMemo(() => {
