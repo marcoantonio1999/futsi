@@ -13,6 +13,10 @@ const matrix = {
     { home_team_id: 1, away_team_id: 2, round_id: 1, scheduled_on: "2026-11-29", starts_at: "14:00", ends_at: "14:50", played: true },
     { home_team_id: 2, away_team_id: 3, round_id: 1, scheduled_on: "2026-11-29", starts_at: "14:50", ends_at: "15:40", played: false },
     { home_team_id: 3, away_team_id: 4, round_id: 2, scheduled_on: "2026-12-06", starts_at: "14:00", ends_at: "14:50", played: true },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      home_team_id: index + 5, away_team_id: index + 6, round_id: 1, scheduled_on: null,
+      starts_at: null, ends_at: null, played: false,
+    })),
   ],
   team_notes: [{ id: 1, kind: "permit", team_id: 1, round_id: 1, note: "Permiso de prueba" }],
 };
@@ -85,8 +89,19 @@ try {
     const history = page.getByRole("region", {name:"Historial de partidos"});
     await inside(page, history.getByRole("button", {name:"Capturar marcador"}));
     await history.getByLabel("Jornada del historial").selectOption("1");
-    await history.getByRole("button", {name:"Partidos: siguiente"}).click();
-    await inside(page, history.getByRole("button", {name:"Editar partido"}));
+    assert.equal(await history.getByRole("button", {name:/Partidos: (siguiente|anterior)/}).count(), 0);
+    const list = history.getByRole("list");
+    assert.equal(await list.getByRole("listitem").count(), 14);
+    await inside(page, list);
+    assert(await list.evaluate(node => node.scrollHeight > node.clientHeight));
+    const lastMatch = list.getByRole("button", {name:"Editar partido"}).last();
+    await lastMatch.click();
+    assert(await list.evaluate(node => node.scrollTop > 0));
+    await inside(page, lastMatch);
+    await page.getByRole("dialog", {name:"Jornada y horario del partido"}).getByRole("button", {name:"Cancelar"}).click();
+    await history.getByLabel("Jornada del historial").selectOption("2");
+    assert.equal(await list.getByRole("listitem").count(), 1);
+    assert.equal(await list.evaluate(node => node.scrollTop), 0);
     await page.getByRole("button", {name:"Permisos",exact:true}).click();
     const notes = page.getByRole("dialog", {name:"Permisos"});
     assert(await notes.getByText("Permiso de prueba").isVisible());
