@@ -1,3 +1,5 @@
+import { Trophy } from "lucide-react";
+
 type Node = {
   id: string;
   column: number;
@@ -9,6 +11,8 @@ type Node = {
 const height = 148;
 const cardWidth = 18;
 const cardHeight = 40;
+const trophyTop = 22;
+const trophySize = 36;
 const headings = ["Cuartos", "Semis", "Final", "Semis", "Cuartos"];
 const columnX = (column: number) => column * (100 - cardWidth) / 4;
 const pending: [string, string] = ["Por definir", "Por definir"];
@@ -44,6 +48,8 @@ export function GameRoleBracket({ hasByes }: { hasByes: boolean }) {
   return <div className="game-role-bracket" role="group" aria-label="Llaves de liguilla" style={{ height }}>
     {headings.map((heading, index) => <strong className="game-role-bracket-stage" key={index}
       style={{ left: `${columnX(index)}%`, width: `${cardWidth}%` }}>{heading}</strong>)}
+    <span className="game-role-bracket-trophy" role="img" aria-label="Trofeo de la final"
+      style={{ top: trophyTop, width: trophySize, height: trophySize }}><Trophy aria-hidden="true" /></span>
     {lines.map((line, index) => <span aria-hidden="true" className="game-role-bracket-line" key={index}
       style={{ top: line.top, left: `${line.left}%`, width: `max(1px, ${line.width}%)`, height: Math.max(1, line.height) }} />)}
     {nodes.map(node => <div className="game-role-bracket-match" role="group" aria-label={headings[node.column]} data-final={node.id === "final"} key={node.id}
@@ -56,6 +62,31 @@ export function GameRoleBracket({ hasByes }: { hasByes: boolean }) {
 const imageScale = 1.45;
 export const bracketImageHeight = Math.ceil(height * imageScale);
 
+const trophyOutline = new Path2D("M7 4h10v5a5 5 0 0 1-10 0V4Zm0 2H4v2a3 3 0 0 0 3 3m10-5h3v2a3 3 0 0 1-3 3m-5 3v5m-4 1h8");
+const trophyCup = new Path2D("M7 4h10v5a5 5 0 0 1-10 0V4Z");
+
+function drawTrophy(ctx: CanvasRenderingContext2D, center: number, top: number) {
+  const radius = trophySize * imageScale / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(center, top + radius, radius - 1, 0, 2 * Math.PI);
+  ctx.fillStyle = "#fff6dc";
+  ctx.fill();
+  ctx.strokeStyle = "#e9d29c";
+  ctx.stroke();
+  const iconSize = radius * 1.45;
+  ctx.translate(center - iconSize / 2, top + radius - iconSize / 2);
+  ctx.scale(iconSize / 24, iconSize / 24);
+  ctx.fillStyle = "#f4ca69";
+  ctx.fill(trophyCup);
+  ctx.strokeStyle = "#8c621b";
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.stroke(trophyOutline);
+  ctx.restore();
+}
+
 export function drawGameRoleBracket(ctx: CanvasRenderingContext2D, hasByes: boolean, x: number, y: number, width: number) {
   const { nodes, lines } = layout(hasByes);
   const matchWidth = width * cardWidth / 100;
@@ -64,6 +95,7 @@ export function drawGameRoleBracket(ctx: CanvasRenderingContext2D, hasByes: bool
   ctx.fillStyle = "#174734";
   ctx.font = "700 17px system-ui, sans-serif";
   headings.forEach((heading, index) => ctx.fillText(heading, x + width * columnX(index) / 100 + matchWidth / 2, y, matchWidth));
+  drawTrophy(ctx, x + width / 2, y + trophyTop * imageScale);
   ctx.fillStyle = "#8eac99";
   for (const line of lines) {
     ctx.fillRect(x + width * line.left / 100, y + line.top * imageScale,

@@ -232,6 +232,10 @@ try {
     assert(await shareDialog.getByText("3–1", {exact:true}).isVisible());
     const bracket = shareDialog.getByRole("group", {name:"Llaves de liguilla"});
     const finalMatch = bracket.getByRole("group", {name:"Final", exact:true});
+    const trophy = await bracket.getByRole("img", {name:"Trofeo de la final"}).boundingBox();
+    const finalBox = await finalMatch.boundingBox();
+    assert(trophy && finalBox && trophy.y + trophy.height < finalBox.y);
+    assert(Math.abs(trophy.x + trophy.width / 2 - finalBox.x - finalBox.width / 2) <= 1);
     assert.deepEqual(await finalMatch.getByText("Por definir", {exact:true}).allTextContents(), ["Por definir", "Por definir"]);
     assert.equal(await bracket.getByText("8.º lugar", {exact:true}).count(), 1);
     assert.equal(await bracket.locator(".game-role-bracket-match").count(), 7);

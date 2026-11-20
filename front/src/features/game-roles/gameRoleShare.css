@@ -78,6 +78,18 @@
   text-align: center;
   font-size: clamp(9px, 2.8cqw, 11px);
 }
+.game-role-bracket-trophy {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  border: 1px solid #e9d29c;
+  border-radius: 50%;
+  background: #fff6dc;
+  color: #8c621b;
+}
+.game-role-bracket-trophy svg { width: 23px; height: 23px; fill: #f4ca69; stroke-width: 1.5; }
 .game-role-bracket-line { position: absolute; background: #8eac99; }
 .game-role-bracket-match {
   position: absolute;
