@@ -330,6 +330,11 @@ try {
       const live = page.getByText("En vivo", {exact:true});
       assert(await live.isVisible());
       assert.equal(await live.evaluate(node => getComputedStyle(node).color), "rgb(180, 35, 24)");
+      const animation = () => live.evaluate(node => getComputedStyle(node, "::before").animationName);
+      await page.emulateMedia({media:"screen", reducedMotion:"no-preference"});
+      assert.equal(await animation(), "game-role-live-pulse");
+      await page.emulateMedia({media:"screen", reducedMotion:"reduce"});
+      assert.equal(await animation(), "none");
       await page.emulateMedia({media:"print"});
       assert.equal(await live.isVisible(), false);
       await page.emulateMedia({media:"screen"});

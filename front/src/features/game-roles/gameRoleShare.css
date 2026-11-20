@@ -54,6 +54,13 @@
   background: currentColor;
   border-radius: 50%;
 }
+@media screen and (prefers-reduced-motion: no-preference) {
+  .game-role-live::before { animation: game-role-live-pulse 1.6s ease-in-out infinite; }
+}
+@keyframes game-role-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .25; }
+}
 @media print {
   .game-role-live { display: none; }
 }
