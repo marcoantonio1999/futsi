@@ -91,6 +91,8 @@ try {
         table.getBoundingClientRect().right <= box.getBoundingClientRect().right + 1;
     }, undefined, {timeout:4000});
     await inside(page, grid.locator("table"));
+    const legend = page.getByRole("list", {name:"Leyenda de color"});
+    assert.deepEqual(await legend.getByRole("listitem").allTextContents(), ["J Color de la jornada"]);
     await inside(page, page.getByRole("button", {name:"Agregar equipo"}));
     const nextColumn = page.getByRole("button", { name: "Locales: siguiente" });
     if (await nextColumn.isVisible()) {
@@ -107,6 +109,7 @@ try {
       await page.getByRole("button", { name: "Visitantes: anterior" }).click();
     }
     const tournamentSelect = page.getByLabel("Torneo", {exact:true});
+    assert.equal(await tournamentSelect.evaluate(node => getComputedStyle(node).appearance), "auto");
     if (width < 1024) {
       assert((await grid.getByRole("button").first().boundingBox()).height >= 44);
       assert((await tournamentSelect.boundingBox()).height >= 44);
@@ -245,6 +248,17 @@ try {
           height: Math.abs(table.getBoundingClientRect().height - frame.clientHeight) };
       });
       assert.equal(await grid.getByRole("rowheader").count(), 6);
+      const scheduledStyles = () => grid.locator('button[data-assigned="true"][data-played="false"]')
+        .filter({ hasText: /14:50|15:00/ }).evaluateAll(cells => cells.map(cell => {
+          const style = getComputedStyle(cell);
+          return [style.borderTopWidth, style.borderTopColor, style.color, cell.dataset.highlighted];
+        }));
+      const blue = "rgb(18, 70, 160)";
+      const purple = "rgb(109, 41, 122)";
+      assert.deepEqual(await scheduledStyles(), [["2px", blue, blue, "true"], ["2px", purple, purple, "false"]]);
+      await page.locator(".game-role-hours select").first().selectOption("2");
+      assert.deepEqual(await scheduledStyles(), [["2px", blue, blue, "false"], ["2px", purple, purple, "true"]]);
+      await page.locator(".game-role-hours select").first().selectOption("1");
       const before = await firstCross.boundingBox();
       const beforeFill = await fill();
       assert(beforeFill.width <= 1 && beforeFill.height <= 1, JSON.stringify(beforeFill));

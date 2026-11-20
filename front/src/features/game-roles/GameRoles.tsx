@@ -288,10 +288,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
         <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
         <Button type="button" disabled={!matrix.matrix_team_ids || !availableTeams.length} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
       </div>
-      <ul className="game-roles-legend" aria-label="Estados del partido">
-        <li><b aria-hidden="true">×</b> Sin horario</li>
-        <li><b aria-hidden="true">09:00</b> Pendiente</li>
-        <li><b className="game-roles-played-key" aria-hidden="true">✓</b> Jugado</li>
+      <ul className="game-roles-legend" aria-label="Leyenda de color">
         <li><b className="game-roles-round-key" aria-hidden="true">J</b> Color de la jornada</li>
       </ul>
       {selected && <p className="game-roles-selection" role="status"><strong>Jornada {selected.number}</strong> · {crosses} {crosses === 1 ? "cruce" : "cruces"}</p>}
