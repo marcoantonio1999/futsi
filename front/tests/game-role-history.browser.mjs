@@ -56,7 +56,8 @@ try {
     assert.deepEqual(await slotTimes(), ["01:00–02:00", "21:50–22:40", "22:40–23:30"]);
     await date.selectOption("2026-11-23");
     assert.deepEqual(await slotTimes(), ["22:40–23:30"]);
-    assert.equal(await slots.locator(".game-role-slot-color").count(), 1);
+    assert.equal(await slots.locator(".game-role-slot-color").count(), 0);
+    assert(await slots.getByRole("button", { name: "22:40–23:30 Disponible" }).isVisible());
     await date.selectOption("2026-11-27");
     await page.getByText("Este día no tiene horarios preestablecidos.").waitFor();
     assert.equal(await slots.count(), 0);

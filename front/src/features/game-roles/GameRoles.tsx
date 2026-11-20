@@ -349,13 +349,11 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
           {!slots.length && <p>{schedule ? "Este día no tiene horarios preestablecidos." : "Este torneo no tiene horarios preestablecidos."}</p>}
           {!!availability.length && <ul className="game-role-slots" aria-label="Horarios de la fecha">{availability.slice(slotPage * slotsPerPage, (slotPage + 1) * slotsPerPage).map(({ slot, cross }) => {
             const home = cross && teamsById.get(cross.home_team_id), away = cross && teamsById.get(cross.away_team_id);
-            const color = slot.color ? { "--game-role-slot-color": slot.color } as CSSProperties : undefined;
-            return <li key={cross ? `${cross.home_team_id}:${cross.away_team_id}` : slot.start} style={color}><Button type="button" disabled={cross ? !home || !away : assignableTeams.length < 2}
+            return <li key={cross ? `${cross.home_team_id}:${cross.away_team_id}` : slot.start}><Button type="button" disabled={cross ? !home || !away : assignableTeams.length < 2}
               onClick={() => {
                 if (!cross) setSlotToAssign(slot);
                 else if (home && away) openCross(home, away, cross);
               }}>
-              {slot.color && <i className="game-role-slot-color" aria-hidden="true" />}
               <strong>{slot.start}–{slot.end}</strong>
               <span>{cross ? `${home?.name} vs. ${away?.name}` : "Disponible"}</span>
             </Button></li>;

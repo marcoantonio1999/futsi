@@ -119,13 +119,6 @@
   justify-content: flex-start;
   text-align: left;
 }
-.game-role-slot-color {
-  flex: 0 0 12px;
-  height: 12px;
-  border: 1px solid #5a625e;
-  border-radius: 3px;
-  background: var(--game-role-slot-color);
-}
 .game-role-slots strong { white-space: nowrap; }
 .game-role-slots span { min-width: 0; overflow-wrap: anywhere; }
 
@@ -322,7 +315,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .game-role-slot-color { flex-basis: 7px; height: 7px; }
   .game-roles-legend { margin: 4px 0; gap: 2px 8px; font-size: 11px; }
   .enrollment-page .game-roles-selection { margin: 2px 0; font-size: 12px; }
   .game-roles-grid-scroll {
