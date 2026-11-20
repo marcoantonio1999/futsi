@@ -586,20 +586,24 @@ function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: C
     </div>}
     {round && <>
       <ScheduleDateSelect round={round} schedule={schedule} value={day} onChange={changeDay} editor required={Boolean(start || end)} />
-      {!!availableSlots.length && <Label>Horario disponible<NativeSelect value={start && end ? `${start}–${end}` : ""} onChange={event => {
-        const [slotStart, slotEnd] = event.target.value.split("–");
-        if (slotStart && slotEnd) { setStart(slotStart); setEnd(slotEnd); }
-      }}>
-        <option value="">Selecciona un horario</option>
-        {availableSlots.map(slot =>
-          <option key={slot.start} value={`${slot.start}–${slot.end}`}>{slot.start}–{slot.end}</option>)}
-        {start && end && !availableSlots.some(slot => slot.start === start && slot.end === end)
-          && <option value={`${start}–${end}`}>{start}–{end}</option>}
-      </NativeSelect></Label>}
-      <div className="game-roles-hour-fields">
+      {availableSlots.length > 0 ? <>
+        <Label>Horario disponible<NativeSelect aria-label="Horario disponible" required value={start && end ? `${start}–${end}` : ""} onChange={event => {
+          const [slotStart, slotEnd] = event.target.value.split("–");
+          setStart(slotStart);
+          setEnd(slotEnd);
+        }}>
+          <option value="" disabled>Selecciona un horario</option>
+          {availableSlots.map(slot =>
+            <option key={slot.start} value={`${slot.start}–${slot.end}`}>{slot.start}–{slot.end}</option>)}
+          {start && end && !availableSlots.some(slot => slot.start === start && slot.end === end)
+            && <option value={`${start}–${end}`}>{start}–{end}</option>}
+        </NativeSelect></Label>
+        <input type="hidden" name="starts_at" value={start} />
+        <input type="hidden" name="ends_at" value={end} />
+      </> : <div className="game-roles-hour-fields">
         <Label>Hora de inicio<Input type="time" name="starts_at" value={start} required={hasSchedule} onChange={event => setStart(event.target.value)} /></Label>
         <Label>Hora de fin<Input type="time" name="ends_at" value={end} required={hasSchedule} onChange={event => setEnd(event.target.value)} /></Label>
-      </div>
+      </div>}
       {day && <div className="game-roles-availability">
         <strong>Horarios ocupados en este torneo</strong>
         {occupied.length ? <ul>{occupied.map(cross => <li key={`${cross.home_team_id}:${cross.away_team_id}`}>

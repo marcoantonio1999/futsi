@@ -68,12 +68,21 @@ try {
     await assign.getByLabel("Equipo visitante").selectOption("4");
     await assign.getByRole("button", { name: "Continuar" }).click();
     const editor = page.getByRole("dialog", { name: "Jornada y horario del partido" });
-    assert.equal(await editor.getByLabel("Hora de inicio").inputValue(), "21:50");
-    assert.equal(await editor.getByLabel("Hora de fin").inputValue(), "22:40");
+    const editorSlot = editor.getByLabel("Horario disponible", { exact: true });
+    assert.equal(await editorSlot.inputValue(), "21:50–22:40");
+    assert.equal(await editor.locator('input[type="time"]').count(), 0);
+    await editorSlot.selectOption("22:40–23:30");
+    assert.deepEqual(await editor.locator("form").evaluate(form => {
+      const data = new FormData(form);
+      return [data.get("scheduled_on"), data.get("starts_at"), data.get("ends_at")];
+    }), ["2026-11-26", "22:40", "23:30"]);
     const editorDate = editor.getByLabel("Fecha del partido");
     await editorDate.selectOption("2026-11-23");
-    assert.equal(await editor.getByLabel("Hora de inicio").inputValue(), "22:40");
-    assert.equal(await editor.getByLabel("Hora de fin").inputValue(), "23:30");
+    assert.equal(await editorSlot.inputValue(), "22:40–23:30");
+    await editorDate.selectOption("2026-11-27");
+    assert.equal(await editorSlot.count(), 0);
+    assert(await editor.getByLabel("Hora de inicio").isVisible());
+    assert(await editor.getByLabel("Hora de fin").isVisible());
     await editor.getByRole("button", { name: "Cancelar" }).click();
     for (const view of width < 1024 ? ["Historial"] : ["Matriz", "Historial"]) {
       await page.getByRole("button", { name: view, exact: true }).click();
