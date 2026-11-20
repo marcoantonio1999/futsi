@@ -146,12 +146,7 @@
 .game-role-slots strong { white-space: nowrap; }
 .game-role-slots span { min-width: 0; overflow-wrap: anywhere; }
 
-.game-roles-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0; margin: 12px 0; list-style: none; font-size: 13px; }
-.game-roles-legend li { display: flex; align-items: center; gap: 5px; }
-.game-roles-legend b { padding: 1px 4px; border-radius: 4px; }
-.game-roles-round-key { outline: 2px solid var(--game-roles-round-color); color: var(--game-roles-round-color); }
 
-.game-roles-selection strong { color: var(--game-roles-round-color); }
 .game-roles-grid-scroll {
   max-width: 100%;
   max-height: 66dvh;
@@ -335,8 +330,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .game-roles-legend { margin: 4px 0; gap: 2px 8px; font-size: 11px; }
-  .enrollment-page .game-roles-selection { margin: 2px 0; font-size: 12px; }
   .game-roles-grid-scroll {
     --role-grid-label: 128px;
     --role-grid-column: 42px;

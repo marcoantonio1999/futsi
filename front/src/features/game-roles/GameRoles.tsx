@@ -238,10 +238,6 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   };
   const roundById = new Map(matrix.rounds.map(round => [round.id, round]));
   const crossByTeams = new Map(matrix.crosses.map(cross => [`${cross.home_team_id}:${cross.away_team_id}`, cross]));
-  const counts = new Map<number, number>();
-  for (const cross of matrix.crosses) counts.set(cross.round_id, (counts.get(cross.round_id) ?? 0) + 1);
-  const crosses = selected ? counts.get(selected.id) ?? 0 : 0;
-
   async function save(method: string, data: object, roundNumber?: number) {
     const result = await apiRequest<Matrix>(path, token, { method, body: JSON.stringify(data) });
     setMatrix(result);
@@ -282,16 +278,12 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
         </div>
       : view === "next-role"
         ? <NextGameRole matrix={matrix} onShare={roundId => setShare({ roundId, upcomingOnly: true })} />
-        : <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
+        : <div className="game-roles-workspace">
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
         <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
         <Button type="button" disabled={!matrix.matrix_team_ids || !availableTeams.length} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
       </div>
-      <ul className="game-roles-legend" aria-label="Leyenda de color">
-        <li><b className="game-roles-round-key" aria-hidden="true">J</b> Color de la jornada</li>
-      </ul>
-      {selected && <p className="game-roles-selection" role="status"><strong>Jornada {selected.number}</strong> · {crosses} {crosses === 1 ? "cruce" : "cruces"}</p>}
       {!matrixTeams.length ? <p>Agrega los equipos del torneo uno por uno para armar la matriz.</p> :
         <>
         <div ref={gridViewport} className="game-roles-grid-scroll" role="region" aria-label="Matriz de cruces por equipo">

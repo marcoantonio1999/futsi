@@ -91,8 +91,9 @@ try {
         table.getBoundingClientRect().right <= box.getBoundingClientRect().right + 1;
     }, undefined, {timeout:4000});
     await inside(page, grid.locator("table"));
-    const legend = page.getByRole("list", {name:"Leyenda de color"});
-    assert.deepEqual(await legend.getByRole("listitem").allTextContents(), ["J Color de la jornada"]);
+    const matrixPanel = page.getByRole("region", {name:"Matriz de equipos"});
+    assert.equal(await matrixPanel.getByText("Color de la jornada").count(), 0);
+    assert.equal(await matrixPanel.getByText(/Jornada.*cruces?/).count(), 0);
     await inside(page, page.getByRole("button", {name:"Agregar equipo"}));
     const nextColumn = page.getByRole("button", { name: "Locales: siguiente" });
     if (await nextColumn.isVisible()) {
