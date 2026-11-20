@@ -45,6 +45,9 @@ try {
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/public/game-roles/enlace-eurocopa/")) return route.fulfill({ json: {
+        tournament: "Eurocopa", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
+      } });
       if (pathname.endsWith("/public/game-roles/enlace-de-prueba/")) return route.fulfill({ json: {
         tournament: "Nocturno", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
       } });
@@ -227,6 +230,12 @@ try {
     }));
     assert(await shareDialog.getByText(/Jornada 15 del torneo/).isVisible());
     assert(await shareDialog.getByText("3–1", {exact:true}).isVisible());
+    const bracket = shareDialog.getByRole("group", {name:"Llaves de liguilla"});
+    const finalMatch = bracket.getByRole("group", {name:"Final", exact:true});
+    assert.deepEqual(await finalMatch.getByText("Por definir", {exact:true}).allTextContents(), ["Por definir", "Por definir"]);
+    assert.equal(await bracket.getByText("8.º lugar", {exact:true}).count(), 1);
+    assert.equal(await bracket.locator(".game-role-bracket-match").count(), 7);
+    assert(await bracket.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     const reportStandings = shareDialog.locator('[data-standings="true"]');
     assert.equal(await reportStandings.locator('tr[data-cutoff="true"]').count(), 1);
     assert.equal(await reportStandings.locator("tbody td:last-child").first().evaluate(node => getComputedStyle(node).fontWeight), "800");
@@ -317,6 +326,11 @@ try {
       assert(await page.getByText(/Jornada 9 del torneo/).isVisible());
       assert(await page.getByRole("heading", {name:"Tabla de Posiciones", exact:true}).isVisible());
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.goto(origin + "/#/rol-de-juego/enlace-eurocopa", {waitUntil:"domcontentloaded", timeout:15000});
+      const euroBracket = page.getByRole("group", {name:"Llaves de liguilla"});
+      await euroBracket.getByText("Pase directo", {exact:true}).first().waitFor();
+      assert.equal(await euroBracket.getByText("Pase directo", {exact:true}).count(), 2);
+      assert.equal(await euroBracket.getByText("8.º lugar", {exact:true}).count(), 0);
     }
     console.log(`Roles sin desplazamiento a ${width} × ${height}`);
     await page.close();

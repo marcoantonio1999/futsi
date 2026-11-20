@@ -1,4 +1,5 @@
 import bpowerLogo from "../enrollments/assets/bpower-roster-watermark.png";
+import { GameRoleBracket, bracketImageHeight, drawGameRoleBracket } from "./GameRoleBracket";
 import type { StandingRow } from "../../types";
 
 export type Match = {
@@ -20,6 +21,7 @@ type Block = {
   empty?: string;
   qualified?: number;
   standings?: boolean;
+  bracket?: { hasByes: boolean };
 };
 
 const dayLabel = new Intl.DateTimeFormat("es-MX", {
@@ -43,12 +45,7 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
   return [
     [
       { title: "Sistema de Competencia", rows: competition, empty: "Reglas por confirmar." },
-      { title: "LIGUILLA", columns: ["Fase", "Cruce", "Cruce"], widths: [1, 2, 2],
-        rows: franco ? [
-          euro ? ["4tos F", "1ero y 2do", "Directo a Semifinal"] : ["4tos F", "1ero vs 8avo", "3ro vs 6to"],
-          ["", euro ? "3ro vs 6to" : "2do vs 7mo", "4to vs 5to"],
-          ["SF", "1ero vs 4to", "2do vs 3ro"], ["Final", "1ro vs 2do", ""],
-        ] : [], empty: "Formato por confirmar." },
+      { title: "LIGUILLA", rows: [], bracket: franco ? { hasByes: euro } : undefined, empty: "Formato por confirmar." },
       { title: schedule.results_round ? `Resultados · Jornada ${schedule.results_round}` : "Resultados",
         columns: ["Local", "Marcador", "Visitante"], widths: [2, 1, 2],
         rows: (schedule.results ?? schedule.matches.filter(match => match.played)).map(match => [
@@ -77,7 +74,7 @@ function ReportBlock({ block }: { block: Block }) {
   return <section className="game-role-report-block" data-standings={block.standings}>
     <h2>{block.title}</h2>
     {block.qualified ? <p className="game-role-report-zone">Zona de Clasificación</p> : null}
-    {block.columns ? <table>
+    {block.bracket ? <GameRoleBracket hasByes={block.bracket.hasByes} /> : block.columns ? <table>
       {block.widths && <colgroup>{block.widths.map((width, index, widths) =>
         <col key={index} style={{ width: `${width / widths.reduce((sum, value) => sum + value, 0) * 100}%` }} />)}
       </colgroup>}
@@ -135,6 +132,7 @@ export async function renderScheduleImage(schedule: Schedule) {
     return [...lines, line];
   }
   const prepared = columns.map(blocks => blocks.map(block => {
+    if (block.bracket) return { block, rows: [], height: 49 + inset + bracketImageHeight };
     const units = block.widths ?? [1];
     const sizes = units.map(unit => contentWidth * unit / units.reduce((a, b) => a + b));
     const rows = [
@@ -191,6 +189,10 @@ export async function renderScheduleImage(schedule: Schedule) {
       ctx.fillStyle = "#174734";
       ctx.fillText(block.title, x + inset, y + 12, contentWidth);
       y += 49;
+      if (block.bracket) {
+        drawGameRoleBracket(ctx, block.bracket.hasByes, x + inset, y, contentWidth);
+        y += bracketImageHeight;
+      }
       for (const row of rows) {
         if (row.fill) {
           ctx.fillStyle = row.fill;
