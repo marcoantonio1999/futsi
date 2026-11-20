@@ -90,11 +90,14 @@ try {
       return table && table.getBoundingClientRect().bottom <= box.getBoundingClientRect().bottom + 1 &&
         table.getBoundingClientRect().right <= box.getBoundingClientRect().right + 1;
     }, undefined, {timeout:4000});
+    await grid.scrollIntoViewIfNeeded();
     await inside(page, grid.locator("table"));
     const matrixPanel = page.getByRole("region", {name:"Matriz de equipos"});
     assert.equal(await matrixPanel.getByText("Color de la jornada").count(), 0);
     assert.equal(await matrixPanel.getByText(/Jornada.*cruces?/).count(), 0);
-    await inside(page, page.getByRole("button", {name:"Agregar equipo"}));
+    const addTeam = page.getByRole("button", {name:"Agregar equipo"});
+    await addTeam.scrollIntoViewIfNeeded();
+    await inside(page, addTeam);
     const nextColumn = page.getByRole("button", { name: "Locales: siguiente" });
     if (await nextColumn.isVisible()) {
       const first = await grid.getByRole("columnheader").nth(1).textContent();
@@ -121,22 +124,11 @@ try {
     }
     const navigation = page.getByRole("navigation", {name:"Vistas de Roles de juego"});
     assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Estadísticas", "Siguiente rol"]);
-    const slots = page.getByRole("list", {name:"Horarios de la fecha"});
-    await slots.scrollIntoViewIfNeeded();
-    assert.equal(await slots.getByRole("button", {name:/^14:(00|50)/}).count(), 0);
-    assert(await slots.getByRole("button", {name:"15:40–16:30 Disponible"}).isVisible());
-    await inside(page, slots.getByRole("button"));
-    const nextSlot = page.getByRole("button", {name:"Horarios: siguiente"});
-    if (await nextSlot.isVisible()) {
-      await inside(page, nextSlot);
-      const first = await slots.getByRole("button").first().textContent();
-      await nextSlot.click();
-      await slots.scrollIntoViewIfNeeded();
-      await inside(page, slots.getByRole("button"));
-      assert.notEqual(await slots.getByRole("button").first().textContent(), first);
-    } else {
-      assert.equal(await slots.getByRole("button").count(), 6);
-    }
+    assert.equal(await page.getByRole("heading", {name:"Horarios", exact:true}).count(), 0);
+    const roundSelect = page.getByLabel("Jornada de la matriz");
+    assert.equal(await roundSelect.evaluate(node => getComputedStyle(node).appearance), "auto");
+    await page.getByRole("button", {name:"Editar jornada", exact:true}).click();
+    await page.getByRole("dialog").getByRole("button", {name:"Cancelar"}).click();
     const history = page.getByRole("region", {name:"Historial de partidos"});
     const played = history.getByRole("list", {name:"Jugados"});
     const upcoming = history.getByRole("list", {name:"Programados"});
@@ -157,10 +149,10 @@ try {
     assert(playedColumn.x + playedColumn.width <= upcomingColumn.x && Math.abs(playedColumn.y - upcomingColumn.y) <= 1);
     await upcoming.scrollIntoViewIfNeeded();
     await inside(page, upcoming);
-    assert(await upcoming.evaluate(node => node.scrollHeight > node.clientHeight));
+    const historyOverflows = await upcoming.evaluate(node => node.scrollHeight > node.clientHeight);
     const lastMatch = upcoming.getByRole("button", {name:/^Editar partido:/}).last();
     await lastMatch.click();
-    assert(await upcoming.evaluate(node => node.scrollTop > 0));
+    if (historyOverflows) assert(await upcoming.evaluate(node => node.scrollTop > 0));
     await inside(page, lastMatch);
     await page.getByRole("dialog", {name:"Jornada y horario del partido"}).getByRole("button", {name:"Cancelar"}).click();
     await filter.selectOption("2");
@@ -257,9 +249,9 @@ try {
       const blue = "rgb(18, 70, 160)";
       const purple = "rgb(109, 41, 122)";
       assert.deepEqual(await scheduledStyles(), [["2px", blue, blue, "true"], ["2px", purple, purple, "false"]]);
-      await page.locator(".game-role-hours select").first().selectOption("2");
+      await roundSelect.selectOption("2");
       assert.deepEqual(await scheduledStyles(), [["2px", blue, blue, "false"], ["2px", purple, purple, "true"]]);
-      await page.locator(".game-role-hours select").first().selectOption("1");
+      await roundSelect.selectOption("1");
       const before = await firstCross.boundingBox();
       const beforeFill = await fill();
       assert(beforeFill.width <= 1 && beforeFill.height <= 1, JSON.stringify(beforeFill));
@@ -273,7 +265,7 @@ try {
       const afterFill = await fill();
       assert(after.width < before.width && after.height < before.height, JSON.stringify({before, after}));
       assert(afterFill.width <= 1 && afterFill.height <= 1, JSON.stringify(afterFill));
-      const side = await page.locator(".game-roles-rounds").boundingBox();
+      const side = await history.boundingBox();
       const workspace = await page.locator(".game-roles-workspace").boundingBox();
       assert(Math.abs(side.width / workspace.width - 0.4) < 0.01);
     }

@@ -97,9 +97,6 @@ function MatchDateSelect({ round, schedule, value, onChange, required }: {
   </Label>;
 }
 
-const slotPageSize = () => matchMedia("(max-width: 600px) and (max-height: 640px)").matches ? 2
-    : matchMedia("(min-height: 850px)").matches ? 8 : matchMedia("(max-height: 690px)").matches ? 4 : 6;
-
 function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { token: string; tournamentId: number; tournamentName: string; siteId: number }) {
   const schedule = roleSchedule(siteId, tournamentName);
   const path = `/player-enrollments/game-roles/${tournamentId}/`;
@@ -110,14 +107,10 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   const [view, setView] = useEnrollmentViewState<"matrix" | "statistics" | "next-role">("gameRoles.view", "matrix");
   const [rowPageIndex, setRowPage] = useState(0);
   const [columnPageIndex, setColumnPage] = useState(0);
-  const [slotPageIndex, setSlotPage] = useState(0);
-  const [slotsPerPage, setSlotsPerPage] = useState(slotPageSize);
   const [gridSize, setGridSize] = useState({ rows: 6, columns: 4 });
   const gridViewport = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [scheduleDay, setScheduleDay] = useState("");
   const [addingTeam, setAddingTeam] = useState(false);
-  const [slotToAssign, setSlotToAssign] = useState<Slot | null>(null);
   const [share, setShare] = useState<{ roundId: number; upcomingOnly?: boolean } | null>(null);
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [reminderMessage, setReminderMessage] = useState("");
@@ -172,12 +165,6 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   }, [path, token, reload]);
 
   useEffect(() => {
-    const resize = () => setSlotsPerPage(slotPageSize());
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
-
-  useEffect(() => {
     const element = gridViewport.current;
     if (!element) return;
     const resize = () => {
@@ -219,22 +206,15 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
   const visibleRows = matrixTeams.slice(rowPage * gridSize.rows, (rowPage + 1) * gridSize.rows);
   const visibleColumns = matrixTeams.slice(columnPage * gridSize.columns, (columnPage + 1) * gridSize.columns);
   const availableTeams = matrix.teams.filter(team => team.is_active && !matrixTeamIds.has(team.id));
-  const assignableTeams = matrixTeams.filter(team => team.is_active);
-  const week = selected ? Array.from({ length: 7 }, (_, index) => addDays(selected.starts_on, index)) : [];
-  const scheduledDays = new Set(matrix.crosses
-    .filter(cross => cross.round_id === selected?.id && cross.scheduled_on)
-    .map(cross => cross.scheduled_on));
-  const availableDays = week.map(day => ({
-    day,
-    slots: roleSlots(schedule, day).filter(slot => !matrix.crosses.some(cross => overlaps(slot, cross))),
-  })).filter(date => date.slots.length > 0);
-  const selectedDay = availableDays.find(date => date.day === scheduleDay)
-    ?? availableDays.find(date => scheduledDays.has(date.day)) ?? availableDays[0];
-  const availableSlots = selectedDay?.slots ?? [];
-  const slotPages = Math.max(1, Math.ceil(availableSlots.length / slotsPerPage));
-  const slotPage = Math.min(slotPageIndex, slotPages - 1);
   const openCross = (home: Team, away: Team, current?: Cross) => {
-    setEditor({ kind: "cross", home, away, current, slot: current ? undefined : availableSlots[0] });
+    let slot: Slot | undefined;
+    if (!current && selected) {
+      const week = Array.from({ length: 7 }, (_, index) => addDays(selected.starts_on, index));
+      const scheduledDays = new Set(matrix.crosses.filter(cross => cross.round_id === selected.id).map(cross => cross.scheduled_on));
+      const freeSlots = week.flatMap(day => roleSlots(schedule, day).filter(candidate => !matrix.crosses.some(cross => overlaps(candidate, cross))));
+      slot = freeSlots.find(candidate => scheduledDays.has(candidate.day)) ?? freeSlots[0];
+    }
+    setEditor({ kind: "cross", home, away, current, slot });
   };
   const roundById = new Map(matrix.rounds.map(round => [round.id, round]));
   const crossByTeams = new Map(matrix.crosses.map(cross => [`${cross.home_team_id}:${cross.away_team_id}`, cross]));
@@ -284,6 +264,16 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
         <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
         <Button type="button" disabled={!matrix.matrix_team_ids || !availableTeams.length} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
       </div>
+      <div className="game-role-matrix-controls">
+        {selected && <>
+          <NativeSelect aria-label="Jornada de la matriz" value={selected.id} onChange={event => setSelectedId(Number(event.target.value))}>
+            {matrix.rounds.map(round => <option key={round.id} value={round.id}>Jornada {round.number}</option>)}
+          </NativeSelect>
+          <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
+          <Button type="button" onClick={() => setShare({ roundId: selected.id })}>Compartir jornada</Button>
+        </>}
+        <Button type="button" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
+      </div>
       {!matrixTeams.length ? <p>Agrega los equipos del torneo uno por uno para armar la matriz.</p> :
         <>
         <div ref={gridViewport} className="game-roles-grid-scroll" role="region" aria-label="Matriz de cruces por equipo">
@@ -322,51 +312,10 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
       {matrix.team_notes && <GameRoleNotes notes={matrix.team_notes} teams={matrix.teams} rounds={matrix.rounds}
         selectedRound={selected} onSave={saveNote} />}
     </Card>
-    <aside className="game-roles-rounds">
-      <Card as="section" className="game-role-history game-role-hours">
-        <div className="game-role-panel-header">
-          <h2>Horarios</h2>
-          <Button type="button" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
-        </div>
-        {selected ? <>
-          <div className="game-roles-hour-fields">
-            <Label>Jornada<NativeSelect value={selected.id} onChange={event => { setSelectedId(Number(event.target.value)); setSlotPage(0); }}>
-              {matrix.rounds.map(round => <option key={round.id} value={round.id}>Jornada {round.number}</option>)}
-            </NativeSelect></Label>
-            {selectedDay && <Label>Fecha<NativeSelect aria-label="Fecha" value={selectedDay.day}
-              onChange={event => { setScheduleDay(event.target.value); setSlotPage(0); }}>
-              {availableDays.map(({ day }) => <option key={day} value={day}>{weekdayLabel.format(new Date(day + "T00:00:00Z"))}</option>)}
-            </NativeSelect></Label>}
-          </div>
-          <div className="game-role-panel-header">
-            <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
-            <Button type="button" className="primary" onClick={() => setShare({ roundId: selected.id })}>Generar rol de juego</Button>
-          </div>
-          {!selectedDay && <p>{schedule ? "No quedan horarios disponibles en esta jornada." : "Este torneo no tiene horarios preestablecidos."}</p>}
-          {availableSlots.length > 0 && <ul className="game-role-slots" aria-label="Horarios de la fecha">
-            {availableSlots.slice(slotPage * slotsPerPage, (slotPage + 1) * slotsPerPage).map(slot =>
-              <li key={slot.start}><Button type="button" disabled={assignableTeams.length < 2} onClick={() => setSlotToAssign(slot)}>
-                <strong>{slot.start}–{slot.end}</strong>
-                <span>Disponible</span>
-              </Button></li>)}
-          </ul>}
-          <RolePageButtons page={slotPage} count={slotPages} onChange={setSlotPage} label="Horarios" />
-        </> : <p>Agrega una jornada para consultar horarios.</p>}
-      </Card>
-      <div className="game-role-side-history"><GameRoleHistory matrix={matrix} onEdit={openCross} /></div>
-    </aside>
-
+    <GameRoleHistory matrix={matrix} onEdit={openCross} />
     </div>}
     {addingTeam && <TeamSelection teams={availableTeams} onClose={() => setAddingTeam(false)}
       onSubmit={team => save("PATCH", { add_team_id: team.id })} />}
-    {slotToAssign && <TeamSelection teams={assignableTeams} slot={slotToAssign}
-      onClose={() => setSlotToAssign(null)} onSubmit={async (home, away) => {
-        if (!away) return;
-        const current = crossByTeams.get(`${home.id}:${away.id}`);
-        if (current?.played) throw new Error("Ese cruce ya se jugó. Selecciona otro encuentro.");
-        setEditor({ kind: "cross", home, away, current, slot: slotToAssign });
-        setSlotToAssign(null);
-      }} />}
     {editor && <MatrixEditor editor={editor} matrix={matrix} schedule={schedule} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
     {share && <GameRoleShare path={`${path}rounds/${share.roundId}/share/`} token={token}
       reminderKey={`${tournamentId}/${share.roundId}`} upcomingOnly={share.upcomingOnly} onClose={() => setShare(null)} />}
@@ -473,8 +422,8 @@ function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Te
   </Card>;
 }
 
-function TeamSelection({ teams, slot, onClose, onSubmit }: {
-  teams: Team[]; slot?: Slot; onClose: () => void; onSubmit: (home: Team, away?: Team) => Promise<void>;
+function TeamSelection({ teams, onClose, onSubmit }: {
+  teams: Team[]; onClose: () => void; onSubmit: (team: Team) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [homeId, setHomeId] = useState("");
@@ -486,27 +435,21 @@ function TeamSelection({ teams, slot, onClose, onSubmit }: {
     <form onSubmit={async event => {
       event.preventDefault();
       if (busy) return;
-      const values = new FormData(event.currentTarget);
-      const home = teams.find(team => String(team.id) === homeId);
-      const away = teams.find(team => String(team.id) === values.get("away"));
-      if (!home || (slot && (!away || away.id === home.id))) return;
+      const team = teams.find(row => String(row.id) === homeId);
+      if (!team) return;
       setBusy(true); setError("");
-      try { await onSubmit(home, away); }
+      try { await onSubmit(team); }
       catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar."); }
       finally { setBusy(false); }
     }}>
-      <h2 id="game-role-team-title">{slot ? `Asignar partido · ${slot.start}–${slot.end}` : "Agregar equipo"}</h2>
-      <Label>{slot ? "Equipo local" : "Equipo disponible"}<NativeSelect required value={homeId} onChange={event => setHomeId(event.target.value)}>
+      <h2 id="game-role-team-title">Agregar equipo</h2>
+      <Label>Equipo disponible<NativeSelect required value={homeId} onChange={event => setHomeId(event.target.value)}>
         <option value="">Selecciona un equipo</option>
         {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
       </NativeSelect></Label>
-      {slot && <Label>Equipo visitante<NativeSelect required name="away">
-        <option value="">Selecciona un equipo</option>
-        {teams.filter(team => String(team.id) !== homeId).map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
-      </NativeSelect></Label>}
       {error && <p role="alert" className="error">{error}</p>}
       <footer><Button type="button" disabled={busy} onClick={onClose}>Cancelar</Button>
-        <Button type="submit" className="primary" disabled={busy}>{slot ? "Continuar" : "Agregar equipo"}</Button></footer>
+        <Button type="submit" className="primary" disabled={busy}>Agregar equipo</Button></footer>
     </form>
   </Dialog>;
 }
