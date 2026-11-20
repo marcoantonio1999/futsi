@@ -19,6 +19,7 @@ type Block = {
   rows: Row[];
   empty?: string;
   qualified?: number;
+  standings?: boolean;
 };
 
 const dayLabel = new Intl.DateTimeFormat("es-MX", {
@@ -60,7 +61,7 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
       { title: "DESCANSO", rows: [], empty: "—" },
     ],
     [
-      { title: "Tabla de Posiciones", columns: ["P", "Equipo", "JJ", "JG", "JP", "JE", "GF", "GC", "DG", "PTS"],
+      { title: "Tabla de Posiciones", standings: true, columns: ["P", "Equipo", "JJ", "JG", "JP", "JE", "GF", "GC", "DG", "PTS"],
         widths: [1, 5, 1, 1, 1, 1, 1, 1, 1, 1.2],
         rows: standings.map(row => [row.position, row.team_name, row.played, row.won, row.lost, row.drawn,
           row.goals_for, row.goals_against, row.goal_difference, row.points]),
@@ -73,7 +74,7 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
 }
 
 function ReportBlock({ block }: { block: Block }) {
-  return <section className="game-role-report-block">
+  return <section className="game-role-report-block" data-standings={block.standings}>
     <h2>{block.title}</h2>
     {block.qualified ? <p className="game-role-report-zone">Zona de Clasificación</p> : null}
     {block.columns ? <table>
@@ -81,7 +82,7 @@ function ReportBlock({ block }: { block: Block }) {
         <col key={index} style={{ width: `${width / widths.reduce((sum, value) => sum + value, 0) * 100}%` }} />)}
       </colgroup>}
       <thead><tr>{block.columns.map((column, i) => <th scope="col" key={i}>{column}</th>)}</tr></thead>
-      <tbody>{block.rows.length ? block.rows.map((row, i) => <tr key={i} data-qualified={i < (block.qualified ?? 0)}>
+      <tbody>{block.rows.length ? block.rows.map((row, i) => <tr key={i} data-cutoff={i + 1 === block.qualified && i + 1 < block.rows.length}>
         {row.map((cell, j) => <td key={j}>{cell}</td>)}
       </tr>) : <tr><td colSpan={block.columns.length}>{block.empty}</td></tr>}</tbody>
     </table> : block.rows.length ? block.rows.map(([line]) => <p key={line}>{line}</p>) : <p>{block.empty}</p>}
@@ -115,8 +116,9 @@ export async function renderScheduleImage(schedule: Schedule) {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("No se pudo crear la imagen.");
-  const width = 1240, padding = 30, gap = 20;
+  const width = 1240, padding = 34, gap = 24, inset = 12;
   const columnWidth = (width - 2 * padding - gap) / 2;
+  const contentWidth = columnWidth - 2 * inset;
   const columns = reportColumns(schedule);
   const font = "21px system-ui, sans-serif";
   ctx.font = font;
@@ -134,17 +136,21 @@ export async function renderScheduleImage(schedule: Schedule) {
   }
   const prepared = columns.map(blocks => blocks.map(block => {
     const units = block.widths ?? [1];
-    const sizes = units.map(unit => columnWidth * unit / units.reduce((a, b) => a + b));
+    const sizes = units.map(unit => contentWidth * unit / units.reduce((a, b) => a + b));
     const rows = [
-      ...(block.qualified ? [{ values: ["Zona de Clasificación"], sizes: [columnWidth], fill: "rgba(240, 244, 242, .78)" }] : []),
-      ...(block.columns ? [{ values: block.columns, sizes, fill: "rgba(240, 244, 242, .78)" }] : []),
-      ...block.rows.map((values, index) => ({ values, sizes, fill: index < (block.qualified ?? 0) ? "rgba(240, 239, 220, .44)" : null })),
-      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [columnWidth], fill: null }] : []),
+      ...(block.qualified ? [{ values: ["Zona de Clasificación"], sizes: [contentWidth], fill: null, heading: false, cutoff: false }] : []),
+      ...(block.columns ? [{ values: block.columns, sizes, fill: block.standings ? "#246343" : "#f0f4f2", heading: true, cutoff: false }] : []),
+      ...block.rows.map((values, index) => ({
+        values, sizes, heading: false,
+        fill: block.standings && index % 2 === 1 ? "rgba(236, 246, 240, .68)" : null,
+        cutoff: index + 1 === block.qualified && index + 1 < block.rows.length,
+      })),
+      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [contentWidth], fill: null, heading: false, cutoff: false }] : []),
     ].map(row => {
       const cells = row.values.map((value, i) => wrap(String(value), row.sizes[i] - 12));
       return { ...row, cells, height: Math.max(...cells.map(cell => cell.length)) * 27 + 12 };
     });
-    return { block, rows, height: 44 + rows.reduce((sum, row) => sum + row.height, 0) };
+    return { block, rows, height: 49 + inset + rows.reduce((sum, row) => sum + row.height, 0) };
   }));
   const bodyHeight = Math.max(...prepared.map(blocks => blocks.reduce((sum, block) => sum + block.height + gap, 0)));
   const showSocial = schedule.site.trim().toLowerCase() === "colegio franco";
@@ -158,7 +164,7 @@ export async function renderScheduleImage(schedule: Schedule) {
   const watermarkHeight = watermarkWidth * logoRatio;
   ctx.save();
   ctx.globalCompositeOperation = "multiply";
-  ctx.globalAlpha = 0.10;
+  ctx.globalAlpha = 0.045;
   ctx.drawImage(logo, (width - watermarkWidth) / 2, (canvas.height - watermarkHeight) / 2, watermarkWidth, watermarkHeight);
   ctx.globalAlpha = 1;
   ctx.drawImage(logo, padding - 8, (114 - 122 * logoRatio) / 2, 122, 122 * logoRatio);
@@ -174,28 +180,40 @@ export async function renderScheduleImage(schedule: Schedule) {
   for (const [index, blocks] of prepared.entries()) {
     const x = padding + index * (columnWidth + gap);
     let y = 135;
-    for (const { block, rows } of blocks) {
+    for (const { block, rows, height } of blocks) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, columnWidth, height, 10);
+      ctx.fillStyle = "rgba(255, 255, 255, .35)";
+      ctx.fill();
+      ctx.strokeStyle = block.standings ? "#a5bdae" : "#dce5df";
+      ctx.stroke();
       ctx.font = "700 23px system-ui, sans-serif";
       ctx.fillStyle = "#174734";
-      ctx.fillText(block.title, x + 10, y + 8, columnWidth - 20);
-      y += 44;
-      ctx.font = font;
+      ctx.fillText(block.title, x + inset, y + 12, contentWidth);
+      y += 49;
       for (const row of rows) {
         if (row.fill) {
           ctx.fillStyle = row.fill;
-          ctx.fillRect(x, y, columnWidth, row.height);
+          ctx.fillRect(x + inset, y, contentWidth, row.height);
         }
-        ctx.fillStyle = "#173629";
-        let cellX = x;
+        let cellX = x + inset;
         row.cells.forEach((cell, i) => {
+          const ranking = block.standings && !row.heading && row.cells.length > 1;
+          const points = ranking && i === row.cells.length - 1;
+          if (points) {
+            ctx.fillStyle = "rgba(210, 234, 217, .65)";
+            ctx.fillRect(cellX, y, row.sizes[i], row.height);
+          }
+          ctx.font = points || (ranking && i < 2) ? `700 ${font}` : font;
+          ctx.fillStyle = block.standings && row.heading ? "#fff" : "#173629";
           cell.forEach((line, j) => ctx.fillText(line, cellX + 6, y + 6 + 27 * j, row.sizes[i] - 12));
           cellX += row.sizes[i];
         });
         y += row.height;
-        ctx.fillStyle = "#dce5df";
-        ctx.fillRect(x, y - 1, columnWidth, 1);
+        ctx.fillStyle = row.cutoff ? "#ae892e" : "#dce5df";
+        ctx.fillRect(x + inset, y - 1, contentWidth, row.cutoff ? 2 : 1);
       }
-      y += gap;
+      y += inset + gap;
     }
   }
   if (showSocial) {

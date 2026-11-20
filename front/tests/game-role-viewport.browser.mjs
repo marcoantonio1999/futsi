@@ -63,7 +63,7 @@ try {
         return route.fulfill({ json: { tournament: "UEFA", site: "Colegio Franco", number: round.number,
           starts_on: round.starts_on, matches, token: "enlace-de-prueba",
           results_round: 1, results: [{ home_team__name: teams[0].name, away_team__name: teams[1].name, home_goals: 3, away_goals: 1 }],
-          standings: matrix.standings.slice(0, 6), scoring: [{ team: teams[0].name, goals: 3 }] } });
+          standings: matrix.standings.slice(0, 10), scoring: [{ team: teams[0].name, goals: 3 }] } });
       }
       if (pathname.endsWith("/game-roles/2/")) return route.fulfill({ json: {
         ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [],
@@ -222,11 +222,14 @@ try {
     const watermark = shareDialog.locator(".game-role-report-watermark");
     assert(await watermark.evaluate(node => {
       const style = getComputedStyle(node);
-      return style.backgroundImage !== "none" && Number(style.opacity) > 0 && Number(style.opacity) <= 0.15
+      return style.backgroundImage !== "none" && Number(style.opacity) > 0 && Number(style.opacity) <= 0.06
         && Math.abs(node.clientHeight - node.parentElement.clientHeight) <= 1;
     }));
     assert(await shareDialog.getByText(/Jornada 15 del torneo/).isVisible());
     assert(await shareDialog.getByText("3–1", {exact:true}).isVisible());
+    const reportStandings = shareDialog.locator('[data-standings="true"]');
+    assert.equal(await reportStandings.locator('tr[data-cutoff="true"]').count(), 1);
+    assert.equal(await reportStandings.locator("tbody td:last-child").first().evaluate(node => getComputedStyle(node).fontWeight), "800");
     assert(await shareDialog.locator(".game-role-sheet").evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     const preview = shareDialog.locator(".game-role-share-body");
     const layout = await preview.evaluate(node => {
