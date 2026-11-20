@@ -180,6 +180,8 @@ try {
     await scorers.scrollIntoViewIfNeeded();
     await inside(page, scorers);
     await navigation.getByRole("button", {name:"Siguiente rol"}).click();
+    assert.equal(await navigation.getByRole("button", {name:"Siguiente rol", pressed:true}).count(), 1);
+    assert.equal(await navigation.getByRole("button", {name:"Estadísticas", pressed:false}).count(), 1);
     const next = page.getByRole("region", {name:"Próximos partidos"});
     const nextRound = next.getByLabel("Jornada del rol");
     assert.equal(await nextRound.inputValue(), "1");

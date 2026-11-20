@@ -9,10 +9,27 @@
   gap: 8px;
   margin-block: 0 16px;
 }
-.enrollment-page .game-role-views button[aria-pressed="true"] {
-  background: #e7f1ed !important;
-  border-color: #26634d !important;
+.game-role-view-options {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
+.game-role-view-options::after {
+  content: "";
+  order: 1;
+  align-self: stretch;
+  margin-block: 3px;
+  border-inline-start: 1px solid #b8c9be;
+}
+.game-role-view-options button:last-child { order: 2; }
+.enrollment-page .game-role-views .game-role-back { margin-inline-end: 8px; }
+.enrollment-page .game-role-view-options button[aria-pressed="true"] {
+  background: #246343 !important;
+  border-color: #246343 !important;
+  color: #fff !important;
+}
+.enrollment-page .game-role-view-options button > svg,
+.enrollment-page .game-role-back > svg { width: 15px; height: 15px; }
 .game-role-next { max-width: 56rem; }
 .game-role-next .game-role-panel-header label { min-width: 0; max-width: 100%; }
 .game-role-next .game-role-stat-table { min-width: 0; table-layout: fixed; margin-top: 8px; font-size: 12px; }

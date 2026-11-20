@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { BarChart3, CalendarDays, ChevronLeft } from "lucide-react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, StandingRow, Tournament } from "../../types";
@@ -259,9 +260,17 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
 
   return <>
     <nav className="game-role-views" aria-label="Vistas de Roles de juego">
-      {(view === "statistics" || view === "next-role") && <Button type="button" onClick={() => setView("matrix")}>Volver a roles de juego</Button>}
-      <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>Estadísticas</Button>
-      <Button type="button" aria-pressed={view === "next-role"} onClick={() => setView("next-role")}>Siguiente rol</Button>
+      {(view === "statistics" || view === "next-role") && <Button type="button" className="game-role-back" onClick={() => setView("matrix")}>
+        <ChevronLeft aria-hidden="true" />Volver a roles de juego
+      </Button>}
+      <div className="game-role-view-options">
+        <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>
+          <BarChart3 aria-hidden="true" />Estadísticas
+        </Button>
+        <Button type="button" aria-pressed={view === "next-role"} onClick={() => setView("next-role")}>
+          <CalendarDays aria-hidden="true" />Siguiente rol
+        </Button>
+      </div>
       {roleReminders && <Button type="button" disabled={remindersEnabled} onClick={() => void enableReminders()}>
         {remindersEnabled ? "Notificaciones activas" : "Activar notificaciones"}
       </Button>}
