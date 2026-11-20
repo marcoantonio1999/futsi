@@ -108,7 +108,7 @@ try {
         overflow: row.scrollWidth > row.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth,
       };
     });
-    assert(geometry.width >= Math.min(geometry.rowWidth, 170), JSON.stringify({width, ...geometry}));
+    assert(geometry.width >= geometry.rowWidth - 2, JSON.stringify({width, ...geometry}));
     assert(geometry.titleLines <= 5 && geometry.timeLines <= 3 && !geometry.overflow, JSON.stringify({width, ...geometry}));
     await capture.click();
     const dialog = page.getByRole("dialog", { name: "Jornada y horario del partido" });

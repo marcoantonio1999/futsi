@@ -13,9 +13,11 @@ const matrix = {
     { home_team_id: 1, away_team_id: 2, round_id: 1, scheduled_on: "2026-11-29", starts_at: "14:00", ends_at: "14:50", played: true },
     { home_team_id: 2, away_team_id: 3, round_id: 1, scheduled_on: "2026-11-29", starts_at: "14:50", ends_at: "15:40", played: false },
     { home_team_id: 3, away_team_id: 4, round_id: 2, scheduled_on: "2026-12-06", starts_at: "14:00", ends_at: "14:50", played: true },
+    { home_team_id: 4, away_team_id: 5, round_id: 2, scheduled_on: "2026-12-06", starts_at: "15:00", ends_at: "15:50", played: false },
+    { home_team_id: 1, away_team_id: 3, round_id: 1, scheduled_on: null, starts_at: null, ends_at: null, played: false },
     ...Array.from({ length: 12 }, (_, index) => ({
-      home_team_id: index + 5, away_team_id: index + 6, round_id: 1, scheduled_on: null,
-      starts_at: null, ends_at: null, played: false,
+      home_team_id: index + 5, away_team_id: index + 6, round_id: 1, scheduled_on: "2026-11-23",
+      starts_at: `${9 + index}:00`.padStart(5, "0"), ends_at: `${9 + index}:50`.padStart(5, "0"), played: false,
     })),
   ],
   team_notes: [
@@ -111,24 +113,33 @@ try {
       assert.equal(await slots.getByRole("button").count(), 6);
     }
     const history = page.getByRole("region", {name:"Historial de partidos"});
-    const capture = history.getByRole("button", {name:"Capturar marcador"});
+    const played = history.getByRole("list", {name:"Jugados"});
+    const upcoming = history.getByRole("list", {name:"Programados"});
+    const roundLabels = list => list.locator(".game-role-history-round").allTextContents();
+    const filter = history.getByLabel("Jornada del historial");
+    assert.equal(await filter.inputValue(), "0");
+    assert.deepEqual(await roundLabels(played), ["Jornada 2", "Jornada 1"]);
+    assert.deepEqual(await roundLabels(upcoming), ["Jornada 2", ...Array(13).fill("Jornada 1")]);
+    assert.equal(await history.getByText("Sin horario", {exact:true}).count(), 0);
+    assert.equal(await history.getByRole("button", {name:/Partidos: (siguiente|anterior)/}).count(), 0);
+    const capture = played.getByRole("button", {name:"Capturar marcador"}).first();
     await capture.scrollIntoViewIfNeeded();
     await inside(page, capture);
-    await history.getByLabel("Jornada del historial").selectOption("1");
-    assert.equal(await history.getByRole("button", {name:/Partidos: (siguiente|anterior)/}).count(), 0);
-    const list = history.getByRole("list");
-    assert.equal(await list.getByRole("listitem").count(), 14);
-    await list.scrollIntoViewIfNeeded();
-    await inside(page, list);
-    assert(await list.evaluate(node => node.scrollHeight > node.clientHeight));
-    const lastMatch = list.getByRole("button", {name:"Editar partido"}).last();
+    const playedColumn = await history.getByRole("region", {name:"Jugados", exact:true}).boundingBox();
+    const upcomingColumn = await history.getByRole("region", {name:"Programados", exact:true}).boundingBox();
+    assert(playedColumn.x + playedColumn.width <= upcomingColumn.x && Math.abs(playedColumn.y - upcomingColumn.y) <= 1);
+    await upcoming.scrollIntoViewIfNeeded();
+    await inside(page, upcoming);
+    assert(await upcoming.evaluate(node => node.scrollHeight > node.clientHeight));
+    const lastMatch = upcoming.getByRole("button", {name:"Editar partido"}).last();
     await lastMatch.click();
-    assert(await list.evaluate(node => node.scrollTop > 0));
+    assert(await upcoming.evaluate(node => node.scrollTop > 0));
     await inside(page, lastMatch);
     await page.getByRole("dialog", {name:"Jornada y horario del partido"}).getByRole("button", {name:"Cancelar"}).click();
-    await history.getByLabel("Jornada del historial").selectOption("2");
-    assert.equal(await list.getByRole("listitem").count(), 1);
-    assert.equal(await list.evaluate(node => node.scrollTop), 0);
+    await filter.selectOption("2");
+    assert.deepEqual(await roundLabels(played), ["Jornada 2"]);
+    assert.deepEqual(await roundLabels(upcoming), ["Jornada 2"]);
+    assert.equal(await upcoming.evaluate(node => node.scrollTop), 0);
     const permits = page.getByRole("region", {name:"Permisos", exact:true});
     const suggestions = page.getByRole("region", {name:"Sugerencias de horario", exact:true});
     await permits.scrollIntoViewIfNeeded();

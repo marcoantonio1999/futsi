@@ -38,41 +38,43 @@
 .enrollment-page .game-role-note-list li p { margin: 0; white-space: pre-wrap; }
 .game-role-match-history { display: flex; flex-direction: column; min-height: 0; }
 .game-role-match-history .game-role-panel-header { flex: none; }
-.game-role-history-list { margin: 4px 0 0; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
-.game-role-history-list li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  border-top: 1px solid #dce4e0;
-  padding-block: 10px;
+.game-role-history-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  margin-top: 6px;
 }
-.game-role-history-match {
-  flex: 1 1 18rem;
-  min-width: 0;
+.game-role-history-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.game-role-history-column + .game-role-history-column { border-inline-start: 1px solid #dce4e0; padding-inline-start: 8px; }
+.enrollment-page .game-role-history-column h3 { margin: 0; font-size: 12px; line-height: 1.4; }
+.enrollment-page .game-role-history-column p { margin: 4px 0 0; font-size: 12px; }
+.game-role-history-list { margin: 4px 0 0; min-height: 0; overflow-y: auto; }
+.game-role-history-list li {
   display: grid;
   gap: 4px;
+  border-top: 1px solid #dce4e0;
+  padding-block: 5px;
+}
+.game-role-history-match {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
-.game-role-history-match span { font-size: 13px; }
-.game-role-history-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
-}
+.game-role-history-match span { font-size: 11px; }
+.game-role-history-round { color: var(--game-roles-round-color); font-weight: 650; }
+.game-role-history-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .game-role-history-actions button { white-space: normal; }
-.game-role-history-status {
-  padding: 4px 8px;
-  border: 1px solid var(--game-roles-round-color);
+.game-role-history-score {
+  padding: 2px 6px;
   border-radius: 5px;
-  color: var(--game-roles-round-color);
-}
-.game-role-history-list li[data-played="true"] .game-role-history-status {
   background: var(--game-roles-round-color);
   color: white;
+  font-size: 11px;
 }
 
 .game-role-statistics { display: grid; gap: 16px; }
@@ -280,16 +282,6 @@
   .game-role-hours .game-roles-hour-fields label { min-width: 0; margin: 2px 0 4px; }
   .game-role-hours .game-roles-hour-fields :is(select, input) { min-width: 0; margin-top: 2px; }
   .game-role-history .game-role-panel-header select { width: auto; max-width: 100%; margin: 0; }
-  .game-role-history-list li { padding-block: 5px; gap: 4px; }
-  .game-role-history-match strong {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.2;
-  }
-  .game-role-history-actions { gap: 4px; }
-  .game-role-history-status { padding: 3px 5px; font-size: 12px; }
   .game-role-slots {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -418,8 +410,6 @@
     font-size: 10px !important;
     line-height: 1 !important;
   }
-  .game-role-history-match { gap: 2px; }
-  .game-role-history-match span, .game-role-history-status { font-size: 11px; }
   .enrollment-page.enrollment-game-roles-layout .game-role-hours .game-role-slots button {
     min-height: 30px !important;
     justify-content: flex-start !important;
@@ -437,8 +427,11 @@
   .enrollment-game-roles-layout .enrollment-admin-header h1 { font-size: 17px; }
   .enrollment-page .game-role-views button { min-height: 44px !important; }
   .enrollment-page .game-role-panel-header h2 { font-size: 14px; }
-  .game-role-history-match { font-size: 13px; }
-  .game-role-history-match span { font-size: 12px; }
+  .enrollment-page .game-role-history-actions button {
+    min-height: 44px !important;
+    padding: 3px 6px !important;
+    font-size: 12px !important;
+  }
   .enrollment-page .game-role-notes .game-role-panel-header h2 { font-size: 13px; }
   .enrollment-page .game-role-notes button {
     min-height: 44px !important;

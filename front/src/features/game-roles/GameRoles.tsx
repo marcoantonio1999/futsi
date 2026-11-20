@@ -373,6 +373,7 @@ function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Te
   const teams = new Map(matrix.teams.map(team => [team.id, team]));
   const matchesByRound = new Map<number, Cross[]>();
   for (const cross of matrix.crosses) {
+    if (!cross.played && !cross.scheduled_on) continue;
     const matches = matchesByRound.get(cross.round_id) ?? [];
     matches.push(cross);
     matchesByRound.set(cross.round_id, matches);
@@ -380,35 +381,47 @@ function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Te
   const rounds = matrix.rounds.filter(round => matchesByRound.has(round.id))
     .sort((a, b) => b.starts_on.localeCompare(a.starts_on) || b.number - a.number);
   const [roundId, setRoundId] = useState(0);
-  const round = rounds.find(row => row.id === roundId) ?? rounds[0];
-  const matches = round ? matchesByRound.get(round.id)!.sort((a, b) =>
-    (b.scheduled_on ?? "").localeCompare(a.scheduled_on ?? "") || timeLabel(a.starts_at).localeCompare(timeLabel(b.starts_at))) : [];
+  const selectedRound = rounds.find(round => round.id === roundId);
+  const matches = (selectedRound ? [selectedRound] : rounds).flatMap(round =>
+    (matchesByRound.get(round.id) ?? []).sort((a, b) =>
+      (b.scheduled_on ?? "").localeCompare(a.scheduled_on ?? "") || timeLabel(b.starts_at).localeCompare(timeLabel(a.starts_at)))
+      .map(cross => ({ round, cross })));
+  const columns = [
+    { title: "Jugados", matches: matches.filter(({ cross }) => cross.played), empty: "Aún no hay partidos jugados." },
+    { title: "Programados", matches: matches.filter(({ cross }) => !cross.played), empty: "Aún no hay partidos programados." },
+  ];
   return <Card as="section" className="game-role-history game-role-match-history" aria-label="Historial de partidos">
     <div className="game-role-panel-header">
       <h2>Historial de partidos</h2>
-      {round && <NativeSelect aria-label="Jornada del historial" title={weekLabel(round.starts_on)}
-        value={round.id} onChange={event => setRoundId(Number(event.target.value))}>
-        {rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number} · {matchesByRound.get(row.id)!.length}</option>)}
+      {rounds.length > 1 && <NativeSelect aria-label="Jornada del historial" title={selectedRound && weekLabel(selectedRound.starts_on)}
+        value={selectedRound?.id ?? 0} onChange={event => setRoundId(Number(event.target.value))}>
+        <option value={0}>Todas las jornadas</option>
+        {rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number}</option>)}
       </NativeSelect>}
     </div>
-    {!round && <p>Aún no hay partidos en el historial.</p>}
-    {round && <ul key={round.id} className="game-role-history-list" style={roundColorStyle(round.number)}>
-      {matches.map(cross => {
-        const home = teams.get(cross.home_team_id), away = teams.get(cross.away_team_id);
-        if (!home || !away) return null;
-        const score = matchScore(cross);
-        return <li key={`${cross.home_team_id}:${cross.away_team_id}`} data-played={cross.played}>
-          <div className="game-role-history-match">
-            <strong title={`${home.name} vs. ${away.name}`}>{home.name} vs. {away.name}</strong>
-            <span>{cross.scheduled_on ? `${dateLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))} · ${timeLabel(cross.starts_at)}–${timeLabel(cross.ends_at)}` : "Sin horario"}</span>
-          </div>
-          <div className="game-role-history-actions">
-            <span className="game-role-history-status">{cross.played ? (score ? `✓ Jugado · ${score}` : "✓ Jugado") : cross.scheduled_on ? "Pendiente" : "× Sin horario"}</span>
-            <Button type="button" onClick={() => onEdit(home, away, cross)}>{cross.played && matrix.standings ? (score ? "Editar marcador" : "Capturar marcador") : "Editar partido"}</Button>
-          </div>
-        </li>;
-      })}
-    </ul>}
+    <div className="game-role-history-columns">
+      {columns.map(column => <section key={column.title} className="game-role-history-column" aria-label={column.title}>
+        <h3>{column.title}</h3>
+        {column.matches.length ? <ul key={selectedRound?.id ?? 0} className="game-role-history-list" aria-label={column.title} tabIndex={0}>
+          {column.matches.map(({ round, cross }) => {
+            const home = teams.get(cross.home_team_id), away = teams.get(cross.away_team_id);
+            if (!home || !away) return null;
+            const score = matchScore(cross);
+            return <li key={`${round.id}:${cross.home_team_id}:${cross.away_team_id}`} style={roundColorStyle(round.number)}>
+              <div className="game-role-history-match">
+                <span className="game-role-history-round">Jornada {round.number}</span>
+                <strong>{home.name} vs. {away.name}</strong>
+                <span>{cross.scheduled_on ? `${dateLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))} · ${timeLabel(cross.starts_at)}–${timeLabel(cross.ends_at)}` : "Sin horario"}</span>
+              </div>
+              <div className="game-role-history-actions">
+                {score && <span className="game-role-history-score">{score}</span>}
+                <Button type="button" onClick={() => onEdit(home, away, cross)}>{cross.played && matrix.standings ? (score ? "Editar marcador" : "Capturar marcador") : "Editar partido"}</Button>
+              </div>
+            </li>;
+          })}
+        </ul> : <p>{column.empty}</p>}
+      </section>)}
+    </div>
   </Card>;
 }
 
