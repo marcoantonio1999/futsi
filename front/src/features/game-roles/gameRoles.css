@@ -367,14 +367,13 @@
   .game-role-pagination::before { content: attr(aria-label); margin-right: 2px; }
   .game-role-hours > .game-role-pagination, .game-role-matrix-pages:not(:empty) { padding-top: 4px; }
   .game-role-statistics-panel { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior-y: contain; }
-  .game-role-statistics { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; }
+  .game-role-statistics { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: start; gap: 8px; }
   .game-role-statistics .game-role-score-notice { grid-column: 1 / -1; margin: 0; padding: 5px 8px; }
   .game-role-statistics .game-role-stat-table { min-width: 0; table-layout: fixed; font-size: 13px; }
   .game-role-stat-number { width: 8%; }
   .game-role-scorers .game-role-stat-number { width: 14%; }
   .game-role-stat-table :is(th, td) { padding: 5px 2px; }
   .game-role-stat-table th[scope="row"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .game-role-statistics .game-role-pagination { margin-top: 4px; }
 }
 
 @media screen and (min-width: 1024px) {

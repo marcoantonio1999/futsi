@@ -5,8 +5,8 @@ const origin = process.env.TEST_ENROLLMENT_ORIGIN || "http://127.0.0.1:5244";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const teams = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, name: `Equipo ${i + 1} con un nombre largo`, is_active: true }));
 const matrix = {
-  teams, matrix_team_ids: teams.slice(0, 19).map(team => team.id), schedule_enabled: true,
-  standings: teams.map(team => ({team: team.id, team_name: team.name, position: team.id,
+  teams, matrix_team_ids: teams.slice(1, 19).map(team => team.id), schedule_enabled: true,
+  standings: [teams.at(-1), ...teams.slice(0, -1)].map((team, index) => ({team: team.id, team_name: team.name, position: index + 1,
     played: 1, won: 1, lost: 0, drawn: 0, goals_for: 2, goals_against: 0, goal_difference: 2, points: 3})),
   rounds: [{ id: 1, number: 1, starts_on: "2026-11-23" }, { id: 2, number: 2, starts_on: "2026-11-30" }],
   crosses: [
@@ -71,7 +71,7 @@ try {
       return route.fulfill({ json: { results: [], count: 0 } });
     });
     await page.clock.setFixedTime(new Date("2026-11-25T12:00:00Z"));
-    await page.goto(origin + "/tests/enrollment-register-preview.html#/admin/inscripciones/game-roles");
+    await page.goto(origin + "/tests/enrollment-register-preview.html#/admin/inscripciones/game-roles", { waitUntil: "domcontentloaded", timeout: 15000 });
     await page.getByLabel("Torneo", { exact: true }).selectOption("1");
     const grid = page.getByRole("region", { name: "Matriz de cruces por equipo" });
     await grid.waitFor();
@@ -174,13 +174,20 @@ try {
     await page.getByRole("button", { name:"Estadísticas", exact:true }).click();
     const standings = page.getByRole("region", { name:"Posiciones por equipo" });
     await standings.waitFor();
-    await inside(page, standings);
-    await standings.getByRole("button", { name:"Posiciones: siguiente" }).click();
-    assert.equal(await standings.getByRole("rowheader").first().textContent(), teams[4].name);
+    const expectedTeams = teams.slice(0, 19).map(team => team.name);
+    const positionRows = standings.getByRole("rowheader");
+    assert.deepEqual(await positionRows.allTextContents(), expectedTeams);
+    assert.equal(await standings.getByRole("row").nth(1).getByRole("cell").first().textContent(), "1");
+    assert.equal(await standings.getByRole("button").count(), 0);
+    await inside(page, positionRows.first());
+    await positionRows.last().scrollIntoViewIfNeeded();
+    await inside(page, positionRows.last());
     const scorers = page.getByRole("region", { name:"Goleo por equipo" });
-    await scorers.waitFor();
-    await scorers.scrollIntoViewIfNeeded();
-    await inside(page, scorers);
+    const scoringRows = scorers.getByRole("rowheader");
+    assert.deepEqual(await scoringRows.allTextContents(), expectedTeams);
+    assert.equal(await scorers.getByRole("button").count(), 0);
+    await scoringRows.last().scrollIntoViewIfNeeded();
+    await inside(page, scoringRows.last());
     await navigation.getByRole("button", {name:"Siguiente rol"}).click();
     assert.equal(await navigation.getByRole("button", {name:"Siguiente rol", pressed:true}).count(), 1);
     assert.equal(await navigation.getByRole("button", {name:"Estadísticas", pressed:false}).count(), 1);

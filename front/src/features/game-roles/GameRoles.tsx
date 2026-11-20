@@ -276,7 +276,10 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
     </nav>
     {reminderMessage && <p role="status">{reminderMessage}</p>}
     {view === "statistics"
-      ? <div className="game-role-statistics-panel"><GameRoleStatistics rows={matrix.standings ?? []} withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} /></div>
+      ? <div key="statistics" className="game-role-statistics-panel">
+          <GameRoleStatistics rows={(matrix.standings ?? []).filter(row => matrixTeamIds.has(row.team))}
+            withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} />
+        </div>
       : view === "next-role"
         ? <NextGameRole matrix={matrix} onShare={roundId => setShare({ roundId, upcomingOnly: true })} />
         : <div className="game-roles-workspace" style={roundColorStyle(selected?.number ?? 1)}>
