@@ -37,6 +37,26 @@
   object-fit: contain;
   mix-blend-mode: multiply;
 }
+.game-role-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  color: #b42318;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+.game-role-live::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+}
+@media print {
+  .game-role-live { display: none; }
+}
 .game-role-sheet h1 { font-size: clamp(20px, 4vw, 30px); margin: 0; line-height: 1.2; color: inherit; }
 .game-role-sheet header p { margin: 4px 0 0; color: #53675c; }
 .game-role-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 16px; }

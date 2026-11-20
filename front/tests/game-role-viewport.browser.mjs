@@ -216,6 +216,7 @@ try {
     const shareDialog = page.getByRole("dialog", {name:"Compartir rol de juego"});
     const whatsapp = shareDialog.getByRole("link", {name:"Compartir por WhatsApp"});
     await whatsapp.waitFor();
+    assert.equal(await shareDialog.getByText("En vivo", {exact:true}).count(), 0);
     for (const title of ["Sistema de Competencia", "LIGUILLA", "Resultados · Jornada 1", "Próximos Partidos", "DESCANSO", "Tabla de Posiciones", "Tabla de Goleo"]) {
       assert(await shareDialog.getByRole("heading", {name:title, exact:true}).isVisible());
     }
@@ -326,6 +327,13 @@ try {
     if (width === 390) {
       await page.goto(origin + "/#/rol-de-juego/enlace-de-prueba", {waitUntil:"domcontentloaded", timeout:15000});
       await page.getByRole("heading", {name:"Próximos Partidos", exact:true}).waitFor();
+      const live = page.getByText("En vivo", {exact:true});
+      assert(await live.isVisible());
+      assert.equal(await live.evaluate(node => getComputedStyle(node).color), "rgb(180, 35, 24)");
+      await page.emulateMedia({media:"print"});
+      assert.equal(await live.isVisible(), false);
+      await page.emulateMedia({media:"screen"});
+      assert(await live.isVisible());
       assert(await page.getByText("Todavía no hay próximos partidos para esta jornada.").isVisible());
       assert(await page.getByText(/Jornada 9 del torneo/).isVisible());
       assert(await page.getByRole("heading", {name:"Tabla de Posiciones", exact:true}).isVisible());

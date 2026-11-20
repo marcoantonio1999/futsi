@@ -117,7 +117,7 @@ export function PublicGameRole({ token }: { token: string }) {
     };
   }, [token]);
   return <main className="game-role-public">
-    {schedule && <ScheduleSheet schedule={schedule} />}
+    {schedule && <ScheduleSheet schedule={schedule} live />}
     {status && <p role="status">{status}</p>}
   </main>;
 }

@@ -88,12 +88,15 @@ function ReportBlock({ block }: { block: Block }) {
 
 const social = "www.facebook.com/supergol.bosques";
 
-export function ScheduleSheet({ schedule }: { schedule: Schedule }) {
+export function ScheduleSheet({ schedule, live = false }: { schedule: Schedule; live?: boolean }) {
   return <article className="game-role-sheet">
     <div className="game-role-report-watermark" style={{ backgroundImage: `url(${bpowerLogo})` }} aria-hidden="true" />
     <header>
       <img src={bpowerLogo} alt="BPower" />
-      <div><h1>{schedule.tournament}</h1><p>Jornada {schedule.number} · {schedule.site}</p></div>
+      <div>
+        {live && <span className="game-role-live">En vivo</span>}
+        <h1>{schedule.tournament}</h1><p>Jornada {schedule.number} · {schedule.site}</p>
+      </div>
     </header>
     <div className="game-role-report-grid">
       {reportColumns(schedule).map((blocks, i) => <div key={i}>
