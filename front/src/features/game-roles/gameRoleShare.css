@@ -1,6 +1,6 @@
 .game-role-public { min-height: 100dvh; background: #edf3ef; padding: clamp(10px, 3vw, 36px); color: #173629; }
 .game-role-public > * { max-width: 1120px; margin-inline: auto; }
-.game-role-sheet { background: #edf4ef; color: #173629; border: 1px solid #d4e1d9; border-radius: 12px; overflow: hidden; overflow-wrap: anywhere; }
+.game-role-sheet { container-type: inline-size; background: #edf4ef; color: #173629; border: 1px solid #d4e1d9; border-radius: 12px; overflow: hidden; overflow-wrap: break-word; }
 .game-role-sheet header { display: flex; align-items: center; gap: 14px; background: #174734; color: #fff; padding: 12px 16px; }
 .game-role-sheet header img { width: 58px; height: 58px; object-fit: contain; border-radius: 6px; background: #fff; }
 .game-role-sheet h1 { font-size: clamp(20px, 4vw, 30px); margin: 0; line-height: 1.2; color: inherit; }
@@ -11,15 +11,70 @@
 .game-role-sheet .game-role-report-block h2 { margin: 0; padding: 6px 8px; background: #246343; color: #fff; font-size: 13px; font-weight: 700; }
 .game-role-report-block p { margin: 0; padding: 4px 8px; }
 .game-role-report-zone { background: #fbefc8; font-weight: 650; }
-.game-role-report-block table { width: 100%; max-width: 100%; min-width: 0; border-collapse: collapse; text-align: left; font-size: 11px; }
+.game-role-sheet .game-role-report-block table { width: 100%; max-width: 100%; min-width: 0; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 11px; }
 .game-role-report-block :is(th, td) { padding: 4px; border-bottom: 1px solid #e3ebe6; }
-.game-role-report-block th { background: #dfeee7; }
+.game-role-report-block th { background: #dfeee7; white-space: nowrap; }
 .game-role-report-block tr:nth-child(even) { background: #f3f7f5; }
 .game-role-report-block tr[data-qualified="true"] { background: #fbefc8; }
 .game-role-report-social { padding: 0 12px 12px; font-size: 12px; }
-.game-role-share-dialog { width: min(1050px, calc(100vw - 24px)); }
-.enrollment-page .game-role-share-action { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; border-radius: 8px; background: #174734; color: white; }
-@media (max-width: 720px) {
+.game-roles-dialog.game-role-share-dialog[open] {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: min(1120px, calc(100vw - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  overflow: hidden;
+}
+.game-role-share-body {
+  min-height: 0;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  background: #edf4ef;
+}
+.game-roles-dialog.game-role-share-dialog > .game-role-share-controls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px solid #d4e1d9;
+  background: #fff;
+}
+.enrollment-page .game-role-share-controls label { flex: 1 1 175px; min-width: 0; margin: 0; }
+.game-role-share-controls [role="status"] { flex: 1 0 100%; margin: 0; }
+.enrollment-page .game-role-share-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #174734;
+  color: white;
+  text-align: center;
+}
+@container (max-width: 790px) {
   .game-role-report-grid { grid-template-columns: minmax(0, 1fr); padding: 7px; gap: 8px; }
   .game-role-report-block :is(th, td) { padding-inline: 2px; }
+}
+@media (max-width: 600px) {
+  .game-roles-dialog.game-role-share-dialog[open] { width: calc(100vw - 12px); max-height: calc(100dvh - 12px); }
+  .game-role-share-body { padding: 5px; }
+  .game-roles-dialog.game-role-share-dialog > .game-role-share-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 6px;
+  }
+  .game-role-share-controls :is(label, [role="status"]) { grid-column: 1 / -1; }
+  .enrollment-page .game-role-share-controls button[data-slot="button"] {
+    min-width: 0;
+    padding: 4px 6px !important;
+    white-space: normal;
+    line-height: 1.2 !important;
+  }
+  .enrollment-page .game-role-share-action { line-height: 1.2; }
 }

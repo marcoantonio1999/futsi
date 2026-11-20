@@ -77,6 +77,9 @@ function ReportBlock({ block }: { block: Block }) {
     <h2>{block.title}</h2>
     {block.qualified ? <p className="game-role-report-zone">Zona de Clasificación</p> : null}
     {block.columns ? <table>
+      {block.widths && <colgroup>{block.widths.map((width, index, widths) =>
+        <col key={index} style={{ width: `${width / widths.reduce((sum, value) => sum + value, 0) * 100}%` }} />)}
+      </colgroup>}
       <thead><tr>{block.columns.map((column, i) => <th scope="col" key={i}>{column}</th>)}</tr></thead>
       <tbody>{block.rows.length ? block.rows.map((row, i) => <tr key={i} data-qualified={i < (block.qualified ?? 0)}>
         {row.map((cell, j) => <td key={j}>{cell}</td>)}

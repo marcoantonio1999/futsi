@@ -53,10 +53,13 @@ export function GameRoleShare({ path, token, reminderKey, upcomingOnly = false, 
   ].join("\n") : "";
   return <Dialog ref={dialog} className="game-roles-dialog game-role-share-dialog" aria-label="Compartir rol de juego"
     onCancel={event => { event.preventDefault(); onClose(); }}>
-    {schedule && <ScheduleSheet schedule={schedule} />}
-    {schedule && (!upcomingOnly || schedule.matches.length > 0) ? <>
-      <label>Enlace público<input value={url} readOnly onFocus={event => event.currentTarget.select()} /></label>
-      <footer>
+    <div className="game-role-share-body">
+      {schedule && <ScheduleSheet schedule={schedule} />}
+      {!schedule && <p role="status">{status || "Generando rol…"}</p>}
+    </div>
+    <footer className="game-role-share-controls">
+      {schedule && (!upcomingOnly || schedule.matches.length > 0) && <>
+        <label>Enlace público<input value={url} readOnly onFocus={event => event.currentTarget.select()} /></label>
         <Button type="button" onClick={() => void downloadScheduleImage(schedule).then(
           saved => { if (saved) setStatus("Imagen guardada."); },
           () => setStatus("No se pudo descargar la imagen."),
@@ -68,10 +71,10 @@ export function GameRoleShare({ path, token, reminderKey, upcomingOnly = false, 
           onClick={() => void roleReminders?.shared({ key: reminderKey }).catch(
             () => setStatus("No se pudo cancelar el recordatorio de cierre."),
           )}>Compartir por WhatsApp</a>
-      </footer>
-    </> : !schedule && !status && <p role="status">Generando rol…</p>}
-    {status && <p role="status">{status}</p>}
-    <footer><Button type="button" onClick={onClose}>Cerrar</Button></footer>
+      </>}
+      <Button type="button" onClick={onClose}>Cerrar</Button>
+      {schedule && status && <p role="status">{status}</p>}
+    </footer>
   </Dialog>;
 }
 

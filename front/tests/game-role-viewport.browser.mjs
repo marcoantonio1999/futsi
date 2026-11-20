@@ -220,6 +220,23 @@ try {
     assert(await shareDialog.getByText(/Jornada 15 del torneo/).isVisible());
     assert(await shareDialog.getByText("3–1", {exact:true}).isVisible());
     assert(await shareDialog.locator(".game-role-sheet").evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+    const preview = shareDialog.locator(".game-role-share-body");
+    const layout = await preview.evaluate(node => {
+      const sheet = node.querySelector(".game-role-sheet");
+      const grid = sheet.querySelector(".game-role-report-grid");
+      const headings = [...grid.querySelectorAll("th")];
+      return {
+        width: sheet.clientWidth,
+        columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
+        readableHeadings: headings.every(th => getComputedStyle(th).whiteSpace === "nowrap" && th.scrollWidth <= th.clientWidth + 1),
+      };
+    });
+    assert.equal(layout.columns, layout.width <= 790 ? 1 : 2);
+    if (width >= 1024) assert(layout.width >= 900, JSON.stringify(layout));
+    assert(layout.readableHeadings, JSON.stringify(layout));
+    await inside(page, whatsapp);
+    await preview.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await inside(page, whatsapp);
     const message = new URL(await whatsapp.getAttribute("href")).searchParams.get("text");
     assert.match(message, /Jornada 2/);
     assert.match(message, /15:00–15:50/);
