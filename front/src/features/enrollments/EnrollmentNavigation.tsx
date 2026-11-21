@@ -11,7 +11,7 @@ const Context = createContext<Navigation | null>(null);
 const regions = () => Array.from(document.querySelectorAll<HTMLElement>('.enrollment-admin-layout :is([role=region], .tournament-directory-scroll, .enrollment-team-roster-scroll)'));
 const scrollPosition = () => ({ x: window.scrollX, y: window.scrollY, regions: regions().map(element => [element.scrollLeft, element.scrollTop] as [number, number]) });
 
-export function EnrollmentNavigation({ userId, onlySection, children }: { userId: number; onlySection?: EnrollmentSection; children: ReactNode }) {
+export function EnrollmentNavigation({ userId, hideGameRoles, children }: { userId: number; hideGameRoles?: boolean; children: ReactNode }) {
   const owner = `enrollments:${userId}`;
   const [screen, setScreen] = useState(() => initialEnrollmentScreen(window, owner));
   const controller = useRef<ReturnType<typeof createEnrollmentHistory> | null>(null);
@@ -27,7 +27,7 @@ export function EnrollmentNavigation({ userId, onlySection, children }: { userId
   useLayoutEffect(() => {
     const previous = window.history.scrollRestoration;
     window.history.scrollRestoration = 'manual';
-    const history = createEnrollmentHistory(window, owner, (next, restorePosition = true) => { if (restorePosition) pending.current = next.scroll; setScreen(next); }, onlySection);
+    const history = createEnrollmentHistory(window, owner, (next, restorePosition = true) => { if (restorePosition) pending.current = next.scroll; setScreen(next); }, hideGameRoles);
     controller.current = history; setScreen(history.screen);
     let frame = 0;
     const saveScroll = () => {
@@ -38,7 +38,7 @@ export function EnrollmentNavigation({ userId, onlySection, children }: { userId
     const flush = () => { if (!pending.current) { history.scroll(scrollPosition(), false); history.flushScroll(); } };
     window.addEventListener('pagehide', flush);
     return () => { history.flushScroll(); history.dispose(); controller.current = null; window.history.scrollRestoration = previous; window.removeEventListener('scroll', saveScroll, true); window.removeEventListener('pagehide', flush); cancelAnimationFrame(frame); };
-  }, [owner, onlySection]);
+  }, [owner, hideGameRoles]);
   useLayoutEffect(() => { restoreScroll(); }, [screen.section, screen.roster, screen.detail]);
   const navigation: Navigation = {
     screen,

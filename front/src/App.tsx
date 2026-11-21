@@ -102,9 +102,10 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
 
   const hasCustomSectionPermissions = Boolean(currentUser.section_permissions?.length);
   const enrollmentOnly = currentUser.section_permissions?.includes("player_enrollments_only") ?? false;
-  const rolesOnly = currentUser.section_permissions?.includes("game_roles_only") ?? false;
-  if (!isSoccerWa && (enrollmentOnly || (enrollmentAdmin && ["admin", "owner", "dev"].includes(currentUser.role)))) {
-    return <Suspense fallback={<AppSkeleton />}><EnrollmentDashboard userId={currentUser.id} token={token} onLogout={logout} rolesOnly={rolesOnly} /></Suspense>;
+  const enrollmentAdminRole = ["admin", "owner", "dev"].includes(currentUser.role);
+  const canManageRoles = enrollmentAdminRole || (currentUser.section_permissions?.includes("game_roles_manage") ?? false);
+  if (!isSoccerWa && (enrollmentOnly || (enrollmentAdmin && enrollmentAdminRole))) {
+    return <Suspense fallback={<AppSkeleton />}><EnrollmentDashboard userId={currentUser.id} token={token} onLogout={logout} canManageRoles={canManageRoles} /></Suspense>;
   }
 
   if (!isSoccerWa && enrollmentAdmin) {

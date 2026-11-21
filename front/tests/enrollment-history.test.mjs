@@ -82,7 +82,7 @@ test('one traversal restores once despite popstate/hashchange, including repeate
 test('the actual application accepts enrollment subroutes and mounts user-scoped history', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../src/features/enrollments/PlayerEnrollment.tsx', import.meta.url), 'utf8');
-  assert.ok(app.includes('enrollmentAdmin={isEnrollmentAdminHash(hash)}'));
+  assert.match(app, /enrollmentAdmin=\{[^}]*isEnrollmentAdminHash\(hash\)\}/);
   assert.ok(app.includes('userId={currentUser.id}'));
   assert.ok(dashboard.includes('<EnrollmentNavigation'));
   assert.ok(dashboard.includes('navigation.navigate({ roster: item.id'));

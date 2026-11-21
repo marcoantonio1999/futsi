@@ -82,8 +82,16 @@ class TeamNoteInput(serializers.Serializer):
         return data
 
 
+class GameRolePermission(EnrollmentStaffPermission):
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and (
+            request.user.role in {"admin", "owner", "dev"}
+            or "game_roles_manage" in (request.user.section_permissions or [])
+        )
+
+
 class GameRoleView(APIView):
-    permission_classes = [EnrollmentStaffPermission]
+    permission_classes = [GameRolePermission]
 
     def tournament(self, request, tournament_id, lock=False):
         rows = Tournament.objects.filter(site__in=enrollment_sites(request.user))

@@ -36,17 +36,16 @@ export function initialEnrollmentScreen(browser: Browser, owner: string) {
 }
 // Explicit navigation pushes; filter/page/scroll edits replace the current entry.
 // No effect infers navigation from state, and popstate never adds a new entry.
-export function createEnrollmentHistory(browser: Browser, owner: string, restore: (screen: EnrollmentScreen, restorePosition?: boolean) => void, onlySection?: EnrollmentSection) {
-  const allowed = (screen: EnrollmentScreen) => !onlySection ||
-    (screen.section === onlySection && !screen.roster && !screen.detail);
+export function createEnrollmentHistory(browser: Browser, owner: string, restore: (screen: EnrollmentScreen, restorePosition?: boolean) => void, hideGameRoles = false) {
+  const allowed = (screen: EnrollmentScreen) => !hideGameRoles || screen.section !== 'game-roles';
   const saved = readEntry(browser.history.state, owner);
   let current: Entry = { owner, index: saved && enrollmentScreenUrl(saved.screen) === browser.location.hash ? saved.index : 0, screen: initialEnrollmentScreen(browser, owner) };
-  if (onlySection && !allowed(current.screen)) current = { owner, index: 0, screen: { ...emptyEnrollmentScreen(), section: onlySection } };
+  if (!allowed(current.screen)) current = { owner, index: 0, screen: emptyEnrollmentScreen() };
   const positions = new Map<number, EnrollmentScreen['scroll']>();
   const write = (push: boolean) => browser.history[push ? 'pushState' : 'replaceState']({ ...browser.history.state, enrollmentNavigation: current }, '', enrollmentScreenUrl(current.screen));
   write(false);
   const onPop = () => {
-    if (onlySection && !allowed(enrollmentScreenFromHash(browser.location.hash))) {
+    if (!allowed(enrollmentScreenFromHash(browser.location.hash))) {
       write(false);
       return;
     }

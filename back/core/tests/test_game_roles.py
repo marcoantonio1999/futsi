@@ -15,7 +15,7 @@ class GameRoleMatrixTests(TestCase):
         self.away = Team.objects.create(tournament=self.tournament, name="Tigres")
         self.other = Team.objects.create(tournament=self.other_tournament, name=self.away.name)
         self.user = User.objects.create_user(username="operador", role="collaborator",
-            section_permissions=["player_enrollments_only", f"player_enrollments_site:{self.site.pk}"])
+            section_permissions=["player_enrollments_only", "game_roles_manage", f"player_enrollments_site:{self.site.pk}"])
         self.client = APIClient()
         self.client.credentials(HTTP_AUTHORIZATION="Token " + Token.objects.create(user=self.user).key)
         self.url = f"/api/player-enrollments/game-roles/{self.tournament.pk}/"
@@ -31,26 +31,32 @@ class GameRoleMatrixTests(TestCase):
             **fields,
         }, format="json")
 
-    def test_roles_only_operator_can_schedule_but_cannot_use_other_modules(self):
-        self.user.section_permissions.append("game_roles_only")
-        self.user.save(update_fields=["section_permissions"])
-        self.assertEqual(self.client.get("/api/auth/me/").status_code, 200)
+    def test_game_role_manager_keeps_enrollments_and_site_scope(self):
+        self.assertEqual(self.client.get("/api/player-enrollments/").status_code, 200)
         catalog = self.client.get("/api/player-enrollments/catalog/")
         self.assertEqual(catalog.status_code, 200)
-        self.assertEqual(catalog.json()["teams"], [])
-        self.assertEqual([row["id"] for row in catalog.json()["tournaments"]], [self.tournament.pk])
-        self.assertEqual(self.client.post("/api/player-enrollments/catalog/", {}).status_code, 403)
-        for path in ("/api/player-enrollments/", "/api/player-enrollments/documents/1/",
-                     "/api/player-enrollments/game-roles/", "/api/tournaments/"):
-            with self.subTest(path=path):
-                self.assertEqual(self.client.get(path).status_code, 403 if path != "/api/player-enrollments/game-roles/" else 404)
+        self.assertEqual({row["id"] for row in catalog.json()["teams"]}, {self.home.pk, self.away.pk})
+        self.assertEqual(self.client.get("/api/tournaments/").status_code, 403)
         self.assertEqual(self.client.get(f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/").status_code, 404)
         round_id = self.add_round()["id"]
         self.assertEqual(self.set_cross(round_id).status_code, 200)
         self.assertEqual(self.client.get(self.url + f"rounds/{round_id}/share/").status_code, 200)
-        self.assertEqual(self.client.post(self.url + "team-notes/", {
-            "kind": "permit", "team_id": self.home.pk, "round_id": round_id,
-        }, format="json").status_code, 200)
+
+    def test_only_granted_staff_and_administrators_can_manage_game_roles(self):
+        round_id = self.add_round()["id"]
+        staff = User.objects.create_user(username="ventanilla", role="collaborator",
+            section_permissions=["player_enrollments_only", f"player_enrollments_site:{self.site.pk}"])
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + Token.objects.create(user=staff).key)
+        self.assertEqual(self.client.get("/api/player-enrollments/").status_code, 200)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+        self.assertEqual(self.client.post(self.url, {}, format="json").status_code, 403)
+        self.assertEqual(self.client.post(self.url + "team-notes/", {}, format="json").status_code, 403)
+        self.assertEqual(self.client.get(self.url + f"rounds/{round_id}/share/").status_code, 403)
+
+        admin = User.objects.create_user(username="administracion", role="admin")
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + Token.objects.create(user=admin).key)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.assertEqual(self.client.get(self.url + f"rounds/{round_id}/share/").status_code, 200)
 
     def test_jornadas_and_ordered_crosses_persist_without_creating_matches(self):
         first = self.add_round()

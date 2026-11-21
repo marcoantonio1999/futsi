@@ -42,12 +42,13 @@ try {
       ...matrix, matrix_team_ids: teams.slice(0, 6).map(team => team.id),
       crosses: matrix.crosses.filter(cross => cross.home_team_id <= 6 && cross.away_team_id <= 6),
     };
+    let identity = {
+      id: 99, username: "pancho.inscripciones", role: "collaborator",
+      section_permissions: ["player_enrollments_only", "game_roles_manage"],
+    };
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
-      if (pathname.endsWith("/auth/me/")) return route.fulfill({ json: {
-        id: 99, username: "pancho.inscripciones", role: "collaborator",
-        section_permissions: ["player_enrollments_only", "game_roles_only"],
-      } });
+      if (pathname.endsWith("/auth/me/")) return route.fulfill({ json: identity });
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
       if (pathname.endsWith("/public/game-roles/enlace-eurocopa/")) return route.fulfill({ json: {
         tournament: "Eurocopa", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
@@ -363,18 +364,38 @@ try {
     }
     if (width === 320 || width === 390 || width === 1440) {
       await page.evaluate(() => localStorage.setItem("futsi_token", "roles-test"));
-      await page.goto(origin + "/#/admin/inscripciones/history?equipo=1", {waitUntil:"domcontentloaded", timeout:15000});
+      await page.goto(origin + "/#/admin/inscripciones/game-roles", {waitUntil:"domcontentloaded", timeout:15000});
+      await page.getByRole("heading", {name:"Roles de juego", exact:true, level:1}).waitFor();
+      const menu = page.getByRole("navigation", {name:"Administración de inscripciones"});
+      const menuButton = page.getByRole("button", {name:"Abrir secciones"});
+      if (width < 1024) {
+        assert((await menuButton.boundingBox()).height >= 44);
+        await menuButton.click();
+      }
+      await menu.getByRole("button", {name:"Registrar", exact:true}).click();
+      await page.waitForURL("**/#/admin/inscripciones/send");
+      await page.getByRole("heading", {name:"Registrar", exact:true, level:1}).waitFor();
+
+      if (width < 1024) await menuButton.click();
+      await menu.getByRole("button", {name:"Matriz de equipos", exact:true}).click();
       await page.waitForURL("**/#/admin/inscripciones/game-roles");
-      assert(await page.getByRole("heading", {name:"Roles de juego", exact:true}).isVisible());
-      assert.equal(await page.locator(".enrollment-admin-sidebar").count(), 0);
-      assert.equal(await page.getByRole("button", {name:"Abrir secciones"}).count(), 0);
-      await page.getByLabel("Torneo", {exact:true}).selectOption("1");
-      await grid.waitFor();
-      await page.evaluate(() => { location.hash = "#/admin/inscripciones/tournament-create"; });
-      await page.waitForURL("**/#/admin/inscripciones/game-roles");
-      await grid.waitFor();
-      assert.equal(await page.getByRole("heading", {name:"Crear torneo"}).count(), 0);
+      if (width < 1024) assert.equal(await menuButton.getAttribute("aria-expanded"), "false");
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+
+      identity = { id: 100, username: "ventanilla", role: "collaborator", section_permissions: ["player_enrollments_only"] };
+      await page.reload({waitUntil:"domcontentloaded"});
+      await page.waitForURL("**/#/admin/inscripciones/history");
+      await page.getByRole("heading", {name:"Sábana", exact:true, level:1}).waitFor();
+      if (width < 1024) await menuButton.click();
+      await menu.getByRole("button", {name:"Registrar", exact:true}).waitFor();
+      assert.equal(await menu.getByRole("button", {name:"Matriz de equipos", exact:true}).count(), 0);
+
+      identity = { id: 101, username: "administracion", role: "admin", section_permissions: [] };
+      await page.reload({waitUntil:"domcontentloaded"});
+      await page.getByRole("heading", {name:"Sábana", exact:true, level:1}).waitFor();
+      if (width < 1024) await menuButton.click();
+      await menu.getByRole("button", {name:"Matriz de equipos", exact:true}).click();
+      await page.getByRole("heading", {name:"Roles de juego", exact:true, level:1}).waitFor();
     }
     console.log(`Roles sin desplazamiento a ${width} × ${height}`);
     await page.close();
