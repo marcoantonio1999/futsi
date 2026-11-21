@@ -850,10 +850,12 @@ class EnrollmentTeamDeletionView(APIView):
         return Response({'id': team.pk, 'name': team.name})
 
     def target(self, request, pk):
-        if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:
+        user = request.user
+        if (user.username.casefold() != 'emilio' and user.role not in {'admin', 'owner', 'dev'}
+                and 'player_enrollments_delete_teams' not in (user.section_permissions or [])):
             raise PermissionDenied('No tienes permiso para eliminar equipos.')
         return get_object_or_404(Team.objects.select_related('tournament'), pk=pk,
-            tournament__site__in=enrollment_sites(request.user))
+            tournament__site__in=enrollment_sites(user))
 
     def get(self, request, pk):
         from core.services import team_deletion

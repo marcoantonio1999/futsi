@@ -592,9 +592,19 @@ class PlayerEnrollmentTests(TestCase):
 
 
 
-    def test_delete_team_keeps_client_and_tournament(self):
+    def test_pancho_can_delete_team_in_his_site_and_keep_client_and_tournament(self):
         from core.models import Player
-        self.client.force_authenticate(self.emilio)
+        pancho = User.objects.create_user(username='pancho.inscripciones', role='collaborator',
+            section_permissions=['player_enrollments_only', 'player_enrollments_delete_teams',
+                                 f'player_enrollments_site:{self.tournament.site_id}'])
+        self.client.force_authenticate(pancho)
+        outside = Site.objects.create(name='Otra sede para Pancho')
+        outside_tournament = Tournament.objects.create(site=outside, name='Torneo de otra sede')
+        outside_team = Team.objects.create(tournament=outside_tournament, name='Equipo de otra sede')
+        outside_url = f'/api/player-enrollments/teams/{outside_team.pk}/'
+        self.assertEqual(self.client.get(outside_url+'deletion-preview/').status_code, 404)
+        self.assertEqual(self.client.delete(outside_url, {}, format='json').status_code, 404)
+        self.assertEqual(self.client.delete(f'/api/player-enrollments/tournaments/{self.tournament.pk}/').status_code, 403)
         team = Team.objects.create(tournament=self.tournament, name='Equipo sin historial')
         player = Player.objects.create(team=team, full_name='Cliente permanente', photo_url='https://example.com/photo.jpg')
         url = f'/api/player-enrollments/teams/{team.pk}/'
