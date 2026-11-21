@@ -50,6 +50,7 @@ export function GameRoleShare({ path, token, reminderKey, upcomingOnly = false, 
   const message = schedule ? [
     `*Rol de juego · Jornada ${schedule.number}*`, `${schedule.tournament} · ${schedule.site}`, "",
     ...schedule.matches.map(match => `${dayName(match.scheduled_on ?? schedule.starts_on)} · ${roleTimeLabel(schedule.tournament, match.starts_at, match.ends_at)}\n${match.home_team__name} vs. ${match.away_team__name}`),
+    ...(schedule.rest_team ? [`Descanso · ${schedule.rest_team}`] : []),
     "", "Consulta el rol actualizado aquí", url,
   ].join("\n") : "";
   return <Dialog ref={dialog} className="game-roles-dialog game-role-share-dialog" aria-label="Compartir rol de juego"
@@ -59,7 +60,7 @@ export function GameRoleShare({ path, token, reminderKey, upcomingOnly = false, 
       {!schedule && <p role="status">{status || "Generando rol…"}</p>}
     </div>
     <footer className="game-role-share-controls">
-      {schedule && (!upcomingOnly || schedule.matches.length > 0) && <>
+      {schedule && (!upcomingOnly || schedule.matches.length > 0 || schedule.rest_team) && <>
         <label>Enlace público<input value={url} readOnly onFocus={event => event.currentTarget.select()} /></label>
         <Button type="button" onClick={() => void downloadScheduleImage(schedule).then(
           saved => { if (saved) setStatus("Imagen guardada."); },

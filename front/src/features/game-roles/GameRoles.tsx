@@ -17,7 +17,7 @@ type Team = { id: number; name: string; is_active: boolean };
 type TeamSelectionInput = { add_team_id: number } | {
   new_team: { name: string; representative_name: string; representative_phone: string };
 };
-type Round = { id: number; number: number; starts_on: string };
+type Round = { id: number; number: number; starts_on: string; rest_team_id?: number };
 type Cross = {
   home_team_id: number; away_team_id: number; round_id: number;
   scheduled_on: string | null; starts_at: string | null; ends_at: string | null; played: boolean;
@@ -32,7 +32,7 @@ function overlaps(slot: Slot, cross: Cross) {
   return slot.day === cross.scheduled_on && cross.starts_at !== null && cross.ends_at !== null
     && slot.start < cross.ends_at.slice(0, 5) && slot.end > cross.starts_at.slice(0, 5);
 }
-type Editor = { kind: "round"; round?: Round } | CrossEditor;
+type Editor = { kind: "round"; round?: Round } | { kind: "rest"; round: Round } | CrossEditor;
 
 const roundColors = [
   "#1246a0", "#6d297a", "#00645b", "#9a3e10", "#8b2445",
@@ -190,6 +190,7 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
   const schedule = matrix.weekly_schedule ?? [];
   const selected = matrix.rounds.find(round => round.id === selectedId) ?? matrix.rounds[0];
   const teamsById = new Map(matrix.teams.map(team => [team.id, team]));
+  const restingTeam = selected?.rest_team_id ? teamsById.get(selected.rest_team_id) : undefined;
   // Keep the chosen order, then show the teams needed by existing matches.
   const matrixTeamIds = new Set(matrix.matrix_team_ids ?? []);
   for (const cross of matrix.crosses) {
@@ -297,6 +298,10 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
           <Button type="button" onClick={() => setShare({ roundId: selected.id })}>Compartir jornada</Button>
         </>}
         <Button type="button" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
+        <Button type="button" disabled={!selected} onClick={() => { if (selected) setEditor({ kind: "rest", round: selected }); }}>
+          {restingTeam ? "Editar descanso" : "Agregar descanso"}
+        </Button>
+        {restingTeam && <span><strong>Descanso</strong> · {restingTeam.name}</span>}
       </div>
       {!matrixTeams.length ? <p>Agrega los equipos del torneo uno por uno para armar la matriz.</p> :
         <>
@@ -362,6 +367,7 @@ function NextGameRole({ matrix, tournamentName, onShare }: { matrix: Matrix; tou
   const nextRoundId = pending.find(cross => cross.scheduled_on! >= today)?.round_id ?? pending.at(-1)?.round_id;
   const round = rounds.find(row => row.id === roundId) ?? rounds.find(row => row.id === nextRoundId) ?? rounds.at(-1);
   const matches = pending.filter(cross => cross.round_id === round?.id);
+  const restTeam = round?.rest_team_id ? teamNames.get(round.rest_team_id) : undefined;
 
   return <Card as="section" className="game-role-history game-role-next" aria-labelledby="game-role-next-title">
       <div className="game-role-panel-header">
@@ -381,7 +387,8 @@ function NextGameRole({ matrix, tournamentName, onShare }: { matrix: Matrix; tou
           {!matches.length && <tr><td colSpan={4}>{round ? "Aún no hay próximos partidos en esta jornada." : "Agrega una jornada para programar partidos."}</td></tr>}
         </tbody>
       </table>
-      {round && <footer><Button type="button" className="primary" disabled={!matches.length} onClick={() => onShare(round.id)}>Compartir rol de juego</Button></footer>}
+      {restTeam && <p><strong>Descanso</strong> · {restTeam}</p>}
+      {round && <footer><Button type="button" className="primary" disabled={!matches.length && !restTeam} onClick={() => onShare(round.id)}>Compartir rol de juego</Button></footer>}
   </Card>;
 }
 
@@ -537,6 +544,9 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
             score: homeGoals && awayGoals ? { home_goals: Number(homeGoals), away_goals: Number(awayGoals) } : null,
           } : {}),
         });
+      } else if (editor.kind === "rest") {
+        const teamId = form.get("rest_team");
+        await onSave("PATCH", { round_id: editor.round.id, rest_team_id: teamId ? Number(teamId) : null });
       } else {
         const number = Number(form.get("number"));
         await onSave(round ? "PATCH" : "POST", { round_id: round?.id, number, starts_on: form.get("starts_on") }, number);
@@ -562,9 +572,16 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
         else onClose();
       }
     }}>
-    <h2 id="game-roles-dialog-title">{confirmingDelete ? "Eliminar partido" : editor.kind === "cross" ? "Jornada y horario del partido" : round ? "Editar jornada" : "Agregar jornada"}</h2>
+    <h2 id="game-roles-dialog-title">{confirmingDelete ? "Eliminar partido" : editor.kind === "cross" ? "Jornada y horario del partido" : editor.kind === "rest" ? `Descanso · Jornada ${editor.round.number}` : round ? "Editar jornada" : "Agregar jornada"}</h2>
     <form hidden={confirmingDelete} onSubmit={submit}>
-      {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} tournamentName={tournamentName} schedule={schedule} selected={selected} /> : <>
+      {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} tournamentName={tournamentName} schedule={schedule} selected={selected} />
+        : editor.kind === "rest" ? <Label>Equipo que descansa
+          <NativeSelect aria-label="Equipo que descansa" name="rest_team" defaultValue={editor.round.rest_team_id ?? ""}>
+            <option value="">Sin descanso</option>
+            {matrix.teams.filter(team => team.is_active || team.id === editor.round.rest_team_id).map(team =>
+              <option key={team.id} value={team.id}>{team.name}</option>)}
+          </NativeSelect>
+        </Label> : <>
         <Label>Número de jornada<Input type="number" name="number" min={1} max={999} required defaultValue={round?.number ?? Math.min(999, (last?.number ?? 0) + 1)} /></Label>
         <Label>Inicio de la semana<Input type="date" name="starts_on" required defaultValue={round?.starts_on ?? (last ? addDays(last.starts_on, 7) : matrix.starts_on ?? "")} /></Label>
         <p>La jornada abarca siete días desde la fecha de inicio.</p>

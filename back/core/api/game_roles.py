@@ -147,6 +147,7 @@ ROLE_LINK_SIGNER = signing.Signer(salt=ROLE_LINK_SALT, sep=".")
 
 def round_schedule(round_row):
     tournament = round_row.tournament
+    rest_team = round_row.rest_team
     crosses = tournament_crosses(tournament)
     match_fields = (
         "scheduled_on", "starts_at", "ends_at", "home_team__name", "away_team__name",
@@ -170,6 +171,7 @@ def round_schedule(round_row):
         "number": round_row.number,
         "starts_on": round_row.starts_on,
         "expected_weeks": tournament.expected_weeks,
+        "rest_team": rest_team.name if rest_team and rest_team.tournament_id == tournament.pk else None,
         "matches": list(matches.values(*match_fields[:-2])),
         "results_round": results_round,
         "results": list(results.values(*match_fields)),
@@ -206,7 +208,10 @@ class PublicGameRoleView(APIView):
 class GameRoleMatrixView(GameRoleView):
     def matrix(self, tournament):
         teams = list(tournament.teams.order_by("name", "pk").values("id", "name", "is_active"))
-        rounds = list(tournament.game_role_rounds.order_by("number").values("id", "number", "starts_on"))
+        rounds = list(tournament.game_role_rounds.order_by("number").values("id", "number", "starts_on", "rest_team_id"))
+        for row in rounds:
+            if row["rest_team_id"] is None:
+                del row["rest_team_id"]
         crosses = list(tournament_crosses(tournament).order_by("pk").values(
             "home_team_id", "away_team_id", "round_id", "scheduled_on", "starts_at", "ends_at", "played", "home_goals", "away_goals",
         ))
@@ -254,6 +259,8 @@ class GameRoleMatrixView(GameRoleView):
         lookup = serializers.IntegerField(min_value=1)
         round_id = lookup.run_validation(request.data.get("round_id"))
         row = get_object_or_404(tournament.game_role_rounds, pk=round_id)
+        if "rest_team_id" in request.data:
+            return self.update_rest_team(tournament, row, request.data["rest_team_id"])
         serializer = RoundInput(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -266,6 +273,22 @@ class GameRoleMatrixView(GameRoleView):
             raise ValidationError("Cambia primero los horarios de los partidos que quedarían fuera de la semana.")
         row.number, row.starts_on = data["number"], data["starts_on"]
         row.save(update_fields=["number", "starts_on", "updated_at"])
+        return self.matrix(tournament)
+
+    def update_rest_team(self, tournament, round_row, value):
+        team_id = serializers.IntegerField(min_value=1, allow_null=True).run_validation(value)
+        if round_row.rest_team_id == team_id:
+            return self.matrix(tournament)
+        if team_id is not None:
+            team = tournament.teams.select_for_update().filter(pk=team_id, is_active=True).first()
+            if team is None:
+                raise ValidationError("Selecciona un equipo activo de este torneo.")
+            if tournament_crosses(tournament).filter(round=round_row).filter(
+                Q(home_team_id=team_id) | Q(away_team_id=team_id)
+            ).exists():
+                raise ValidationError("El equipo ya tiene un partido asignado en esta jornada.")
+        round_row.rest_team_id = team_id
+        round_row.save(update_fields=["rest_team", "updated_at"])
         return self.matrix(tournament)
 
     def update_weekly_schedule(self, request, tournament_id):
@@ -338,6 +361,8 @@ class GameRoleMatrixView(GameRoleView):
             tournament.game_role_crosses.filter(**data).delete()
         else:
             round_row = get_object_or_404(tournament.game_role_rounds, pk=round_id)
+            if round_row.rest_team_id in team_ids:
+                raise ValidationError("Uno de los equipos tiene descanso en esta jornada.")
             rows = tournament.game_role_crosses
             defaults = {"round_id": round_row.pk}
             fields = ("scheduled_on", "starts_at", "ends_at")

@@ -341,6 +341,7 @@ class GameRoleRound(TimestampedModel):
     tournament = models.ForeignKey(Tournament, on_delete=models.CASCADE, related_name="game_role_rounds")
     number = models.PositiveSmallIntegerField()
     starts_on = models.DateField()
+    rest_team = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name="game_role_rest_rounds")
 
     class Meta:
         db_table = "game_role_rounds"

@@ -10,6 +10,7 @@ export type Match = {
 export type Schedule = {
   tournament: string; site: string; number: number; starts_on: string; matches: Match[];
   expected_weeks?: number | null;
+  rest_team?: string | null;
   results_round?: number | null; results?: Match[];
   standings?: StandingRow[]; scoring?: { team: string; goals: number }[];
 };
@@ -58,7 +59,7 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
         rows: schedule.matches.filter(match => !match.played && match.scheduled_on).map(match =>
           [dayName(match.scheduled_on!), roleTimeLabel(schedule.tournament, match.starts_at, match.ends_at), match.home_team__name, match.away_team__name]),
         empty: "Todavía no hay próximos partidos para esta jornada." },
-      { title: "DESCANSO", rows: [], empty: "—" },
+      { title: "DESCANSO", rows: schedule.rest_team ? [[schedule.rest_team]] : [], empty: "—" },
     ],
     [
       { title: "Tabla de Posiciones", standings: true, columns: ["P", "Equipo", "JJ", "JG", "JP", "JE", "GF", "GC", "DG", "PTS"],
