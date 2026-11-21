@@ -1,4 +1,5 @@
 from datetime import timedelta
+import pytest
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -6,6 +7,7 @@ from core.models import User, WhatsAppConversation, WhatsAppMessage, WhatsAppHum
 from core.whatsapp.attention import closing_acknowledgement
 
 
+@pytest.mark.usefixtures("fixed_response_clock")
 @override_settings(ALLOWED_HOSTS=['testserver'], MIGRATION_MODULES={'core': None})
 class CourtesyResponseReportTests(TestCase):
     def setUp(self):

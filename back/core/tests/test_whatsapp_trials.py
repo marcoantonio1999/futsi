@@ -770,7 +770,7 @@ def test_dashboard_reply_requires_an_open_customer_service_window(auth_client):
     send_mock.assert_not_called()
 
 
-def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client):
+def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client, fixed_response_clock):
     responder = make_user(role="admin", first_name="Ana", last_name="Cancha")
     now = timezone.now()
     durations = [120, 480, 1200, None]
@@ -823,10 +823,11 @@ def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client):
     assert data["summary"]["total"] == 4
     assert data["summary"]["answered"] == 3
     assert data["summary"]["unanswered"] == 1
-    assert data["summary"]["average_response_seconds"] == 600
-    assert data["summary"]["median_response_seconds"] == 480
-    assert data["summary"]["within_5_minutes_percent"] == 25.0
-    assert data["summary"]["within_10_minutes_percent"] == 50.0
+    # The response before opening adds zero working seconds.
+    assert data["summary"]["average_response_seconds"] == 200
+    assert data["summary"]["median_response_seconds"] == 120
+    assert data["summary"]["within_5_minutes_percent"] == 50.0
+    assert data["summary"]["within_10_minutes_percent"] == 75.0
     assert data["business_hours"]["total"] == 2
     assert data["outside_business_hours"]["total"] == 2
     assert data["classifications"] == {
@@ -841,7 +842,7 @@ def test_weekly_whatsapp_stats_measure_human_response_sla(auth_client):
     assert data["longest_waits"][0]["responded_at"] is None
 
 
-def test_weekly_whatsapp_stats_includes_all_waits(auth_client):
+def test_weekly_whatsapp_stats_includes_all_waits(auth_client, fixed_response_clock):
     now = timezone.now()
     conversation = WhatsAppConversation.objects.create(
         contact_phone="+525500000111",
@@ -877,7 +878,7 @@ def test_weekly_whatsapp_stats_includes_all_waits(auth_client):
     assert [item["response_seconds"] for item in data["longest_waits"]] == list(range(12 * 60, 0, -60))
 
 
-def test_weekly_whatsapp_stats_recovers_manual_channel_without_events(auth_client):
+def test_weekly_whatsapp_stats_recovers_manual_channel_without_events(auth_client, fixed_response_clock):
     now = timezone.now()
     conversation = WhatsAppConversation.objects.create(
         contact_phone="+525500000111",
@@ -916,7 +917,7 @@ def test_weekly_whatsapp_stats_recovers_manual_channel_without_events(auth_clien
     assert data["summary"]["average_response_seconds"] == 300
     assert data["classifications"]["unclassified"] == 3
     assert data["by_responder"][0]["name"] == "Equipo vía WhatsApp Business"
-    assert data["business_hours"]["total"] == 0
+    assert data["business_hours"]["total"] == 2
     assert data["outside_business_hours"]["total"] == 0
 
 

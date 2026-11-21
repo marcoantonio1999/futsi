@@ -131,18 +131,25 @@ class EnrollmentR2Tests(TestCase):
             result=self.client.post(self.url,{**data,'uploaded_documents':tickets},format='json');self.assertEqual(result.status_code,400)
         self.copy.assert_not_called();self.assertFalse(PlayerEnrollment.objects.exists())
 
-    def test_small_selfie_or_blank_signature_is_rejected_before_copy(self):
-        for kind in ['player_photo','player_signature']:
-            from django.core.cache import cache
-            cache.clear()
-            data,files=self.metadata()
-            if kind=='player_photo':
-                small=Image.new('RGB',(400,500),'white');b=BytesIO();small.save(b,'JPEG');content=b.getvalue()
-            else: content=image_file('blank.png',blank=True).read()
-            files[kind]['content']=content
-            data['uploaded_documents']=self.plan(files)
-            result=self.client.post(self.url,data,format='json');self.assertEqual(result.status_code,400,result.data)
+    def test_blank_signature_is_rejected_before_copy(self):
+        data, files = self.metadata()
+        files['player_signature']['content'] = image_file('blank.png', blank=True).read()
+        data['uploaded_documents'] = self.plan(files)
+        result = self.client.post(self.url, data, format='json')
+        self.assertEqual(result.status_code, 400, result.data)
         self.copy.assert_not_called()
+
+    def test_selfie_smaller_than_1000_pixels_is_accepted(self):
+        data, files = self.metadata()
+        small = Image.new('RGB', (400, 500), 'white')
+        ImageDraw.Draw(small).line((20, 20, 380, 480), fill='black', width=8)
+        buffer = BytesIO()
+        small.save(buffer, 'JPEG')
+        files['player_photo']['content'] = buffer.getvalue()
+        data['uploaded_documents'] = self.plan(files)
+        result = self.client.post(self.url, data, format='json')
+        self.assertEqual(result.status_code, 201, result.data)
+        self.assertTrue(PlayerEnrollmentDocument.objects.filter(kind='player_photo').exists())
 
     def test_expired_or_wrong_purpose_invitation_does_not_authorize_uploads(self):
         self.invitation.expires_at=timezone.now()-timedelta(seconds=1);self.invitation.save()

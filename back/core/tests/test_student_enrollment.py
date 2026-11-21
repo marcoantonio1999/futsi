@@ -35,14 +35,18 @@ def test_inline_guardian_can_be_assigned_to_siblings(auth_client):
     assert guardian.user_id is None
 
 
-def test_student_requires_guardian_before_any_upload(auth_client):
+def test_student_rejects_invalid_guardian_before_upload_and_allows_omitting_guardian(auth_client):
     client, _, _ = auth_client()
+    site = make_site()
     with patch("core.services.student_photos.upload_private_file") as upload:
-        response = client.post("/api/students/", {"full_name": "Alumno", "site": make_site().pk, "photo": portrait()}, format="multipart")
+        response = client.post("/api/students/", {"full_name": "Alumno", "site": site.pk, "guardian": 999999, "photo": portrait()}, format="multipart")
     assert response.status_code == 400
     assert "guardian" in response.json()
     upload.assert_not_called()
     assert Student.objects.count() == 0
+    response = client.post("/api/students/", {"full_name": "Alumno", "site": site.pk}, format="json")
+    assert response.status_code == 201, response.data
+    assert Student.objects.get(pk=response.data["id"]).guardian_id is None
 
 
 def test_photo_upload_is_private_and_stored_with_student(auth_client):

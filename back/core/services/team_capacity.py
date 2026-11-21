@@ -27,7 +27,7 @@ def capacity_guard(team, kind=None, exclude_id=None):
     from core.models import Team, Tournament
     with transaction.atomic():
         tournament = Tournament.objects.select_for_update().get(pk=team.tournament_id)
-        locked = Team.objects.select_for_update().get(pk=team.pk)
+        locked = Team.objects.select_for_update().only("id", "tournament", "name", "is_active").get(pk=team.pk)
         if locked.tournament_id != tournament.pk:
             raise ValidationError("El equipo cambió de torneo. Actualiza e intenta de nuevo.")
         locked.tournament = tournament

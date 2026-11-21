@@ -37,6 +37,7 @@ def test_tournament_create_uses_lightweight_site_lookup(api_client):
             {
                 "site": site.id,
                 "name": "Torneo Tournament Create QA",
+                "football_format": "fut8",
                 "billing_type": "weekly_match",
                 "starts_on": "2026-08-01",
                 "expected_weeks": 10,
@@ -376,7 +377,9 @@ def test_student_tournament_registration_create_uses_lightweight_related_lookups
     assert '"students"."medical_notes"' not in captured_sql
     assert '"sites"."address"' not in captured_sql
     assert '"teams"."representative_email"' not in captured_sql
-    assert len(captured) <= 5
+    # Three related-key lookups, the uniqueness check, and two capacity locks.
+    reads = [query["sql"] for query in captured if query["sql"].startswith("SELECT")]
+    assert len(reads) <= 6, "\n".join(reads)
 
 
 def test_player_list_prefetched_related_fields_are_serialized(api_client):

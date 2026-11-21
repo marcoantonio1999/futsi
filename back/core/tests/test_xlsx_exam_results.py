@@ -24,9 +24,10 @@ def test_totals_only_display_export_statistics_and_no_regrading(auth_client,monk
     assert data['offline_import']['correct_count']==34 and data['snapshot']['questions']==[]
     w=book(c.get('/api/recruitment-exams/export/'))
     sheet=w['Evaluaciones']
-    assert sheet['L2'].value==8.5 and sheet['O2'].value=='Carga de Excel'
+    columns = {cell.value: cell.column for cell in sheet[1]}
+    assert sheet['L2'].value==8.5 and sheet.cell(2, columns['Origen']).value=='Carga de Excel'
     assert all(sheet[f'{col}2'].value is None for col in 'DEFGHIJ')
-    assert '34 aciertos de 40' in sheet['N2'].value and w['Respuestas'].max_row==1
+    assert '34 aciertos de 40' in sheet.cell(2, columns['Observaciones']).value and w['Respuestas'].max_row==1
     stats=c.get('/api/recruitment-exams/statistics/').json()
     assert stats['summary']['imported_without_date']==1 and stats['summary']['delivered']==0
     assert stats['summary']['started']==0 and stats['summary']['average_seconds'] is None

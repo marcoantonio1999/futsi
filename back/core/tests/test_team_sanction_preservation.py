@@ -7,13 +7,13 @@ from rest_framework.exceptions import ValidationError
 from core.models import User, Team, Player, PlayerSanction, AuditLog
 from core.enrollment_models import PlayerEnrollment, PlayerEnrollmentInvitation
 from core.services.player_sanctions import assert_no_pending_sanction, assert_player_change_allowed
-from core.tests.test_disciplinary import DisciplinaryTests
+from core.tests import test_disciplinary
 from core.tests.test_player_enrollments import image_file
 
 
 @override_settings(ALLOWED_HOSTS=['testserver'], MIGRATION_MODULES={'core': None})
 class TeamSanctionPreservationTests(TestCase):
-    setUp = DisciplinaryTests.setUp
+    setUp = test_disciplinary.DisciplinaryTests.setUp
 
     def remove(self):
         url = f'/api/player-enrollments/teams/{self.team.pk}/'
@@ -68,7 +68,7 @@ class TeamSanctionPreservationTests(TestCase):
         self.sanction.ends_on = timezone.localdate()+timedelta(days=1); self.sanction.save()
         self.remove()
         base = f'/api/player-enrollments/sanctions/{self.sanction.pk}/'
-        with patch('core.api.sanction_appeals.enrollment_storage.upload_document'):
+        with patch('core.api.sanction_appeals.enrollment_storage.upload_document', side_effect=lambda path, content, mime: path):
             response = self.client.post(base+'appeal/', {'reason':'Solicito revisión del incidente', 'letter':image_file('carta.png')},format='multipart')
         self.assertEqual(response.status_code, 201, response.data)
         response = self.client.post(base+'decision/', {'action':'accepted','reason':'Carta revisada y aceptada'},format='json')
@@ -108,7 +108,7 @@ class TeamSanctionPreservationTests(TestCase):
 
     def test_blacklist_can_be_applied_after_team_deletion(self):
         self.remove()
-        result = self.client.post(self.blacklist, DisciplinaryTests.add_payload(self),format='json')
+        result = self.client.post(self.blacklist, test_disciplinary.DisciplinaryTests.add_payload(self),format='json')
         self.assertEqual(result.status_code,201,result.data)
         row = self.client.get(self.blacklist).json()['results'][0]
         self.assertEqual(row['team'],self.team.name)

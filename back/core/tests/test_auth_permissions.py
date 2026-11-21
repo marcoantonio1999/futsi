@@ -146,6 +146,7 @@ def test_cashier_can_administer_tournaments_for_primary_site_only(auth_client):
         {
             "site": roma.id,
             "name": "Torneo ventanilla",
+            "football_format": "fut8",
             "billing_type": "weekly_match",
             "starts_on": "2026-06-01",
             "expected_weeks": 12,

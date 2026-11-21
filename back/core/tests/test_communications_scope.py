@@ -117,7 +117,7 @@ def test_meta_channel_can_be_linked_and_filtered_inside_one_site(auth_client, se
     assert rows[0]["channel_label"] == "Franco Academia"
 
 
-def test_weekly_statistics_use_the_same_site_and_channel_scope(auth_client):
+def test_weekly_statistics_use_the_same_site_and_channel_scope(auth_client, fixed_response_clock):
     client, _, _ = auth_client()
     sites = [make_site(), make_site()]
     for address, site, duration in zip((A, B), sites, (60, 600)):

@@ -19,6 +19,9 @@ class DisciplinaryTests(TestCase):
         self.team=Team.objects.create(tournament=self.tournament,name='Equipo original')
         self.invitation=PlayerEnrollmentInvitation.objects.create(created_by=self.user,team_record=self.team,expires_at=timezone.now()+timedelta(days=30))
         self.enrollment=PlayerEnrollment.objects.create(invitation=self.invitation,team_record=self.team,name='José Luis Pérez Orduña',birth_date=date(1990,1,1),team=self.team.name,tournament=self.tournament.name)
+        self.enrollment.validated_at = timezone.now()
+        self.enrollment.validated_by = self.user
+        self.enrollment.save(update_fields=["validated_at", "validated_by"])
         self.sanction=PlayerSanction.objects.create(team=self.team,enrollment=self.enrollment,player_name=self.enrollment.name,
             offense_code='s05',offense_label='Agresión a un contrario',recommended_duration='De 4 semanas a baja definitiva',
             reason='Incidente grave documentado',incident_on=timezone.localdate(),starts_on=timezone.localdate(),ends_on=None,duration_unit='indefinite',created_by=self.user,request_id=uuid4())
@@ -58,7 +61,7 @@ class DisciplinaryTests(TestCase):
         url=f'/api/player-enrollments/public/{invitation.token}/'
         data={'given_names':'JOSE LUIS','paternal_surname':'PEREZ','maternal_surname':'ORDUNA','birth_date':'1990-01-01','identity_type':'ine','phone':'5512345678','accepted_terms':True}
         self.client.force_authenticate(None)
-        with patch('core.api.enrollments.enrollment_storage.upload_document') as upload:
+        with patch('core.api.enrollments.enrollment_storage.upload_document', side_effect=lambda path, content, mime: path) as upload:
             response=self.client.post(url,data,format='multipart');self.assertEqual(response.status_code,400)
             upload.assert_not_called();self.assertNotIn('agresión',str(response.data).lower())
             data['birth_date']='1990-01-02';data.update(player_photo=image_file('foto.png'),player_signature=image_file('firma.png'),ine_front=image_file('ine.png'),ine_back=image_file('reverso.png'))

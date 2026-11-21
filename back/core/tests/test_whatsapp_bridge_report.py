@@ -9,8 +9,10 @@ from core.services.whatsapp_quality_report import QualityAudit
 from core.services.whatsapp_bridge_report import bridge_report, RUBRIC
 pytestmark = pytest.mark.django_db(transaction=True)
 
-def test_bridge_report_limits_findings_to_authorized_conversations(auth_client):
-    assert settings.FUTSI_ENV == 'test' and connection.vendor == 'sqlite'
+def test_bridge_report_limits_findings_to_authorized_conversations(auth_client, fixed_response_clock):
+    assert settings.FUTSI_ENV == 'test' and (
+        connection.vendor == 'sqlite' or str(connection.settings_dict['NAME']).startswith('test_')
+    )
     created = QualityAudit._meta.db_table not in connection.introspection.table_names()
     if created:
         with connection.schema_editor() as editor: editor.create_model(QualityAudit)

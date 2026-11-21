@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone as utc_timezone
 
 os.environ.setdefault("DB_ENGINE", "sqlite")
 os.environ.setdefault("ALLOW_SQLITE", "true")
@@ -7,12 +8,20 @@ os.environ.setdefault("FUTSI_ENV", "test")
 os.environ.setdefault("DJANGO_TEST_FAST_PASSWORD_HASHERS", "true")
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 
 @pytest.fixture
 def api_client():
     return APIClient()
+
+
+@pytest.fixture
+def fixed_response_clock(monkeypatch):
+    # A Wednesday at 11:00 in Mexico City.
+    now = datetime(2026, 11, 18, 17, tzinfo=utc_timezone.utc)
+    monkeypatch.setattr(timezone, "now", lambda: now)
 
 
 @pytest.fixture

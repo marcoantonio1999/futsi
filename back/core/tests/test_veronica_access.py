@@ -58,7 +58,7 @@ def test_allowlist_is_exact():
 
 
 @pytest.mark.django_db
-def test_veronica_statistics_include_only_recruitment_and_human_replies(auth_client):
+def test_veronica_statistics_include_only_recruitment_and_human_replies(auth_client, fixed_response_clock):
     from datetime import timedelta
     from django.utils import timezone
     from core.models import WhatsAppConversation, WhatsAppMessage

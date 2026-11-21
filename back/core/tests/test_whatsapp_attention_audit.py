@@ -1,4 +1,5 @@
 from datetime import timedelta
+import pytest
 from django.db import connection
 from django.conf import settings
 from django.test import TransactionTestCase, override_settings
@@ -9,6 +10,7 @@ from core.services.whatsapp_quality_report import QualityAudit
 from core.services.whatsapp_attention_audit import message_version, ignored_request_ids
 
 
+@pytest.mark.usefixtures("fixed_response_clock")
 @override_settings(ALLOWED_HOSTS=['testserver'], MIGRATION_MODULES={'core':None}, FUTSI_ENV='test')
 class AttentionAuditReadTests(TransactionTestCase):
     def test_failed_cut_triage_keeps_human_reaction_as_answer(self):

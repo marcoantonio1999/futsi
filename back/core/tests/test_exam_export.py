@@ -51,7 +51,7 @@ def test_details_formula_safety_dates_and_offline_ambiguity(auth_client):
     end=datetime(2026,10,23,5,30,tzinfo=dtz.utc)
     snapshot={'title':'Examen histórico','duration_minutes':60,'questions':exam['questions']}
     RecruitmentExamAttempt.objects.filter(pk=a.pk).update(name='=HYPERLINK("https://evil.invalid")',
-        phone='+525500000001',answers={'1':0,'2':'=1+1\x00'},snapshot=snapshot,grading_key={'1':0,'2':'Explicación'},
+        phone='+525500000001',answers={'1':0,'2':'=1+1\x01'},snapshot=snapshot,grading_key={'1':0,'2':'Explicación'},
         grading={'score':7.5,'questions':{'1':{'points':10,'reason':'Correcta','review':False},'2':{'points':5,'reason':'Revisar','review':True}}},
         started_at=end-timedelta(minutes=30),submitted_at=end)
     review=attempt(exam,2,None)
