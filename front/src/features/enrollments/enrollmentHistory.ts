@@ -36,13 +36,20 @@ export function initialEnrollmentScreen(browser: Browser, owner: string) {
 }
 // Explicit navigation pushes; filter/page/scroll edits replace the current entry.
 // No effect infers navigation from state, and popstate never adds a new entry.
-export function createEnrollmentHistory(browser: Browser, owner: string, restore: (screen: EnrollmentScreen, restorePosition?: boolean) => void) {
+export function createEnrollmentHistory(browser: Browser, owner: string, restore: (screen: EnrollmentScreen, restorePosition?: boolean) => void, onlySection?: EnrollmentSection) {
+  const allowed = (screen: EnrollmentScreen) => !onlySection ||
+    (screen.section === onlySection && !screen.roster && !screen.detail);
   const saved = readEntry(browser.history.state, owner);
   let current: Entry = { owner, index: saved && enrollmentScreenUrl(saved.screen) === browser.location.hash ? saved.index : 0, screen: initialEnrollmentScreen(browser, owner) };
+  if (onlySection && !allowed(current.screen)) current = { owner, index: 0, screen: { ...emptyEnrollmentScreen(), section: onlySection } };
   const positions = new Map<number, EnrollmentScreen['scroll']>();
   const write = (push: boolean) => browser.history[push ? 'pushState' : 'replaceState']({ ...browser.history.state, enrollmentNavigation: current }, '', enrollmentScreenUrl(current.screen));
   write(false);
   const onPop = () => {
+    if (onlySection && !allowed(enrollmentScreenFromHash(browser.location.hash))) {
+      write(false);
+      return;
+    }
     const entry = readEntry(browser.history.state, owner);
     // Browsers emit popstate AND hashchange for one traversal. Restore only once.
     if (entry?.index === current.index && enrollmentScreenUrl(entry.screen) === enrollmentScreenUrl(current.screen) && browser.location.hash === enrollmentScreenUrl(current.screen)) return;
@@ -58,7 +65,7 @@ export function createEnrollmentHistory(browser: Browser, owner: string, restore
     get screen() { return current.screen; },
     navigate(patch: Partial<Pick<EnrollmentScreen, 'section' | 'roster' | 'alignment' | 'detail'>>, replace = false) {
       const screen = { ...current.screen, ...patch };
-      if (enrollmentScreenUrl(screen) === enrollmentScreenUrl(current.screen)) return;
+      if (!allowed(screen) || enrollmentScreenUrl(screen) === enrollmentScreenUrl(current.screen)) return;
       positions.set(current.index, current.screen.scroll);
       if (!replace) write(false);
       current = { ...current, index: current.index + (replace ? 0 : 1), screen: { ...screen, scroll: { x: 0, y: 0, regions: [] } } };

@@ -1,4 +1,5 @@
 from datetime import timedelta
+import re
 
 from django.conf import settings
 from django.core.cache import cache
@@ -19,6 +20,15 @@ class ExpiringTokenAuthentication(TokenAuthentication):
 
     def authenticate(self, request):
         result = super().authenticate(request)
+        if result and "game_roles_only" in (result[0].section_permissions or []):
+            path, method = request.path_info, request.method
+            allowed = (
+                (path in {"/api/auth/me/", "/api/player-enrollments/catalog/"} and method in {"GET", "HEAD", "OPTIONS"})
+                or (path == "/api/auth/logout/" and method == "POST")
+                or re.fullmatch(r"/api/player-enrollments/game-roles/[0-9]+/(?:team-notes/|rounds/[0-9]+/share/)?", path)
+            )
+            if not allowed:
+                raise PermissionDenied("Esta cuenta solo tiene acceso a Roles de juego.")
         if result and "player_enrollments_only" in (result[0].section_permissions or []):
             allowed = request.path_info.startswith("/api/player-enrollments/") or request.path_info in {"/api/auth/me/", "/api/auth/logout/"}
             if not allowed:

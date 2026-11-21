@@ -743,6 +743,12 @@ class EnrollmentCatalogView(APIView):
     def get(self, request):
         sites = enrollment_sites(request.user)
         tournaments = Tournament.objects.filter(site__in=sites).order_by('name', 'id')
+        if "game_roles_only" in (request.user.section_permissions or []):
+            return Response({
+                "sites": list(sites.values("id", "name")),
+                "tournaments": TournamentSerializer(tournaments, many=True).data,
+                "teams": [],
+            })
         teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__in=sites).order_by('name', 'id')
         from django.db.models import Count
         counts = dict(roster_enrollments(PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)))

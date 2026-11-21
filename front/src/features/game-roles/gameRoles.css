@@ -393,6 +393,8 @@
 
 }
 
+.enrollment-page.enrollment-game-roles-layout.enrollment-game-roles-only { grid-template-columns: minmax(0, 1fr); }
+
 @media screen and (max-width: 1023px) {
   .enrollment-page.enrollment-game-roles-layout { padding: 6px; }
   .game-role-statistics { grid-template-columns: minmax(0, 1fr); }

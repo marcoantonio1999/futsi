@@ -44,6 +44,10 @@ try {
     };
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
+      if (pathname.endsWith("/auth/me/")) return route.fulfill({ json: {
+        id: 99, username: "pancho.inscripciones", role: "collaborator",
+        section_permissions: ["player_enrollments_only", "game_roles_only"],
+      } });
       if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
       if (pathname.endsWith("/public/game-roles/enlace-eurocopa/")) return route.fulfill({ json: {
         tournament: "Eurocopa", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
@@ -356,6 +360,21 @@ try {
       await euroBracket.getByText("Pase directo", {exact:true}).first().waitFor();
       assert.equal(await euroBracket.getByText("Pase directo", {exact:true}).count(), 2);
       assert.equal(await euroBracket.getByText("8.º lugar", {exact:true}).count(), 0);
+    }
+    if (width === 320 || width === 390 || width === 1440) {
+      await page.evaluate(() => localStorage.setItem("futsi_token", "roles-test"));
+      await page.goto(origin + "/#/admin/inscripciones/history?equipo=1", {waitUntil:"domcontentloaded", timeout:15000});
+      await page.waitForURL("**/#/admin/inscripciones/game-roles");
+      assert(await page.getByRole("heading", {name:"Roles de juego", exact:true}).isVisible());
+      assert.equal(await page.locator(".enrollment-admin-sidebar").count(), 0);
+      assert.equal(await page.getByRole("button", {name:"Abrir secciones"}).count(), 0);
+      await page.getByLabel("Torneo", {exact:true}).selectOption("1");
+      await grid.waitFor();
+      await page.evaluate(() => { location.hash = "#/admin/inscripciones/tournament-create"; });
+      await page.waitForURL("**/#/admin/inscripciones/game-roles");
+      await grid.waitFor();
+      assert.equal(await page.getByRole("heading", {name:"Crear torneo"}).count(), 0);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     }
     console.log(`Roles sin desplazamiento a ${width} × ${height}`);
     await page.close();

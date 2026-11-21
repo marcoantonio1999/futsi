@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Dispatch, type SetStateAction } from 'react';
-import { createEnrollmentHistory, initialEnrollmentScreen, type EnrollmentScreen } from './enrollmentHistory';
+import { createEnrollmentHistory, initialEnrollmentScreen, type EnrollmentScreen, type EnrollmentSection } from './enrollmentHistory';
 
 type Navigation = {
   screen: EnrollmentScreen;
@@ -11,7 +11,7 @@ const Context = createContext<Navigation | null>(null);
 const regions = () => Array.from(document.querySelectorAll<HTMLElement>('.enrollment-admin-layout :is([role=region], .tournament-directory-scroll, .enrollment-team-roster-scroll)'));
 const scrollPosition = () => ({ x: window.scrollX, y: window.scrollY, regions: regions().map(element => [element.scrollLeft, element.scrollTop] as [number, number]) });
 
-export function EnrollmentNavigation({ userId, children }: { userId: number; children: ReactNode }) {
+export function EnrollmentNavigation({ userId, onlySection, children }: { userId: number; onlySection?: EnrollmentSection; children: ReactNode }) {
   const owner = `enrollments:${userId}`;
   const [screen, setScreen] = useState(() => initialEnrollmentScreen(window, owner));
   const controller = useRef<ReturnType<typeof createEnrollmentHistory> | null>(null);
@@ -27,7 +27,7 @@ export function EnrollmentNavigation({ userId, children }: { userId: number; chi
   useLayoutEffect(() => {
     const previous = window.history.scrollRestoration;
     window.history.scrollRestoration = 'manual';
-    const history = createEnrollmentHistory(window, owner, (next, restorePosition = true) => { if (restorePosition) pending.current = next.scroll; setScreen(next); });
+    const history = createEnrollmentHistory(window, owner, (next, restorePosition = true) => { if (restorePosition) pending.current = next.scroll; setScreen(next); }, onlySection);
     controller.current = history; setScreen(history.screen);
     let frame = 0;
     const saveScroll = () => {
@@ -38,7 +38,7 @@ export function EnrollmentNavigation({ userId, children }: { userId: number; chi
     const flush = () => { if (!pending.current) { history.scroll(scrollPosition(), false); history.flushScroll(); } };
     window.addEventListener('pagehide', flush);
     return () => { history.flushScroll(); history.dispose(); controller.current = null; window.history.scrollRestoration = previous; window.removeEventListener('scroll', saveScroll, true); window.removeEventListener('pagehide', flush); cancelAnimationFrame(frame); };
-  }, [owner]);
+  }, [owner, onlySection]);
   useLayoutEffect(() => { restoreScroll(); }, [screen.section, screen.roster, screen.detail]);
   const navigation: Navigation = {
     screen,
