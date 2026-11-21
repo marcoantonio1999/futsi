@@ -92,6 +92,24 @@ class GameRoleMatrixTests(TestCase):
         self.assertEqual(len(matrix["crosses"]), 1)
         self.assertEqual(len(matrix["teams"]), 2)
 
+    def test_create_team_adds_it_to_selected_tournament_and_matrix(self):
+        data = {"name": " Nuevo equipo ", "representative_name": "Delegado de prueba"}
+        response = self.client.patch(self.url, {"new_team": data}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        team = self.tournament.teams.get(name="Nuevo equipo")
+        self.assertEqual(team.representative_name, data["representative_name"])
+        self.assertTrue(team.is_active)
+        self.assertEqual(response.json()["matrix_team_ids"], [team.pk])
+        self.assertIn({"id": team.pk, "name": team.name, "is_active": True}, response.json()["teams"])
+        self.assertEqual(self.client.get(self.url).json()["matrix_team_ids"], [team.pk])
+
+        self.assertEqual(self.client.patch(self.url, {"new_team": data}, format="json").status_code, 400)
+        self.assertEqual(self.client.patch(self.url, {"new_team": {"name": "Sin delegado"}}, format="json").status_code, 400)
+        outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/"
+        self.assertEqual(self.client.patch(outside, {"new_team": data}, format="json").status_code, 404)
+        self.assertFalse(Team.objects.filter(name="Sin delegado").exists())
+        self.assertEqual(Team.objects.filter(name="Nuevo equipo").count(), 1)
+
     def test_tournament_scope_and_input_validation(self):
         second = self.add_round(2)
         outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/"

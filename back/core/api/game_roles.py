@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 from django.core import signing
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import Http404
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api.enrollments import EnrollmentStaffPermission, enrollment_sites
+from core.domain_serializers.sports import TeamSerializer
 from core.models import GameRoleRound, GameRoleTeamNote, Team, Tournament
 from core.services.standings import build_standings
 
@@ -205,10 +206,15 @@ class GameRoleMatrixView(GameRoleView):
     @transaction.atomic
     def patch(self, request, tournament_id):
         tournament = self.tournament(request, tournament_id, lock=True)
-        if "add_team_id" in request.data:
-            team_id = serializers.IntegerField(min_value=1).run_validation(request.data["add_team_id"])
-            if not tournament.teams.filter(pk=team_id, is_active=True).exists():
-                raise ValidationError("Selecciona un equipo activo de este torneo.")
+        if "new_team" in request.data or "add_team_id" in request.data:
+            if "new_team" in request.data:
+                if "add_team_id" in request.data:
+                    raise ValidationError("Elige crear un equipo o agregar uno existente.")
+                team_id = self.create_matrix_team(tournament, request.data["new_team"]).pk
+            else:
+                team_id = serializers.IntegerField(min_value=1).run_validation(request.data["add_team_id"])
+                if not tournament.teams.filter(pk=team_id, is_active=True).exists():
+                    raise ValidationError("Selecciona un equipo activo de este torneo.")
             if team_id not in tournament.game_role_team_order:
                 tournament.game_role_team_order = [*tournament.game_role_team_order, team_id]
                 tournament.save(update_fields=["game_role_team_order", "updated_at"])
@@ -229,6 +235,27 @@ class GameRoleMatrixView(GameRoleView):
         row.number, row.starts_on = data["number"], data["starts_on"]
         row.save(update_fields=["number", "starts_on", "updated_at"])
         return self.matrix(tournament)
+
+    def create_matrix_team(self, tournament, data):
+        if not tournament.is_active or not tournament.site.is_active:
+            raise ValidationError("Selecciona un torneo activo.")
+        if not isinstance(data, dict):
+            raise ValidationError("Ingresa los datos del equipo.")
+        allowed = {"name", "representative_name", "representative_phone"}
+        serializer = TeamSerializer(data={
+            **{key: value for key, value in data.items() if key in allowed},
+            "tournament": tournament.pk,
+        })
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data.get("representative_name"):
+            raise ValidationError({"representative_name": "Ingresa el nombre del delegado."})
+        try:
+            with transaction.atomic():
+                return serializer.save(tournament=tournament, is_active=True)
+        except IntegrityError:
+            if tournament.teams.filter(name=serializer.validated_data["name"]).exists():
+                raise ValidationError({"name": "Ya existe un equipo con ese nombre en este torneo."})
+            raise
 
     @transaction.atomic
     def put(self, request, tournament_id):

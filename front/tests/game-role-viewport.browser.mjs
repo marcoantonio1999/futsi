@@ -42,6 +42,9 @@ try {
       ...matrix, matrix_team_ids: teams.slice(0, 6).map(team => team.id),
       crosses: matrix.crosses.filter(cross => cross.home_team_id <= 6 && cross.away_team_id <= 6),
     };
+    const emptyMatrix = {
+      ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [],
+    };
     let identity = {
       id: 99, username: "pancho.inscripciones", role: "collaborator",
       section_permissions: ["player_enrollments_only", "game_roles_manage"],
@@ -73,9 +76,16 @@ try {
           results_round: 1, results: [{ home_team__name: teams[0].name, away_team__name: teams[1].name, home_goals: 3, away_goals: 1 }],
           standings: matrix.standings.slice(0, 10), scoring: [{ team: teams[0].name, goals: 3 }] } });
       }
-      if (pathname.endsWith("/game-roles/2/")) return route.fulfill({ json: {
-        ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [],
-      } });
+      if (pathname.endsWith("/game-roles/2/")) {
+        if (route.request().method() === "PATCH") {
+          assert.deepEqual(route.request().postDataJSON(), {
+            new_team: { name: "Equipo nuevo", representative_name: "Delegado de prueba", representative_phone: "" },
+          });
+          emptyMatrix.teams.push({ id: 21, name: "Equipo nuevo", is_active: true });
+          emptyMatrix.matrix_team_ids.push(21);
+        }
+        return route.fulfill({ json: emptyMatrix });
+      }
       if (pathname.endsWith("/game-roles/1/team-notes/")) {
         const note = route.request().postDataJSON();
         assert.equal(note.kind, "preferred");
@@ -335,6 +345,23 @@ try {
       const side = await history.boundingBox();
       const workspace = await page.locator(".game-roles-workspace").boundingBox();
       assert(Math.abs(side.width / workspace.width - 0.4) < 0.01);
+    }
+    if ([320, 390, 1440].includes(width)) {
+      const returnToMatrix = navigation.getByRole("button", { name: "Volver a roles de juego" });
+      if (await returnToMatrix.isVisible()) await returnToMatrix.click();
+      await tournamentSelect.selectOption("2");
+      await page.getByRole("button", { name: "Agregar equipo", exact: true }).click();
+      const picker = page.getByRole("dialog", { name: "Agregar equipo", exact: true });
+      await picker.getByLabel("Equipo", { exact: true }).selectOption("new");
+      await picker.getByLabel("Nombre del equipo", { exact: true }).fill(" Equipo nuevo ");
+      assert.equal(await picker.getByLabel("Delegado", { exact: true }).evaluate(field => field.validity.valueMissing), true);
+      await picker.getByLabel("Delegado", { exact: true }).fill("Delegado de prueba");
+      const create = picker.getByRole("button", { name: "Crear y agregar" });
+      await create.scrollIntoViewIfNeeded();
+      await inside(page, create);
+      await create.click();
+      await picker.waitFor({ state: "hidden" });
+      await grid.getByRole("rowheader", { name: "Equipo nuevo", exact: true }).waitFor();
     }
     assert.equal(await page.evaluate(() => window.scrollY), 0);
     if (width === 390) {

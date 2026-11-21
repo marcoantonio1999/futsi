@@ -13,6 +13,9 @@ import { roleSchedule, roleSlots, roleTimeLabel, type RoleSchedule, type RoleSlo
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
+type TeamSelectionInput = { add_team_id: number } | {
+  new_team: { name: string; representative_name: string; representative_phone: string };
+};
 type Round = { id: number; number: number; starts_on: string };
 type Cross = {
   home_team_id: number; away_team_id: number; round_id: number;
@@ -58,8 +61,8 @@ function weekLabel(start: string) {
   return dateLabel.formatRange(new Date(start + "T00:00:00Z"), new Date(addDays(start, 6) + "T00:00:00Z"));
 }
 
-export function GameRoles({ token, tournaments, sites, loading }: {
-  token: string; tournaments: Tournament[]; sites: Pick<Site, "id" | "name">[]; loading: boolean;
+export function GameRoles({ token, tournaments, sites, loading, onTeamCreated }: {
+  token: string; tournaments: Tournament[]; sites: Pick<Site, "id" | "name">[]; loading: boolean; onTeamCreated: () => void;
 }) {
   const [tournamentId, setTournamentId] = useEnrollmentViewState("gameRoles.tournament", "");
   const tournament = tournaments.find(row => String(row.id) === tournamentId);
@@ -73,7 +76,7 @@ export function GameRoles({ token, tournaments, sites, loading }: {
         </option>)}
       </NativeSelect></Label>
     </Card>
-    {tournament && <TournamentMatrix key={tournament.id} token={token} tournamentId={tournament.id} tournamentName={tournament.name} siteId={tournament.site} />}
+    {tournament && <TournamentMatrix key={tournament.id} token={token} tournament={tournament} onTeamCreated={onTeamCreated} />}
   </>;
 }
 
@@ -97,7 +100,8 @@ function MatchDateSelect({ round, schedule, value, onChange, required }: {
   </Label>;
 }
 
-function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { token: string; tournamentId: number; tournamentName: string; siteId: number }) {
+function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string; tournament: Tournament; onTeamCreated: () => void }) {
+  const { id: tournamentId, name: tournamentName, site: siteId } = tournament;
   const schedule = roleSchedule(siteId, tournamentName);
   const path = `/player-enrollments/game-roles/${tournamentId}/`;
   const [matrix, setMatrix] = useState<Matrix | null>(null);
@@ -262,7 +266,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
         <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
-        <Button type="button" disabled={!matrix.matrix_team_ids || !availableTeams.length} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
+        <Button type="button" disabled={!matrix.matrix_team_ids || (!tournament.is_active && !availableTeams.length)} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
       </div>
       <div className="game-role-matrix-controls">
         {selected && <>
@@ -314,8 +318,11 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
     </Card>
     <GameRoleHistory matrix={matrix} tournamentName={tournamentName} onEdit={openCross} />
     </div>}
-    {addingTeam && <TeamSelection teams={availableTeams} onClose={() => setAddingTeam(false)}
-      onSubmit={team => save("PATCH", { add_team_id: team.id })} />}
+    {addingTeam && <TeamSelection teams={availableTeams} canCreate={tournament.is_active} onClose={() => setAddingTeam(false)}
+      onSubmit={async data => {
+        await save("PATCH", data);
+        if ("new_team" in data) onTeamCreated();
+      }} />}
     {editor && <MatrixEditor editor={editor} matrix={matrix} tournamentName={tournamentName} schedule={schedule} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
     {share && <GameRoleShare path={`${path}rounds/${share.roundId}/share/`} token={token}
       reminderKey={`${tournamentId}/${share.roundId}`} upcomingOnly={share.upcomingOnly} onClose={() => setShare(null)} />}
@@ -422,34 +429,44 @@ function GameRoleHistory({ matrix, tournamentName, onEdit }: { matrix: Matrix; t
   </Card>;
 }
 
-function TeamSelection({ teams, onClose, onSubmit }: {
-  teams: Team[]; onClose: () => void; onSubmit: (team: Team) => Promise<void>;
+function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
+  teams: Team[]; canCreate: boolean; onClose: () => void; onSubmit: (data: TeamSelectionInput) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [homeId, setHomeId] = useState("");
+  const [selection, setSelection] = useState(!teams.length && canCreate ? "new" : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const creating = selection === "new" && canCreate;
   useEffect(() => { dialog.current?.showModal(); }, []);
   return <Dialog ref={dialog} className="game-roles-dialog" aria-labelledby="game-role-team-title"
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <form onSubmit={async event => {
       event.preventDefault();
-      if (busy) return;
-      const team = teams.find(row => String(row.id) === homeId);
-      if (!team) return;
+      if (busy || !selection) return;
+      const form = new FormData(event.currentTarget);
+      const value = (field: string) => String(form.get(field) ?? "").trim();
+      const data: TeamSelectionInput = creating ? {
+        new_team: { name: value("name"), representative_name: value("representative_name"), representative_phone: value("representative_phone") },
+      } : { add_team_id: Number(selection) };
       setBusy(true); setError("");
-      try { await onSubmit(team); }
+      try { await onSubmit(data); }
       catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar."); }
       finally { setBusy(false); }
     }}>
       <h2 id="game-role-team-title">Agregar equipo</h2>
-      <Label>Equipo disponible<NativeSelect required value={homeId} onChange={event => setHomeId(event.target.value)}>
+      <Label>Equipo<NativeSelect aria-label="Equipo" required disabled={busy} value={selection} onChange={event => { setSelection(event.target.value); setError(""); }}>
         <option value="">Selecciona un equipo</option>
+        {canCreate && <option value="new">Crear equipo nuevo</option>}
         {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
       </NativeSelect></Label>
+      {creating && <>
+        <Label>Nombre del equipo<Input name="name" maxLength={140} required readOnly={busy} /></Label>
+        <Label>Delegado<Input name="representative_name" maxLength={160} required readOnly={busy} /></Label>
+        <Label>Teléfono del delegado (opcional)<Input name="representative_phone" type="tel" maxLength={30} readOnly={busy} /></Label>
+      </>}
       {error && <p role="alert" className="error">{error}</p>}
       <footer><Button type="button" disabled={busy} onClick={onClose}>Cancelar</Button>
-        <Button type="submit" className="primary" disabled={busy}>Agregar equipo</Button></footer>
+        <Button type="submit" className="primary" disabled={busy}>{creating ? "Crear y agregar" : "Agregar equipo"}</Button></footer>
     </form>
   </Dialog>;
 }
