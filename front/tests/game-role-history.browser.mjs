@@ -36,9 +36,19 @@ const matrix = {
 try {
   for (const width of [320, 390, 1100, 1440, 1890]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    let crosses = matrix.crosses;
+    let deleteRequests = 0;
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
-      if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/game-roles/1/")) {
+        if (route.request().method() === "PUT") {
+          const data = route.request().postDataJSON();
+          assert.deepEqual(data, { home_team_id: 2, away_team_id: 1, round_id: null });
+          deleteRequests++;
+          crosses = crosses.filter(cross => cross.home_team_id !== 2 || cross.away_team_id !== 1);
+        }
+        return route.fulfill({ json: { ...matrix, crosses } });
+      }
       if (pathname.endsWith("/catalog/")) return route.fulfill({ json: {
         sites: [{ id: 27, name: "Colegio Franco" }], teams,
         tournaments: [{ id: 1, name: "Nocturno", site: 27, is_active: true }],
@@ -63,6 +73,7 @@ try {
     const editor = page.getByRole("dialog", { name: "Jornada y horario del partido" });
     await roundSelect.selectOption("2");
     await openUnscheduled();
+    assert.equal(await editor.getByRole("button", { name: "Eliminar partido" }).count(), 0);
     const editorDate = editor.getByLabel("Fecha del partido");
     assert.equal(await editorDate.inputValue(), "2026-11-30");
     const mondaySlot = editor.getByLabel("Horario disponible", {exact:true});
@@ -119,6 +130,20 @@ try {
     const dialog = page.getByRole("dialog", { name: "Jornada y horario del partido" });
     assert(await dialog.getByLabel("Goles local").isVisible());
     await dialog.getByRole("button", { name: "Cancelar" }).click();
+    const pendingMatch = history.getByRole("button", { name: /^Editar partido: CACOMIXTLES DEL COLEGIO FRANCO vs. FRANCO CANADIENSE/ });
+    await pendingMatch.click();
+    await editor.getByRole("button", { name: "Eliminar partido", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Eliminar partido", exact: true });
+    await confirmation.getByText("CACOMIXTLES DEL COLEGIO FRANCO vs. FRANCO CANADIENSE", { exact: true }).waitFor();
+    assert.equal(deleteRequests, 0);
+    assert(await confirmation.evaluate(element => element.scrollWidth <= element.clientWidth));
+    await confirmation.getByRole("button", { name: "Volver", exact: true }).click();
+    await editor.getByRole("button", { name: "Eliminar partido", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Confirmar eliminación" }).click();
+    await pendingMatch.waitFor({ state: "hidden" });
+    await confirmation.waitFor({ state: "hidden" });
+    assert.equal(deleteRequests, 1);
+    assert(await capture.isVisible());
     console.log(`Historial y captura de marcador verificados a ${width} px`);
     await page.close();
   }

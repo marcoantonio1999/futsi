@@ -495,6 +495,7 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
   const saving = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const last = matrix.rounds.at(-1);
   const round = editor.kind === "round" ? editor.round : undefined;
   useEffect(() => {
@@ -512,6 +513,10 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
     setError("");
     try {
       if (editor.kind === "cross") {
+        if (confirmingDelete && editor.current) {
+          await onSave("PUT", { home_team_id: editor.home.id, away_team_id: editor.away.id, round_id: null });
+          return;
+        }
         const roundId = form.get("round_id");
         const scheduledOn = form.get("scheduled_on");
         const played = form.has("played");
@@ -531,17 +536,28 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
         await onSave(round ? "PATCH" : "POST", { round_id: round?.id, number, starts_on: form.get("starts_on") }, number);
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudo guardar el cambio.");
+      setError(reason instanceof Error ? reason.message : confirmingDelete ? "No se pudo eliminar el partido." : "No se pudo guardar el cambio.");
     } finally {
       saving.current = false;
       setBusy(false);
     }
   }
 
+  function cancelDelete() {
+    setConfirmingDelete(false);
+    setError("");
+  }
+
   return <Dialog ref={dialog} className="game-roles-dialog" aria-labelledby="game-roles-dialog-title"
-    onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <form onSubmit={submit}>
-      <h2 id="game-roles-dialog-title">{editor.kind === "cross" ? "Jornada y horario del partido" : round ? "Editar jornada" : "Agregar jornada"}</h2>
+    onCancel={event => {
+      event.preventDefault();
+      if (!busy) {
+        if (confirmingDelete) cancelDelete();
+        else onClose();
+      }
+    }}>
+    <h2 id="game-roles-dialog-title">{confirmingDelete ? "Eliminar partido" : editor.kind === "cross" ? "Jornada y horario del partido" : round ? "Editar jornada" : "Agregar jornada"}</h2>
+    <form hidden={confirmingDelete} onSubmit={submit}>
       {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} tournamentName={tournamentName} schedule={schedule} selected={selected} /> : <>
         <Label>Número de jornada<Input type="number" name="number" min={1} max={999} required defaultValue={round?.number ?? Math.min(999, (last?.number ?? 0) + 1)} /></Label>
         <Label>Inicio de la semana<Input type="date" name="starts_on" required defaultValue={round?.starts_on ?? (last ? addDays(last.starts_on, 7) : matrix.starts_on ?? "")} /></Label>
@@ -549,10 +565,21 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
       </>}
       {error && <p className="error" role="alert">{error}</p>}
       <footer>
+        {editor.kind === "cross" && editor.current && <Button type="button" disabled={busy}
+          onClick={() => { setConfirmingDelete(true); setError(""); }}>Eliminar partido</Button>}
         <Button type="button" onClick={onClose} disabled={busy}>Cancelar</Button>
         <Button type="submit" className="primary" disabled={busy}>{busy ? "Guardando…" : "Guardar"}</Button>
       </footer>
     </form>
+    {confirmingDelete && editor.kind === "cross" && <form onSubmit={submit}>
+      <p>¿Quieres eliminar el partido <strong>{editor.home.name} vs. {editor.away.name}</strong>?</p>
+      <p>Se borrarán su horario y su marcador, si ya se capturaron.</p>
+      {error && <p className="error" role="alert">{error}</p>}
+      <footer>
+        <Button type="button" autoFocus disabled={busy} onClick={cancelDelete}>Volver</Button>
+        <Button type="submit" variant="destructive" disabled={busy}>{busy ? "Eliminando…" : "Confirmar eliminación"}</Button>
+      </footer>
+    </form>}
   </Dialog>;
 }
 
