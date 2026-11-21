@@ -668,9 +668,13 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
       {matrix.standings && <div hidden={!played}>
         <fieldset className="game-roles-score" disabled={!played}>
           <legend>Marcador</legend>
-          <div className="game-roles-hour-fields">
-            <Label>Goles local<Input name="home_goals" type="number" min={0} max={999} defaultValue={editor.current?.home_goals ?? ""} /></Label>
-            <Label>Goles visitante<Input name="away_goals" type="number" min={0} max={999} defaultValue={editor.current?.away_goals ?? ""} /></Label>
+          <div className="game-roles-hour-fields game-roles-score-fields">
+            <Label>Goles local <strong>{editor.home.name}</strong>
+              <Input name="home_goals" type="number" min={0} max={999} defaultValue={editor.current?.home_goals ?? ""} />
+            </Label>
+            <Label>Goles visitante <strong>{editor.away.name}</strong>
+              <Input name="away_goals" type="number" min={0} max={999} defaultValue={editor.current?.away_goals ?? ""} />
+            </Label>
           </div>
         </fieldset>
       </div>}

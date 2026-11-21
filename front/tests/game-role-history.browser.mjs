@@ -135,7 +135,13 @@ try {
     assert.equal(geometry.background, "rgb(18, 70, 160)");
     await capture.click();
     const dialog = page.getByRole("dialog", { name: "Jornada y horario del partido" });
-    assert(await dialog.getByLabel("Goles local").isVisible());
+    const localGoals = dialog.getByRole("spinbutton", { name: "Goles local FRANCO CANADIENSE", exact: true });
+    const visitorGoals = dialog.getByRole("spinbutton", { name: "Goles visitante CACOMIXTLES DEL COLEGIO FRANCO", exact: true });
+    assert.equal(await localGoals.getAttribute("name"), "home_goals");
+    assert.equal(await visitorGoals.getAttribute("name"), "away_goals");
+    assert(await localGoals.isVisible());
+    assert(await visitorGoals.isVisible());
+    assert(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth));
     await dialog.getByRole("button", { name: "Cancelar" }).click();
     const pendingMatch = history.getByRole("button", { name: /^Editar partido: CACOMIXTLES DEL COLEGIO FRANCO vs. FRANCO CANADIENSE/ });
     await pendingMatch.click();

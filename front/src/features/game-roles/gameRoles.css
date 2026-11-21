@@ -131,6 +131,8 @@
 .game-role-stat-table abbr { text-decoration: none; }
 .game-roles-score { border: 1px solid #dce4e0; border-radius: 8px; padding: 0 10px 8px; margin-inline: 0; min-width: 0; }
 .game-roles-score legend { padding: 0 4px; font-weight: 600; }
+.game-roles-score-fields { align-items: end; }
+.game-roles-score-fields strong { display: block; overflow-wrap: anywhere; }
 
 .game-roles-workspace {
   display: grid;
