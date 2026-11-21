@@ -169,6 +169,7 @@ def round_schedule(round_row):
         "site": tournament.site.name,
         "number": round_row.number,
         "starts_on": round_row.starts_on,
+        "expected_weeks": tournament.expected_weeks,
         "matches": list(matches.values(*match_fields[:-2])),
         "results_round": results_round,
         "results": list(results.values(*match_fields)),

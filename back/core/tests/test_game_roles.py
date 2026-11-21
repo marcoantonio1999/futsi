@@ -208,6 +208,12 @@ class GameRoleMatrixTests(TestCase):
         path = f"/api/public/game-roles/{shared['token']}/"
         response = public.get(path)
         self.assertEqual(response.status_code, 200)
+        self.assertIsNone(shared["expected_weeks"])
+        self.assertIsNone(response.json()["expected_weeks"])
+        self.tournament.expected_weeks = 16
+        self.tournament.save(update_fields=["expected_weeks"])
+        self.assertEqual(public.get(path).json()["expected_weeks"], 16)
+        self.assertEqual(self.client.get(self.url + f"rounds/{first['id']}/share/").json()["expected_weeks"], 16)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(len(response.json()["matches"]), 1)
         self.assertEqual(response.json()["scoring"], [])

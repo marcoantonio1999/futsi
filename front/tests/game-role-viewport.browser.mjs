@@ -65,7 +65,7 @@ try {
         tournament: "Eurocopa", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
       } });
       if (pathname.endsWith("/public/game-roles/enlace-de-prueba/")) return route.fulfill({ json: {
-        tournament: "Nocturno", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
+        tournament: "Nocturno", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [], expected_weeks: 16,
       } });
       if (pathname.endsWith("/game-roles/3/")) {
         if (route.request().method() === "PATCH") smallMatrix.matrix_team_ids.push(route.request().postDataJSON().add_team_id);
@@ -80,7 +80,7 @@ try {
             away_team__name: teams.find(team => team.id === cross.away_team_id).name,
           }));
         return route.fulfill({ json: { tournament: "UEFA", site: "Colegio Franco", number: round.number,
-          starts_on: round.starts_on, matches, token: "enlace-de-prueba",
+          starts_on: round.starts_on, matches, token: "enlace-de-prueba", expected_weeks: 13,
           results_round: 1, results: [{ home_team__name: teams[0].name, away_team__name: teams[1].name, home_goals: 3, away_goals: 1 }],
           standings: matrix.standings.slice(0, 10), scoring: [{ team: teams[0].name, goals: 3 }] } });
       }
@@ -256,6 +256,7 @@ try {
         && Math.abs(node.clientHeight - node.parentElement.clientHeight) <= 1;
     }));
     assert(await shareDialog.getByText(/Jornada 15 del torneo/).isVisible());
+    assert(await shareDialog.getByText(/Torneo regular de 13 jornadas/).isVisible());
     assert(await shareDialog.getByText("3–1", {exact:true}).isVisible());
     const bracket = shareDialog.getByRole("group", {name:"Llaves de liguilla"});
     const finalMatch = bracket.getByRole("group", {name:"Final", exact:true});
@@ -418,11 +419,13 @@ try {
       assert(await live.isVisible());
       assert(await page.getByText("Todavía no hay próximos partidos para esta jornada.").isVisible());
       assert(await page.getByText(/Jornada 9 del torneo/).isVisible());
+      assert(await page.getByText(/Torneo regular de 16 jornadas/).isVisible());
       assert(await page.getByRole("heading", {name:"Tabla de Posiciones", exact:true}).isVisible());
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.goto(origin + "/#/rol-de-juego/enlace-eurocopa", {waitUntil:"domcontentloaded", timeout:15000});
       const euroBracket = page.getByRole("group", {name:"Llaves de liguilla"});
       await euroBracket.getByText("Pase directo", {exact:true}).first().waitFor();
+      assert.equal(await page.getByText(/Torneo regular de/).count(), 0);
       assert.equal(await euroBracket.getByText("Pase directo", {exact:true}).count(), 2);
       assert.equal(await euroBracket.getByText("8.º lugar", {exact:true}).count(), 0);
     }

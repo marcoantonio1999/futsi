@@ -9,6 +9,7 @@ export type Match = {
 };
 export type Schedule = {
   tournament: string; site: string; number: number; starts_on: string; matches: Match[];
+  expected_weeks?: number | null;
   results_round?: number | null; results?: Match[];
   standings?: StandingRow[]; scoring?: { team: string; goals: number }[];
 };
@@ -37,7 +38,9 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
   const euro = league === "eurocopa";
   const competition = franco ? [
     ["Clasificación por tabla de posiciones general."],
-    [`Torneo regular a ${euro || league === "uefa" ? 18 : 12} jornadas. Califican del 1ero al 8to.`],
+    [schedule.expected_weeks
+      ? `Torneo regular de ${schedule.expected_weeks} ${schedule.expected_weeks === 1 ? "jornada" : "jornadas"}. Califican del 1ero al 8to.`
+      : "Califican del 1ero al 8to."],
     ...(euro ? [] : [[`Fecha límite para registrar: Jornada ${league === "uefa" ? 15 : 9} del torneo.`]]),
     ["Equipos con adeudos quedan automáticamente descalificados."],
   ] : [];
