@@ -12,6 +12,7 @@
 .game-role-view-options {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 .game-role-view-options::after {
@@ -30,7 +31,25 @@
 }
 .enrollment-page .game-role-view-options button > svg,
 .enrollment-page .game-role-back > svg { width: 15px; height: 15px; }
-.game-role-next { max-width: 56rem; }
+.game-role-next { max-width: 56rem; min-height: 0; overflow-y: auto; }
+.game-role-schedule-editor {
+  width: min(100%, 40rem);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+.game-role-schedule-editor form { display: grid; gap: 10px; }
+.game-role-schedule-editor :is(p, label) { margin: 0; }
+.game-role-schedule-block {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+}
+.game-role-schedule-editor :is(input, select, button) { min-height: 44px; }
+.game-role-schedule-block input { width: 100%; min-width: 0; }
+.game-role-schedule-block button { min-width: 44px; }
 .game-role-next .game-role-panel-header label { min-width: 0; max-width: 100%; }
 .game-role-next .game-role-stat-table { min-width: 0; table-layout: fixed; margin-top: 8px; font-size: 12px; }
 .game-role-next .game-role-stat-table :is(th, td) { padding: 6px 4px; text-align: left; overflow-wrap: anywhere; }
@@ -235,6 +254,12 @@
 
 @media screen and (max-width: 360px) {
   .game-roles-hour-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .game-role-view-options { gap: 4px; }
+  .enrollment-page .game-role-view-options button[data-slot="button"] {
+    gap: 4px;
+    padding-inline: 7px;
+    font-size: 12px;
+  }
 }
 
 @media screen {

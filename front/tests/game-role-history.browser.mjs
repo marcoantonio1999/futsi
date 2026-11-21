@@ -12,6 +12,14 @@ const teams = [
 ];
 const matrix = {
   teams, matrix_team_ids: [3, 4], schedule_enabled: true, standings: [],
+  weekly_schedule: [
+    { weekday: 1, starts_at: "22:30", ends_at: "23:20" },
+    { weekday: 2, starts_at: "22:30", ends_at: "23:20" },
+    ...[3, 4].flatMap(weekday => [
+      { weekday, starts_at: "21:40", ends_at: "22:30" },
+      { weekday, starts_at: "22:40", ends_at: "23:30" },
+    ]),
+  ],
   rounds: [{ id: 1, number: 1, starts_on: "2026-11-23" }, { id: 2, number: 2, starts_on: "2026-11-30" }, { id: 3, number: 3, starts_on: "2026-12-07" }],
   crosses: [{ home_team_id: 1, away_team_id: 2, round_id: 1, scheduled_on: "2026-11-26",
     starts_at: "01:00", ends_at: "02:00", played: true, home_goals: null, away_goals: null },

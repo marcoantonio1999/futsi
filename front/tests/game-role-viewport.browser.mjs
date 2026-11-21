@@ -43,8 +43,9 @@ try {
       crosses: matrix.crosses.filter(cross => cross.home_team_id <= 6 && cross.away_team_id <= 6),
     };
     const emptyMatrix = {
-      ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [],
+      ...matrix, teams: [], matrix_team_ids: [], rounds: [], crosses: [], standings: [], team_notes: [], weekly_schedule: [],
     };
+    let weeklySchedule = [{ weekday: 0, starts_at: "14:00", ends_at: "14:50" }];
     let identity = {
       id: 99, username: "pancho.inscripciones", role: "collaborator",
       section_permissions: ["player_enrollments_only", "game_roles_manage"],
@@ -52,7 +53,14 @@ try {
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/auth/me/")) return route.fulfill({ json: identity });
-      if (pathname.endsWith("/game-roles/1/")) return route.fulfill({ json: matrix });
+      if (pathname.endsWith("/game-roles/1/")) {
+        if (route.request().method() === "PATCH") {
+          const { weekly_schedule, previous_weekly_schedule } = route.request().postDataJSON();
+          assert.deepEqual(previous_weekly_schedule, weeklySchedule);
+          weeklySchedule = weekly_schedule;
+        }
+        return route.fulfill({ json: { ...matrix, weekly_schedule: weeklySchedule } });
+      }
       if (pathname.endsWith("/public/game-roles/enlace-eurocopa/")) return route.fulfill({ json: {
         tournament: "Eurocopa", site: "Colegio Franco", number: 2, starts_on: "2026-11-30", matches: [],
       } });
@@ -146,7 +154,7 @@ try {
       assert((await page.getByRole("button", {name:"Cerrar sesión"}).boundingBox()).height <= 32);
     }
     const navigation = page.getByRole("navigation", {name:"Vistas de Roles de juego"});
-    assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Estadísticas", "Siguiente rol"]);
+    assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Horarios", "Estadísticas", "Siguiente rol"]);
     assert.equal(await page.getByRole("heading", {name:"Horarios", exact:true}).count(), 0);
     const roundSelect = page.getByLabel("Jornada de la matriz");
     assert.equal(await roundSelect.evaluate(node => getComputedStyle(node).appearance), "auto");
@@ -368,6 +376,29 @@ try {
       await create.click();
       await picker.waitFor({ state: "hidden" });
       await grid.getByRole("rowheader", { name: "Equipo nuevo", exact: true }).waitFor();
+      await tournamentSelect.selectOption("1");
+      await navigation.getByRole("button", { name: "Horarios", exact: true }).click();
+      const hours = page.getByRole("region", { name: "Horarios semanales" });
+      const day = hours.getByLabel("Día de juego");
+      assert.equal(await day.inputValue(), "0");
+      await hours.getByLabel("Inicio del bloque 1").fill("14:10");
+      await day.selectOption("3");
+      await hours.getByRole("button", { name: "Agregar bloque" }).click();
+      await hours.getByLabel("Inicio del bloque 1").fill("20:00");
+      await hours.getByLabel("Fin del bloque 1").fill("20:50");
+      const saveHours = hours.getByRole("button", { name: "Guardar horarios" });
+      await inside(page, saveHours);
+      await saveHours.click();
+      await hours.getByRole("status").filter({ hasText: "Horarios guardados." }).waitFor();
+      assert.deepEqual(weeklySchedule, [
+        { weekday: 0, starts_at: "14:10", ends_at: "14:50" },
+        { weekday: 3, starts_at: "20:00", ends_at: "20:50" },
+      ]);
+      await hours.getByRole("button", { name: "Quitar bloque 1" }).click();
+      await saveHours.click();
+      await hours.getByRole("status").filter({ hasText: "Horarios guardados." }).waitFor();
+      assert.equal(weeklySchedule.length, 1);
+      await navigation.getByRole("button", { name: "Volver a roles de juego" }).click();
     }
     assert.equal(await page.evaluate(() => window.scrollY), 0);
     if (width === 390) {

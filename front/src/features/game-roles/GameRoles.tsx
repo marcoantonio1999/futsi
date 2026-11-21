@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { BarChart3, CalendarDays, ChevronLeft, Pencil } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, Clock, Pencil } from "lucide-react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, StandingRow, Tournament } from "../../types";
 import { useEnrollmentScrollReady, useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
 import { GameRoleNotes, scheduleSuggestion, type GameRoleNote } from "./GameRoleNotes";
+import { GameRoleScheduleEditor } from "./GameRoleScheduleEditor";
 import { GameRoleStatistics } from "./GameRoleStatistics";
 import { GameRoleShare } from "./GameRoleShare";
 import { RolePageButtons } from "./RolePageButtons";
 import { roleReminders } from "./roleReminders";
-import { roleSchedule, roleSlots, roleTimeLabel, type RoleSchedule, type RoleSlot as Slot } from "./roleSchedule";
+import { roleSlots, roleTimeLabel, type RoleSchedule, type WeeklyBlock, type RoleSlot as Slot } from "./roleSchedule";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -24,7 +25,7 @@ type Cross = {
 };
 type Matrix = {
   teams: Team[]; matrix_team_ids?: number[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null;
-  schedule_enabled?: boolean; team_notes?: GameRoleNote[]; standings?: StandingRow[];
+  schedule_enabled?: boolean; weekly_schedule?: WeeklyBlock[]; team_notes?: GameRoleNote[]; standings?: StandingRow[];
 };
 type CrossEditor = { kind: "cross"; home: Team; away: Team; current?: Cross; slot?: Slot };
 function overlaps(slot: Slot, cross: Cross) {
@@ -101,14 +102,13 @@ function MatchDateSelect({ round, schedule, value, onChange, required }: {
 }
 
 function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string; tournament: Tournament; onTeamCreated: () => void }) {
-  const { id: tournamentId, name: tournamentName, site: siteId } = tournament;
-  const schedule = roleSchedule(siteId, tournamentName);
+  const { id: tournamentId, name: tournamentName } = tournament;
   const path = `/player-enrollments/game-roles/${tournamentId}/`;
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useEnrollmentViewState(`gameRoles.round.${tournamentId}`, 0);
-  const [view, setView] = useEnrollmentViewState<"matrix" | "statistics" | "next-role">("gameRoles.view", "matrix");
+  const [view, setView] = useEnrollmentViewState<"matrix" | "statistics" | "next-role" | "schedule">("gameRoles.view", "matrix");
   const [rowPageIndex, setRowPage] = useState(0);
   const [columnPageIndex, setColumnPage] = useState(0);
   const [gridSize, setGridSize] = useState({ rows: 6, columns: 4 });
@@ -191,6 +191,7 @@ function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string;
   </Card>;
   if (!matrix) return <p role="status">Cargando matriz…</p>;
 
+  const schedule = matrix.weekly_schedule ?? [];
   const selected = matrix.rounds.find(round => round.id === selectedId) ?? matrix.rounds[0];
   const teamsById = new Map(matrix.teams.map(team => [team.id, team]));
   // Keep the chosen order, then show the teams needed by existing matches.
@@ -237,12 +238,23 @@ function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string;
     setMatrix(current => current && { ...current, team_notes: result.team_notes });
   }
 
+  async function saveSchedule(blocks: WeeklyBlock[]) {
+    const result = await apiRequest<Matrix>(path, token, {
+      method: "PATCH", body: JSON.stringify({ weekly_schedule: blocks, previous_weekly_schedule: schedule }),
+    });
+    setMatrix(result);
+    return result.weekly_schedule ?? [];
+  }
+
   return <>
     <nav className="game-role-views" aria-label="Vistas de Roles de juego">
-      {(view === "statistics" || view === "next-role") && <Button type="button" className="game-role-back" onClick={() => setView("matrix")}>
+      {view !== "matrix" && <Button type="button" className="game-role-back" onClick={() => setView("matrix")}>
         <ChevronLeft aria-hidden="true" />Volver a roles de juego
       </Button>}
       <div className="game-role-view-options">
+        {matrix.weekly_schedule && <Button type="button" aria-pressed={view === "schedule"} onClick={() => setView("schedule")}>
+          <Clock aria-hidden="true" />Horarios
+        </Button>}
         <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>
           <BarChart3 aria-hidden="true" />Estadísticas
         </Button>
@@ -255,7 +267,9 @@ function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string;
       </Button>}
     </nav>
     {reminderMessage && <p role="status">{reminderMessage}</p>}
-    {view === "statistics"
+    {view === "schedule" && matrix.weekly_schedule
+      ? <GameRoleScheduleEditor blocks={schedule} canEdit={tournament.is_active} onSave={saveSchedule} />
+      : view === "statistics"
       ? <div key="statistics" className="game-role-statistics-panel">
           <GameRoleStatistics rows={(matrix.standings ?? []).filter(row => matrixTeamIds.has(row.team))}
             withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} />
@@ -343,8 +357,7 @@ function NextGameRole({ matrix, tournamentName, onShare }: { matrix: Matrix; tou
   const round = rounds.find(row => row.id === roundId) ?? rounds.find(row => row.id === nextRoundId) ?? rounds.at(-1);
   const matches = pending.filter(cross => cross.round_id === round?.id);
 
-  return <div className="game-role-statistics-panel">
-    <Card as="section" className="game-role-history game-role-next" aria-labelledby="game-role-next-title">
+  return <Card as="section" className="game-role-history game-role-next" aria-labelledby="game-role-next-title">
       <div className="game-role-panel-header">
         <h2 id="game-role-next-title">Próximos partidos</h2>
         {round && <Label>Jornada<NativeSelect aria-label="Jornada del rol" value={round.id} onChange={event => setRoundId(Number(event.target.value))}>
@@ -363,8 +376,7 @@ function NextGameRole({ matrix, tournamentName, onShare }: { matrix: Matrix; tou
         </tbody>
       </table>
       {round && <footer><Button type="button" className="primary" disabled={!matches.length} onClick={() => onShare(round.id)}>Compartir rol de juego</Button></footer>}
-    </Card>
-  </div>;
+  </Card>;
 }
 
 function GameRoleHistory({ matrix, tournamentName, onEdit }: { matrix: Matrix; tournamentName: string; onEdit: (home: Team, away: Team, cross: Cross) => void }) {
@@ -558,7 +570,7 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
   const overlap = occupied.some(cross => overlaps({ day, start, end }, cross));
   function changeDay(nextDay: string) {
     setDay(nextDay);
-    if (!schedule && nextDay) return;
+    if (!schedule.length && nextDay) return;
     const freeSlots = roleSlots(schedule, nextDay).filter(slot => !matrix.crosses.some(cross =>
       (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id) && overlaps(slot, cross)));
     const slot = freeSlots.find(row => row.start === start && row.end === end) ?? freeSlots[0];

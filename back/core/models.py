@@ -218,6 +218,7 @@ class Tournament(TimestampedModel):
     football_format = models.CharField(max_length=4, choices=[("fut6", "Fut 6"), ("fut7", "Fut 7"), ("fut8", "Fut 8")], blank=True, default="")
 
     game_role_team_order = models.JSONField(default=list, blank=True)
+    game_role_schedule = models.JSONField(null=True, blank=True, default=None)
 
     @property
     def max_players_per_team(self):

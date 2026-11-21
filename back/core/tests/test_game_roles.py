@@ -42,6 +42,54 @@ class GameRoleMatrixTests(TestCase):
         self.assertEqual(self.set_cross(round_id).status_code, 200)
         self.assertEqual(self.client.get(self.url + f"rounds/{round_id}/share/").status_code, 200)
 
+    def test_weekly_schedule_saves_and_does_not_move_existing_matches(self):
+        round_id = self.add_round()["id"]
+        match = {"scheduled_on": "2026-11-09", "starts_at": "09:00", "ends_at": "09:50"}
+        self.assertEqual(self.set_cross(round_id, schedule=match).status_code, 200)
+        block = {"weekday": 1, "starts_at": "10:00", "ends_at": "10:50"}
+        payload = {"weekly_schedule": [block], "previous_weekly_schedule": []}
+        self.assertEqual(self.client.patch(self.url, payload, format="json").status_code, 200)
+        result = self.client.get(self.url).json()
+        self.assertEqual(result["weekly_schedule"], [block])
+        self.assertEqual(result["crosses"][0]["starts_at"], "09:00:00")
+        self.assertEqual(self.client.patch(self.url, payload, format="json").status_code, 200)
+        self.assertEqual(self.client.patch(self.url, {**payload, "weekly_schedule": []}, format="json").status_code, 400)
+        self.assertEqual(self.client.patch(self.url, {
+            "weekly_schedule": [block, {**block, "starts_at": "10:25"}], "previous_weekly_schedule": [block],
+        }, format="json").status_code, 400)
+        outside = f"/api/player-enrollments/game-roles/{self.other_tournament.pk}/"
+        self.assertEqual(self.client.patch(outside, payload, format="json").status_code, 404)
+        self.assertEqual(self.client.patch(self.url, {
+            "weekly_schedule": [], "previous_weekly_schedule": [block],
+        }, format="json").status_code, 200)
+        self.assertEqual(self.client.get(self.url).json()["weekly_schedule"], [])
+
+    def test_franco_weekly_schedule_uses_defaults_and_rejects_shared_slot_conflicts(self):
+        site = Site.objects.create(pk=27, name="Colegio Franco")
+        nocturno = Tournament.objects.create(site=site, name="Nocturno")
+        premier = Tournament.objects.create(site=site, name="Premier L.")
+        self.client.force_authenticate(User.objects.create_user(username="schedule-admin", role="admin"))
+        url = f"/api/player-enrollments/game-roles/{nocturno.pk}/"
+        default = self.client.get(url).json()["weekly_schedule"]
+        self.assertEqual([(row["weekday"], row["starts_at"]) for row in default], [
+            (1, "22:30"), (2, "22:30"), (3, "21:40"), (3, "22:40"), (4, "21:40"), (4, "22:40"),
+        ])
+        premier_url = f"/api/player-enrollments/game-roles/{premier.pk}/"
+        premier_blocks = self.client.get(premier_url).json()["weekly_schedule"]
+        self.assertEqual([(row["weekday"], row["starts_at"]) for row in premier_blocks], [
+            (2, "20:00"), (2, "20:50"), (3, "20:00"), (3, "20:50"), (4, "20:00"), (4, "20:50"),
+        ])
+        response = self.client.patch(url, {
+            "weekly_schedule": [{"weekday": 3, "starts_at": "21:30", "ends_at": "22:20"}],
+            "previous_weekly_schedule": default,
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Premier", str(response.data))
+        self.assertEqual(self.client.patch(url, {
+            "weekly_schedule": [], "previous_weekly_schedule": default,
+        }, format="json").status_code, 200)
+        self.assertEqual(self.client.get(url).json()["weekly_schedule"], [])
+
     def test_only_granted_staff_and_administrators_can_manage_game_roles(self):
         round_id = self.add_round()["id"]
         staff = User.objects.create_user(username="ventanilla", role="collaborator",

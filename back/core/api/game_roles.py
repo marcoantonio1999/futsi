@@ -12,7 +12,8 @@ from rest_framework.views import APIView
 
 from core.api.enrollments import EnrollmentStaffPermission, enrollment_sites
 from core.domain_serializers.sports import TeamSerializer
-from core.models import GameRoleRound, GameRoleTeamNote, Team, Tournament
+from core.models import GameRoleRound, GameRoleTeamNote, Site, Team, Tournament
+from core.services.game_role_schedule import FRANCO_SITE_ID, tournament_schedule
 from core.services.standings import build_standings
 
 
@@ -30,6 +31,33 @@ class ScheduleInput(serializers.Serializer):
     scheduled_on = serializers.DateField()
     starts_at = serializers.TimeField(input_formats=["%H:%M"])
     ends_at = serializers.TimeField(input_formats=["%H:%M"])
+
+
+class WeeklyBlockInput(serializers.Serializer):
+    weekday = serializers.IntegerField(min_value=0, max_value=6)
+    starts_at = serializers.TimeField(input_formats=["%H:%M"], format="%H:%M")
+    ends_at = serializers.TimeField(input_formats=["%H:%M"], format="%H:%M")
+
+    def validate(self, data):
+        if data["ends_at"] <= data["starts_at"]:
+            raise ValidationError("La hora de fin debe ser posterior a la de inicio.")
+        return data
+
+
+def weekly_order(block):
+    return (block["weekday"] - 1) % 7, block["starts_at"]
+
+
+class WeeklyScheduleInput(serializers.Serializer):
+    weekly_schedule = WeeklyBlockInput(many=True)
+    previous_weekly_schedule = WeeklyBlockInput(many=True)
+
+    def validate_weekly_schedule(self, blocks):
+        ordered = sorted(blocks, key=weekly_order)
+        for first, second in zip(ordered, ordered[1:]):
+            if first["weekday"] == second["weekday"] and first["ends_at"] > second["starts_at"]:
+                raise ValidationError("Hay bloques que se cruzan en el mismo día.")
+        return ordered
 
 
 class ScoreInput(serializers.Serializer):
@@ -186,6 +214,7 @@ class GameRoleMatrixView(GameRoleView):
         standings = build_standings(((team["id"], team["name"], tournament.pk) for team in teams), results)
         return Response({
             "teams": teams, "matrix_team_ids": tournament.game_role_team_order, "rounds": rounds, "crosses": crosses,
+            "weekly_schedule": sorted(tournament_schedule(tournament), key=weekly_order),
             "starts_on": tournament.starts_on, "schedule_enabled": True, "team_notes": team_notes(tournament), "standings": standings,
         })
 
@@ -205,6 +234,8 @@ class GameRoleMatrixView(GameRoleView):
 
     @transaction.atomic
     def patch(self, request, tournament_id):
+        if "weekly_schedule" in request.data:
+            return self.update_weekly_schedule(request, tournament_id)
         tournament = self.tournament(request, tournament_id, lock=True)
         if "new_team" in request.data or "add_team_id" in request.data:
             if "new_team" in request.data:
@@ -234,6 +265,33 @@ class GameRoleMatrixView(GameRoleView):
             raise ValidationError("Cambia primero los horarios de los partidos que quedarían fuera de la semana.")
         row.number, row.starts_on = data["number"], data["starts_on"]
         row.save(update_fields=["number", "starts_on", "updated_at"])
+        return self.matrix(tournament)
+
+    def update_weekly_schedule(self, request, tournament_id):
+        serializer = WeeklyScheduleInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        site_id = self.tournament(request, tournament_id).site_id
+        # Serialize edits to the shared calendar before checking the other tournaments.
+        Site.objects.select_for_update().only("id").get(pk=site_id)
+        tournament = self.tournament(request, tournament_id, lock=True)
+        if tournament.site_id != site_id or not tournament.is_active or not tournament.site.is_active:
+            raise ValidationError("Selecciona un torneo activo de la sede.")
+        blocks = serializer.data["weekly_schedule"]
+        current = sorted(tournament_schedule(tournament), key=weekly_order)
+        if blocks == current:
+            return self.matrix(tournament)
+        if sorted(serializer.data["previous_weekly_schedule"], key=weekly_order) != current:
+            raise ValidationError("El horario cambió. Vuelve a cargarlo antes de guardar.")
+        if site_id == FRANCO_SITE_ID:
+            weekdays = ("domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado")
+            for other in Tournament.objects.filter(site_id=site_id, is_active=True).exclude(pk=tournament.pk):
+                for occupied in tournament_schedule(other):
+                    if any(block["weekday"] == occupied["weekday"] and block["starts_at"] < occupied["ends_at"]
+                           and occupied["starts_at"] < block["ends_at"] for block in blocks):
+                        day = weekdays[occupied["weekday"]]
+                        raise ValidationError(f"El {day} se cruza con {other.name} ({occupied['starts_at']}–{occupied['ends_at']}).")
+        tournament.game_role_schedule = blocks
+        tournament.save(update_fields=["game_role_schedule", "updated_at"])
         return self.matrix(tournament)
 
     def create_matrix_team(self, tournament, data):
