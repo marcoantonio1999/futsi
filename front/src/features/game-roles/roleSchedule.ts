@@ -11,15 +11,15 @@ const gold = "#ffd966";
 // Weekdays follow Date.getUTCDay(): Sunday = 0.
 const francoSchedules: Record<string, Schedule> = {
   premier: {
-    2: [["20:10", purple], ["21:00", purple]],
-    3: [["20:10", "#ff0066"], ["21:00", "#ff0066"]],
-    4: [["20:10", cyan], ["21:00", cyan]],
+    2: [["20:00", purple], ["20:50", purple]],
+    3: [["20:00", "#ff0066"], ["20:50", "#ff0066"]],
+    4: [["20:00", cyan], ["20:50", cyan]],
   },
   nocturno: {
     1: [["22:30", purple]],
     2: [["22:30", pink]],
-    3: [["21:50", cyan], ["22:40", cyan]],
-    4: [["21:50", gold], ["22:40", gold]],
+    3: [["21:40", cyan], ["22:40", cyan]],
+    4: [["21:40", gold], ["22:40", gold]],
   },
   espanola: {
     6: [["09:00", purple], ["09:50", cyan], ["10:40", "#a9d18e"], ["11:30", pink],

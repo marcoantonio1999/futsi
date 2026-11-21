@@ -70,7 +70,12 @@ try {
     assert.deepEqual(await editor.locator("select").evaluateAll(selects => selects.map(select => getComputedStyle(select).appearance)),
       ["auto", "auto", "auto"]);
     const editorSlot = editor.getByLabel("Horario disponible", { exact: true });
-    assert.equal(await editorSlot.inputValue(), "21:50–22:40");
+    assert.equal(await editorSlot.inputValue(), "21:40–22:30");
+    assert.equal(await editorSlot.locator("option:checked").textContent(), "9:40");
+    await editorDate.selectOption("2026-11-25");
+    assert.equal(await editorSlot.inputValue(), "21:40–22:30");
+    assert.equal(await editorSlot.locator("option:checked").textContent(), "9:40");
+    await editorDate.selectOption("2026-11-26");
     assert.equal(await editor.locator('input[type="time"]').count(), 0);
     await editorSlot.selectOption("22:40–23:30");
     assert.equal(await editor.getByText("Horarios ocupados en este torneo").count(), 0);
