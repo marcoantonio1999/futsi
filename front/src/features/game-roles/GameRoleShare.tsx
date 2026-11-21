@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { API_URL, apiRequest } from "../../api";
 import { Button, Dialog } from "../../components/ui/enrollment-ui";
+import { roleTimeLabel } from "./roleSchedule";
 import { roleReminders } from "./roleReminders";
 import "./gameRoleShare.css";
 
-import { ScheduleSheet, dayName, renderScheduleImage, timeRange, type Schedule } from "./GameRoleReport";
+import { ScheduleSheet, dayName, renderScheduleImage, type Schedule } from "./GameRoleReport";
 
 async function downloadScheduleImage(schedule: Schedule) {
   const canvas = await renderScheduleImage(schedule);
@@ -48,7 +49,7 @@ export function GameRoleShare({ path, token, reminderKey, upcomingOnly = false, 
   const url = schedule ? `${location.origin}${location.pathname}#/rol-de-juego/${encodeURIComponent(schedule.token)}` : "";
   const message = schedule ? [
     `*Rol de juego · Jornada ${schedule.number}*`, `${schedule.tournament} · ${schedule.site}`, "",
-    ...schedule.matches.map(match => `${dayName(match.scheduled_on ?? schedule.starts_on)} · ${timeRange(match)}\n${match.home_team__name} vs. ${match.away_team__name}`),
+    ...schedule.matches.map(match => `${dayName(match.scheduled_on ?? schedule.starts_on)} · ${roleTimeLabel(schedule.tournament, match.starts_at, match.ends_at)}\n${match.home_team__name} vs. ${match.away_team__name}`),
     "", "Consulta el rol actualizado aquí", url,
   ].join("\n") : "";
   return <Dialog ref={dialog} className="game-roles-dialog game-role-share-dialog" aria-label="Compartir rol de juego"

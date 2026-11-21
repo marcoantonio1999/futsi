@@ -9,7 +9,7 @@ import { GameRoleStatistics } from "./GameRoleStatistics";
 import { GameRoleShare } from "./GameRoleShare";
 import { RolePageButtons } from "./RolePageButtons";
 import { roleReminders } from "./roleReminders";
-import { roleSchedule, roleSlots, type RoleSchedule, type RoleSlot as Slot } from "./roleSchedule";
+import { roleSchedule, roleSlots, roleTimeLabel, type RoleSchedule, type RoleSlot as Slot } from "./roleSchedule";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -257,7 +257,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
             withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} />
         </div>
       : view === "next-role"
-        ? <NextGameRole matrix={matrix} onShare={roundId => setShare({ roundId, upcomingOnly: true })} />
+        ? <NextGameRole matrix={matrix} tournamentName={tournamentName} onShare={roundId => setShare({ roundId, upcomingOnly: true })} />
         : <div className="game-roles-workspace">
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
@@ -287,7 +287,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
                 const current = crossByTeams.get(`${home.id}:${away.id}`);
                 const round = current && roundById.get(current.round_id);
                 const day = current?.scheduled_on ? new Date(current.scheduled_on + "T00:00:00Z") : null;
-                const range = `${timeLabel(current?.starts_at)}–${timeLabel(current?.ends_at)}`;
+                const range = roleTimeLabel(tournamentName, current?.starts_at, current?.ends_at);
                 const score = matchScore(current);
                 const status = current?.played ? `Jugado${score ? ", " + score : ""}` : day ? `Pendiente, ${dateLabel.format(day)}, ${range}` : "Sin horario";
                 return <td key={home.id}><Button type="button" className="game-roles-cell" disabled={!selected || (!current && (!home.is_active || !away.is_active))}
@@ -298,7 +298,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
                   aria-label={`${home.name} local, ${away.name} visitante, ${round ? "jornada " + round.number + ", " : ""}${status}`}
                   onClick={() => openCross(home, away, current)}>
                   {round ? <strong>J{round.number}</strong> : <span className="game-roles-unassigned">×</span>}
-                  {current?.played ? <small>{score ?? "✓"}</small> : day && <small>{timeLabel(current?.starts_at)}</small>}
+                  {current?.played ? <small>{score ?? "✓"}</small> : day && <small>{roleTimeLabel(tournamentName, current?.starts_at)}</small>}
                 </Button></td>;
               })}
             </tr>)}</tbody>
@@ -312,11 +312,11 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
       {matrix.team_notes && <GameRoleNotes notes={matrix.team_notes} teams={matrix.teams} rounds={matrix.rounds}
         selectedRound={selected} onSave={saveNote} />}
     </Card>
-    <GameRoleHistory matrix={matrix} onEdit={openCross} />
+    <GameRoleHistory matrix={matrix} tournamentName={tournamentName} onEdit={openCross} />
     </div>}
     {addingTeam && <TeamSelection teams={availableTeams} onClose={() => setAddingTeam(false)}
       onSubmit={team => save("PATCH", { add_team_id: team.id })} />}
-    {editor && <MatrixEditor editor={editor} matrix={matrix} schedule={schedule} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
+    {editor && <MatrixEditor editor={editor} matrix={matrix} tournamentName={tournamentName} schedule={schedule} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
     {share && <GameRoleShare path={`${path}rounds/${share.roundId}/share/`} token={token}
       reminderKey={`${tournamentId}/${share.roundId}`} upcomingOnly={share.upcomingOnly} onClose={() => setShare(null)} />}
   </>;
@@ -324,7 +324,7 @@ function TournamentMatrix({ token, tournamentId, tournamentName, siteId }: { tok
 
 const leagueDay = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
 
-function NextGameRole({ matrix, onShare }: { matrix: Matrix; onShare: (roundId: number) => void }) {
+function NextGameRole({ matrix, tournamentName, onShare }: { matrix: Matrix; tournamentName: string; onShare: (roundId: number) => void }) {
   const [roundId, setRoundId] = useState(0);
   const teamNames = new Map(matrix.teams.map(team => [team.id, team.name]));
   const today = leagueDay.format(new Date());
@@ -348,7 +348,7 @@ function NextGameRole({ matrix, onShare }: { matrix: Matrix; onShare: (roundId: 
         <thead><tr><th scope="col">Fecha</th><th scope="col">Horario</th><th scope="col">Local</th><th scope="col">Visitante</th></tr></thead>
         <tbody>{matches.map(cross => <tr key={`${cross.home_team_id}:${cross.away_team_id}`}>
           <td>{weekdayLabel.format(new Date(cross.scheduled_on + "T00:00:00Z"))}</td>
-          <td>{timeLabel(cross.starts_at)}–{timeLabel(cross.ends_at)}</td>
+          <td>{roleTimeLabel(tournamentName, cross.starts_at, cross.ends_at)}</td>
           <td>{teamNames.get(cross.home_team_id)}</td>
           <td>{teamNames.get(cross.away_team_id)}</td>
         </tr>)}
@@ -360,7 +360,7 @@ function NextGameRole({ matrix, onShare }: { matrix: Matrix; onShare: (roundId: 
   </div>;
 }
 
-function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Team, away: Team, cross: Cross) => void }) {
+function GameRoleHistory({ matrix, tournamentName, onEdit }: { matrix: Matrix; tournamentName: string; onEdit: (home: Team, away: Team, cross: Cross) => void }) {
   const teams = new Map(matrix.teams.map(team => [team.id, team]));
   const matchesByRound = new Map<number, Cross[]>();
   for (const cross of matrix.crosses) {
@@ -409,7 +409,7 @@ function GameRoleHistory({ matrix, onEdit }: { matrix: Matrix; onEdit: (home: Te
                 <span className="game-role-history-meta">
                   <span className="game-role-history-round">J{round.number}</span>
                   {cross.scheduled_on ? <time dateTime={cross.scheduled_on}>{date}</time> : <span>{date}</span>}
-                  {cross.scheduled_on && <span>{timeLabel(cross.starts_at)}–{timeLabel(cross.ends_at)}</span>}
+                  {cross.scheduled_on && <span>{roleTimeLabel(tournamentName, cross.starts_at, cross.ends_at)}</span>}
                   {score && <span aria-label={`Marcador ${score}`}>{score}</span>}
                 </span>
                 <Pencil aria-hidden="true" />
@@ -454,8 +454,8 @@ function TeamSelection({ teams, onClose, onSubmit }: {
   </Dialog>;
 }
 
-function MatrixEditor({ editor, matrix, schedule, selected, onClose, onSave }: {
-  editor: Editor; matrix: Matrix; schedule: RoleSchedule; selected: Round | undefined; onClose: () => void;
+function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onClose, onSave }: {
+  editor: Editor; matrix: Matrix; tournamentName: string; schedule: RoleSchedule; selected: Round | undefined; onClose: () => void;
   onSave: (method: string, data: object, roundNumber?: number) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -509,7 +509,7 @@ function MatrixEditor({ editor, matrix, schedule, selected, onClose, onSave }: {
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <form onSubmit={submit}>
       <h2 id="game-roles-dialog-title">{editor.kind === "cross" ? "Jornada y horario del partido" : round ? "Editar jornada" : "Agregar jornada"}</h2>
-      {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} schedule={schedule} selected={selected} /> : <>
+      {editor.kind === "cross" ? <CrossScheduleFields editor={editor} matrix={matrix} tournamentName={tournamentName} schedule={schedule} selected={selected} /> : <>
         <Label>Número de jornada<Input type="number" name="number" min={1} max={999} required defaultValue={round?.number ?? Math.min(999, (last?.number ?? 0) + 1)} /></Label>
         <Label>Inicio de la semana<Input type="date" name="starts_on" required defaultValue={round?.starts_on ?? (last ? addDays(last.starts_on, 7) : matrix.starts_on ?? "")} /></Label>
         <p>La jornada abarca siete días desde la fecha de inicio.</p>
@@ -523,7 +523,7 @@ function MatrixEditor({ editor, matrix, schedule, selected, onClose, onSave }: {
   </Dialog>;
 }
 
-function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: CrossEditor; matrix: Matrix; schedule: RoleSchedule; selected?: Round }) {
+function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selected }: { editor: CrossEditor; matrix: Matrix; tournamentName: string; schedule: RoleSchedule; selected?: Round }) {
   const [roundId, setRoundId] = useState((editor.slot ? selected?.id : editor.current?.round_id) ?? selected?.id ?? 0);
   const [day, setDay] = useState(editor.slot?.day ?? editor.current?.scheduled_on ?? "");
   const [start, setStart] = useState(editor.slot?.start ?? timeLabel(editor.current?.starts_at));
@@ -580,9 +580,9 @@ function CrossScheduleFields({ editor, matrix, schedule, selected }: { editor: C
         }}>
           <option value="" disabled>Selecciona un horario</option>
           {availableSlots.map(slot =>
-            <option key={slot.start} value={`${slot.start}–${slot.end}`}>{slot.start}–{slot.end}</option>)}
+            <option key={slot.start} value={`${slot.start}–${slot.end}`}>{roleTimeLabel(tournamentName, slot.start, slot.end)}</option>)}
           {start && end && !availableSlots.some(slot => slot.start === start && slot.end === end)
-            && <option value={`${start}–${end}`}>{start}–{end}</option>}
+            && <option value={`${start}–${end}`}>{roleTimeLabel(tournamentName, start, end)}</option>}
         </NativeSelect></Label>
         <input type="hidden" name="starts_at" value={start} />
         <input type="hidden" name="ends_at" value={end} />

@@ -57,6 +57,12 @@ try {
     await openUnscheduled();
     const editorDate = editor.getByLabel("Fecha del partido");
     assert.equal(await editorDate.inputValue(), "2026-11-30");
+    const mondaySlot = editor.getByLabel("Horario disponible", {exact:true});
+    assert.equal(await mondaySlot.locator("option:checked").textContent(), "10:30");
+    assert.equal(await mondaySlot.inputValue(), "22:30–23:20");
+    await editorDate.selectOption("2026-12-01");
+    assert.equal(await mondaySlot.locator("option:checked").textContent(), "10:30");
+    assert.equal(await mondaySlot.inputValue(), "22:30–23:20");
     await editor.getByRole("button", {name:"Cancelar"}).click();
     await roundSelect.selectOption("1");
     await openUnscheduled();
@@ -74,7 +80,7 @@ try {
       return [data.get("scheduled_on"), data.get("starts_at"), data.get("ends_at")];
     }), ["2026-11-26", "22:40", "23:30"]);
     await editorDate.selectOption("2026-11-23");
-    assert.equal(await editorSlot.inputValue(), "22:40–23:30");
+    assert.equal(await editorSlot.inputValue(), "22:30–23:20");
     await editorDate.selectOption("2026-11-27");
     assert.equal(await editorSlot.count(), 0);
     assert(await editor.getByLabel("Hora de inicio").isVisible());

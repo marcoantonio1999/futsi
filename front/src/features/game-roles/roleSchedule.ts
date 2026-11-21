@@ -16,8 +16,8 @@ const francoSchedules: Record<string, Schedule> = {
     4: [["20:10", cyan], ["21:00", cyan]],
   },
   nocturno: {
-    1: [["22:40", purple]],
-    2: [["22:40", pink]],
+    1: [["22:30", purple]],
+    2: [["22:30", pink]],
     3: [["21:50", cyan], ["22:40", cyan]],
     4: [["21:50", gold], ["22:40", gold]],
   },
@@ -49,3 +49,13 @@ export function roleSlots(schedule: Schedule | undefined, day: string): RoleSlot
 }
 
 export type RoleSchedule = ReturnType<typeof roleSchedule>;
+
+export function roleTimeLabel(tournament: string, start?: string | null, end?: string | null) {
+  if (!start) return "";
+  const time = start.slice(0, 5);
+  if (tournament.trim().toLowerCase() === "nocturno") {
+    const [hour, minute] = time.split(":");
+    return `${Number(hour) % 12 || 12}:${minute}`;
+  }
+  return end ? `${time}–${end.slice(0, 5)}` : time;
+}

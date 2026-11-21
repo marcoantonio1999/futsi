@@ -9,7 +9,8 @@ const times = (name, day) => roleSlots(schedule(name), week[day]).map(slot => sl
 test("Liga Franco uses the tournament and weekday from the spreadsheet", () => {
   assert.deepEqual(times("premier liga 2026", 0), []);
   assert.deepEqual(times("PREMIER L.", 1), ["20:10", "21:00"]);
-  assert.deepEqual(times("Nocturno", 0), ["22:40"]);
+  assert.deepEqual(times("Nocturno", 0), ["22:30"]);
+  assert.deepEqual(times("Nocturno", 1), ["22:30"]);
   assert.deepEqual(times("Nocturno", 2), ["21:50", "22:40"]);
   assert.deepEqual(times("Nocturno", 4), []);
   assert.deepEqual(times("Española", 5), ["09:00", "09:50", "10:40", "11:30", "12:20", "13:10", "14:00"]);

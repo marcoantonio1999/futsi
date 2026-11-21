@@ -1,3 +1,4 @@
+import { roleTimeLabel } from "./roleSchedule";
 import bpowerLogo from "../enrollments/assets/bpower-roster-watermark.png";
 import { GameRoleBracket, bracketImageHeight, drawGameRoleBracket } from "./GameRoleBracket";
 import type { StandingRow } from "../../types";
@@ -28,7 +29,6 @@ const dayLabel = new Intl.DateTimeFormat("es-MX", {
   weekday: "long", day: "numeric", month: "short", timeZone: "UTC",
 });
 export const dayName = (day: string) => dayLabel.format(new Date(day + "T00:00:00Z"));
-export const timeRange = (match: Match) => [match.starts_at, match.ends_at].filter(Boolean).map(time => time!.slice(0, 5)).join("–");
 
 function reportColumns(schedule: Schedule): [Block[], Block[]] {
   const name = schedule.tournament.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
@@ -53,7 +53,7 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
         ]), empty: "Todavía no hay resultados." },
       { title: "Próximos Partidos", columns: ["Fecha", "Horario", "Local", "Visitante"], widths: [2, 1.5, 2, 2],
         rows: schedule.matches.filter(match => !match.played && match.scheduled_on).map(match =>
-          [dayName(match.scheduled_on!), timeRange(match), match.home_team__name, match.away_team__name]),
+          [dayName(match.scheduled_on!), roleTimeLabel(schedule.tournament, match.starts_at, match.ends_at), match.home_team__name, match.away_team__name]),
         empty: "Todavía no hay próximos partidos para esta jornada." },
       { title: "DESCANSO", rows: [], empty: "—" },
     ],
