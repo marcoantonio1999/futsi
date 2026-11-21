@@ -22,7 +22,7 @@ import { EnrollmentBrand } from "./EnrollmentBrand";
 import { WhatsAppIcon } from "./WhatsAppIcon";
 import { EnrollmentDatePicker } from "./EnrollmentDatePicker";
 import { EnrollmentNavigation, useEnrollmentNavigation, useEnrollmentViewState, useEnrollmentScrollReady } from './EnrollmentNavigation';
-import type { EnrollmentSection } from './enrollmentHistory';
+import { isGameRolesSection, type EnrollmentSection } from './enrollmentHistory';
 import { SanctionBadge, type SanctionSummary } from "./SanctionBadge";
 import { WithdrawalPlayerCard, type WithdrawalPlayer } from "./WithdrawalPlayerCard";
 import { WithdrawalHistory } from "./WithdrawalHistory";
@@ -657,7 +657,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
   const [catalogBusy, setCatalogBusy] = useState(true), [catalogError, setCatalogError] = useState("");
   const [inviteTournament, setInviteTournament] = useEnrollmentViewState('invite.tournament', ""), [inviteTeam, setInviteTeam] = useEnrollmentViewState('invite.team', "");
   const tournamentSection = navigation.screen.section.startsWith('tournament-') ? navigation.screen.section.slice('tournament-'.length) as TournamentSection : null;
-  const enrollmentSection = tournamentSection || navigation.screen.section === 'tools' || (!canManageRoles && navigation.screen.section === 'game-roles') ? 'history' : navigation.screen.section;
+  const enrollmentSection = tournamentSection || navigation.screen.section === 'tools' || (!canManageRoles && isGameRolesSection(navigation.screen.section)) ? 'history' : navigation.screen.section;
   function setTournamentSection(section: TournamentSection | null) {
     if (section) navigation.navigate({ section: `tournament-${section}` as EnrollmentSection, roster: null, detail: null, alignment: false });
   }
@@ -782,7 +782,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
     navigation.navigate({ roster: item.id, alignment, detail: null });
     setPrintRoster(print);
   }
-  return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" || (tournamentSection === null && enrollmentSection === "history") ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}${enrollmentSection === "game-roles" ? " enrollment-game-roles-layout" : ""}`}>
+  return <main className={`enrollment-page enrollment-admin-layout${tournamentSection === "overview" || tournamentSection === "teams" || tournamentSection === "team-create" || (tournamentSection === null && enrollmentSection === "history") ? " enrollment-directory-layout" : ""}${tournamentSection === "teams" || tournamentSection === "team-create" ? " enrollment-teams-layout" : ""}${rosterTeam ? " enrollment-roster-layout" : ""}${isGameRolesSection(enrollmentSection) ? " enrollment-game-roles-layout" : ""}`}>
     {mobileMenuOpen && <Button type="button" className="enrollment-menu-backdrop no-print" aria-label="Cerrar menú de inscripciones" onClick={() => setMobileMenuOpen(false)} />}
     <aside ref={sidebarRef} id="enrollment-sections-menu" className={`enrollment-admin-sidebar no-print${mobileMenuOpen ? " is-open" : ""}`} role={mobileViewport && mobileMenuOpen ? "dialog" : undefined} aria-modal={mobileViewport && mobileMenuOpen ? true : undefined} aria-label="Secciones de inscripciones" aria-hidden={mobileViewport && !mobileMenuOpen ? true : undefined}>
       <Button type="button" className="enrollment-menu-close" aria-label="Cerrar secciones" onClick={() => setMobileMenuOpen(false)}><X size={20} /></Button>
@@ -797,6 +797,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
         {canManageRoles && <><div className="enrollment-sidebar-heading"><CalendarDays size={18} aria-hidden="true" />Roles de juego</div>
         <div className="enrollment-sidebar-submenu">
           <Button aria-current={enrollmentSection === "game-roles" ? "page" : undefined} onClick={() => setEnrollmentSection("game-roles")}>Matriz de equipos</Button>
+          <Button aria-current={enrollmentSection === "game-roles-schedule" ? "page" : undefined} onClick={() => setEnrollmentSection("game-roles-schedule")}>Horarios</Button>
         </div></>}
         <div className="enrollment-sidebar-heading"><ClipboardList size={18} aria-hidden="true" />Permisos</div>
         <div className="enrollment-sidebar-submenu"><Button aria-current={enrollmentSection === "permits" ? "page" : undefined} onClick={() => { setTournamentSection(null); setEnrollmentSection("permits"); }}>Permisos de 24 horas</Button></div>
@@ -818,7 +819,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
       </nav>
     </aside>
     <div className="operator-page">
-      <header className="operator-header enrollment-admin-header no-print">{mobileViewport && <Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button>}<h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "validate" ? "Validar" : enrollmentSection === "permits" ? "Permisos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : enrollmentSection === "game-roles" ? "Roles de juego" : "Sábana"}</h1><div>
+      <header className="operator-header enrollment-admin-header no-print">{mobileViewport && <Button ref={menuButtonRef} type="button" className="enrollment-menu-open" aria-label="Abrir secciones" aria-expanded={mobileMenuOpen} aria-controls="enrollment-sections-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></Button>}<h1>{rosterTeam ? (alignmentSheet ? "Hoja de alineación · " : "Sábana · ") + rosterTeam.name : tournamentSection === "create" ? "Crear torneo" : tournamentSection === "team-create" ? "Crear equipo" : tournamentSection === "teams" ? "Equipos" : tournamentSection === "overview" ? "Torneos" : enrollmentSection === "validate" ? "Validar" : enrollmentSection === "permits" ? "Permisos" : enrollmentSection === "send" ? "Registrar" : enrollmentSection === "withdraw" ? "Nueva baja" : enrollmentSection === "withdraw-history" ? "Histórico de bajas" : enrollmentSection === "sanction-new" ? "Nueva sanción" : enrollmentSection === "commission" ? "Comisión disciplinaria" : enrollmentSection === "blacklist" ? "Lista negra" : enrollmentSection === "players" ? "Jugadores" : enrollmentSection === "game-roles-schedule" ? "Horarios" : enrollmentSection === "game-roles" ? "Roles de juego" : "Sábana"}</h1><div>
         <Button aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => {
           if (roleReminders) void roleReminders.clear().finally(onLogout).catch(() => undefined);
           else onLogout();
@@ -843,7 +844,8 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
           onRenameTeam={renameTeam} onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </Card> : enrollmentSection === "game-roles" ? <GameRoles token={token} tournaments={catalog.tournaments} sites={catalog.sites} loading={catalogBusy} onTeamCreated={() => { void loadCatalog().catch(() => undefined); }} /> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>{setRosterRevision(r=>r+1);void loadCatalog().catch(()=>undefined)}} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
+      </Card> : isGameRolesSection(enrollmentSection) ? <GameRoles token={token} showSchedule={enrollmentSection === "game-roles-schedule"}
+        onOpenSchedule={() => setEnrollmentSection("game-roles-schedule")} onOpenMatrix={() => setEnrollmentSection("game-roles")} tournaments={catalog.tournaments} sites={catalog.sites} loading={catalogBusy} onTeamCreated={() => { void loadCatalog().catch(() => undefined); }} /> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>{setRosterRevision(r=>r+1);void loadCatalog().catch(()=>undefined)}} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <Card as="section" className="operator-controls no-print">
         <h2>{enrollmentSection === "withdraw" ? "Nueva baja" : "Registrar"}</h2>
         <form onSubmit={invite} className="control-grid">

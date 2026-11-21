@@ -1,5 +1,6 @@
-export const enrollmentSections = ['validate', 'history', 'permits', 'send', 'tools', 'withdraw', 'withdraw-history', 'sanction-new', 'commission', 'blacklist', 'players', 'game-roles', 'tournament-overview', 'tournament-create', 'tournament-teams', 'tournament-team-create'] as const;
+export const enrollmentSections = ['validate', 'history', 'permits', 'send', 'tools', 'withdraw', 'withdraw-history', 'sanction-new', 'commission', 'blacklist', 'players', 'game-roles', 'game-roles-schedule', 'tournament-overview', 'tournament-create', 'tournament-teams', 'tournament-team-create'] as const;
 export type EnrollmentSection = typeof enrollmentSections[number];
+export const isGameRolesSection = (section: EnrollmentSection) => section === 'game-roles' || section === 'game-roles-schedule';
 export type EnrollmentScreen = {
   section: EnrollmentSection; roster: number | null; alignment: boolean; detail: number | null;
   values: Record<string, string | number>; scroll: { x: number; y: number; regions: [number, number][] };
@@ -37,7 +38,7 @@ export function initialEnrollmentScreen(browser: Browser, owner: string) {
 // Explicit navigation pushes; filter/page/scroll edits replace the current entry.
 // No effect infers navigation from state, and popstate never adds a new entry.
 export function createEnrollmentHistory(browser: Browser, owner: string, restore: (screen: EnrollmentScreen, restorePosition?: boolean) => void, hideGameRoles = false) {
-  const allowed = (screen: EnrollmentScreen) => !hideGameRoles || screen.section !== 'game-roles';
+  const allowed = (screen: EnrollmentScreen) => !hideGameRoles || !isGameRolesSection(screen.section);
   const saved = readEntry(browser.history.state, owner);
   let current: Entry = { owner, index: saved && enrollmentScreenUrl(saved.screen) === browser.location.hash ? saved.index : 0, screen: initialEnrollmentScreen(browser, owner) };
   if (!allowed(current.screen)) current = { owner, index: 0, screen: emptyEnrollmentScreen() };

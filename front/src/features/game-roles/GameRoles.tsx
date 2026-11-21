@@ -62,8 +62,9 @@ function weekLabel(start: string) {
   return dateLabel.formatRange(new Date(start + "T00:00:00Z"), new Date(addDays(start, 6) + "T00:00:00Z"));
 }
 
-export function GameRoles({ token, tournaments, sites, loading, onTeamCreated }: {
-  token: string; tournaments: Tournament[]; sites: Pick<Site, "id" | "name">[]; loading: boolean; onTeamCreated: () => void;
+export function GameRoles({ token, tournaments, sites, loading, showSchedule, onOpenSchedule, onOpenMatrix, onTeamCreated }: {
+  token: string; tournaments: Tournament[]; sites: Pick<Site, "id" | "name">[]; loading: boolean;
+  showSchedule: boolean; onOpenSchedule: () => void; onOpenMatrix: () => void; onTeamCreated: () => void;
 }) {
   const [tournamentId, setTournamentId] = useEnrollmentViewState("gameRoles.tournament", "");
   const tournament = tournaments.find(row => String(row.id) === tournamentId);
@@ -77,7 +78,8 @@ export function GameRoles({ token, tournaments, sites, loading, onTeamCreated }:
         </option>)}
       </NativeSelect></Label>
     </Card>
-    {tournament && <TournamentMatrix key={tournament.id} token={token} tournament={tournament} onTeamCreated={onTeamCreated} />}
+    {tournament && <TournamentMatrix key={tournament.id} token={token} tournament={tournament} showSchedule={showSchedule}
+      onOpenSchedule={onOpenSchedule} onOpenMatrix={onOpenMatrix} onTeamCreated={onTeamCreated} />}
   </>;
 }
 
@@ -92,14 +94,17 @@ function MatchDateSelect({ days, value, onChange, required }: {
   </Label>;
 }
 
-function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string; tournament: Tournament; onTeamCreated: () => void }) {
+function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onOpenMatrix, onTeamCreated }: {
+  token: string; tournament: Tournament; showSchedule: boolean;
+  onOpenSchedule: () => void; onOpenMatrix: () => void; onTeamCreated: () => void;
+}) {
   const { id: tournamentId, name: tournamentName } = tournament;
   const path = `/player-enrollments/game-roles/${tournamentId}/`;
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useEnrollmentViewState(`gameRoles.round.${tournamentId}`, 0);
-  const [view, setView] = useEnrollmentViewState<"matrix" | "statistics" | "next-role" | "schedule">("gameRoles.view", "matrix");
+  const [view, setView] = useEnrollmentViewState<"matrix" | "statistics" | "next-role">("gameRoles.view", "matrix");
   const [rowPageIndex, setRowPage] = useState(0);
   const [columnPageIndex, setColumnPage] = useState(0);
   const [gridSize, setGridSize] = useState({ rows: 6, columns: 4 });
@@ -174,7 +179,7 @@ function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string;
     observer.observe(element);
     resize();
     return () => observer.disconnect();
-  }, [matrix, view]);
+  }, [matrix, view, showSchedule]);
 
   if (loadError || (matrix && !matrix.schedule_enabled)) return <Card as="section" className="operator-controls">
     <p className="error" role="alert">{loadError || "La programación de horarios se está actualizando."}</p>
@@ -237,15 +242,27 @@ function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string;
     return result.weekly_schedule ?? [];
   }
 
+  if (showSchedule) return <>
+    <nav className="game-role-views" aria-label="Vistas de Roles de juego">
+      <Button type="button" className="game-role-back" onClick={() => { setView("matrix"); onOpenMatrix(); }}>
+        <ChevronLeft aria-hidden="true" />Volver a roles de juego
+      </Button>
+    </nav>
+    {matrix.weekly_schedule
+      ? <GameRoleScheduleEditor blocks={schedule} kickoffOnly={showsKickoffOnly(tournamentName)} canEdit={tournament.is_active} onSave={saveSchedule} />
+      : <Card as="section" className="operator-controls">
+        <p role="alert">No se pudieron cargar los horarios del torneo.</p>
+        <Button type="button" onClick={() => setReload(value => value + 1)}>Volver a cargar horarios</Button>
+      </Card>}
+  </>;
+
   return <>
     <nav className="game-role-views" aria-label="Vistas de Roles de juego">
-      {view !== "matrix" && <Button type="button" className="game-role-back" onClick={() => setView("matrix")}>
+      {(view === "statistics" || view === "next-role") && <Button type="button" className="game-role-back" onClick={() => setView("matrix")}>
         <ChevronLeft aria-hidden="true" />Volver a roles de juego
       </Button>}
       <div className="game-role-view-options">
-        {matrix.weekly_schedule && <Button type="button" aria-pressed={view === "schedule"} onClick={() => setView("schedule")}>
-          <Clock aria-hidden="true" />Horarios
-        </Button>}
+        <Button type="button" onClick={onOpenSchedule}><Clock aria-hidden="true" />Horarios</Button>
         <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>
           <BarChart3 aria-hidden="true" />Estadísticas
         </Button>
@@ -258,9 +275,7 @@ function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string;
       </Button>}
     </nav>
     {reminderMessage && <p role="status">{reminderMessage}</p>}
-    {view === "schedule" && matrix.weekly_schedule
-      ? <GameRoleScheduleEditor blocks={schedule} kickoffOnly={showsKickoffOnly(tournamentName)} canEdit={tournament.is_active} onSave={saveSchedule} />
-      : view === "statistics"
+    {view === "statistics"
       ? <div key="statistics" className="game-role-statistics-panel">
           <GameRoleStatistics rows={(matrix.standings ?? []).filter(row => matrixTeamIds.has(row.team))}
             withoutScore={matrix.crosses.filter(cross => cross.played && !matchScore(cross)).length} />

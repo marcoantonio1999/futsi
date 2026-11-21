@@ -159,7 +159,8 @@ try {
     assert.deepEqual(await editorSlot.locator('option:not([value=""])').allTextContents(), ["8:00", "8:50"]);
     assert.equal(await editor.locator('input[type="time"]').count(), 0);
     await editor.getByRole("button", { name: "Cancelar" }).click();
-    await page.getByRole("button", { name: "Horarios", exact: true }).click();
+    await page.getByRole("navigation", { name: "Vistas de Roles de juego" }).getByRole("button", { name: "Horarios", exact: true }).click();
+    await page.waitForURL("**#/admin/inscripciones/game-roles-schedule");
     const weeklyEditor = page.getByRole("region", {name:"Horarios semanales"});
     assert.equal(await weeklyEditor.getByLabel("Inicio del bloque 1").inputValue(), "20:00");
     assert.equal(await weeklyEditor.getByLabel("Fin del bloque 1").count(), 0);

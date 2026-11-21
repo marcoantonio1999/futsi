@@ -445,6 +445,17 @@ try {
       await page.waitForURL("**/#/admin/inscripciones/game-roles");
       if (width < 1024) assert.equal(await menuButton.getAttribute("aria-expanded"), "false");
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await tournamentSelect.selectOption("");
+      if (width < 1024) await menuButton.click();
+      await menu.getByRole("button", {name:"Horarios", exact:true}).click();
+      await page.waitForURL("**/#/admin/inscripciones/game-roles-schedule");
+      await page.getByRole("heading", {name:"Horarios", exact:true, level:1}).waitFor();
+      assert.equal(await tournamentSelect.inputValue(), "");
+      await tournamentSelect.selectOption("1");
+      await page.getByRole("region", {name:"Horarios semanales"}).getByRole("button", {name:"Guardar horarios"}).waitFor();
+      await page.reload({waitUntil:"domcontentloaded"});
+      await page.getByRole("region", {name:"Horarios semanales"}).waitFor();
+      assert.equal(await tournamentSelect.inputValue(), "1");
 
       identity = { id: 100, username: "ventanilla", role: "collaborator", section_permissions: ["player_enrollments_only"] };
       await page.reload({waitUntil:"domcontentloaded"});
@@ -453,6 +464,7 @@ try {
       if (width < 1024) await menuButton.click();
       await menu.getByRole("button", {name:"Registrar", exact:true}).waitFor();
       assert.equal(await menu.getByRole("button", {name:"Matriz de equipos", exact:true}).count(), 0);
+      assert.equal(await menu.getByRole("button", {name:"Horarios", exact:true}).count(), 0);
 
       identity = { id: 101, username: "administracion", role: "admin", section_permissions: [] };
       await page.reload({waitUntil:"domcontentloaded"});
