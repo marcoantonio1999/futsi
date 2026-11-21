@@ -334,6 +334,9 @@ try {
       assert(beforeFill.width <= 1 && beforeFill.height <= 1, JSON.stringify(beforeFill));
       await page.getByRole("button", {name:"Agregar equipo", exact:true}).click();
       const picker = page.getByRole("dialog", {name:"Agregar equipo", exact:true});
+      await picker.getByRole("button", {name:"Crear equipo nuevo", exact:true}).click();
+      await picker.getByLabel("Nombre del equipo", {exact:true}).waitFor();
+      await picker.getByRole("button", {name:"Elegir equipo existente", exact:true}).click();
       await picker.locator("select").selectOption("7");
       await picker.getByRole("button", {name:"Agregar equipo", exact:true}).click();
       await picker.waitFor({state:"hidden"});
@@ -352,7 +355,10 @@ try {
       await tournamentSelect.selectOption("2");
       await page.getByRole("button", { name: "Agregar equipo", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Agregar equipo", exact: true });
-      await picker.getByLabel("Equipo", { exact: true }).selectOption("new");
+      const createNew = picker.getByRole("button", { name: "Crear equipo nuevo", exact: true });
+      await createNew.waitFor();
+      await inside(page, createNew);
+      await createNew.click();
       await picker.getByLabel("Nombre del equipo", { exact: true }).fill(" Equipo nuevo ");
       assert.equal(await picker.getByLabel("Delegado", { exact: true }).evaluate(field => field.validity.valueMissing), true);
       await picker.getByLabel("Delegado", { exact: true }).fill("Delegado de prueba");

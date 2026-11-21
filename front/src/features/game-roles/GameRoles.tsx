@@ -433,16 +433,16 @@ function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
   teams: Team[]; canCreate: boolean; onClose: () => void; onSubmit: (data: TeamSelectionInput) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [selection, setSelection] = useState(!teams.length && canCreate ? "new" : "");
+  const [selection, setSelection] = useState("");
+  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const creating = selection === "new" && canCreate;
   useEffect(() => { dialog.current?.showModal(); }, []);
   return <Dialog ref={dialog} className="game-roles-dialog" aria-labelledby="game-role-team-title"
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <form onSubmit={async event => {
       event.preventDefault();
-      if (busy || !selection) return;
+      if (busy || (!creating && !selection)) return;
       const form = new FormData(event.currentTarget);
       const value = (field: string) => String(form.get(field) ?? "").trim();
       const data: TeamSelectionInput = creating ? {
@@ -454,11 +454,10 @@ function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
       finally { setBusy(false); }
     }}>
       <h2 id="game-role-team-title">Agregar equipo</h2>
-      <Label>Equipo<NativeSelect aria-label="Equipo" required disabled={busy} value={selection} onChange={event => { setSelection(event.target.value); setError(""); }}>
+      {!creating && teams.length > 0 && <Label>Equipo<NativeSelect aria-label="Equipo" required disabled={busy} value={selection} onChange={event => { setSelection(event.target.value); setError(""); }}>
         <option value="">Selecciona un equipo</option>
-        {canCreate && <option value="new">Crear equipo nuevo</option>}
         {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
-      </NativeSelect></Label>
+      </NativeSelect></Label>}
       {creating && <>
         <Label>Nombre del equipo<Input name="name" maxLength={140} required readOnly={busy} /></Label>
         <Label>Delegado<Input name="representative_name" maxLength={160} required readOnly={busy} /></Label>
@@ -466,7 +465,12 @@ function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
       </>}
       {error && <p role="alert" className="error">{error}</p>}
       <footer><Button type="button" disabled={busy} onClick={onClose}>Cancelar</Button>
-        <Button type="submit" className="primary" disabled={busy}>{creating ? "Crear y agregar" : "Agregar equipo"}</Button></footer>
+        {canCreate && !creating && <Button type="button" className={teams.length ? undefined : "primary"}
+          onClick={() => { setCreating(true); setError(""); }}>Crear equipo nuevo</Button>}
+        {creating && teams.length > 0 && <Button type="button" disabled={busy}
+          onClick={() => { setCreating(false); setError(""); }}>Elegir equipo existente</Button>}
+        {creating || teams.length > 0 ? <Button type="submit" className="primary"
+          disabled={busy || (!creating && !selection)}>{creating ? "Crear y agregar" : "Agregar equipo"}</Button> : null}</footer>
     </form>
   </Dialog>;
 }
