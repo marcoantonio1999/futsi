@@ -556,7 +556,7 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
       </>}
       {error && <p className="error" role="alert">{error}</p>}
       <footer>
-        {editor.kind === "cross" && editor.current && <Button type="button" disabled={busy}
+        {editor.kind === "cross" && editor.current && <Button type="button" className="destructive" disabled={busy}
           onClick={() => { setConfirmingDelete(true); setError(""); }}>Eliminar partido</Button>}
         <Button type="button" onClick={onClose} disabled={busy}>Cancelar</Button>
         <Button type="submit" className="primary" disabled={busy}>{busy ? "Guardando…" : "Guardar"}</Button>
@@ -568,7 +568,7 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
       {error && <p className="error" role="alert">{error}</p>}
       <footer>
         <Button type="button" autoFocus disabled={busy} onClick={cancelDelete}>Volver</Button>
-        <Button type="submit" variant="destructive" disabled={busy}>{busy ? "Eliminando…" : "Confirmar eliminación"}</Button>
+        <Button type="submit" className="destructive" disabled={busy}>{busy ? "Eliminando…" : "Confirmar eliminación"}</Button>
       </footer>
     </form>}
   </Dialog>;

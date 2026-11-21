@@ -139,7 +139,10 @@ try {
     await dialog.getByRole("button", { name: "Cancelar" }).click();
     const pendingMatch = history.getByRole("button", { name: /^Editar partido: CACOMIXTLES DEL COLEGIO FRANCO vs. FRANCO CANADIENSE/ });
     await pendingMatch.click();
-    await editor.getByRole("button", { name: "Eliminar partido", exact: true }).click();
+    const deleteButton = editor.getByRole("button", { name: "Eliminar partido", exact: true });
+    await page.mouse.move(0, 0);
+    assert.equal(await deleteButton.evaluate(button => getComputedStyle(button).backgroundColor), "rgb(180, 35, 56)");
+    await deleteButton.click();
     const confirmation = page.getByRole("dialog", { name: "Eliminar partido", exact: true });
     await confirmation.getByText("CACOMIXTLES DEL COLEGIO FRANCO vs. FRANCO CANADIENSE", { exact: true }).waitFor();
     assert.equal(deleteRequests, 0);
