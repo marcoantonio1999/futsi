@@ -72,7 +72,7 @@ class GameRoleMatrixTests(TestCase):
         url = f"/api/player-enrollments/game-roles/{nocturno.pk}/"
         default = self.client.get(url).json()["weekly_schedule"]
         self.assertEqual([(row["weekday"], row["starts_at"]) for row in default], [
-            (1, "22:30"), (2, "22:30"), (3, "21:40"), (3, "22:40"), (4, "21:40"), (4, "22:40"),
+            (1, "22:30"), (2, "22:30"), (3, "21:40"), (3, "22:30"), (4, "21:40"), (4, "22:30"),
         ])
         premier_url = f"/api/player-enrollments/game-roles/{premier.pk}/"
         premier_blocks = self.client.get(premier_url).json()["weekly_schedule"]

@@ -17,7 +17,7 @@ const matrix = {
     { weekday: 2, starts_at: "22:30", ends_at: "23:20" },
     ...[3, 4].flatMap(weekday => [
       { weekday, starts_at: "21:40", ends_at: "22:30" },
-      { weekday, starts_at: "22:40", ends_at: "23:30" },
+      { weekday, starts_at: "22:30", ends_at: "23:20" },
     ]),
   ],
   rounds: [{ id: 1, number: 1, starts_on: "2026-11-23" }, { id: 2, number: 2, starts_on: "2026-11-30" }, { id: 3, number: 3, starts_on: "2026-12-07" }],
@@ -105,13 +105,14 @@ try {
     assert.equal(await editorSlot.locator("option:checked").textContent(), "9:40");
     await editorDate.selectOption("2026-11-26");
     assert.equal(await editor.locator('input[type="time"]').count(), 0);
-    await editorSlot.selectOption("22:40–23:30");
+    await editorSlot.selectOption("22:30–23:20");
+    assert.equal(await editorSlot.locator("option:checked").textContent(), "10:30");
     assert.equal(await editor.getByText("Horarios ocupados en este torneo").count(), 0);
     assert.equal(await editor.getByText("El rango elegido está disponible.").count(), 0);
     assert.deepEqual(await editor.locator("form").evaluate(form => {
       const data = new FormData(form);
       return [data.get("scheduled_on"), data.get("starts_at"), data.get("ends_at")];
-    }), ["2026-11-26", "22:40", "23:30"]);
+    }), ["2026-11-26", "22:30", "23:20"]);
     await editorDate.selectOption("2026-11-23");
     assert.equal(await editorSlot.inputValue(), "22:30–23:20");
     assert.equal(await editorDate.locator('option[value="2026-11-27"]').count(), 0);
