@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from PIL import Image, ImageStat, UnidentifiedImageError
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse, Http404, HttpResponseRedirect
 from django.core import signing
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -824,6 +824,30 @@ class EnrollmentTournamentDeletionView(APIView):
 
 class EnrollmentTeamDeletionView(APIView):
     permission_classes = [EnrollmentStaffPermission]
+
+    def patch(self, request, pk):
+        if request.path_info.endswith('/deletion-preview/'):
+            return Response(status=405)
+        if set(request.data) != {'name'}:
+            raise ValidationError('Solo se puede editar el nombre del equipo.')
+        with transaction.atomic():
+            team = get_object_or_404(
+                Team.objects.select_for_update(of=('self',)),
+                pk=pk, tournament__site__in=enrollment_sites(request.user),
+            )
+            serializer = TeamSerializer(team, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            name = serializer.validated_data['name']
+            if name != team.name:
+                try:
+                    with transaction.atomic():
+                        team.name = name
+                        team.save(update_fields=['name', 'updated_at'])
+                except IntegrityError:
+                    if Team.objects.filter(tournament_id=team.tournament_id, name=name).exclude(pk=pk).exists():
+                        raise ValidationError({'name': 'Ya existe un equipo con ese nombre en este torneo.'})
+                    raise
+        return Response({'id': team.pk, 'name': team.name})
 
     def target(self, request, pk):
         if request.user.username.casefold() != 'emilio' and request.user.role not in {'admin', 'owner', 'dev'}:

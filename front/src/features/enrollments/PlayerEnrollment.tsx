@@ -716,6 +716,14 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
     await loadCatalog().catch(() => undefined);
     return updated;
   }
+  async function renameTeam(id: number, name: string) {
+    const updated = await apiRequest<Pick<Team, "id" | "name">>(`/player-enrollments/teams/${id}/`, token, {
+      method: "PATCH", body: JSON.stringify({ name }),
+    });
+    setCatalog(previous => ({
+      ...previous, teams: previous.teams.map(team => team.id === id ? { ...team, name: updated.name } : team),
+    }));
+  }
   async function deleteTeam(id: number, confirmation: StudentDeletionConfirmation) {
     const result = await apiRequest<StudentDeletionResult>(`/player-enrollments/teams/${id}/`, token, {method: "DELETE", body: JSON.stringify(confirmation)});
     setCatalog(previous => ({...previous, teams: previous.teams.filter(team => team.id !== id)}));
@@ -832,7 +840,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
             setInviteTournament(String(created.tournament)); setInviteTeam(String(created.id)); setLink("");
             return created;
           }}
-          onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
+          onRenameTeam={renameTeam} onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
       </Card> : enrollmentSection === "game-roles" ? <GameRoles token={token} tournaments={catalog.tournaments} sites={catalog.sites} loading={catalogBusy} /> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>{setRosterRevision(r=>r+1);void loadCatalog().catch(()=>undefined)}} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?

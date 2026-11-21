@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from core.models import Tournament, Site
+from core.models import Team, Tournament, Site
 from core.enrollment_models import PlayerEnrollment, PlayerEnrollmentInvitation, PlayerEnrollmentDocument
 from core.tests.test_enrollment_site_access import EnrollmentSiteAccessTests
 
@@ -63,3 +63,20 @@ class EnrollmentTournamentEditingTests(TestCase):
         response=self.client.patch(self.url(),{'football_format':'fut6'},format='json')
         self.assertEqual(response.status_code,400,response.data)
         self.assertEqual(Tournament.objects.get(pk=team.tournament_id).football_format,'fut8')
+
+    def test_rename_team_preserves_enrollment_and_rejects_duplicate_or_out_of_scope_team(self):
+        team, other_site_team = self.teams[:2]
+        url = f'/api/player-enrollments/teams/{team.pk}/'
+        Team.objects.create(tournament_id=team.tournament_id, name='Nombre ocupado')
+        for payload in ({'name': 'Nombre ocupado'}, {'name': '   '}, {'name': 'Nuevo', 'is_active': False}):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.client.patch(url, payload, format='json').status_code, 400)
+        self.assertEqual(self.client.patch(
+            f'/api/player-enrollments/teams/{other_site_team.pk}/', {'name': 'Fuera de sede'}, format='json',
+        ).status_code, 404)
+        response = self.client.patch(url, {'name': '  Equipo renovado  '}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data, {'id': team.pk, 'name': 'Equipo renovado'})
+        self.rows[0].refresh_from_db()
+        self.assertEqual(self.rows[0].team_record_id, team.pk)
+        self.assertEqual(self.rows[0].team_record.name, 'Equipo renovado')
