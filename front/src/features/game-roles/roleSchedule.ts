@@ -8,10 +8,14 @@ export function roleSlots(schedule: RoleSchedule, day: string): RoleSlot[] {
     .map(block => ({ day, start: block.starts_at, end: block.ends_at }));
 }
 
+export function showsKickoffOnly(tournament: string) {
+  return /^(?:nocturno|premier(?: l\.?| liga(?: \d{4})?)?)$/i.test(tournament.trim());
+}
+
 export function roleTimeLabel(tournament: string, start?: string | null, end?: string | null) {
   if (!start) return "";
   const time = start.slice(0, 5);
-  if (tournament.trim().toLowerCase() === "nocturno") {
+  if (showsKickoffOnly(tournament)) {
     const [hour, minute] = time.split(":");
     return `${Number(hour) % 12 || 12}:${minute}`;
   }

@@ -38,6 +38,10 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     let crosses = matrix.crosses;
     let deleteRequests = 0;
+    let premierSchedule = [2, 3, 4].flatMap(weekday => [
+      { weekday, starts_at: "20:00", ends_at: "20:50" },
+      { weekday, starts_at: "20:50", ends_at: "21:40" },
+    ]);
     await page.route("**/api/**", route => {
       const { pathname } = new URL(route.request().url());
       if (pathname.endsWith("/game-roles/1/")) {
@@ -49,9 +53,14 @@ try {
         }
         return route.fulfill({ json: { ...matrix, crosses } });
       }
+      if (pathname.endsWith("/game-roles/2/")) {
+        if (route.request().method() === "PATCH") premierSchedule = route.request().postDataJSON().weekly_schedule;
+        return route.fulfill({ json: { ...matrix, crosses, weekly_schedule: premierSchedule } });
+      }
       if (pathname.endsWith("/catalog/")) return route.fulfill({ json: {
         sites: [{ id: 27, name: "Colegio Franco" }], teams,
-        tournaments: [{ id: 1, name: "Nocturno", site: 27, is_active: true }],
+        tournaments: [{ id: 1, name: "Nocturno", site: 27, is_active: true },
+          { id: 2, name: "premier liga 2026", site: 27, is_active: true }],
       } });
       return route.fulfill({ json: { results: [], count: 0 } });
     });
@@ -105,13 +114,11 @@ try {
     }), ["2026-11-26", "22:40", "23:30"]);
     await editorDate.selectOption("2026-11-23");
     assert.equal(await editorSlot.inputValue(), "22:30–23:20");
-    await editorDate.selectOption("2026-11-27");
-    assert.equal(await editorSlot.count(), 0);
-    assert(await editor.getByLabel("Hora de inicio").isVisible());
-    assert(await editor.getByLabel("Hora de fin").isVisible());
-    await editor.getByLabel("Hora de inicio").fill("12:00");
-    await editor.getByLabel("Hora de fin").fill("11:00");
-    await editor.getByRole("status").filter({ hasText: "La hora de fin debe ser posterior a la de inicio." }).waitFor();
+    assert.equal(await editorDate.locator('option[value="2026-11-27"]').count(), 0);
+    await editor.getByLabel("Jornada", {exact:true}).selectOption("3");
+    await editor.getByText("No hay horarios disponibles para esta jornada.").waitFor();
+    assert.equal(await editorDate.locator('option:not([value=""])').count(), 0);
+    assert.equal(await editor.locator('input[type="time"]').count(), 0);
     await editor.getByRole("button", { name: "Cancelar" }).click();
     const history = page.getByRole("region", { name: "Historial de partidos" });
     const capture = history.getByRole("button", { name: /^Capturar marcador:/ });
@@ -144,6 +151,19 @@ try {
     await confirmation.waitFor({ state: "hidden" });
     assert.equal(deleteRequests, 1);
     assert(await capture.isVisible());
+    await page.getByLabel("Torneo", { exact: true }).selectOption("2");
+    await openUnscheduled();
+    assert.deepEqual(await editorSlot.locator('option:not([value=""])').allTextContents(), ["8:00", "8:50"]);
+    assert.equal(await editor.locator('input[type="time"]').count(), 0);
+    await editor.getByRole("button", { name: "Cancelar" }).click();
+    await page.getByRole("button", { name: "Horarios", exact: true }).click();
+    const weeklyEditor = page.getByRole("region", {name:"Horarios semanales"});
+    assert.equal(await weeklyEditor.getByLabel("Inicio del bloque 1").inputValue(), "20:00");
+    assert.equal(await weeklyEditor.getByLabel("Fin del bloque 1").count(), 0);
+    await weeklyEditor.getByLabel("Inicio del bloque 1").fill("19:55");
+    await weeklyEditor.getByRole("button", {name:"Guardar horarios"}).click();
+    await weeklyEditor.getByText("Horarios guardados.").waitFor();
+    assert.deepEqual(premierSchedule[0], { weekday: 2, starts_at: "19:55", ends_at: "20:45" });
     console.log(`Historial y captura de marcador verificados a ${width} px`);
     await page.close();
   }

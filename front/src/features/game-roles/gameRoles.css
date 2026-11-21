@@ -49,6 +49,7 @@
 }
 .game-role-schedule-editor :is(input, select, button) { min-height: 44px; }
 .game-role-schedule-block input { width: 100%; min-width: 0; }
+.game-role-schedule-block[data-kickoff-only="true"] { grid-template-columns: minmax(0, 1fr) auto; }
 .game-role-schedule-block button { min-width: 44px; }
 .game-role-next .game-role-panel-header label { min-width: 0; max-width: 100%; }
 .game-role-next .game-role-stat-table { min-width: 0; table-layout: fixed; margin-top: 8px; font-size: 12px; }

@@ -10,7 +10,7 @@ import { GameRoleStatistics } from "./GameRoleStatistics";
 import { GameRoleShare } from "./GameRoleShare";
 import { RolePageButtons } from "./RolePageButtons";
 import { roleReminders } from "./roleReminders";
-import { roleSlots, roleTimeLabel, type RoleSchedule, type WeeklyBlock, type RoleSlot as Slot } from "./roleSchedule";
+import { roleSlots, roleTimeLabel, showsKickoffOnly, type RoleSchedule, type WeeklyBlock, type RoleSlot as Slot } from "./roleSchedule";
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
@@ -81,22 +81,13 @@ export function GameRoles({ token, tournaments, sites, loading, onTeamCreated }:
   </>;
 }
 
-function MatchDateSelect({ round, schedule, value, onChange, required }: {
-  round: Round; schedule: RoleSchedule; value: string; onChange: (day: string) => void; required: boolean;
+function MatchDateSelect({ days, value, onChange, required }: {
+  days: string[]; value: string; onChange: (day: string) => void; required: boolean;
 }) {
-  const week = Array.from({ length: 7 }, (_, index) => addDays(round.starts_on, index));
-  const regularDays = week.filter(day => roleSlots(schedule, day).length > 0);
-  const otherDays = week.filter(day => !regularDays.includes(day));
-  const options = (days: string[]) => days.map(day =>
-    <option key={day} value={day}>{weekdayLabel.format(new Date(day + "T00:00:00Z"))}</option>);
-
   return <Label>Fecha del partido
     <NativeSelect aria-label="Fecha del partido" name="scheduled_on" required={required} value={value} onChange={event => onChange(event.target.value)}>
       <option value="">Sin fecha</option>
-      {regularDays.length ? <>
-        <optgroup label="Días de juego">{options(regularDays)}</optgroup>
-        <optgroup label="Otras fechas de la jornada">{options(otherDays)}</optgroup>
-      </> : options(week)}
+      {days.map(day => <option key={day} value={day}>{weekdayLabel.format(new Date(day + "T00:00:00Z"))}</option>)}
     </NativeSelect>
   </Label>;
 }
@@ -268,7 +259,7 @@ function TournamentMatrix({ token, tournament, onTeamCreated }: { token: string;
     </nav>
     {reminderMessage && <p role="status">{reminderMessage}</p>}
     {view === "schedule" && matrix.weekly_schedule
-      ? <GameRoleScheduleEditor blocks={schedule} canEdit={tournament.is_active} onSave={saveSchedule} />
+      ? <GameRoleScheduleEditor blocks={schedule} kickoffOnly={showsKickoffOnly(tournamentName)} canEdit={tournament.is_active} onSave={saveSchedule} />
       : view === "statistics"
       ? <div key="statistics" className="game-role-statistics-panel">
           <GameRoleStatistics rows={(matrix.standings ?? []).filter(row => matrixTeamIds.has(row.team))}
@@ -591,16 +582,20 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
   const [played, setPlayed] = useState(editor.current?.played ?? false);
   const round = matrix.rounds.find(row => row.id === roundId);
   const hasSchedule = Boolean(day || start || end);
-  const occupied = matrix.crosses.filter(cross => cross.scheduled_on && cross.scheduled_on === day
+  const usesPresets = schedule.length > 0 || showsKickoffOnly(tournamentName);
+  const occupied = matrix.crosses.filter(cross => cross.scheduled_on
     && (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id));
-  const availableSlots = roleSlots(schedule, day).filter(slot => !occupied.some(cross => overlaps(slot, cross)));
+  const freeSlots = (date: string) => roleSlots(schedule, date).filter(slot => !occupied.some(cross => overlaps(slot, cross)));
+  const availableSlots = freeSlots(day);
+  const daysInWeek = (week: Round) => Array.from({ length: 7 }, (_, index) => addDays(week.starts_on, index));
+  const gameDays = round ? daysInWeek(round).filter(date =>
+    !usesPresets || (date === day && start && end) || freeSlots(date).length > 0) : [];
   const overlap = occupied.some(cross => overlaps({ day, start, end }, cross));
   function changeDay(nextDay: string) {
     setDay(nextDay);
-    if (!schedule.length && nextDay) return;
-    const freeSlots = roleSlots(schedule, nextDay).filter(slot => !matrix.crosses.some(cross =>
-      (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id) && overlaps(slot, cross)));
-    const slot = freeSlots.find(row => row.start === start && row.end === end) ?? freeSlots[0];
+    if (!usesPresets && nextDay) return;
+    const slots = freeSlots(nextDay);
+    const slot = slots.find(row => row.start === start && row.end === end) ?? slots[0];
     setStart(slot?.start ?? "");
     setEnd(slot?.end ?? "");
   }
@@ -614,9 +609,8 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
       name="round_id" value={roundId || ""} onChange={event => {
         const next = matrix.rounds.find(row => row.id === Number(event.target.value));
         setRoundId(Number(event.target.value));
-        if (!next || (day && (day < next.starts_on || day > addDays(next.starts_on, 6)))) {
-          const first = next && Array.from({ length: 7 }, (_, index) => addDays(next.starts_on, index))
-            .find(date => roleSlots(schedule, date).length);
+        if (!next || !daysInWeek(next).includes(day)) {
+          const first = next && daysInWeek(next).find(date => freeSlots(date).length);
           changeDay(first ?? "");
         }
       }}>
@@ -631,9 +625,10 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
       </li>)}</ul>
     </div>}
     {round && <>
-      <MatchDateSelect round={round} schedule={schedule} value={day} onChange={changeDay} required={Boolean(start || end)} />
-      {availableSlots.length > 0 ? <>
-        <Label>Horario disponible<NativeSelect aria-label="Horario disponible" required value={start && end ? `${start}–${end}` : ""} onChange={event => {
+      <MatchDateSelect days={gameDays} value={day} onChange={changeDay} required={Boolean(start || end)} />
+      {usesPresets && !gameDays.length && <p>No hay horarios disponibles para esta jornada.</p>}
+      {usesPresets ? <>
+        {day && <Label>Horario disponible<NativeSelect aria-label="Horario disponible" required value={start && end ? `${start}–${end}` : ""} onChange={event => {
           const [slotStart, slotEnd] = event.target.value.split("–");
           setStart(slotStart);
           setEnd(slotEnd);
@@ -643,7 +638,7 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
             <option key={slot.start} value={`${slot.start}–${slot.end}`}>{roleTimeLabel(tournamentName, slot.start, slot.end)}</option>)}
           {start && end && !availableSlots.some(slot => slot.start === start && slot.end === end)
             && <option value={`${start}–${end}`}>{roleTimeLabel(tournamentName, start, end)}</option>}
-        </NativeSelect></Label>
+        </NativeSelect></Label>}
         <input type="hidden" name="starts_at" value={start} />
         <input type="hidden" name="ends_at" value={end} />
       </> : <div className="game-roles-hour-fields">

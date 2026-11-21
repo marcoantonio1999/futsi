@@ -7,8 +7,21 @@ const days = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "
 const weekdays = [1, 2, 3, 4, 5, 6, 0];
 type DraftBlock = WeeklyBlock & { id: number };
 
-export function GameRoleScheduleEditor({ blocks, canEdit, onSave }: {
-  blocks: RoleSchedule; canEdit: boolean; onSave: (blocks: WeeklyBlock[]) => Promise<RoleSchedule>;
+function minutes(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function endForKickoff(start: string, original?: WeeklyBlock) {
+  if (!start) return "";
+  const duration = original ? minutes(original.ends_at) - minutes(original.starts_at) : 50;
+  const end = minutes(start) + duration;
+  if (end >= 24 * 60) return "";
+  return [Math.floor(end / 60), end % 60].map(value => String(value).padStart(2, "0")).join(":");
+}
+
+export function GameRoleScheduleEditor({ blocks, kickoffOnly, canEdit, onSave }: {
+  blocks: RoleSchedule; kickoffOnly: boolean; canEdit: boolean; onSave: (blocks: WeeklyBlock[]) => Promise<RoleSchedule>;
 }) {
   const nextId = useRef(blocks.length);
   const [rows, setRows] = useState<DraftBlock[]>(() => blocks.map((block, id) => ({ ...block, id })));
@@ -31,7 +44,7 @@ export function GameRoleScheduleEditor({ blocks, canEdit, onSave }: {
       const incomplete = rows.find(row => !row.starts_at || !row.ends_at || row.ends_at <= row.starts_at);
       if (incomplete) {
         setWeekday(incomplete.weekday);
-        setError("Completa el bloque con una hora de fin posterior a la de inicio.");
+        setError(kickoffOnly ? "Elige una hora de inicio que permita terminar antes de medianoche." : "Completa el bloque con una hora de fin posterior a la de inicio.");
         return;
       }
       setBusy(true);
@@ -65,19 +78,21 @@ export function GameRoleScheduleEditor({ blocks, canEdit, onSave }: {
         }}><Plus size={16} aria-hidden="true" />Agregar bloque</Button>}
       </div>
       {dayRows.length === 0 && <p>Este día no tiene horarios.</p>}
-      {dayRows.map((row, index) => <div className="game-role-schedule-block" key={row.id}>
+      {dayRows.map((row, index) => <div className="game-role-schedule-block" data-kickoff-only={kickoffOnly} key={row.id}>
         <Label>Inicio<Input type="time" aria-label={`Inicio del bloque ${index + 1}`} required
           value={row.starts_at} readOnly={!canEdit || busy}
           onChange={event => {
             const starts_at = event.target.value;
-            changeRows(current => current.map(block => block.id === row.id ? { ...block, starts_at } : block));
+            changeRows(current => current.map(block => block.id === row.id ? {
+              ...block, starts_at, ends_at: kickoffOnly ? endForKickoff(starts_at, blocks[block.id]) : block.ends_at,
+            } : block));
           }} /></Label>
-        <Label>Fin<Input type="time" aria-label={`Fin del bloque ${index + 1}`} required
+        {!kickoffOnly && <Label>Fin<Input type="time" aria-label={`Fin del bloque ${index + 1}`} required
           value={row.ends_at} readOnly={!canEdit || busy}
           onChange={event => {
             const ends_at = event.target.value;
             changeRows(current => current.map(block => block.id === row.id ? { ...block, ends_at } : block));
-          }} /></Label>
+          }} /></Label>}
         {canEdit && <Button type="button" aria-label={`Quitar bloque ${index + 1}`} disabled={busy}
           onClick={() => changeRows(current => current.filter(block => block.id !== row.id))}>
           <Trash2 size={16} aria-hidden="true" />

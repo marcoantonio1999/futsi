@@ -14,5 +14,6 @@ test("the match picker uses only blocks for the selected weekday and preserves t
   ]);
   assert.deepEqual(roleSlots(schedule, "2026-11-26"), []);
   assert.equal(roleTimeLabel("Nocturno", "21:40", "22:30"), "9:40");
-  assert.equal(roleTimeLabel("Premier", "20:00", "20:50"), "20:00–20:50");
+  assert.equal(roleTimeLabel("premier liga 2026", "20:00", "20:50"), "8:00");
+  assert.equal(roleTimeLabel("UEFA", "14:00", "14:50"), "14:00–14:50");
 });
