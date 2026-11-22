@@ -6,16 +6,42 @@
     --primary:#246343;--primary-foreground:#fff;--secondary:#edf3ef;
     --muted:#f5f7f6;--muted-foreground:#627269;--border:#dce5df;
     --input:#d4dfd7;--ring:#7baa8d;--destructive:#b42338;--radius:.75rem;
+    --card-edge:#e8ece9;
+    --card-shadow:0 2px 6px rgb(23 36 30 / .045),0 8px 24px rgb(23 36 30 / .08);
+    --card-shadow-raised:0 3px 8px rgb(23 36 30 / .06),0 12px 30px rgb(23 36 30 / .13);
     font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   }
-  .enrollment-page [data-slot=card]:not(.roster-sheet):not(.signed-sheet),
+  .enrollment-page,
+  .enrollment-page.enrollment-admin-layout {
+    background:var(--background);
+  }
+  .enrollment-page [data-slot=card]:not(:where(.roster-sheet,.signed-sheet,.enrollment-tournament-create)),
+  .enrollment-page :is(.enrollment-admin-header,.operator-controls:not(:where(.enrollment-tournament-create))),
   .enrollment-camera-overlay [data-slot=card] {
-    border:1px solid var(--border);border-radius:var(--radius);background:var(--card);
-    color:var(--card-foreground);box-shadow:0 1px 3px #10221808;
+    border:1px solid var(--card-edge);
+    border-radius:var(--radius);
+    background:var(--card);
+    color:var(--card-foreground);
+    box-shadow:var(--card-shadow);
+  }
+  @media (min-width:1024px) {
+    .enrollment-page .enrollment-admin-sidebar {
+      border-color:var(--card-edge);
+      box-shadow:var(--card-shadow);
+    }
+  }
+  .enrollment-page [data-slot=card]:is(.enrollment-wizard-sheet,:focus-visible,[aria-selected=true],[aria-pressed=true]) {
+    box-shadow:var(--card-shadow-raised);
+  }
+  .enrollment-page [data-slot=card]:is(:focus-visible,[aria-selected=true],[aria-pressed=true]) {
+    outline:2px solid var(--primary);
+    outline-offset:2px;
+  }
+  .enrollment-page .enrollment-admin-sidebar nav [aria-current=page] {
+    box-shadow:inset 0 0 0 1px var(--ring);
   }
   .enrollment-page [data-slot=card].upload-box {
-    margin:0;padding:20px;min-width:0;border:1px solid var(--border);border-radius:12px;
-    background:var(--card);box-shadow:0 1px 3px #10221808;
+    margin:0;padding:20px;min-width:0;
   }
   .enrollment-page .upload-box>p {margin:0 0 8px;text-transform:none;font-size:14px;font-weight:600;line-height:1.5;}
   .enrollment-page .upload-box>small {font-size:12px;line-height:1.6;color:var(--muted-foreground);}
