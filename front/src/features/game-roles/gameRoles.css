@@ -24,10 +24,8 @@
 }
 .game-role-view-options button:last-child { order: 2; }
 .enrollment-page .game-role-views .game-role-back { margin-inline-end: 8px; }
-.enrollment-page .game-role-view-options button[aria-pressed="true"] {
-  background: #246343 !important;
-  border-color: #246343 !important;
-  color: #fff !important;
+.enrollment-page .game-role-views .game-role-view-options button[data-slot="button"][aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--primary-foreground);
 }
 .enrollment-page .game-role-view-options button > svg,
 .enrollment-page .game-role-back > svg { width: 15px; height: 15px; }

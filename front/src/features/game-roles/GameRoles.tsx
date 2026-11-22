@@ -263,11 +263,11 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
         <ChevronLeft aria-hidden="true" />Volver a roles de juego
       </Button>}
       <div className="game-role-view-options">
-        <Button type="button" onClick={onOpenSchedule}><Clock aria-hidden="true" />Horarios</Button>
-        <Button type="button" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>
+        <Button type="button" className="primary" onClick={onOpenSchedule}><Clock aria-hidden="true" />Horarios</Button>
+        <Button type="button" className="primary" aria-pressed={view === "statistics"} onClick={() => setView("statistics")}>
           <BarChart3 aria-hidden="true" />Estadísticas
         </Button>
-        <Button type="button" aria-pressed={view === "next-role"} onClick={() => setView("next-role")}>
+        <Button type="button" className="primary" aria-pressed={view === "next-role"} onClick={() => setView("next-role")}>
           <CalendarDays aria-hidden="true" />Siguiente rol
         </Button>
       </div>
@@ -287,18 +287,18 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
         <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
-        <Button type="button" disabled={!matrix.matrix_team_ids || (!tournament.is_active && !availableTeams.length)} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
+        <Button type="button" className="primary" disabled={!matrix.matrix_team_ids || (!tournament.is_active && !availableTeams.length)} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
       </div>
       <div className="game-role-matrix-controls">
         {selected && <>
           <NativeSelect aria-label="Jornada de la matriz" value={selected.id} onChange={event => setSelectedId(Number(event.target.value))}>
             {matrix.rounds.map(round => <option key={round.id} value={round.id}>Jornada {round.number}</option>)}
           </NativeSelect>
-          <Button type="button" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
-          <Button type="button" onClick={() => setShare({ roundId: selected.id })}>Compartir jornada</Button>
+          <Button type="button" className="primary" onClick={() => setEditor({ kind: "round", round: selected })}>Editar jornada</Button>
+          <Button type="button" className="primary" onClick={() => setShare({ roundId: selected.id })}>Compartir jornada</Button>
         </>}
-        <Button type="button" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
-        <Button type="button" disabled={!selected} onClick={() => { if (selected) setEditor({ kind: "rest", round: selected }); }}>
+        <Button type="button" className="primary" onClick={() => setEditor({ kind: "round" })}>Agregar jornada</Button>
+        <Button type="button" className="primary" disabled={!selected} onClick={() => { if (selected) setEditor({ kind: "rest", round: selected }); }}>
           {restingTeam ? "Editar descanso" : "Agregar descanso"}
         </Button>
         {restingTeam && <span><strong>Descanso</strong> · {restingTeam.name}</span>}
