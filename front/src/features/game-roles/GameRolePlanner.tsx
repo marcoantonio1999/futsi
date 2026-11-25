@@ -15,10 +15,13 @@ type OfferedSlot = RoleSlot & { sources: string[] };
 type PickedTeam = { id: number; tournament: number; name: string };
 type SlotSide = "home" | "away";
 type StagedTeam = PickedTeam & { side: SlotSide };
-type Relocation = { kind: "team"; key: string } | { kind: "match"; key: string; side: SlotSide };
-const dragSources = { team: "application/x-bpower-staged-team", match: "application/x-bpower-scheduled-match" };
+type Relocation = { kind: "team"; key: string } | { kind: "match" | "suggestion"; key: string; side: SlotSide };
+type PlannerDraft = Omit<PlannerMatch, "home_team_id" | "away_team_id"> & { home_team_id: number | null; away_team_id: number | null };
+const dragSources = { team: "application/x-bpower-staged-team", match: "application/x-bpower-scheduled-match", suggestion: "application/x-bpower-suggested-team" };
 const slotSides = ["home", "away"] as const;
 const sideLabels = { home: "Local", away: "Visitante" };
+const teamField = { home: "home_team_id", away: "away_team_id" } as const;
+const completeDraft = (draft: PlannerDraft): draft is PlannerMatch => draft.home_team_id != null && draft.away_team_id != null;
 const dayLabel = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" });
 const weekLabel = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const mexicoDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -83,7 +86,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     try { return draftKey ? JSON.parse(sessionStorage.getItem(draftKey) ?? "{}") ?? {} : {}; }
     catch { return {}; }
   });
-  const [suggestions, setSuggestions] = useState<PlannerMatch[]>([]);
+  const [suggestions, setSuggestions] = useState<PlannerDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -125,7 +128,9 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   const calendar = matrix ? calendarSlots(tournament, matrix, occupied, visibleDays) : days.map(() => []);
   const suggestionRound = openDays.find(item => item.round.id === round?.id)?.round ?? openDays[0]?.round;
   const closedWeek = weekRoundNumbers.length > 0 && !openDays.length;
-  const suggestedBySlot = new Map(suggestions.map(match => [keyOf(tournament.id, match.schedule.scheduled_on, match.schedule.starts_at), match]));
+  const draftKeyOf = (draft: PlannerDraft) => keyOf(tournament.id, draft.schedule.scheduled_on, draft.schedule.starts_at);
+  const suggestedBySlot = new Map(suggestions.map(draft => [draftKeyOf(draft), draft]));
+  const completeSuggestions = suggestions.filter(completeDraft);
   const counts = playedCounts(matrix?.crosses ?? []);
   const activeTeams = matrix?.teams.filter(team => team.is_active) ?? [];
   const weekAssigned = new Set(calendar.flat().flatMap(slot => {
@@ -222,10 +227,15 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   }
 
   async function place(slot: BoardSlot, team: PickedTeam | null, side: SlotSide, sourceKey?: string) {
-    if (busy || !team || !slot.round || roundEnded(slot.round, today) || slot.occupied || suggestedBySlot.has(slotKey(slot))) return;
+    if (busy || !team || !slot.round || roundEnded(slot.round, today) || slot.occupied) return;
     setError(""); setMessage("");
     if (team.tournament !== slot.tournament.id) { setError("Elige un horario del torneo de este equipo."); return; }
     const key = slotKey(slot);
+    const preview = suggestedBySlot.get(key);
+    if (preview) {
+      if (!sourceKey) updateSuggestions([{ ...preview, [teamField[side]]: team.id }], [key], slot.tournament.id);
+      return;
+    }
     const first = staged[key];
     const slotMatrix = data[slot.tournament.id];
     if (slot.round.rest_team_id === team.id) { setError("Este equipo tiene descanso en la jornada."); return; }
@@ -250,6 +260,10 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   }
 
   async function relocate(source: Relocation, slot: BoardSlot, side: SlotSide) {
+    if (source.kind === "suggestion") {
+      moveSuggestion(source.key, source.side, slot, side);
+      return;
+    }
     if (source.kind === "team") {
       await place(slot, staged[source.key] ?? null, side, source.key);
       return;
@@ -283,19 +297,64 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     }
   }
 
-  async function unassign(slot: BoardSlot, side: SlotSide, preview?: PlannerMatch) {
+  function moveSuggestion(sourceKey: string, sourceSide: SlotSide, slot: BoardSlot, side: SlotSide) {
+    if (busy || !slot.round || roundEnded(slot.round, today) || slot.occupied) return;
     const key = slotKey(slot);
+    const previous = suggestedBySlot.get(sourceKey);
+    const team = previous?.[teamField[sourceSide]];
+    if (!previous || team == null || (key === sourceKey && side === sourceSide)) return;
+    const placed = staged[key];
+    const target = suggestedBySlot.get(key) ?? {
+      round_id: slot.round.id,
+      schedule: { scheduled_on: slot.day, starts_at: slot.start, ends_at: slot.end },
+      home_team_id: placed?.side === "home" ? placed.id : null,
+      away_team_id: placed?.side === "away" ? placed.id : null,
+    };
+    const source = { ...previous, [teamField[sourceSide]]: target[teamField[side]] };
+    const destination = { ...(key === sourceKey ? source : target), [teamField[side]]: team };
+    const changed = key === sourceKey ? [destination] : [source, destination];
+    updateSuggestions(changed, [key, sourceKey], slot.tournament.id);
+  }
+
+  function updateSuggestions(changed: PlannerDraft[], keys: string[], tournamentId: number) {
+    const remaining = suggestions.filter(draft => !keys.includes(draftKeyOf(draft)));
+    const selectedMatrix = data[tournamentId];
+    const pairs = new Set(remaining.filter(completeDraft).map(match => `${match.home_team_id}/${match.away_team_id}`));
+    for (const draft of changed) {
+      const round = rounds.find(row => row.id === draft.round_id);
+      if (!round || roundEnded(round, today) || (round.rest_team_id != null && slotSides.some(side => draft[teamField[side]] === round.rest_team_id))) {
+        setError("El equipo tiene descanso o la jornada está cerrada.");
+        return;
+      }
+      if (!completeDraft(draft)) continue;
+      const pair = plannerPair(selectedMatrix, round, draft.home_team_id, draft.away_team_id);
+      const pairKey = `${draft.home_team_id}/${draft.away_team_id}`;
+      if (!pair || pair[0] !== draft.home_team_id || pairs.has(pairKey)) {
+        setError("El cambio repite un cruce o enfrenta al equipo consigo mismo.");
+        return;
+      }
+      pairs.add(pairKey);
+    }
+    setSuggestions([...remaining, ...changed]);
+    setMoving(null); setPicked(null); setError(""); setMessage("");
+  }
+
+  async function unassign(slot: BoardSlot, side: SlotSide, preview?: PlannerDraft) {
+    const key = slotKey(slot);
+    if (preview) {
+      setSuggestions(current => current.map(draft => draftKeyOf(draft) === key ? { ...draft, [teamField[side]]: null } : draft));
+      if (moving?.key === key) { setMoving(null); setMessage(""); }
+      return;
+    }
     const match = slot.match;
     if (match && !(await save(slot.tournament.id, { remove_planner_match: matchSource(match) }, "Equipo retirado del horario."))) return;
     const otherSide = side === "home" ? "away" : "home";
-    const pairing = match ?? preview;
     setStaged(current => {
       const remaining = withoutStaged(current, key);
-      if (!pairing) return remaining;
-      const id = otherSide === "home" ? pairing.home_team_id : pairing.away_team_id;
+      if (!match) return remaining;
+      const id = match[teamField[otherSide]];
       return { ...remaining, [key]: { id, name: displayName(data[slot.tournament.id], id), tournament: slot.tournament.id, side: otherSide } };
     });
-    setSuggestions(current => current.filter(item => keyOf(slot.tournament.id, item.schedule.scheduled_on, item.schedule.starts_at) !== key));
     if (moving?.key === key) setMoving(null);
     if (!match) setMessage("");
   }
@@ -306,7 +365,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   }
 
   function startDrag(event: DragEvent, source: Relocation) {
-    event.dataTransfer.setData(dragSources[source.kind], source.kind === "match" ? `${source.key}|${source.side}` : source.key);
+    event.dataTransfer.setData(dragSources[source.kind], source.kind === "team" ? source.key : `${source.key}|${source.side}`);
     event.dataTransfer.effectAllowed = "move";
   }
 
@@ -317,10 +376,12 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       void relocate({ kind: "team", key: teamSource }, slot, side);
       return;
     }
-    const [matchSourceKey, matchSide] = event.dataTransfer.getData(dragSources.match).split("|");
-    if (matchSourceKey && (matchSide === "home" || matchSide === "away")) {
-      void relocate({ kind: "match", key: matchSourceKey, side: matchSide }, slot, side);
-      return;
+    for (const kind of ["suggestion", "match"] as const) {
+      const [sourceKey, sourceSide] = event.dataTransfer.getData(dragSources[kind]).split("|");
+      if (sourceKey && (sourceSide === "home" || sourceSide === "away")) {
+        void relocate({ kind, key: sourceKey, side: sourceSide }, slot, side);
+        return;
+      }
     }
     const transferredId = Number(event.dataTransfer.getData("text/plain"));
     const team = activeTeams.find(item => item.id === transferredId);
@@ -329,7 +390,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
 
   function allowDrop(event: DragEvent) {
     event.preventDefault();
-    event.dataTransfer.dropEffect = event.dataTransfer.types.some(type => type === dragSources.team || type === dragSources.match) ? "move" : "copy";
+    event.dataTransfer.dropEffect = Object.values(dragSources).some(type => event.dataTransfer.types.includes(type)) ? "move" : "copy";
   }
 
   function propose() {
@@ -372,13 +433,20 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       {moving && <Button type="button" disabled={busy} onClick={() => { setMoving(null); setMessage(""); }}>Cancelar movimiento</Button>}
     </div>}
     {!!suggestions.length && suggestionRound && <div className="role-planner-review">
-      <strong>{suggestions.length} {suggestions.length === 1 ? "partido sugerido" : "partidos sugeridos"}</strong>
-      <Button type="button" disabled={busy} onClick={() => setSuggestions([])}>Descartar</Button>
-      <Button type="button" className="primary" disabled={busy} onClick={async () => {
-        const notice = suggestions.length === 1 ? "Partido programado." : `${suggestions.length} partidos programados.`;
-        if (await save(tournament.id, { planner_matches: suggestions }, notice)) {
-          setStaged(current => withoutStaged(current, ...suggestedBySlot.keys()));
+      <strong>{completeSuggestions.length} {completeSuggestions.length === 1 ? "partido sugerido" : "partidos sugeridos"}</strong>
+      <Button type="button" disabled={busy} onClick={() => { setSuggestions([]); setMoving(null); setMessage(""); }}>Descartar</Button>
+      <Button type="button" className="primary" disabled={busy || !completeSuggestions.length} onClick={async () => {
+        const notice = completeSuggestions.length === 1 ? "Partido programado." : `${completeSuggestions.length} partidos programados.`;
+        if (await save(tournament.id, { planner_matches: completeSuggestions }, notice)) {
+          const singles = suggestions.flatMap(draft => {
+            if (completeDraft(draft)) return [];
+            const side = draft.home_team_id != null ? "home" : "away";
+            const id = draft[teamField[side]];
+            return id == null ? [] : [[draftKeyOf(draft), { id, name: displayName(matrix, id), tournament: tournament.id, side } as StagedTeam] as const];
+          });
+          setStaged(current => ({ ...withoutStaged(current, ...suggestedBySlot.keys()), ...Object.fromEntries(singles) }));
           setSuggestions([]);
+          setMoving(null);
         }
       }}>Confirmar sugerencia</Button>
     </div>}
@@ -433,8 +501,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
               const date = dayLabel.format(utc(slot.day));
               const time = roleTimeLabel(slot.tournament.name, slot.start, slot.end);
               const slotLabel = `${date} · ${time}`;
-              const homeName = shown && displayName(names, shown.home_team_id);
-              const awayName = shown && displayName(names, shown.away_team_id);
+              const homeName = shown?.home_team_id == null ? undefined : displayName(names, shown.home_team_id);
+              const awayName = shown?.away_team_id == null ? undefined : displayName(names, shown.away_team_id);
               return <div key={`${key}/${slot.end}`} className="role-planner-slot" data-state={match ? "scheduled" : suggested ? "suggested" : first ? "staged" : "available"}
                 data-target={bookable && (picked?.tournament === slot.tournament.id || !!moving)}>
                 <time dateTime={slot.day} className="role-planner-slot-date">{date}</time>
@@ -449,17 +517,27 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                   }, "Marcador guardado."))}>
                   {slotSides.map(side => {
                     const name = side === "home" ? homeName : awayName;
-                    const className = "role-planner-assigned-team";
-                    const source = { kind: "match", key, side } as const;
+                    const className = name ? "role-planner-assigned-team" : "role-planner-drop";
+                    const source = { kind: suggested ? "suggestion" : "match", key, side } as const;
                     const suggestedSide = suggested && (first ? first.side !== side : side === "home");
+                    const description = name && (!suggested || completeDraft(suggested))
+                      ? `Mover a ${name} · ${sideLabels[side]} · ${slotLabel}`
+                      : `${sideLabels[side]} · ${slotLabel} · ${name ?? "Disponible"}`;
                     return <div key={side} className={`role-planner-drop-zone role-planner-${side}`}>
-                      {movable ? <Button type="button" className={className} disabled={busy} draggable={!busy}
-                        title={`Mover a ${name}`} aria-label={`Mover a ${name} · ${sideLabels[side]} · ${slotLabel}`}
-                        aria-pressed={moving?.kind === "match" && moving.key === key && moving.side === side}
-                        onDragStart={event => startDrag(event, source)} onClick={() => startMove(source)}>
-                        <GripVertical className="role-planner-drag-grip" aria-hidden="true" /><span>{name}</span>
+                      {movable || suggested ? <Button type="button" className={className} disabled={busy} draggable={!!name && !busy}
+                        title={name ? `Mover a ${name}` : sideLabels[side]} aria-label={description}
+                        aria-pressed={moving?.kind === source.kind && moving.key === key && moving.side === side}
+                        onDragStart={event => startDrag(event, source)}
+                        onDragOver={suggested ? allowDrop : undefined}
+                        onDrop={suggested ? event => drop(event, slot, side) : undefined}
+                        onClick={() => {
+                          if (suggested && moving?.kind === "suggestion") void relocate(moving, slot, side);
+                          else if (suggested && picked) void place(slot, picked, side);
+                          else if (name) startMove(source);
+                        }}>
+                        {name && <><GripVertical className="role-planner-drag-grip" aria-hidden="true" /><span>{name}{suggestedSide && <small>Sugerido</small>}</span></>}
                       </Button> : <span className={className}>{name}{suggestedSide && <small>Sugerido</small>}</span>}
-                      {(movable || suggested) && <Button type="button" className="role-planner-clear" disabled={busy}
+                      {name && (movable || suggested) && <Button type="button" className="role-planner-clear" disabled={busy}
                         aria-label={`Quitar a ${name} de este horario`} onClick={() => void unassign(slot, side, suggested)}>
                         <X aria-hidden="true" />
                       </Button>}
