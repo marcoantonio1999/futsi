@@ -176,8 +176,9 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
       if (!element.clientWidth || !element.clientHeight) return;
       const styles = getComputedStyle(element);
       const px = (name: string) => Number.parseFloat(styles.getPropertyValue(name));
-      const rows = Math.max(1, Math.floor((element.clientHeight - px("--role-grid-heading") - 2) / px("--role-grid-row")));
-      const columns = Math.max(1, Math.floor((element.clientWidth - px("--role-grid-label") - 2) / px("--role-grid-column")));
+      const addSize = element.dataset.quickAdd === "true" ? px("--role-grid-add-size") : 0;
+      const rows = Math.max(1, Math.floor((element.clientHeight - px("--role-grid-heading") - addSize - 2) / px("--role-grid-row")));
+      const columns = Math.max(1, Math.floor((element.clientWidth - px("--role-grid-label") - addSize - 2) / px("--role-grid-column")));
       setGridSize(current => current.rows === rows && current.columns === columns ? current : { rows, columns });
     };
     const observer = new ResizeObserver(resize);
@@ -212,6 +213,13 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
   const columnPage = Math.min(columnPageIndex, columnPages - 1);
   const visibleRows = matrixTeams.slice(rowPage * gridSize.rows, (rowPage + 1) * gridSize.rows);
   const visibleColumns = matrixTeams.slice(columnPage * gridSize.columns, (columnPage + 1) * gridSize.columns);
+  const canQuickAdd = tournament.is_active && Boolean(matrix.matrix_team_ids);
+  const showAddColumn = canQuickAdd && columnPage === columnPages - 1;
+  const showAddRow = canQuickAdd && rowPage === rowPages - 1;
+  const quickAdd = (label: string) => <Button type="button" className="game-role-quick-team"
+    aria-label={label} title="Crear equipo por nombre" onClick={() => setAddingTeam("quick")}>
+    <Plus aria-hidden="true" />
+  </Button>;
   const availableTeams = matrix.teams.filter(team => team.is_active && !matrixTeamIds.has(team.id));
   const openCross = (home: Team, away: Team, current?: Cross) => {
     let slot: Slot | undefined;
@@ -293,13 +301,7 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
         : <div className="game-roles-workspace">
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
-        <div className="game-role-matrix-heading">
-          <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
-          {tournament.is_active && matrix.matrix_team_ids && <Button type="button" className="game-role-quick-team"
-            aria-label="Crear equipo por nombre" title="Crear equipo por nombre" onClick={() => setAddingTeam("quick")}>
-            <Plus aria-hidden="true" />
-          </Button>}
-        </div>
+        <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
         <Button type="button" className="primary" disabled={!matrix.matrix_team_ids || (!tournament.is_active && !availableTeams.length)} onClick={() => setAddingTeam("select")}>Agregar equipo</Button>
       </div>
       <div className="game-role-matrix-controls">
@@ -316,12 +318,17 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
         </Button>
         {restingTeam && <span><strong>Descanso</strong> · {restingTeam.name}</span>}
       </div>
-      {!matrixTeams.length ? <p>Agrega los equipos del torneo uno por uno para armar la matriz.</p> :
+      {!matrixTeams.length && !canQuickAdd ? <p>Agrega los equipos del torneo uno por uno para armar la matriz.</p> :
         <>
-        <div ref={gridViewport} className="game-roles-grid-scroll" role="region" aria-label="Matriz de cruces por equipo">
+        <div ref={gridViewport} className="game-roles-grid-scroll" data-quick-add={canQuickAdd}
+          data-empty={!matrixTeams.length} role="region" aria-label="Matriz de cruces por equipo">
           <table className="game-roles-grid">
-            <colgroup><col className="game-role-row-label" />{visibleColumns.map(team => <col key={team.id} />)}</colgroup>
-            <thead><tr><th>Equipos</th>{visibleColumns.map(team => <th key={team.id} scope="col"><span className="game-role-column-name" title={team.name}>{team.name}{!team.is_active && " · Inactivo"}</span></th>)}</tr></thead>
+            <colgroup><col className="game-role-row-label" />{visibleColumns.map(team => <col key={team.id} />)}
+              {showAddColumn && <col className="game-role-add-column" />}
+            </colgroup>
+            <thead><tr><th>Equipos</th>{visibleColumns.map(team => <th key={team.id} scope="col"><span className="game-role-column-name" title={team.name}>{team.name}{!team.is_active && " · Inactivo"}</span></th>)}
+              {showAddColumn && <th scope="col" className="game-role-add-cell">{quickAdd("Crear equipo al final de las columnas")}</th>}
+            </tr></thead>
             <tbody>{visibleRows.map(away => <tr key={away.id}>
               <th scope="row"><span className="game-role-row-name" title={away.name}>{away.name}{!away.is_active && " · Inactivo"}</span></th>
               {visibleColumns.map(home => {
@@ -355,7 +362,13 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
                     aria-label={`Programar otro partido de ${home.name} y ${away.name}`} onClick={() => openCross(home, away)}>+</Button>}
                 </td>;
               })}
-            </tr>)}</tbody>
+              {showAddColumn && <td className="game-role-add-space" aria-hidden="true" />}
+            </tr>)}
+              {showAddRow && <tr className="game-role-add-row">
+                <th scope="row" className="game-role-add-cell">{quickAdd("Crear equipo al final de las filas")}</th>
+                <td className="game-role-add-space" colSpan={visibleColumns.length + Number(showAddColumn)} aria-hidden="true" />
+              </tr>}
+            </tbody>
           </table>
         </div>
         <div className="game-role-matrix-pages">
