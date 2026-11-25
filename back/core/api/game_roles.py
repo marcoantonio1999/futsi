@@ -1,9 +1,10 @@
 from datetime import date, timedelta
+from hashlib import sha256
 
 from django.core import signing
 from django.db import IntegrityError, transaction
 from django.http import Http404
-from django.db.models import Q
+from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, serializers
@@ -229,9 +230,23 @@ class PublicGameRoleView(APIView):
             round_id = int(ROLE_LINK_SIGNER.unsign(token))
         except (signing.BadSignature, ValueError):
             raise Http404 from None
-        round_row = get_object_or_404(GameRoleRound.objects.select_related("tournament__site"), pk=round_id)
-        return Response(round_schedule(round_row),
-                        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+        round_row = get_object_or_404(GameRoleRound.objects.select_related("tournament__site", "rest_team"), pk=round_id)
+        headers = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex"}
+        previous = request.query_params.get("revision")
+        if previous is None:
+            return Response(round_schedule(round_row), headers=headers)
+        tournament = round_row.tournament
+        timestamps = {"total": Count("pk"), "latest": Max("updated_at")}
+        revision = sha256(repr((
+            round_row.number, round_row.starts_on, round_row.rest_team and round_row.rest_team.name,
+            tournament.name, tournament.site.name, tournament.expected_weeks, tournament.game_role_team_order,
+            tournament.teams.aggregate(**timestamps),
+            tournament.game_role_rounds.aggregate(**timestamps),
+            tournament_crosses(tournament).aggregate(**timestamps),
+        )).encode()).hexdigest()
+        if revision == previous:
+            return Response(status=204, headers=headers)
+        return Response({**round_schedule(round_row), "revision": revision}, headers=headers)
 
 
 class GameRoleMatrixView(GameRoleView):

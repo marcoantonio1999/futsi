@@ -87,20 +87,24 @@ export function PublicGameRole({ token }: { token: string }) {
     document.title = "Rol de juego | Futsi";
     const controller = new AbortController();
     let pending = false;
+    let revision = "";
     async function refresh() {
       if (pending) return;
       pending = true;
       try {
-        const response = await fetch(`${API_URL}/public/game-roles/${encodeURIComponent(token)}/`, {
+        const response = await fetch(`${API_URL}/public/game-roles/${encodeURIComponent(token)}/?revision=${encodeURIComponent(revision)}`, {
           signal: controller.signal, cache: "no-store", credentials: "omit",
         });
         if (response.status === 404) {
+          revision = "";
           setSchedule(null);
           setStatus("Este rol de juego no está disponible.");
           return;
         }
+        if (response.status === 204) { setStatus(""); return; }
         if (!response.ok) throw new Error();
-        const result: Schedule = await response.json();
+        const result: Schedule & { revision?: string } = await response.json();
+        revision = result.revision ?? "";
         if (!controller.signal.aborted) { setSchedule(result); setStatus(""); }
       } catch {
         if (!controller.signal.aborted) setStatus("No se pudo consultar el rol. Se volverá a intentar.");

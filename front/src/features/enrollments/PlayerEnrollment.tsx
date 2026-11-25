@@ -1,11 +1,9 @@
-import { DocumentZoom, EnrollmentApproval } from './EnrollmentApproval';
+import { DocumentZoom } from './DocumentZoom';
 import { Signature } from './EnrollmentSignaturePad';
 import { EnrollmentPermits } from './EnrollmentPermits';
 import { roleReminders } from '../game-roles/roleReminders';
-import { GameRoles } from '../game-roles/GameRoles';
-import { GameRolePlanner } from '../game-roles/GameRolePlanner';
 import { Button, Card, Dialog, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer, Menu, X } from "lucide-react";
 import { API_URL, ApiError, apiRequest } from "../../api";
 import "./enrollments.css";
@@ -32,8 +30,7 @@ import { DisciplinaryRecords } from "./DisciplinaryRecords";
 import { PlayersDirectory } from "./PlayersDirectory";
 import type { AppData, Team, Tournament, Site, StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { emptyData } from "../../appState";
-import { TournamentsPanel, type TournamentSection } from "../tournaments";
-import { CreateTeamDialog } from "../tournaments/TournamentManagementDialogs";
+import type { TournamentSection } from "../tournaments";
 import { CameraCapture } from "./CameraCapture";
 import { autoCropIdentity } from "./autoCropIdentity";
 import { compressEnrollmentPhoto } from "./compressEnrollmentPhoto";
@@ -42,6 +39,12 @@ import { fetchEnrollmentDocument } from './fetchEnrollmentDocument';
 import { ChangeDelegate } from "./ChangeDelegate";
 import { sampleLighting, type LightingResult } from './photoLighting';
 import { LightingIndicator } from './LightingIndicator';
+
+const EnrollmentApproval = lazy(() => import("./EnrollmentApproval").then(module => ({ default: module.EnrollmentApproval })));
+const TournamentsPanel = lazy(() => import("../tournaments/TournamentsPanel").then(module => ({ default: module.TournamentsPanel })));
+const CreateTeamDialog = lazy(() => import("../tournaments/TournamentManagementDialogs").then(module => ({ default: module.CreateTeamDialog })));
+const GameRoles = lazy(() => import("../game-roles/GameRoles").then(module => ({ default: module.GameRoles })));
+const GameRolePlanner = lazy(() => import("../game-roles/GameRolePlanner").then(module => ({ default: module.GameRolePlanner })));
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
@@ -194,7 +197,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, staffToke
       let image = file;
       if (file.type === "application/pdf") {
         const { renderRegistrationPdf } = await import("./renderRegistrationPdf");
-        const pages = await renderRegistrationPdf(file, AbortSignal.timeout(60000));
+        const pages = await renderRegistrationPdf(file, AbortSignal.timeout(60000), 1);
         if (!pages.length) throw new Error("El PDF no contiene páginas.");
         image = await (await fetch(pages[0])).blob();
       }
@@ -665,12 +668,29 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
   const invitationSaving = useRef(false);
   const [localRegistration, setLocalRegistration] = useState<{ token: string; team: string; tournament: string; purpose: "enroll" | "withdraw" } | null>(null);
   const [localCompleted, setLocalCompleted] = useState(false), [localSaving, setLocalSaving] = useState(false);
+  const pendingCountContext = useRef("");
+  const countContext = JSON.stringify([token, rosterRevision, localCompleted]);
+  const updatePendingCount = useCallback((count: number) => {
+    pendingCountContext.current = countContext;
+    setPendingValidationCount(count);
+  }, [countContext]);
+  const validating = enrollmentSection === "validate";
   useEffect(() => {
-    const controller = new AbortController();
-    apiRequest<{pending_validation_count:number}>('/player-enrollments/?validation_count_only=true',token,{signal:controller.signal})
-      .then(result=>setPendingValidationCount(result.pending_validation_count)).catch(()=>{if(!controller.signal.aborted)setPendingValidationCount(null)});
-    return ()=>controller.abort();
-  },[token,rosterRevision,localCompleted,enrollmentSection]);
+    if (validating) return;
+    let controller: AbortController | undefined;
+    function refresh() {
+      if (document.hidden) return;
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      void apiRequest<{ pending_validation_count: number }>("/player-enrollments/?validation_count_only=true", token, { signal: request.signal })
+        .then(result => { if (!request.signal.aborted) updatePendingCount(result.pending_validation_count); })
+        .catch(() => { /* Keep the latest known count. */ });
+    }
+    if (pendingCountContext.current !== countContext) refresh();
+    document.addEventListener("visibilitychange", refresh);
+    return () => { controller?.abort(); document.removeEventListener("visibilitychange", refresh); };
+  }, [token, countContext, validating, updatePendingCount]);
   const localDialogRef = useRef<HTMLDialogElement>(null), localButtonRef = useRef<HTMLButtonElement>(null);
   const restoreLocalFocus = useRef(false);
   useEffect(() => {
@@ -834,7 +854,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
       {error && <p className="error no-print" role="alert">{error}</p>}
       {message && <p className="no-print" role="status">{message}</p>}
       {catalogError && <p className="error no-print" role="alert">{catalogError} <Button onClick={() => void loadCatalog().catch(() => undefined)}>Volver a cargar equipos y torneos</Button></p>}
-      {catalogBusy && navigation.screen.roster && !rosterTeam ? <p role="status">Cargando equipo…</p> : rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { navigation.back(); setPrintRoster(false); }} /> : tournamentSection !== null ? <Card as="section" className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
+      <Suspense fallback={<p role="status">Cargando sección…</p>}>{catalogBusy && navigation.screen.roster && !rosterTeam ? <p role="status">Cargando equipo…</p> : rosterTeam ? <TeamRosterPage key={`${rosterTeam.id}:${rosterRevision}:${alignmentSheet}`} team={rosterTeam} tournament={catalog.tournaments.find(row => row.id === rosterTeam.tournament)} token={token} autoPrint={printRoster} alignment={alignmentSheet} onBack={() => { navigation.back(); setPrintRoster(false); }} /> : tournamentSection !== null ? <Card as="section" className={`operator-controls enrollment-tournament-workspace no-print${tournamentSection === "create" ? " enrollment-tournament-create" : ""}`}>
         <TournamentsPanel token={token} data={tournamentData} scope="adult" setupOnly
           onTeamsReused={async () => { await loadCatalog(); }}
           deletionCollectionPath="player-enrollments/tournaments"
@@ -848,7 +868,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
       </Card> : enrollmentSection === "game-roles-planner" ? <GameRolePlanner token={token} userId={userId} tournaments={catalog.tournaments} sites={catalog.sites}
         onOpenMatrix={() => setEnrollmentSection("game-roles")} /> : isGameRolesSection(enrollmentSection) ? <GameRoles token={token} showSchedule={enrollmentSection === "game-roles-schedule"}
-        onOpenSchedule={() => setEnrollmentSection("game-roles-schedule")} onOpenMatrix={() => setEnrollmentSection("game-roles")} tournaments={catalog.tournaments} sites={catalog.sites} loading={catalogBusy} onTeamCreated={() => { void loadCatalog().catch(() => undefined); }} /> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>{setRosterRevision(r=>r+1);void loadCatalog().catch(()=>undefined)}} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
+        onOpenSchedule={() => setEnrollmentSection("game-roles-schedule")} onOpenMatrix={() => setEnrollmentSection("game-roles")} tournaments={catalog.tournaments} sites={catalog.sites} loading={catalogBusy} onTeamCreated={() => { void loadCatalog().catch(() => undefined); }} /> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onPendingCount={updatePendingCount} onChanged={()=>{setRosterRevision(r=>r+1);void loadCatalog().catch(()=>undefined)}} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <Card as="section" className="operator-controls no-print">
         <h2>{enrollmentSection === "withdraw" ? "Nueva baja" : "Registrar"}</h2>
         <form onSubmit={invite} className="control-grid">
@@ -907,7 +927,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
             </tbody>
           </table>
         </div>
-      </section>}
+      </section>}</Suspense>
     </div>
     <Dialog ref={localDialogRef} className="local-enrollment-dialog no-print" aria-labelledby="local-enrollment-title" onCancel={event => { event.preventDefault(); closeLocalRegistration(); }}>
       {localRegistration && <><header className="local-enrollment-header"><div><h2 id="local-enrollment-title">{localRegistration.purpose === "withdraw" ? "Baja local" : "Registro local"}</h2><p>{localRegistration.tournament} · {localRegistration.team}</p></div>{!(localCompleted && localRegistration.purpose === 'enroll') && <Button type="button" disabled={localSaving} onClick={closeLocalRegistration}>{localRegistration.purpose === 'withdraw' ? (localCompleted ? 'Finalizar baja local' : 'Cerrar baja local') : 'Cerrar registro local'}</Button>}</header><div className="local-enrollment-content"><>{localRegistration.purpose === "withdraw" ? <PublicPlayerWithdrawal key={localRegistration.token} invitation={localRegistration.token} embedded onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} /> : <PublicPlayerEnrollment key={localRegistration.token} invitation={localRegistration.token} embedded staffToken={token} onCompleted={setLocalCompleted} onBusyChange={setLocalSaving} />}</></div>{localCompleted && localRegistration.purpose === 'enroll' && <footer className="local-enrollment-finish no-print"><Button type="button" className="primary" disabled={localSaving} onClick={closeLocalRegistration}>Finalizar registro local</Button></footer>}</>}

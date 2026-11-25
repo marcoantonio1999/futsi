@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label } from "../../components/ui/enrollment-ui";
 import { fetchEnrollmentDocument } from "./fetchEnrollmentDocument";
 import { autoCropIdentity } from "./autoCropIdentity";
-import { renderRegistrationPdf } from "./renderRegistrationPdf";
+import { DocumentZoom } from "./DocumentZoom";
+import { EnrollmentPdfPreview } from "./EnrollmentPdfPreview";
 import { EnrollmentRegistrationSheet } from "./EnrollmentRegistrationSheet";
 import "./enrollmentApproval.css";
 import "./identityCrop.css";
@@ -38,52 +39,13 @@ const labels: Record<string, string> = {
   ine_back: "INE reverso",
   identity_document: "Pasaporte / cartilla",
 };
-export function DocumentZoom({url, title, onClose}: {url: string; title: string; onClose: () => void}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const viewer = useRef<HTMLDivElement>(null);
-  const pendingZoom = useRef<{x: number; y: number; relativeX: number; relativeY: number} | null>(null);
-  const [zoom, setZoom] = useState(100);
-  useEffect(() => { dialog.current?.showModal(); }, []);
-  useEffect(() => {
-    const element = viewer.current;
-    if (!element) return;
-    const wheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const rect = element.getBoundingClientRect();
-      const x = event.clientX - rect.left, y = event.clientY - rect.top;
-      setZoom(current => {
-        const next = Math.max(100, Math.min(600, current * Math.exp(-event.deltaY * .002)));
-        if (next !== current) pendingZoom.current = {x, y, relativeX: (element.scrollLeft + x) / current, relativeY: (element.scrollTop + y) / current};
-        return next;
-      });
-    };
-    element.addEventListener("wheel", wheel, {passive: false});
-    return () => element.removeEventListener("wheel", wheel);
-  }, []);
-  useLayoutEffect(() => {
-    const target = pendingZoom.current, element = viewer.current;
-    if (target && element) {
-      element.scrollLeft = target.relativeX * zoom - target.x;
-      element.scrollTop = target.relativeY * zoom - target.y;
-      pendingZoom.current = null;
-    }
-  }, [zoom]);
-  return <Dialog ref={dialog} className="enrollment-image-dialog no-print" aria-label={`Ampliar ${title}`} onCancel={event => {event.preventDefault(); onClose();}}>
-    <header><h2>{title}</h2><Button type="button" onClick={onClose} aria-label="Cerrar imagen">✕</Button></header>
-    <div ref={viewer} className="enrollment-image-viewer" tabIndex={0} aria-label="Imagen ampliada, desplázate para ver el documento">
-      <img src={url} alt={title} style={{width:`${zoom}%`}} />
-    </div>
-    <footer><Button type="button" onClick={() => setZoom(value => Math.max(100, value - 50))} disabled={zoom === 100}>Reducir</Button>
-      <span aria-live="polite">{Math.round(zoom)}%</span><Button type="button" onClick={() => setZoom(value => Math.min(600, value + 50))} disabled={zoom >= 600}>Ampliar</Button>
-      <Button type="button" onClick={onClose}>Cerrar</Button></footer>
-  </Dialog>;
-}
 export function EnrollmentApproval({
   token,
-  onChanged,
+  onChanged, onPendingCount,
 }: {
   token: string;
   onChanged: () => void;
+  onPendingCount: (count: number) => void;
 }) {
   const [rows, setRows] = useState<RecordRow[]>([]),
     [count, setCount] = useState(0),
@@ -94,7 +56,7 @@ export function EnrollmentApproval({
   const [zoomImage, setZoomImage] = useState<{url:string; title:string} | null>(null);
   const [showSheet, setShowSheet] = useState(false);
   const [ready, setReady] = useState<number[]>([]);
-  const [documents, setDocuments] = useState<Record<number, {url?: string; originalUrl?: string; mime?: string; pages?: string[]; error?: string}>>({});
+  const [documents, setDocuments] = useState<Record<number, {url?: string; originalUrl?: string; mime?: string; pdf?: Blob; error?: string}>>({});
   const [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
@@ -103,7 +65,7 @@ export function EnrollmentApproval({
     const c = new AbortController();
     setLoading(true);
     setError("");
-    apiRequest<{ results: RecordRow[]; count: number }>(
+    apiRequest<{ results: RecordRow[]; count: number; pending_validation_count: number }>(
       "/player-enrollments/?" +
         new URLSearchParams({
           pending_validation: "true",
@@ -114,6 +76,8 @@ export function EnrollmentApproval({
       { signal: c.signal },
     )
       .then((r) => {
+        if (c.signal.aborted) return;
+        onPendingCount(r.pending_validation_count);
         setRows(r.results);
         setCount(r.count);
         if (!r.results.length && r.count > 0 && page > 1) setPage((p) => p - 1);
@@ -125,7 +89,7 @@ export function EnrollmentApproval({
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [token, page, search, revision]);
+  }, [token, page, search, revision, onPendingCount]);
   useEffect(() => {
     setDocuments({});
     setReady([]);
@@ -141,8 +105,7 @@ export function EnrollmentApproval({
           if (!blob.type.startsWith('image/') && blob.type !== 'application/pdf') throw Error('Formato no disponible para revisión.');
           if (controller.signal.aborted) return;
           if (blob.type === 'application/pdf') {
-            const pages = await renderRegistrationPdf(blob, controller.signal);
-            if (!controller.signal.aborted) setDocuments(previous => ({...previous, [document.id]: {pages, mime: blob.type}}));
+            setDocuments(previous => ({...previous, [document.id]: {pdf: blob, mime: blob.type}}));
           } else {
             const originalFile = new File([blob], 'documento', {type: blob.type});
             let image = originalFile;
@@ -328,11 +291,9 @@ export function EnrollmentApproval({
                 return <article key={document.id} className="enrollment-document-preview">
                   <h4>{title}</h4>
                   {preview?.error ? <p role="alert" className="error">{preview.error} No se puede validar hasta cargarlo.</p>
-                    : !preview?.url && !preview?.pages ? <p role="status">Cargando documento privado…</p>
-                    : preview.mime === 'application/pdf' ? <div className="enrollment-pdf-pages">{preview.pages?.map((url, index) => <div key={url}><button type="button" className="enrollment-preview-open" onClick={() => setZoomImage({url,title:`${title} · Página ${index+1}`})} aria-label={`Ampliar ${title} · Página ${index+1}`}><img src={url} alt={`${title} · Página ${index+1}`} onLoad={event => {
-                      const images = event.currentTarget.closest('.enrollment-pdf-pages')?.querySelectorAll('img');
-                      if (images && Array.from(images).every(image => image.complete && image.naturalWidth > 0)) documentReady(document.id);
-                    }} onError={() => documentFailed(document.id)} /></button></div>)}</div>
+                    : preview?.pdf ? <EnrollmentPdfPreview blob={preview.pdf} title={title}
+                      onReady={() => documentReady(document.id)} onError={() => documentFailed(document.id)} onZoom={setZoomImage} />
+                    : !preview?.url ? <p role="status">Cargando documento privado…</p>
                     : <button type="button" className="enrollment-preview-open" onClick={() => setZoomImage({url:preview.url!, title})} aria-label={`Ampliar ${title}`}><img src={preview.url} alt={title} onLoad={() => documentReady(document.id)} onError={() => documentFailed(document.id)} /></button>}
                   {preview?.originalUrl && <Button type="button" onClick={() => setZoomImage({url: preview.originalUrl!, title: `${title} · imagen completa`})}>Ver imagen completa</Button>}
                 </article>;
