@@ -28,19 +28,11 @@ const keyOf = (id: number, day: string, start: string) => `${id}/${day}/${start}
 const slotKey = (slot: BoardSlot) => keyOf(slot.tournament.id, slot.day, slot.start);
 const displayName = (matrix: Matrix | undefined, id: number) => matrix?.teams.find(team => team.id === id)?.name ?? "Equipo";
 
-function calendarSlots(tournaments: Tournament[], data: Record<number, Matrix>, days: string[], preferredId: number, preferred?: Round) {
-  const bySite = new Map<number, Cross[]>();
-  for (const tournament of tournaments) {
-    const matches = data[tournament.id]?.crosses ?? [];
-    bySite.set(tournament.site, [...(bySite.get(tournament.site) ?? []), ...matches]);
-  }
-  return days.map(day => tournaments.flatMap(tournament => {
-    const matrix = data[tournament.id];
-    if (!matrix) return [];
-    const round = tournament.id === preferredId && preferred && during(day, preferred) ? preferred
+function calendarSlots(tournament: Tournament, matrix: Matrix, occupied: Cross[], days: string[], preferred?: Round) {
+  return days.map(day => {
+    const round = preferred && during(day, preferred) ? preferred
       : matrix.rounds.find(item => during(day, item));
     const existing = matrix.crosses.filter(match => match.scheduled_on === day && match.starts_at && match.ends_at);
-    const occupied = tournament.site === francoSite ? bySite.get(tournament.site) ?? [] : existing;
     const slots: BoardSlot[] = roleSlots(matrix.weekly_schedule ?? [], day).map(slot => {
       const match = existing.find(item => item.starts_at?.slice(0, 5) === slot.start && item.ends_at?.slice(0, 5) === slot.end);
       return { ...slot, tournament, round, match, occupied: occupied.some(item => plannerOverlap(slot, item)) };
@@ -49,8 +41,8 @@ function calendarSlots(tournaments: Tournament[], data: Record<number, Matrix>, 
       if (slots.some(slot => slot.match === match)) continue;
       slots.push({ day, start: match.starts_at!.slice(0, 5), end: match.ends_at!.slice(0, 5), tournament, round, match, occupied: true });
     }
-    return slots;
-  }).sort((a, b) => a.start.localeCompare(b.start) || a.tournament.name.localeCompare(b.tournament.name)));
+    return slots.sort((a, b) => a.start.localeCompare(b.start));
+  });
 }
 
 export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
@@ -93,9 +85,13 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   const round = rounds.find(row => row.id === roundId) ?? rounds.find(row => addDays(row.starts_on, 6) >= today) ?? rounds.at(-1);
   const monday = week || (round ? mondayOf(round.starts_on, true) : mondayOf(today));
   const days = Array.from({ length: 5 }, (_, index) => addDays(monday, index));
-  const calendar = calendarSlots(active, data, days, tournament?.id ?? 0, round);
+  const occupied = tournament?.site === francoSite
+    ? active.filter(row => row.site === tournament.site).flatMap(row => data[row.id]?.crosses ?? [])
+    : matrix?.crosses ?? [];
+  const calendar = matrix ? calendarSlots(tournament, matrix, occupied, days, round) : days.map(() => []);
   const suggestedBySlot = new Map(suggestions.map(match => [keyOf(tournament.id, match.schedule.scheduled_on, match.schedule.starts_at), match]));
   const counts = playedCounts(matrix?.crosses ?? []);
+  const activeTeams = matrix?.teams.filter(team => team.is_active) ?? [];
 
   function resetDraft() {
     setPicked(null); setStaged({}); setSuggestions([]); setError(""); setMessage("");
@@ -168,15 +164,13 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   function drop(event: DragEvent, slot: BoardSlot) {
     event.preventDefault();
     const transferredId = Number(event.dataTransfer.getData("text/plain"));
-    const team = active.flatMap(row => (data[row.id]?.teams ?? []).filter(team => team.id === transferredId && team.is_active)
-      .map(team => ({ ...team, tournament: row.id })))[0];
-    void place(slot, team ?? null);
+    const team = activeTeams.find(item => item.id === transferredId);
+    if (team) void place(slot, { id: team.id, name: team.name, tournament: tournament.id });
   }
 
   function propose() {
     if (!matrix || !round || !tournament) return;
-    const free = calendar.flat().filter(slot => slot.tournament.id === tournament.id
-      && slot.round?.id === round.id && !slot.occupied && !staged[slotKey(slot)]);
+    const free = calendar.flat().filter(slot => slot.round?.id === round.id && !slot.occupied && !staged[slotKey(slot)]);
     const reserved = new Set(Object.values(staged).map(team => team.id));
     const proposed = suggestPlannerMatches(matrix, round, free, reserved);
     setSuggestions(proposed); setError("");
@@ -218,24 +212,20 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
       }}>Confirmar sugerencia</Button>
     </div>}
     {!loading && active.length > 0 && <div className="role-planner-board">
-      <Card as="aside" className="role-planner-teams" aria-label="Equipos para programar">
+      <Card as="aside" key={tournament?.id} className="role-planner-teams" aria-label="Equipos para programar">
         <h2>Equipos</h2>
-        <p>Arrastra o selecciona un equipo y elige su horario.</p>
-        {active.filter(row => data[row.id]?.teams.some(team => team.is_active)).map(row => {
-          const teamCounts = row.id === tournament?.id ? counts : playedCounts(data[row.id].crosses);
-          return <details key={row.id} open={row.id === tournament?.id}>
-            <summary>{row.name}</summary>
-            <div className="role-planner-team-list">{data[row.id].teams.filter(team => team.is_active).map(team => {
-              const selected = picked?.id === team.id;
-              const item = { id: team.id, name: team.name, tournament: row.id };
-              return <Button key={team.id} type="button" className={selected ? "primary" : ""} aria-pressed={selected}
-                disabled={busy} draggable={!busy} onDragStart={event => { event.dataTransfer.setData("text/plain", String(team.id)); event.dataTransfer.effectAllowed = "copy"; }}
-                onClick={() => setPicked(selected ? null : item)}>
-                <GripVertical aria-hidden="true" /><span>{team.name}</span><small title="Partidos jugados">{teamCounts.get(team.id) ?? 0} PJ</small>
-              </Button>;
-            })}</div>
-          </details>;
-        })}
+        {activeTeams.length ? <>
+          <p>Arrastra o selecciona un equipo y elige su horario.</p>
+          <div className="role-planner-team-list">{activeTeams.map(team => {
+            const selected = picked?.id === team.id;
+            const item = { id: team.id, name: team.name, tournament: tournament.id };
+            return <Button key={team.id} type="button" className={selected ? "primary" : ""} aria-pressed={selected}
+              disabled={busy} draggable={!busy} onDragStart={event => { event.dataTransfer.setData("text/plain", String(team.id)); event.dataTransfer.effectAllowed = "copy"; }}
+              onClick={() => setPicked(selected ? null : item)}>
+              <GripVertical aria-hidden="true" /><span>{team.name}</span><small title="Partidos jugados">{counts.get(team.id) ?? 0} PJ</small>
+            </Button>;
+          })}</div>
+        </> : <p>{matrix ? "Este torneo aún no tiene equipos activos." : "No se pudieron cargar los equipos del torneo."}</p>}
       </Card>
       <div className="role-planner-workspace">
       <Card as="section" className="role-planner-calendar" aria-label="Calendario de lunes a viernes">

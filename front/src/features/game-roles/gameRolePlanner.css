@@ -29,8 +29,6 @@
 .role-planner-teams { padding: 10px; position: sticky; top: 0; max-height: min(55dvh, 570px); overflow: auto; }
 .role-planner-teams h2, .role-planner-calendar h2, .role-planner-matrix h2 { margin: 0; }
 .role-planner-teams p { font-size: 12px; color: #4c6255; }
-.role-planner-teams details + details { border-top: 1px solid var(--border); }
-.role-planner-teams summary { padding-block: 9px; font-weight: 650; cursor: pointer; }
 .role-planner-team-list { display: grid; gap: 4px; }
 .enrollment-page .game-role-planner .role-planner-team-list > button[data-slot=button] {
   width: 100%;
