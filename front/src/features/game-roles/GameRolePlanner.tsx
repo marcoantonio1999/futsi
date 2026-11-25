@@ -67,7 +67,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
     const controller = new AbortController();
     setLoading(true);
     void Promise.allSettled(tournaments.filter(item => item.is_active).map(async tournament =>
-      [tournament.id, await apiRequest<Matrix>(matrixPath(tournament.id), token, { signal: controller.signal })] as const
+      [tournament.id, await apiRequest<Matrix>(matrixPath(tournament.id), token, { signal: controller.signal, cache: "no-store" })] as const
     )).then(results => {
       if (controller.signal.aborted) return;
       setData(Object.fromEntries(results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])));

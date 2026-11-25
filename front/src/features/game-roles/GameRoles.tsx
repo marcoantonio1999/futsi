@@ -158,7 +158,7 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
   useEffect(() => {
     const controller = new AbortController();
     setLoadError("");
-    apiRequest<Matrix>(path, token, { signal: controller.signal })
+    apiRequest<Matrix>(path, token, { signal: controller.signal, cache: "no-store" })
       .then(result => { if (!controller.signal.aborted) setMatrix(result); })
       .catch(reason => { if (!controller.signal.aborted) setLoadError(reason.message); });
     return () => controller.abort();

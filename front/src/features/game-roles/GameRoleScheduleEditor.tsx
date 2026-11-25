@@ -30,6 +30,10 @@ export function GameRoleScheduleEditor({ blocks, kickoffOnly, canEdit, onSave }:
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const dayRows = rows.filter(row => row.weekday === weekday);
+  const hasChanges = rows.length !== blocks.length || rows.some((row, index) => {
+    const savedBlock = blocks[index];
+    return row.weekday !== savedBlock.weekday || row.starts_at !== savedBlock.starts_at || row.ends_at !== savedBlock.ends_at;
+  });
 
   function changeRows(change: (current: DraftBlock[]) => DraftBlock[]) {
     setRows(change);
@@ -67,6 +71,7 @@ export function GameRoleScheduleEditor({ blocks, kickoffOnly, canEdit, onSave }:
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       {saved && <p role="status">Horarios guardados.</p>}
+      {hasChanges && !busy && !error && !saved && <p role="status">Cambios sin guardar. Pulsa «Guardar horarios» para actualizar Programar jornada.</p>}
       <div className="game-role-panel-header">
         <Label>Día de juego<NativeSelect aria-label="Día de juego" value={weekday} disabled={busy}
           onChange={event => setWeekday(Number(event.target.value))}>
