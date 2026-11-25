@@ -4,6 +4,7 @@ import { apiRequest } from "../../api";
 import { Button, Card, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
+import { TournamentDialog } from "../tournaments/TournamentDialog";
 import { addDays, MatrixEditor, roundColorStyle, type Cross, type Matrix, type Round } from "./GameRoles";
 import { makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch } from "./plannerSchedule";
 import { roleSlots, roleTimeLabel, type RoleSlot } from "./roleSchedule";
@@ -61,6 +62,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   const [revision, setRevision] = useState(0);
   const [tournamentId, setTournamentId] = useEnrollmentViewState("gameRoles.tournament", "");
   const [addingRound, setAddingRound] = useState(false);
+  const [removingMatch, setRemovingMatch] = useState<{ tournament: Tournament; match: Cross } | null>(null);
   const [week, setWeek] = useState("");
   const [picked, setPicked] = useState<PickedTeam | null>(null);
   const [staged, setStaged] = useState<Record<string, PickedTeam>>({});
@@ -126,6 +128,20 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function removeMatch({ tournament: league, match }: NonNullable<typeof removingMatch>) {
+    const { home_team_id, away_team_id, round_id, scheduled_on, starts_at, ends_at } = match;
+    const result = await apiRequest<Matrix>(matrixPath(league.id), token, {
+      method: "PATCH",
+      body: JSON.stringify({ remove_planner_match: {
+        home_team_id, away_team_id, round_id,
+        schedule: { scheduled_on, starts_at: starts_at?.slice(0, 5), ends_at: ends_at?.slice(0, 5) },
+      } }),
+    });
+    setData(current => ({ ...current, [league.id]: result }));
+    setError("");
+    setMessage("Partido eliminado.");
   }
 
   async function place(slot: BoardSlot, team: PickedTeam | null) {
@@ -245,6 +261,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
               const first = staged[key];
               const names = data[slot.tournament.id];
               const bookable = !!slot.round && !slot.occupied && !suggested;
+              const removable = slot.match && !slot.match.played && slot.match.home_goals == null && slot.match.away_goals == null ? slot.match : null;
               const title = roleTimeLabel(slot.tournament.name, slot.start, slot.end);
               const description = shown ? `${displayName(names, shown.home_team_id)} vs. ${displayName(names, shown.away_team_id)}`
                 : first ? `${first.name} · Falta rival` : slot.occupied ? "Ocupado en la sede" : !slot.round ? "Sin jornada" : "Disponible";
@@ -252,8 +269,10 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
                 data-target={bookable && picked?.tournament === slot.tournament.id}
                 onDragOver={bookable && !busy ? event => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } : undefined}
                 onDrop={bookable && !busy ? event => drop(event, slot) : undefined}>
-                <Button type="button" disabled={!bookable || busy} onClick={() => {
-                  if (picked) void place(slot, picked);
+                <Button type="button" disabled={(!bookable && !removable) || busy}
+                  title={removable ? "Eliminar partido programado" : undefined} onClick={() => {
+                  if (removable) setRemovingMatch({ tournament: slot.tournament, match: removable });
+                  else if (picked) void place(slot, picked);
                   else setMessage("Selecciona un equipo de la lista para colocarlo en este horario.");
                 }} aria-label={`${slot.tournament.name} · ${dayLabel.format(utc(slot.day))} · ${title} · ${description}`}>
                   <span className="role-planner-slot-time"><strong>{title}</strong><small>{slot.tournament.name}</small></span>
@@ -274,6 +293,12 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
       schedule={matrix.weekly_schedule ?? []} selected={round}
       initialRoundDate={!rounds.length || (week && !rounds.some(item => days.some(day => during(day, item)))) ? monday : undefined}
       onClose={() => setAddingRound(false)} onSave={addRound} />}
+    {removingMatch && <TournamentDialog title="Eliminar partido" description={removingMatch.tournament.name}
+      submitLabel="Confirmar eliminación" danger onClose={() => setRemovingMatch(null)} onSubmit={() => removeMatch(removingMatch)}>
+      <p><strong>{displayName(data[removingMatch.tournament.id], removingMatch.match.home_team_id)} vs. {displayName(data[removingMatch.tournament.id], removingMatch.match.away_team_id)}</strong></p>
+      {removingMatch.match.scheduled_on && <p>{dayLabel.format(utc(removingMatch.match.scheduled_on))} · {roleTimeLabel(removingMatch.tournament.name, removingMatch.match.starts_at, removingMatch.match.ends_at)}</p>}
+      <p>El horario quedará libre y el partido se quitará de la matriz.</p>
+    </TournamentDialog>}
   </div>;
 }
 

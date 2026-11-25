@@ -251,6 +251,8 @@ class GameRoleMatrixView(GameRoleView):
             return self.update_weekly_schedule(request, tournament_id)
         if "planner_matches" in request.data:
             return self.save_planner_matches(request, tournament_id)
+        if "remove_planner_match" in request.data:
+            return self.remove_planner_match(request, tournament_id)
         tournament = self.tournament(request, tournament_id, lock=True)
         team_fields = {"new_team", "new_team_name", "add_team_id"}.intersection(request.data)
         if team_fields:
@@ -352,6 +354,25 @@ class GameRoleMatrixView(GameRoleView):
         if list(matrix_order) != tournament.game_role_team_order:
             tournament.game_role_team_order = list(matrix_order)
             tournament.save(update_fields=["game_role_team_order", "updated_at"])
+        return self.matrix(tournament)
+
+    def remove_planner_match(self, request, tournament_id):
+        serializer = PlannerMatchInput(data=request.data["remove_planner_match"])
+        serializer.is_valid(raise_exception=True)
+        tournament = self.lock_game_calendar(request, tournament_id)
+        if not tournament.is_active or not tournament.site.is_active:
+            raise ValidationError("Selecciona un torneo activo.")
+        data = serializer.validated_data.copy()
+        schedule = data.pop("schedule")
+        match = tournament_crosses(tournament).filter(
+            home_team_id=data["home_team_id"], away_team_id=data["away_team_id"],
+        ).first()
+        if match:
+            if match.played or match.home_goals is not None or match.away_goals is not None:
+                raise ValidationError("El partido ya tiene resultado y no se puede eliminar desde el calendario.")
+            if match.round_id != data["round_id"] or any(getattr(match, field) != value for field, value in schedule.items()):
+                raise ValidationError("El partido cambió. Actualiza el calendario antes de eliminarlo.")
+            match.delete()
         return self.matrix(tournament)
 
     def update_rest_team(self, tournament, round_row, value):
