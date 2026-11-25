@@ -213,10 +213,6 @@ export function EnrollmentApproval({
     <section className="enrollment-approval no-print">
       <header>
         <h2>Validar inscripciones</h2>
-        <p>
-          Revisa la hoja y los documentos antes de autorizar su aparición en la
-          sábana.
-        </p>
       </header>
       {message && <p role="status">{message}</p>}
       {error && (
