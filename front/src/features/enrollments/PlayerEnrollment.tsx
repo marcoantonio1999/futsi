@@ -620,7 +620,7 @@ export function TeamRosterPage({ team, tournament, token, onBack, autoPrint = fa
 export function EnrollmentDashboard(props: { token: string; onLogout: () => void; canManageRoles?: boolean; userId?: number }) {
   return <EnrollmentNavigation key={props.userId || 0} userId={props.userId || 0} hideGameRoles={props.canManageRoles === false}><EnrollmentDashboardContent {...props} /></EnrollmentNavigation>;
 }
-function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: {
+function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, userId }: {
   token: string; onLogout: () => void; canManageRoles?: boolean; userId?: number;
 }) {
   const navigation = useEnrollmentNavigation()!;
@@ -859,7 +859,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
           onRenameTeam={renameTeam} onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
-      </Card> : enrollmentSection === "game-roles-planner" ? <GameRolePlanner token={token} tournaments={catalog.tournaments} sites={catalog.sites}
+      </Card> : enrollmentSection === "game-roles-planner" ? <GameRolePlanner token={token} userId={userId} tournaments={catalog.tournaments} sites={catalog.sites}
         onOpenMatrix={() => setEnrollmentSection("game-roles")} /> : isGameRolesSection(enrollmentSection) ? <GameRoles token={token} showSchedule={enrollmentSection === "game-roles-schedule"}
         onOpenSchedule={() => setEnrollmentSection("game-roles-schedule")} onOpenMatrix={() => setEnrollmentSection("game-roles")} tournaments={catalog.tournaments} sites={catalog.sites} loading={catalogBusy} onTeamCreated={() => { void loadCatalog().catch(() => undefined); }} /> : enrollmentSection === "validate" ? <EnrollmentApproval token={token} onChanged={()=>{setRosterRevision(r=>r+1);void loadCatalog().catch(()=>undefined)}} /> : enrollmentSection === "permits" ? <EnrollmentPermits token={token} catalog={catalog} /> : enrollmentSection === "players" ? <PlayersDirectory token={token} revision={rosterRevision} /> : (enrollmentSection === "commission" || enrollmentSection === "blacklist") ? <DisciplinaryRecords key={enrollmentSection} token={token} mode={enrollmentSection} revision={rosterRevision} /> : enrollmentSection === "sanction-new" ? <NewSanction token={token} catalog={catalog} /> : enrollmentSection === "withdraw-history" ? <WithdrawalHistory token={token} revision={rosterRevision} renderSignature={(document, name) => <PrivateImage document={document} token={token} alt={`Firma de la baja de ${name}`} />} /> : (enrollmentSection === "send" || enrollmentSection === "withdraw") ?
       <Card as="section" className="operator-controls no-print">

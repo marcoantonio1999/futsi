@@ -90,9 +90,12 @@ class PlannerMatchInput(PlannerSlotInput):
     away_team_id = serializers.IntegerField(min_value=1)
 
 
-class PlannerMoveInput(serializers.Serializer):
+class PlannerSplitInput(serializers.Serializer):
     source = PlannerMatchInput()
     destination = PlannerSlotInput()
+    team_id = serializers.IntegerField(min_value=1)
+    opponent_id = serializers.IntegerField(min_value=1, allow_null=True)
+    side = serializers.ChoiceField(choices=("home", "away"))
 
 
 def tournament_crosses(tournament):
@@ -261,8 +264,8 @@ class GameRoleMatrixView(GameRoleView):
             return self.save_planner_matches(request, tournament_id)
         if "remove_planner_match" in request.data:
             return self.remove_planner_match(request, tournament_id)
-        if "move_planner_match" in request.data:
-            return self.move_planner_match(request, tournament_id)
+        if "split_planner_match" in request.data:
+            return self.split_planner_match(request, tournament_id)
         tournament = self.tournament(request, tournament_id, lock=True)
         team_fields = {"new_team", "new_team_name", "add_team_id"}.intersection(request.data)
         if team_fields:
@@ -336,12 +339,16 @@ class GameRoleMatrixView(GameRoleView):
         tournament = self.lock_game_calendar(request, tournament_id)
         if not tournament.is_active or not tournament.site.is_active:
             raise ValidationError("Selecciona un torneo activo.")
+        self.apply_planner_matches(tournament, serializer.validated_data)
+        return self.matrix(tournament)
+
+    def apply_planner_matches(self, tournament, matches):
         weekly = {(block["weekday"], block["starts_at"], block["ends_at"]) for block in tournament_schedule(tournament)}
         rounds = {row.pk: row for row in tournament.game_role_rounds.all()}
         team_ids = set(tournament.teams.filter(is_active=True).values_list("pk", flat=True))
         rows = tournament_crosses(tournament)
         matrix_order = dict.fromkeys(tournament.game_role_team_order)
-        for match in serializer.validated_data:
+        for match in matches:
             home, away = match["home_team_id"], match["away_team_id"]
             participants = {home, away}
             round_row = rounds.get(match["round_id"])
@@ -363,15 +370,19 @@ class GameRoleMatrixView(GameRoleView):
         if list(matrix_order) != tournament.game_role_team_order:
             tournament.game_role_team_order = list(matrix_order)
             tournament.save(update_fields=["game_role_team_order", "updated_at"])
-        return self.matrix(tournament)
 
-    def move_planner_match(self, request, tournament_id):
-        serializer = PlannerMoveInput(data=request.data["move_planner_match"])
+    def split_planner_match(self, request, tournament_id):
+        serializer = PlannerSplitInput(data=request.data["split_planner_match"])
         serializer.is_valid(raise_exception=True)
         tournament = self.lock_game_calendar(request, tournament_id)
         if not tournament.is_active or not tournament.site.is_active:
             raise ValidationError("Selecciona un torneo activo.")
-        source, destination = serializer.validated_data["source"], serializer.validated_data["destination"]
+        data = serializer.validated_data
+        source, destination = data["source"], data["destination"]
+        team_id, opponent_id = data["team_id"], data["opponent_id"]
+        original_teams = {source["home_team_id"], source["away_team_id"]}
+        if team_id not in original_teams or opponent_id in original_teams:
+            raise ValidationError("Selecciona un equipo del partido y un rival distinto.")
         match = tournament_crosses(tournament).filter(
             home_team_id=source["home_team_id"], away_team_id=source["away_team_id"],
         ).first()
@@ -380,22 +391,22 @@ class GameRoleMatrixView(GameRoleView):
         if match.played or match.home_goals is not None or match.away_goals is not None:
             raise ValidationError("El partido ya tiene resultado y no se puede mover.")
         schedule = destination["schedule"]
-        if match.round_id == destination["round_id"] and all(getattr(match, field) == value for field, value in schedule.items()):
-            return self.matrix(tournament)
         if match.round_id != source["round_id"] or any(getattr(match, field) != value for field, value in source["schedule"].items()):
             raise ValidationError("El partido cambió. Actualiza la programación antes de moverlo.")
-        participants = {match.home_team_id, match.away_team_id}
-        if tournament.teams.filter(pk__in=participants, is_active=True).count() != 2:
-            raise ValidationError("Ambos equipos deben estar activos en el torneo.")
+        if not tournament.teams.filter(pk=team_id, is_active=True).exists():
+            raise ValidationError("El equipo debe estar activo en el torneo.")
         weekly = {(block["weekday"], block["starts_at"], block["ends_at"]) for block in tournament_schedule(tournament)}
+        source_block = (match.scheduled_on.isoweekday() % 7, match.starts_at.strftime("%H:%M"), match.ends_at.strftime("%H:%M"))
+        if source_block not in weekly:
+            raise ValidationError("El horario original ya no está en los bloques del torneo.")
         round_row = tournament.game_role_rounds.filter(pk=destination["round_id"]).first()
-        self.validate_planner_slot(round_row, schedule, weekly, participants)
-        if self.calendar_conflicts(tournament, schedule, exclude={"pk": match.pk}).exists():
+        self.validate_planner_slot(round_row, schedule, weekly, {team_id})
+        if self.calendar_conflicts(tournament, schedule).exists():
             raise ValidationError("El horario ya está ocupado. Actualiza la programación.")
-        match.round = round_row
-        for field, value in schedule.items():
-            setattr(match, field, value)
-        match.save(update_fields=["round", *schedule, "updated_at"])
+        match.delete()
+        if opponent_id is not None:
+            home, away = (team_id, opponent_id) if data["side"] == "home" else (opponent_id, team_id)
+            self.apply_planner_matches(tournament, [{**destination, "home_team_id": home, "away_team_id": away}])
         return self.matrix(tournament)
 
     def remove_planner_match(self, request, tournament_id):
