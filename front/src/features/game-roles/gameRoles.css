@@ -229,6 +229,24 @@
 
 .game-roles-cell small, .game-roles-time { font-size: 11px; white-space: nowrap; }
 .game-roles-cell .game-roles-unassigned { font-size: 20px; }
+.game-role-meeting[data-repeat=true] { position: relative; }
+.game-role-meeting[data-repeat=true]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom right, transparent calc(50% - 1px), #dc2638 calc(50% - 1px), #dc2638 calc(50% + 1px), transparent calc(50% + 1px));
+}
+.enrollment-page .game-roles-matrix .game-roles-grid td[data-stacked=true] button.game-roles-cell {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  min-height: 32px !important;
+}
+@media (max-width: 1023px) {
+  .enrollment-page .game-roles-matrix .game-roles-grid td[data-stacked=true] button.game-roles-cell { min-height: 44px !important; }
+}
 .enrollment-page .game-roles-matrix .game-roles-grid button.game-roles-cell[data-assigned="true"] {
   border-width: 2px !important;
   border-color: var(--game-roles-round-color) !important;

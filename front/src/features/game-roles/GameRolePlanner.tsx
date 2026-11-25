@@ -5,7 +5,7 @@ import { Button, Card, Input, Label, NativeSelect } from "../../components/ui/en
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
 import { addDays, MatrixEditor, roundColorStyle, type Cross, type Matrix, type Round } from "./GameRoles";
-import { makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch, type ScheduledRange } from "./plannerSchedule";
+import { gameRoleMatrixCells, makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch, type ScheduledRange } from "./plannerSchedule";
 import { datedRoleSlots, roleTimeLabel, type RoleSlot } from "./roleSchedule";
 import "./gameRolePlanner.css";
 
@@ -60,8 +60,8 @@ function mondayOf(day: string, fromRound = false) {
 const keyOf = (id: number, day: string, start: string) => `${id}/${day}/${start}`;
 const slotKey = (slot: BoardSlot) => keyOf(slot.tournament.id, slot.day, slot.start);
 const displayName = (matrix: Matrix | undefined, id: number) => matrix?.teams.find(team => team.id === id)?.name ?? "Equipo";
-const matchSource = ({ home_team_id, away_team_id, round_id, scheduled_on, starts_at, ends_at }: Cross) => ({
-  home_team_id, away_team_id, round_id,
+const matchSource = ({ id, home_team_id, away_team_id, round_id, scheduled_on, starts_at, ends_at }: Cross) => ({
+  cross_id: id, home_team_id, away_team_id, round_id,
   schedule: { scheduled_on, starts_at: starts_at?.slice(0, 5), ends_at: ends_at?.slice(0, 5) },
 });
 
@@ -254,11 +254,10 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     const key = slotKey(slot);
     const preview = suggestedBySlot.get(key);
     if (preview) {
-      if (!sourceKey) updateSuggestions([{ ...preview, [teamField[side]]: team.id }], [key], slot.tournament.id);
+      if (!sourceKey) updateSuggestions([{ ...preview, [teamField[side]]: team.id }], [key]);
       return;
     }
     const first = staged[key];
-    const slotMatrix = data[slot.tournament.id];
     if (slot.round.rest_team_id === team.id) { setError("Este equipo tiene descanso en la jornada."); return; }
     if (sourceKey && sourceKey !== key && first?.side === side) {
       setError("Elige el lado vacío de ese horario.");
@@ -272,8 +271,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     }
     if (first.id === team.id) { setError("Selecciona un rival distinto para este horario."); return; }
     const [home, away] = side === "home" ? [team.id, first.id] : [first.id, team.id];
-    const pair = plannerPair(slotMatrix, slot.round, home, away);
-    if (!pair) { setError("Los cruces entre estos equipos ya están registrados. Elige otro rival."); return; }
+    const pair = plannerPair(slot.round, home, away);
+    if (!pair) { setError("Selecciona equipos distintos que tengan actividad en esta jornada."); return; }
     if (!(await save(slot.tournament.id, { planner_matches: [makePlannerMatch(slot.round, slot, pair)] }, "Partido programado."))) return;
     setStaged(current => withoutStaged(current, key, sourceKey));
     setPicked(null);
@@ -300,8 +299,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     if (rival?.side === side) { setError("Elige el lado vacío de ese horario."); return; }
     if (rival?.id === remainingId || rival?.id === movedId) { setError("Selecciona otro horario para este equipo."); return; }
     const selectedMatrix = data[slot.tournament.id];
-    const pair = rival ? plannerPair(selectedMatrix, slot.round, side === "home" ? movedId : rival.id, side === "away" ? movedId : rival.id) : null;
-    if (rival && !pair) { setError("Los cruces entre estos equipos ya están registrados. Elige otro rival."); return; }
+    const pair = rival ? plannerPair(slot.round, side === "home" ? movedId : rival.id, side === "away" ? movedId : rival.id) : null;
+    if (rival && !pair) { setError("Selecciona equipos distintos que tengan actividad en esta jornada."); return; }
     const destination = { round_id: slot.round.id, schedule: { scheduled_on: slot.day, starts_at: slot.start, ends_at: slot.end } };
     if (await save(slot.tournament.id, { split_planner_match: {
       source: matchSource(match), destination, team_id: movedId, opponent_id: rival?.id ?? null,
@@ -334,13 +333,11 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     const source = { ...previous, [teamField[sourceSide]]: target[teamField[side]] };
     const destination = { ...(key === sourceKey ? source : target), [teamField[side]]: team };
     const changed = key === sourceKey ? [destination] : [source, destination];
-    updateSuggestions(changed, [key, sourceKey], slot.tournament.id);
+    updateSuggestions(changed, [key, sourceKey]);
   }
 
-  function updateSuggestions(changed: PlannerDraft[], keys: string[], tournamentId: number) {
+  function updateSuggestions(changed: PlannerDraft[], keys: string[]) {
     const remaining = suggestions.filter(draft => !keys.includes(draftKeyOf(draft)));
-    const selectedMatrix = data[tournamentId];
-    const pairs = new Set(remaining.filter(completeDraft).map(match => `${match.home_team_id}/${match.away_team_id}`));
     for (const draft of changed) {
       const round = rounds.find(row => row.id === draft.round_id);
       if (!round || roundEnded(round, today) || (round.rest_team_id != null && slotSides.some(side => draft[teamField[side]] === round.rest_team_id))) {
@@ -348,13 +345,10 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
         return;
       }
       if (!completeDraft(draft)) continue;
-      const pair = plannerPair(selectedMatrix, round, draft.home_team_id, draft.away_team_id);
-      const pairKey = `${draft.home_team_id}/${draft.away_team_id}`;
-      if (!pair || pair[0] !== draft.home_team_id || pairs.has(pairKey)) {
-        setError("El cambio repite un cruce o enfrenta al equipo consigo mismo.");
+      if (!plannerPair(round, draft.home_team_id, draft.away_team_id)) {
+        setError("Un equipo no puede jugar contra sí mismo.");
         return;
       }
-      pairs.add(pairKey);
     }
     setSuggestions([...remaining, ...changed]);
     setMoving(null); setPicked(null); setError(""); setMessage("");
@@ -534,7 +528,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                 {shown ? <PlannerEncounter key={`${shown.home_team_id}/${shown.away_team_id}`}
                   match={canCaptureScore ? match : undefined} home={homeName} away={awayName} label={slotLabel} busy={busy}
                   onSave={match && (score => save(slot.tournament.id, {
-                    planner_score: { home_team_id: match.home_team_id, away_team_id: match.away_team_id, round_id: match.round_id, score },
+                    planner_score: { cross_id: match.id, home_team_id: match.home_team_id, away_team_id: match.away_team_id, round_id: match.round_id, score },
                   }, "Marcador guardado."))}>
                   {slotSides.map(side => {
                     const name = side === "home" ? homeName : awayName;
@@ -706,25 +700,24 @@ function withoutStaged(current: Record<string, StagedTeam>, ...keys: (string | u
 }
 
 function PlannerMatrix({ matrix, round }: { matrix: Matrix; round: Round }) {
-  const crosses = matrix.crosses.filter(cross => cross.round_id === round.id);
-  const teams = [...new Set([...(matrix.matrix_team_ids ?? []), ...crosses.flatMap(cross => [cross.home_team_id, cross.away_team_id])])];
-  const cells = new Map(crosses.map(cross => [`${cross.home_team_id}/${cross.away_team_id}`, cross]));
+  const teams = [...new Set([...(matrix.matrix_team_ids ?? []), ...matrix.crosses.flatMap(cross => [cross.home_team_id, cross.away_team_id])])];
+  const cells = gameRoleMatrixCells(matrix, teams, round.id);
   if (!teams.length) return null;
   return <Card as="section" className="role-planner-matrix" aria-label={`Matriz · Jornada ${round.number}`} style={roundColorStyle(round.number)}>
     <h2>Matriz · Jornada {round.number}</h2>
     <div className="role-planner-matrix-scroll" tabIndex={0} aria-label="Cruces de la jornada">
       <table style={{ minWidth: 116 + teams.length * 35 }}>
         <colgroup><col className="role-planner-matrix-team" />{teams.map(id => <col key={id} />)}</colgroup>
-        <thead><tr><th scope="col">Visitante / Local</th>{teams.map(id => <th key={id} scope="col" title={displayName(matrix, id)}>{displayName(matrix, id)}</th>)}</tr></thead>
+        <thead><tr><th scope="col">Equipos</th>{teams.map(id => <th key={id} scope="col" title={displayName(matrix, id)}>{displayName(matrix, id)}</th>)}</tr></thead>
         <tbody>{teams.map(away => <tr key={away}><th scope="row" title={displayName(matrix, away)}>{displayName(matrix, away)}</th>{teams.map(home => {
-          const match = cells.get(`${home}/${away}`);
-          const state = match ? match.played ? "played" : "pending" : undefined;
-          const time = match?.starts_at?.slice(0, 5);
-          const score = match?.played && match.home_goals != null && match.away_goals != null ? `${match.home_goals}–${match.away_goals}` : null;
-          const description = match ? `${match.played ? "Jugado" : "Pendiente"} · ${time ?? "Sin horario"}` : undefined;
-          return <td key={home} data-match-state={state} title={description}>
-            {home === away ? "—" : score ?? time ?? "·"}
-          </td>;
+          const entries = cells.get(`${home}/${away}`);
+          return <td key={home} data-match-state={entries ? entries[0].cross.played ? "played" : "pending" : undefined}>{entries ? entries.map(({ cross, meeting }) => {
+            const time = cross.starts_at?.slice(0, 5);
+            const score = cross.played && cross.home_goals != null && cross.away_goals != null ? `${cross.home_goals}–${cross.away_goals}` : null;
+            const description = `Encuentro ${meeting} · ${displayName(matrix, cross.home_team_id)} vs. ${displayName(matrix, cross.away_team_id)} · ${cross.played ? "Jugado" : "Pendiente"}`;
+            return <span key={cross.id ?? meeting} className="game-role-meeting" data-repeat={meeting >= 3}
+              data-match-state={cross.played ? "played" : "pending"} title={description}>{score ?? time ?? "·"}</span>;
+          }) : home === away ? "—" : "·"}</td>;
         })}</tr>)}</tbody>
       </table>
     </div>

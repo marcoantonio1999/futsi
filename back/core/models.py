@@ -367,7 +367,6 @@ class GameRoleCross(TimestampedModel):
     class Meta:
         db_table = "game_role_crosses"
         constraints = [
-            models.UniqueConstraint(fields=["tournament", "home_team", "away_team"], name="uq_game_role_cross"),
             models.CheckConstraint(condition=~Q(home_team=models.F("away_team")), name="ck_game_role_distinct_teams"),
             models.CheckConstraint(
                 condition=Q(scheduled_on__isnull=True, starts_at__isnull=True, ends_at__isnull=True)

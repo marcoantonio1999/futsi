@@ -226,12 +226,12 @@
 }
 .role-planner-matrix thead th { overflow-wrap: anywhere; }
 .role-planner-matrix tbody th { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.role-planner-matrix td[data-match-state] { font-weight: 700; overflow-wrap: anywhere; }
-.role-planner-matrix td[data-match-state=pending] {
+.role-planner-matrix .game-role-meeting { display: block; font-weight: 700; overflow-wrap: anywhere; }
+.role-planner-matrix [data-match-state=pending].game-role-meeting {
   color: var(--game-roles-round-color);
   box-shadow: inset 0 0 0 2px var(--game-roles-round-color);
 }
-.role-planner-matrix td[data-match-state=played] {
+.role-planner-matrix [data-match-state=played].game-role-meeting {
   background: var(--game-roles-round-color);
   color: white;
 }

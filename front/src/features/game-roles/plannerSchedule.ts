@@ -24,17 +24,37 @@ export function playedCounts(crosses: Cross[]) {
   return counts;
 }
 
-export function plannerPair(matrix: Matrix, round: Round, first: number, second: number) {
+export function plannerPair(round: Round, first: number, second: number) {
   if (first === second || round.rest_team_id === first || round.rest_team_id === second) return null;
-  const find = (home: number, away: number) => matrix.crosses.find(
-    cross => cross.home_team_id === home && cross.away_team_id === away);
-  const direct = find(first, second);
-  const reverse = find(second, first);
-  const awaitingSchedule = (cross?: Cross) => cross && cross.round_id === round.id && !cross.played && !cross.scheduled_on;
-  if (awaitingSchedule(direct)) return [first, second] as const;
-  if (awaitingSchedule(reverse)) return [second, first] as const;
-  if (!direct) return [first, second] as const;
-  return reverse ? null : [second, first] as const;
+  return [first, second] as const;
+}
+
+export function gameRoleMatrixCells(matrix: Matrix, teamIds: number[], roundId?: number) {
+  const order = new Map(teamIds.map((id, index) => [id, index]));
+  const rounds = new Map(matrix.rounds.map(round => [round.id, round]));
+  const day = (cross: Cross) => cross.scheduled_on ?? rounds.get(cross.round_id)?.starts_on ?? "";
+  const encounters = [...matrix.crosses].sort((first, second) =>
+    day(first).localeCompare(day(second)) ||
+    (first.starts_at ?? "").localeCompare(second.starts_at ?? "") ||
+    (rounds.get(first.round_id)?.number ?? 0) - (rounds.get(second.round_id)?.number ?? 0) ||
+    (first.id ?? 0) - (second.id ?? 0));
+  const counts = new Map<string, number>();
+  const cells = new Map<string, { cross: Cross; meeting: number }[]>();
+  for (const cross of encounters) {
+    const homeIndex = order.get(cross.home_team_id);
+    const awayIndex = order.get(cross.away_team_id);
+    if (homeIndex === undefined || awayIndex === undefined) continue;
+    const [earlier, later] = homeIndex < awayIndex ? [cross.home_team_id, cross.away_team_id] : [cross.away_team_id, cross.home_team_id];
+    const lower = `${earlier}/${later}`;
+    const meeting = (counts.get(lower) ?? 0) + 1;
+    counts.set(lower, meeting);
+    if (roundId !== undefined && cross.round_id !== roundId) continue;
+    const cell = meeting % 2 ? lower : `${later}/${earlier}`;
+    const entries = cells.get(cell) ?? [];
+    entries.push({ cross, meeting });
+    cells.set(cell, entries);
+  }
+  return cells;
 }
 
 export function makePlannerMatch(round: Round, slot: RoleSlot, pair: readonly [number, number]): PlannerMatch {
@@ -58,7 +78,7 @@ export function suggestPlannerMatches(matrix: Matrix, round: Round, slots: Plann
   const eligible = activeTeams.filter(team => !reserved.has(team.id) && team.id !== round.rest_team_id
     && !assignments.get(team.id)?.some(cross => cross.played || cross.scheduled_on));
   function pairing(home: number, away: number, autoIds: number[], keepSide = false) {
-    const pair = plannerPair(matrix, round, home, away);
+    const pair = plannerPair(round, home, away);
     if (!pair || (keepSide && pair[0] !== home)) return [];
     if (autoIds.some(id => assignments.get(id)?.some(cross => cross.home_team_id !== pair[0] || cross.away_team_id !== pair[1]))) return [];
     const games = autoIds.map(id => counts.get(id) ?? 0);
