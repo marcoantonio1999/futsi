@@ -129,6 +129,11 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   const suggestedBySlot = new Map(suggestions.map(match => [keyOf(tournament.id, match.schedule.scheduled_on, match.schedule.starts_at), match]));
   const counts = playedCounts(matrix?.crosses ?? []);
   const activeTeams = matrix?.teams.filter(team => team.is_active) ?? [];
+  const weekAssigned = new Set(calendar.flat().flatMap(slot => {
+    if (slot.match) return [slot.match.home_team_id, slot.match.away_team_id];
+    const placed = staged[slotKey(slot)];
+    return placed && !slot.occupied ? [placed.id] : [];
+  }));
 
   function resetDraft() {
     setPicked(null); setMoving(null); setSuggestions([]); setError(""); setMessage(""); setSlotOccupancy(null);
@@ -280,6 +285,23 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     }
   }
 
+  async function unassign(slot: BoardSlot, side: SlotSide, preview?: PlannerMatch) {
+    const key = slotKey(slot);
+    const match = slot.match;
+    if (match && !(await save(slot.tournament.id, { remove_planner_match: matchSource(match) }, "Equipo retirado del horario."))) return;
+    const otherSide = side === "home" ? "away" : "home";
+    const pairing = match ?? preview;
+    setStaged(current => {
+      const remaining = withoutStaged(current, key);
+      if (!pairing) return remaining;
+      const id = otherSide === "home" ? pairing.home_team_id : pairing.away_team_id;
+      return { ...remaining, [key]: { id, name: displayName(data[slot.tournament.id], id), tournament: slot.tournament.id, side: otherSide } };
+    });
+    setSuggestions(current => current.filter(item => keyOf(slot.tournament.id, item.schedule.scheduled_on, item.schedule.starts_at) !== key));
+    if (moving?.key === key) setMoving(null);
+    if (!match) setMessage("");
+  }
+
   function startMove(source: Relocation) {
     setMoving(source); setPicked(null); setError("");
     setMessage("Elige un espacio para mover el equipo.");
@@ -314,12 +336,9 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
 
   function propose() {
     if (!matrix || !suggestionRound || !tournament) return;
-    const free = calendar.flat().filter(slot => slot.round?.id === suggestionRound.id && !slot.occupied && !staged[slotKey(slot)]);
-    const reserved = new Set(calendar.flat().flatMap(slot => {
-      const team = staged[slotKey(slot)];
-      return team && !slot.occupied ? [team.id] : [];
-    }));
-    const proposed = suggestPlannerMatches(matrix, suggestionRound, free, reserved);
+    const free = calendar.flat().filter(slot => slot.round?.id === suggestionRound.id && !slot.occupied)
+      .map(slot => ({ ...slot, placed: staged[slotKey(slot)] }));
+    const proposed = suggestPlannerMatches(matrix, suggestionRound, free, weekAssigned);
     setSuggestions(proposed); setError("");
     setMessage(proposed.length ? "" : free.length ? "No hay suficientes equipos disponibles para los horarios libres de esta jornada."
       : "No hay horarios libres de esta jornada en la semana visible.");
@@ -359,7 +378,10 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       <Button type="button" disabled={busy} onClick={() => setSuggestions([])}>Descartar</Button>
       <Button type="button" className="primary" disabled={busy} onClick={async () => {
         const notice = suggestions.length === 1 ? "Partido programado." : `${suggestions.length} partidos programados.`;
-        if (await save(tournament.id, { planner_matches: suggestions }, notice)) setSuggestions([]);
+        if (await save(tournament.id, { planner_matches: suggestions }, notice)) {
+          setStaged(current => withoutStaged(current, ...suggestedBySlot.keys()));
+          setSuggestions([]);
+        }
       }}>Confirmar sugerencia</Button>
     </div>}
     {!loading && active.length > 0 && (matrix || failed) && <div className="role-planner-board" data-closed={closedWeek}>
@@ -371,6 +393,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
             const selected = picked?.id === team.id;
             const item = { id: team.id, name: team.name, tournament: tournament.id };
             return <Button key={team.id} type="button" className={selected ? "primary" : ""} aria-pressed={selected}
+              data-assigned={weekAssigned.has(team.id)} title={weekAssigned.has(team.id) ? "Ya tiene horario esta semana" : undefined}
               disabled={busy} draggable={!busy} onDragStart={event => { event.dataTransfer.setData("text/plain", String(team.id)); event.dataTransfer.effectAllowed = "copy"; }}
               onClick={() => { if (moving) setMessage(""); setMoving(null); setPicked(selected ? null : item); }}>
               <GripVertical aria-hidden="true" /><span>{team.name}</span><small title="Partidos jugados">{counts.get(team.id) ?? 0} PJ</small>
@@ -390,15 +413,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
           </h2>
           <Button type="button" aria-label="Semana siguiente" disabled={busy} onClick={() => { setWeek(addDays(monday, 7)); resetDraft(); }}><ArrowRight aria-hidden="true" /></Button>
         </header>
-        <div className="role-planner-extra">
-          {closedWeek ? <strong className="role-planner-closed">Jornada cerrada</strong>
-            : slotOccupancy && openDays.length ? <ExtraSlotForm days={openDays} optionsForDay={availableExtraSlots}
-            canAdd={canAddSlot} onSave={addExtraSlot} onClose={() => setSlotOccupancy(null)} />
-            : <Button type="button" className="primary" onClick={openExtraSlot}
-              disabled={!matrix || loading || busy || !openDays.length}>
-              <Plus aria-hidden="true" />Agregar horario
-            </Button>}
-        </div>
+        {closedWeek && <strong className="role-planner-closed">Jornada cerrada</strong>}
         <div className="role-planner-schedule-scroll">
           {calendar.some(slots => slots.length) ? <div className="role-planner-list-heading" aria-hidden="true">
             <span>Fecha</span><span>Hora</span><span>Jornada</span>
@@ -443,15 +458,21 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                 : shown ? <div className="role-planner-encounter">
                   {slotSides.map(side => {
                     const name = side === "home" ? homeName : awayName;
-                    const className = `role-planner-assigned-team role-planner-${side}`;
+                    const className = "role-planner-assigned-team";
                     const source = { kind: "match", key, side } as const;
-                    return movable ? <Button key={side} type="button" className={className} disabled={busy} draggable={!busy}
-                      title={`Mover a ${name}`} aria-label={`Mover a ${name} · ${sideLabels[side]} · ${slotLabel}`}
-                      aria-pressed={moving?.kind === "match" && moving.key === key && moving.side === side}
-                      onDragStart={event => startDrag(event, source)} onClick={() => startMove(source)}>
-                      <GripVertical className="role-planner-drag-grip" aria-hidden="true" /><span>{name}</span>
-                    </Button>
-                      : <span key={side} className={className}>{name}{suggested && side === "home" && <small>Sugerido</small>}</span>;
+                    const suggestedSide = suggested && (first ? first.side !== side : side === "home");
+                    return <div key={side} className={`role-planner-drop-zone role-planner-${side}`}>
+                      {movable ? <Button type="button" className={className} disabled={busy} draggable={!busy}
+                        title={`Mover a ${name}`} aria-label={`Mover a ${name} · ${sideLabels[side]} · ${slotLabel}`}
+                        aria-pressed={moving?.kind === "match" && moving.key === key && moving.side === side}
+                        onDragStart={event => startDrag(event, source)} onClick={() => startMove(source)}>
+                        <GripVertical className="role-planner-drag-grip" aria-hidden="true" /><span>{name}</span>
+                      </Button> : <span className={className}>{name}{suggestedSide && <small>Sugerido</small>}</span>}
+                      {(movable || suggested) && <Button type="button" className="role-planner-clear" disabled={busy}
+                        aria-label={`Quitar a ${name} de este horario`} onClick={() => void unassign(slot, side, suggested)}>
+                        <X aria-hidden="true" />
+                      </Button>}
+                    </div>;
                   })}
                   <span className="role-planner-vs">VS</span>
                   {canCaptureScore && <div className="role-planner-score-actions">
@@ -474,10 +495,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                         }}>{placed && <><GripVertical className="role-planner-drag-grip" aria-hidden="true" /><span>{placed.name}</span></>}</Button>
                       {placed && <Button type="button" className="role-planner-clear" disabled={busy}
                         aria-label={`Quitar a ${placed.name} de este horario`}
-                        onClick={() => {
-                          setStaged(current => withoutStaged(current, key));
-                          if (moving?.key === key) { setMoving(null); setMessage(""); }
-                        }}>
+                        onClick={() => void unassign(slot, side)}>
                         <X aria-hidden="true" />
                       </Button>}
                     </div>;
@@ -488,6 +506,14 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
               </div>;
             })}
           </div>)}
+          {!closedWeek && <div className="role-planner-extra">
+            {slotOccupancy && openDays.length ? <ExtraSlotForm days={openDays} optionsForDay={availableExtraSlots}
+              canAdd={canAddSlot} onSave={addExtraSlot} onClose={() => setSlotOccupancy(null)} />
+              : <Button type="button" className="primary role-planner-add-slot" onClick={openExtraSlot}
+                disabled={!matrix || loading || busy || !openDays.length}>
+                <Plus aria-hidden="true" />Agregar horario
+              </Button>}
+          </div>}
         </div>
       </Card>
       {matrix && round && <PlannerMatrix matrix={matrix} round={round} />}
