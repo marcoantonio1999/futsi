@@ -10,14 +10,14 @@ import { GameRoleStatistics } from "./GameRoleStatistics";
 import { GameRoleShare } from "./GameRoleShare";
 import { RolePageButtons } from "./RolePageButtons";
 import { roleReminders } from "./roleReminders";
-import { roleSlots, roleTimeLabel, showsKickoffOnly, type RoleSchedule, type WeeklyBlock, type RoleSlot as Slot } from "./roleSchedule";
+import { datedRoleSlots, roleTimeLabel, showsKickoffOnly, type ExtraScheduleBlock, type RoleSchedule, type WeeklyBlock, type RoleSlot as Slot } from "./roleSchedule";
 import "./gameRoles.css";
 
 export type Team = { id: number; name: string; is_active: boolean };
 type TeamSelectionInput = { add_team_id: number } | { new_team_name: string } | {
   new_team: { name: string; representative_name: string; representative_phone: string };
 };
-export type Round = { id: number; number: number; starts_on: string; rest_team_id?: number };
+export type Round = { id: number; number: number; starts_on: string; rest_team_id?: number; extra_schedule?: ExtraScheduleBlock[] };
 export type Cross = {
   home_team_id: number; away_team_id: number; round_id: number;
   scheduled_on: string | null; starts_at: string | null; ends_at: string | null; played: boolean;
@@ -213,7 +213,7 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
     if (!current && selected) {
       const week = Array.from({ length: 7 }, (_, index) => addDays(selected.starts_on, index));
       const scheduledDays = new Set(matrix.crosses.filter(cross => cross.round_id === selected.id).map(cross => cross.scheduled_on));
-      const freeSlots = week.flatMap(day => roleSlots(schedule, day).filter(candidate => !matrix.crosses.some(cross => overlaps(candidate, cross))));
+      const freeSlots = week.flatMap(day => datedRoleSlots(schedule, selected.extra_schedule ?? [], day).filter(candidate => !matrix.crosses.some(cross => overlaps(candidate, cross))));
       slot = freeSlots.find(candidate => scheduledDays.has(candidate.day)) ?? freeSlots[0];
     }
     setEditor({ kind: "cross", home, away, current, slot });
@@ -635,16 +635,16 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
   const usesPresets = schedule.length > 0 || showsKickoffOnly(tournamentName);
   const occupied = matrix.crosses.filter(cross => cross.scheduled_on
     && (cross.home_team_id !== editor.home.id || cross.away_team_id !== editor.away.id));
-  const freeSlots = (date: string) => roleSlots(schedule, date).filter(slot => !occupied.some(cross => overlaps(slot, cross)));
+  const freeSlots = (date: string, week = round) => datedRoleSlots(schedule, week?.extra_schedule ?? [], date).filter(slot => !occupied.some(cross => overlaps(slot, cross)));
   const availableSlots = freeSlots(day);
   const daysInWeek = (week: Round) => Array.from({ length: 7 }, (_, index) => addDays(week.starts_on, index));
   const gameDays = round ? daysInWeek(round).filter(date =>
     !usesPresets || (date === day && start && end) || freeSlots(date).length > 0) : [];
   const overlap = occupied.some(cross => overlaps({ day, start, end }, cross));
-  function changeDay(nextDay: string) {
+  function changeDay(nextDay: string, week = round) {
     setDay(nextDay);
     if (!usesPresets && nextDay) return;
-    const slots = freeSlots(nextDay);
+    const slots = freeSlots(nextDay, week);
     const slot = slots.find(row => row.start === start && row.end === end) ?? slots[0];
     setStart(slot?.start ?? "");
     setEnd(slot?.end ?? "");
@@ -660,8 +660,8 @@ function CrossScheduleFields({ editor, matrix, tournamentName, schedule, selecte
         const next = matrix.rounds.find(row => row.id === Number(event.target.value));
         setRoundId(Number(event.target.value));
         if (!next || !daysInWeek(next).includes(day)) {
-          const first = next && daysInWeek(next).find(date => freeSlots(date).length);
-          changeDay(first ?? "");
+          const first = next && daysInWeek(next).find(date => freeSlots(date, next).length);
+          changeDay(first ?? "", next);
         }
       }}>
       <option value="">Sin jornada</option>

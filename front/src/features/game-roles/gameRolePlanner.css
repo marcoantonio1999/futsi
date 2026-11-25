@@ -85,6 +85,20 @@
 .role-planner-slot + .role-planner-slot { border-top: 1px solid #0001; }
 .role-planner-slot > * { min-width: 0; }
 .role-planner-slot-date { text-transform: capitalize; }
+.role-planner-extra-label { display: block; color: #46594e; font-size: 11px; }
+.role-planner-extra { flex: none; margin-bottom: 8px; }
+.role-planner-extra-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.role-planner-extra-fields label { flex: 1 1 130px; min-width: 0; margin: 0; }
+.role-planner-extra-fields :is(select, input) { width: 100%; min-width: 0; }
 .role-planner-slot-round { font-weight: 650; }
 .role-planner-encounter {
   display: grid;
@@ -107,7 +121,7 @@
 .role-planner-encounter > .role-planner-away { grid-column: 3; grid-row: 1; }
 .role-planner-drop-zone { display: flex; gap: 2px; }
 .enrollment-page .role-planner-slot .role-planner-drop-zone button[data-slot=button],
-.enrollment-page .role-planner-slot button.role-planner-confirmed-match[data-slot=button] {
+.enrollment-page .role-planner-slot button.role-planner-assigned-team[data-slot=button] {
   padding: 4px !important;
   font-size: 12px !important;
   line-height: 1.3 !important;
@@ -124,17 +138,22 @@
   box-shadow: inset 0 0 0 1px var(--day-accent);
 }
 .enrollment-page .role-planner-slot button.role-planner-clear[data-slot=button] { flex: 0 0 44px; }
-.enrollment-page .role-planner-slot button.role-planner-confirmed-match[data-slot=button] {
-  display: grid !important;
-  justify-content: stretch;
+.enrollment-page .role-planner-slot .role-planner-assigned-team {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid var(--day-accent) !important;
+  border-radius: 7px;
   background: #ffffffbc !important;
-  border-color: var(--day-accent) !important;
-  opacity: 1 !important;
 }
-.enrollment-page .role-planner-slot[data-state=suggested] button.role-planner-confirmed-match[data-slot=button] {
+.enrollment-page .role-planner-slot .role-planner-assigned-team[aria-pressed=true] {
+  box-shadow: inset 0 0 0 2px var(--day-accent);
+}
+.enrollment-page .role-planner-slot[data-state=suggested] .role-planner-assigned-team {
   border-style: dashed !important;
 }
-.role-planner-confirmed-match small { display: block; color: #4d5f54; }
+.role-planner-assigned-team small { display: block; color: #4d5f54; }
 .enrollment-page .role-planner-slot [draggable=true] { cursor: grab; }
 .role-planner-slot-unavailable { padding: 4px 8px; font-size: 12px; color: #4d5f54; }
 .role-planner-matrix { min-width: 0; padding: 10px; }
@@ -170,7 +189,7 @@
     min-height: 32px !important;
     padding-block: 4px !important;
   }
-  .enrollment-page .role-planner-slot :is(button.role-planner-drop, button.role-planner-clear, button.role-planner-confirmed-match)[data-slot=button] {
+  .enrollment-page .role-planner-slot :is(button.role-planner-drop, button.role-planner-clear, button.role-planner-assigned-team)[data-slot=button] {
     min-height: 32px !important;
   }
   .enrollment-page .role-planner-slot button.role-planner-clear[data-slot=button] { flex-basis: 28px; }

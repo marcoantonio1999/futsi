@@ -226,10 +226,12 @@ class PublicGameRoleView(APIView):
 class GameRoleMatrixView(GameRoleView):
     def matrix(self, tournament):
         teams = list(tournament.teams.order_by("name", "pk").values("id", "name", "is_active"))
-        rounds = list(tournament.game_role_rounds.order_by("number").values("id", "number", "starts_on", "rest_team_id"))
+        rounds = list(tournament.game_role_rounds.order_by("number").values("id", "number", "starts_on", "rest_team_id", "extra_schedule"))
         for row in rounds:
             if row["rest_team_id"] is None:
                 del row["rest_team_id"]
+            if not row["extra_schedule"]:
+                del row["extra_schedule"]
         crosses = list(tournament_crosses(tournament).order_by("pk").values(
             "home_team_id", "away_team_id", "round_id", "scheduled_on", "starts_at", "ends_at", "played", "home_goals", "away_goals",
         ))
@@ -243,7 +245,16 @@ class GameRoleMatrixView(GameRoleView):
         })
 
     def get(self, request, tournament_id):
-        return self.matrix(self.tournament(request, tournament_id))
+        tournament = self.tournament(request, tournament_id)
+        if "week_occupancy" in request.query_params:
+            week = serializers.DateField().run_validation(request.query_params["week_occupancy"])
+            occupied = GameRoleCross.objects.filter(
+                tournament__site_id=tournament.site_id,
+                scheduled_on__range=(week, week + timedelta(days=4)),
+                starts_at__isnull=False, ends_at__isnull=False,
+            ).values("scheduled_on", "starts_at", "ends_at")
+            return Response(list(occupied))
+        return self.matrix(tournament)
 
     @transaction.atomic
     def post(self, request, tournament_id):
@@ -266,6 +277,8 @@ class GameRoleMatrixView(GameRoleView):
             return self.remove_planner_match(request, tournament_id)
         if "split_planner_match" in request.data:
             return self.split_planner_match(request, tournament_id)
+        if "add_extra_slot" in request.data:
+            return self.add_extra_slot(request, tournament_id)
         tournament = self.tournament(request, tournament_id, lock=True)
         team_fields = {"new_team", "new_team_name", "add_team_id"}.intersection(request.data)
         if team_fields:
@@ -296,6 +309,8 @@ class GameRoleMatrixView(GameRoleView):
         if tournament.game_role_rounds.exclude(pk=row.pk).filter(number=data["number"]).exists():
             raise ValidationError("Ya existe una jornada con ese número en este torneo.")
         start = data["starts_on"]
+        if any(not start <= date.fromisoformat(slot["scheduled_on"]) <= start + timedelta(days=6) for slot in row.extra_schedule):
+            raise ValidationError("La nueva semana deja un horario extra fuera de la jornada.")
         if tournament_crosses(tournament).filter(round=row).filter(
             Q(scheduled_on__lt=start) | Q(scheduled_on__gt=start + timedelta(days=6))
         ).exists():
@@ -313,25 +328,62 @@ class GameRoleMatrixView(GameRoleView):
         return tournament
 
     def calendar_conflicts(self, tournament, schedule, exclude=None):
-        rows = tournament_crosses(tournament)
-        if tournament.site_id == FRANCO_SITE_ID:
-            rows = GameRoleCross.objects.filter(tournament__site_id=tournament.site_id)
+        rows = GameRoleCross.objects.filter(tournament__site_id=tournament.site_id)
         if exclude:
             rows = rows.exclude(tournament=tournament, **exclude)
         return rows.filter(
             scheduled_on=schedule["scheduled_on"], starts_at__lt=schedule["ends_at"], ends_at__gt=schedule["starts_at"],
         )
 
-    def validate_planner_slot(self, round_row, schedule, weekly, participants):
+    def validate_planner_date(self, round_row, schedule):
         day = schedule["scheduled_on"]
-        start, end = schedule["starts_at"], schedule["ends_at"]
-        block = (day.isoweekday() % 7, start.strftime("%H:%M"), end.strftime("%H:%M"))
         if not round_row or not round_row.starts_on <= day <= round_row.starts_on + timedelta(days=6):
             raise ValidationError("Selecciona una jornada que incluya la fecha del partido.")
-        if day.isoweekday() > 5 or block not in weekly:
+        if day.isoweekday() > 5:
+            raise ValidationError("Selecciona un día de lunes a viernes.")
+        if schedule["ends_at"] <= schedule["starts_at"]:
+            raise ValidationError("La hora de fin debe ser posterior a la de inicio.")
+
+    def validate_planner_slot(self, round_row, schedule, weekly, participants):
+        self.validate_planner_date(round_row, schedule)
+        day = schedule["scheduled_on"]
+        block = (day.isoweekday() % 7, schedule["starts_at"].strftime("%H:%M"), schedule["ends_at"].strftime("%H:%M"))
+        if block not in weekly and self.serialize_extra_slot(schedule) not in round_row.extra_schedule:
             raise ValidationError("El bloque ya no está disponible en los horarios del torneo.")
         if round_row.rest_team_id in participants:
             raise ValidationError("Uno de los equipos tiene descanso en esta jornada.")
+
+    def serialize_extra_slot(self, schedule):
+        return {
+            "scheduled_on": schedule["scheduled_on"].isoformat(),
+            "starts_at": schedule["starts_at"].strftime("%H:%M"),
+            "ends_at": schedule["ends_at"].strftime("%H:%M"),
+        }
+
+    def add_extra_slot(self, request, tournament_id):
+        serializer = PlannerSlotInput(data=request.data["add_extra_slot"])
+        serializer.is_valid(raise_exception=True)
+        tournament = self.lock_game_calendar(request, tournament_id)
+        if not tournament.is_active or not tournament.site.is_active:
+            raise ValidationError("Selecciona un torneo activo.")
+        data = serializer.validated_data
+        round_row = tournament.game_role_rounds.filter(pk=data["round_id"]).first()
+        schedule = data["schedule"]
+        self.validate_planner_date(round_row, schedule)
+        extra = self.serialize_extra_slot(schedule)
+        if extra in round_row.extra_schedule:
+            return self.matrix(tournament)
+        if self.calendar_conflicts(tournament, schedule).exists():
+            raise ValidationError("El horario está ocupado por un partido en esta sede.")
+        weekday = schedule["scheduled_on"].isoweekday() % 7
+        same_day = [block for block in tournament_schedule(tournament) if block["weekday"] == weekday]
+        for row in tournament.game_role_rounds.all():
+            same_day.extend(block for block in row.extra_schedule if block["scheduled_on"] == extra["scheduled_on"])
+        if any(block["starts_at"] < extra["ends_at"] and block["ends_at"] > extra["starts_at"] for block in same_day):
+            raise ValidationError("Ese rango ya coincide con un horario del torneo.")
+        round_row.extra_schedule = [*round_row.extra_schedule, extra]
+        round_row.save(update_fields=["extra_schedule", "updated_at"])
+        return self.matrix(tournament)
 
     def save_planner_matches(self, request, tournament_id):
         serializer = PlannerMatchInput(data=request.data["planner_matches"], many=True, allow_empty=False, max_length=100)
@@ -396,9 +448,7 @@ class GameRoleMatrixView(GameRoleView):
         if not tournament.teams.filter(pk=team_id, is_active=True).exists():
             raise ValidationError("El equipo debe estar activo en el torneo.")
         weekly = {(block["weekday"], block["starts_at"], block["ends_at"]) for block in tournament_schedule(tournament)}
-        source_block = (match.scheduled_on.isoweekday() % 7, match.starts_at.strftime("%H:%M"), match.ends_at.strftime("%H:%M"))
-        if source_block not in weekly:
-            raise ValidationError("El horario original ya no está en los bloques del torneo.")
+        self.validate_planner_slot(match.round, source["schedule"], weekly, original_teams)
         round_row = tournament.game_role_rounds.filter(pk=destination["round_id"]).first()
         self.validate_planner_slot(round_row, schedule, weekly, {team_id})
         if self.calendar_conflicts(tournament, schedule).exists():

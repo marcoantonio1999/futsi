@@ -342,6 +342,7 @@ class GameRoleRound(TimestampedModel):
     number = models.PositiveSmallIntegerField()
     starts_on = models.DateField()
     rest_team = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name="game_role_rest_rounds")
+    extra_schedule = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "game_role_rounds"

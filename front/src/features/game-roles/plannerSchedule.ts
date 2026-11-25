@@ -8,7 +8,9 @@ export type PlannerMatch = {
   schedule: { scheduled_on: string; starts_at: string; ends_at: string };
 };
 
-export function plannerOverlap(slot: RoleSlot, cross: Cross) {
+export type ScheduledRange = Pick<Cross, "scheduled_on" | "starts_at" | "ends_at">;
+
+export function plannerOverlap(slot: RoleSlot, cross: ScheduledRange) {
   return cross.scheduled_on === slot.day && !!cross.starts_at && !!cross.ends_at
     && cross.starts_at.slice(0, 5) < slot.end && cross.ends_at.slice(0, 5) > slot.start;
 }
