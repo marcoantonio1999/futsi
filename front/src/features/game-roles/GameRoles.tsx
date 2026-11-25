@@ -41,7 +41,7 @@ const roundColors = [
   "#2c514b", "#3f5561", "#563723", "#5d5925", "#4a3f57",
 ];
 
-function roundColorStyle(number: number): CSSProperties {
+export function roundColorStyle(number: number): CSSProperties {
   const hue = (number * 137.508) % 360;
   const color = roundColors[number - 1] ?? `hsl(${hue} 65% 27%)`;
   return { "--game-roles-round-color": color } as CSSProperties;

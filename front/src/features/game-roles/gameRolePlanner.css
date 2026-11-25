@@ -93,7 +93,15 @@
 }
 .role-planner-matrix thead th { overflow-wrap: anywhere; }
 .role-planner-matrix tbody th { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.role-planner-matrix td[data-scheduled=true] { background: #e6f3ea; color: #19462f; font-weight: 700; }
+.role-planner-matrix td[data-match-state] { font-weight: 700; overflow-wrap: anywhere; }
+.role-planner-matrix td[data-match-state=pending] {
+  color: var(--game-roles-round-color);
+  box-shadow: inset 0 0 0 2px var(--game-roles-round-color);
+}
+.role-planner-matrix td[data-match-state=played] {
+  background: var(--game-roles-round-color);
+  color: white;
+}
 .role-planner-notice { margin: 0; }
 @media (min-width: 701px) {
   .role-planner-calendar { display: flex; flex-direction: column; max-height: 55dvh; }

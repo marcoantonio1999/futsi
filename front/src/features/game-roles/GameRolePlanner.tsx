@@ -4,7 +4,7 @@ import { apiRequest } from "../../api";
 import { Button, Card, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
-import { addDays, MatrixEditor, type Cross, type Matrix, type Round } from "./GameRoles";
+import { addDays, MatrixEditor, roundColorStyle, type Cross, type Matrix, type Round } from "./GameRoles";
 import { makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch } from "./plannerSchedule";
 import { roleSlots, roleTimeLabel, type RoleSlot } from "./roleSchedule";
 import "./gameRolePlanner.css";
@@ -282,7 +282,7 @@ function PlannerMatrix({ matrix, round }: { matrix: Matrix; round: Round }) {
   const teams = [...new Set([...(matrix.matrix_team_ids ?? []), ...crosses.flatMap(cross => [cross.home_team_id, cross.away_team_id])])];
   const cells = new Map(crosses.map(cross => [`${cross.home_team_id}/${cross.away_team_id}`, cross]));
   if (!teams.length) return null;
-  return <Card as="section" className="role-planner-matrix" aria-label={`Matriz · Jornada ${round.number}`}>
+  return <Card as="section" className="role-planner-matrix" aria-label={`Matriz · Jornada ${round.number}`} style={roundColorStyle(round.number)}>
     <h2>Matriz · Jornada {round.number}</h2>
     <div className="role-planner-matrix-scroll" tabIndex={0} aria-label="Cruces de la jornada">
       <table style={{ minWidth: 116 + teams.length * 35 }}>
@@ -290,7 +290,12 @@ function PlannerMatrix({ matrix, round }: { matrix: Matrix; round: Round }) {
         <thead><tr><th scope="col">Visitante / Local</th>{teams.map(id => <th key={id} scope="col" title={displayName(matrix, id)}>{displayName(matrix, id)}</th>)}</tr></thead>
         <tbody>{teams.map(away => <tr key={away}><th scope="row" title={displayName(matrix, away)}>{displayName(matrix, away)}</th>{teams.map(home => {
           const match = cells.get(`${home}/${away}`);
-          return <td key={home} data-scheduled={!!match?.scheduled_on}>{home === away ? "—" : match?.starts_at?.slice(0, 5) ?? "·"}</td>;
+          const state = match ? match.played ? "played" : "pending" : undefined;
+          const time = match?.starts_at?.slice(0, 5);
+          const description = match ? `${match.played ? "Jugado" : "Pendiente"} · ${time ?? "Sin horario"}` : undefined;
+          return <td key={home} data-match-state={state} title={description}>
+            {home === away ? "—" : time ?? "·"}
+          </td>;
         })}</tr>)}</tbody>
       </table>
     </div>
