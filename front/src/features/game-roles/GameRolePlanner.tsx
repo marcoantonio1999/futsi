@@ -27,7 +27,19 @@ const weekLabel = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "sho
 const mexicoDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
 const matrixPath = (id: number) => `/player-enrollments/game-roles/${id}/`;
 const during = (day: string, round: Round) => round.starts_on <= day && day <= addDays(round.starts_on, 6);
+const weekdays = (monday: string) => Array.from({ length: 5 }, (_, index) => addDays(monday, index));
 const roundEnded = (round: Round | undefined, today: string) => !!round && addDays(round.starts_on, 6) < today;
+function roundForWeek(monday: string, rounds: Round[]) {
+  const days = weekdays(monday);
+  return rounds.reduce<{ round: Round; overlap: number } | undefined>((best, round) => {
+    const overlap = days.filter(day => during(day, round)).length;
+    if (overlap === 0) return best;
+    if (!best || overlap > best.overlap || (overlap === best.overlap && round.starts_on > best.round.starts_on)) {
+      return { round, overlap };
+    }
+    return best;
+  }, undefined)?.round;
+}
 function roundForDay(day: string, rounds: Round[], today: string, preferred?: Round) {
   const matching = rounds.filter(round => during(day, round));
   const open = matching.filter(round => !roundEnded(round, today));
@@ -114,9 +126,11 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   const matrix = tournament && data[tournament.id];
   const today = mexicoDate.format(new Date());
   const rounds = matrix?.rounds ?? [];
-  const round = rounds.find(row => row.id === roundId) ?? rounds.find(row => addDays(row.starts_on, 6) >= today) ?? rounds.at(-1);
+  const selectedRound = rounds.find(row => row.id === roundId);
+  const round = week ? roundForWeek(week, rounds)
+    : selectedRound ?? rounds.find(row => addDays(row.starts_on, 6) >= today) ?? rounds.at(-1);
   const monday = week || (round ? mondayOf(round.starts_on, true) : mondayOf(today));
-  const days = Array.from({ length: 5 }, (_, index) => addDays(monday, index));
+  const days = weekdays(monday);
   const visibleDays = days.map(day => ({ day, round: roundForDay(day, rounds, today, round) }));
   const openDays = visibleDays.flatMap(({ day, round }) => round && !roundEnded(round, today) ? [{ day, round }] : []);
   const weekRoundNumbers = [...new Set(visibleDays.flatMap(({ round }) => round ? [round.number] : []))];
@@ -141,6 +155,13 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
 
   function resetDraft() {
     setPicked(null); setMoving(null); setSuggestions([]); setError(""); setMessage(""); setSlotOccupancy(null);
+  }
+
+  function navigateWeek(offset: number) {
+    const next = addDays(monday, offset);
+    setWeek(next);
+    setRoundId(roundForWeek(next, rounds)?.id ?? 0);
+    resetDraft();
   }
 
   function canAddSlot(slot: RoleSlot) {
@@ -410,9 +431,9 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
         {!active.length && <option value="">Sin torneos activos</option>}
         {active.map(row => <option key={row.id} value={row.id}>{row.name} · {sites.find(site => site.id === row.site)?.name}</option>)}
       </NativeSelect></Label>
-      <Label>Jornada<NativeSelect aria-label="Jornada" value={round?.id ?? ""} disabled={!round || loading || busy}
+      <Label>Jornada<NativeSelect aria-label="Jornada" value={round?.id ?? ""} disabled={!rounds.length || loading || busy}
         onChange={event => { setRoundId(Number(event.target.value)); setWeek(""); resetDraft(); }}>
-        {!round && <option value="">Sin jornadas</option>}
+        {!round && <option value="" disabled>{rounds.length ? "Sin jornada en esta semana" : "Sin jornadas"}</option>}
         {rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number}</option>)}
       </NativeSelect></Label>
       <Button type="button" className="primary" onClick={() => setAddingRound(true)} disabled={!matrix || loading || busy}>
@@ -470,14 +491,14 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       <div className="role-planner-workspace">
       <Card as="section" className="role-planner-schedule" aria-label="Horarios de lunes a viernes">
         <header>
-          <Button type="button" aria-label="Semana anterior" disabled={busy} onClick={() => { setWeek(addDays(monday, -7)); resetDraft(); }}><ArrowLeft aria-hidden="true" /></Button>
+          <Button type="button" aria-label="Semana anterior" disabled={busy} onClick={() => navigateWeek(-7)}><ArrowLeft aria-hidden="true" /></Button>
           <h2>
             <span>{weekLabel.formatRange(utc(days[0]), utc(days[4]))}</span>
             <span className="role-planner-week-round" style={weekRoundNumbers.length === 1 ? roundColorStyle(weekRoundNumbers[0]) : undefined}>
               {weekRoundLabel}
             </span>
           </h2>
-          <Button type="button" aria-label="Semana siguiente" disabled={busy} onClick={() => { setWeek(addDays(monday, 7)); resetDraft(); }}><ArrowRight aria-hidden="true" /></Button>
+          <Button type="button" aria-label="Semana siguiente" disabled={busy} onClick={() => navigateWeek(7)}><ArrowRight aria-hidden="true" /></Button>
         </header>
         {closedWeek && <strong className="role-planner-closed">Jornada cerrada</strong>}
         <div className="role-planner-schedule-scroll">
