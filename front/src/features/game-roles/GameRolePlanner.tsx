@@ -23,6 +23,7 @@ const weekLabel = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "sho
 const mexicoDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
 const matrixPath = (id: number) => `/player-enrollments/game-roles/${id}/`;
 const during = (day: string, round: Round) => round.starts_on <= day && day <= addDays(round.starts_on, 6);
+const roundEnded = (round: Round | undefined, today: string) => !!round && addDays(round.starts_on, 6) < today;
 const roundForDay = (day: string, rounds: Round[], preferred?: Round) =>
   preferred && during(day, preferred) ? preferred : rounds.find(item => during(day, item));
 const utc = (day: string) => new Date(day + "T00:00:00Z");
@@ -117,7 +118,11 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   const sameSite = active.filter(row => row.site === tournament?.site);
   const occupied = sameSite.flatMap(row => data[row.id]?.crosses ?? []);
   const calendar = matrix ? calendarSlots(tournament, matrix, occupied, days, round) : days.map(() => []);
-  const extraSlotDays = round ? days.filter(day => during(day, round)) : [];
+  const extraSlotDays = round && !roundEnded(round, today) ? days.filter(day => during(day, round)) : [];
+  const closedWeek = weekRoundNumbers.length > 0 && days.every(day => {
+    const visibleRound = roundForDay(day, rounds, round);
+    return !visibleRound || roundEnded(visibleRound, today);
+  });
   const suggestedBySlot = new Map(suggestions.map(match => [keyOf(tournament.id, match.schedule.scheduled_on, match.schedule.starts_at), match]));
   const counts = playedCounts(matrix?.crosses ?? []);
   const activeTeams = matrix?.teams.filter(team => team.is_active) ?? [];
@@ -208,7 +213,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   }
 
   async function place(slot: BoardSlot, team: PickedTeam | null, side: SlotSide, sourceKey?: string) {
-    if (busy || !team || !slot.round || slot.occupied || suggestedBySlot.has(slotKey(slot))) return;
+    if (busy || !team || !slot.round || roundEnded(slot.round, today) || slot.occupied || suggestedBySlot.has(slotKey(slot))) return;
     setError(""); setMessage("");
     if (team.tournament !== slot.tournament.id) { setError("Elige un horario del torneo de este equipo."); return; }
     const key = slotKey(slot);
@@ -240,10 +245,10 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       await place(slot, staged[source.key] ?? null, side, source.key);
       return;
     }
-    if (busy || !slot.round || slot.occupied || suggestedBySlot.has(slotKey(slot))) return;
+    if (busy || !slot.round || roundEnded(slot.round, today) || slot.occupied || suggestedBySlot.has(slotKey(slot))) return;
     const previous = calendar.flat().find(item => item.match && slotKey(item) === source.key);
     const match = previous?.match;
-    if (!previous?.preset || !match || match.played) return;
+    if (!previous?.preset || !match || match.played || roundEnded(rounds.find(item => item.id === match.round_id), today)) return;
     const movedId = source.side === "home" ? match.home_team_id : match.away_team_id;
     const remainingId = source.side === "home" ? match.away_team_id : match.home_team_id;
     const key = slotKey(slot);
@@ -302,7 +307,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   }
 
   function propose() {
-    if (!matrix || !round || !tournament) return;
+    if (!matrix || !round || !tournament || !extraSlotDays.length) return;
     const free = calendar.flat().filter(slot => slot.round?.id === round.id && !slot.occupied && !staged[slotKey(slot)]);
     const reserved = new Set(calendar.flat().flatMap(slot => {
       const team = staged[slotKey(slot)];
@@ -329,7 +334,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       <Button type="button" className="primary" onClick={() => setAddingRound(true)} disabled={!matrix || loading || busy}>
         <Plus aria-hidden="true" />Agregar jornada
       </Button>
-      <Button type="button" className="primary" onClick={propose} disabled={!round || loading || busy}><Shuffle aria-hidden="true" />Sugerir jornada</Button>
+      <Button type="button" className="primary" onClick={propose} disabled={!extraSlotDays.length || loading || busy}><Shuffle aria-hidden="true" />Sugerir jornada</Button>
       <Button type="button" onClick={() => {
         if (tournament) setTournamentId(String(tournament.id));
         if (round) setRoundId(round.id);
@@ -343,7 +348,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       {message && <p className="role-planner-notice" role="status">{message}</p>}
       {moving && <Button type="button" disabled={busy} onClick={() => { setMoving(null); setMessage(""); }}>Cancelar movimiento</Button>}
     </div>}
-    {!!suggestions.length && <div className="role-planner-review">
+    {!!suggestions.length && extraSlotDays.length > 0 && <div className="role-planner-review">
       <strong>{suggestions.length} {suggestions.length === 1 ? "partido sugerido" : "partidos sugeridos"}</strong>
       <Button type="button" disabled={busy} onClick={() => setSuggestions([])}>Descartar</Button>
       <Button type="button" className="primary" disabled={busy} onClick={async () => {
@@ -351,8 +356,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
         if (await save(tournament.id, { planner_matches: suggestions }, notice)) setSuggestions([]);
       }}>Confirmar sugerencia</Button>
     </div>}
-    {!loading && active.length > 0 && (matrix || failed) && <div className="role-planner-board">
-      <Card as="aside" key={tournament?.id} className="role-planner-teams" aria-label="Equipos para programar">
+    {!loading && active.length > 0 && (matrix || failed) && <div className="role-planner-board" data-closed={closedWeek}>
+      {!closedWeek && <Card as="aside" key={tournament?.id} className="role-planner-teams" aria-label="Equipos para programar">
         <h2>Equipos</h2>
         {activeTeams.length ? <>
           <p>Arrastra un equipo a un espacio vacío o selecciónalo y toca el espacio.</p>
@@ -366,7 +371,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
             </Button>;
           })}</div>
         </> : <p>{matrix ? "Este torneo aún no tiene equipos activos." : "No se pudieron cargar los equipos del torneo."}</p>}
-      </Card>
+      </Card>}
       <div className="role-planner-workspace">
       <Card as="section" className="role-planner-schedule" aria-label="Horarios de lunes a viernes">
         <header>
@@ -380,7 +385,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
           <Button type="button" aria-label="Semana siguiente" disabled={busy} onClick={() => { setWeek(addDays(monday, 7)); resetDraft(); }}><ArrowRight aria-hidden="true" /></Button>
         </header>
         <div className="role-planner-extra">
-          {slotOccupancy && round ? <ExtraSlotForm days={extraSlotDays} optionsForDay={availableExtraSlots}
+          {closedWeek ? <strong className="role-planner-closed">Jornada cerrada</strong>
+            : slotOccupancy && round && extraSlotDays.length ? <ExtraSlotForm days={extraSlotDays} optionsForDay={availableExtraSlots}
             canAdd={canAddSlot} onSave={slot => addExtraSlot(round, slot)} onClose={() => setSlotOccupancy(null)} />
             : <Button type="button" className="primary" onClick={openExtraSlot}
               disabled={!matrix || loading || busy || !extraSlotDays.length || sameSite.some(row => !data[row.id])}>
@@ -395,26 +401,33 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
           {calendar.map((slots, weekday) => slots.length > 0 && <div key={days[weekday]} className="role-planner-day" data-weekday={weekday}>
             {slots.map(slot => {
               const key = slotKey(slot);
-              const suggested = suggestedBySlot.get(key);
-              const shown = slot.match ?? suggested;
+              const match = slot.match;
+              const matchRound = match ? rounds.find(item => item.id === match.round_id) : slot.round;
+              const closed = roundEnded(matchRound, today);
+              const suggested = closed ? undefined : suggestedBySlot.get(key);
+              const shown = match ?? suggested;
               const first = staged[key];
               const names = data[slot.tournament.id];
-              const bookable = !!slot.round && !slot.occupied && !suggested;
-              const movable = slot.preset && slot.match && !slot.match.played && slot.match.home_goals == null && slot.match.away_goals == null;
+              const bookable = !!slot.round && !closed && !slot.occupied && !suggested;
+              const movable = !closed && slot.preset && match && !match.played && match.home_goals == null && match.away_goals == null;
               const date = dayLabel.format(utc(slot.day));
               const time = roleTimeLabel(slot.tournament.name, slot.start, slot.end);
-              const matchRound = slot.match ? rounds.find(item => item.id === slot.match?.round_id) : slot.round;
               const slotLabel = `${date} · ${time}`;
               const homeName = shown && displayName(names, shown.home_team_id);
               const awayName = shown && displayName(names, shown.away_team_id);
-              return <div key={`${key}/${slot.end}`} className="role-planner-slot" data-state={slot.match ? "scheduled" : suggested ? "suggested" : first ? "staged" : "available"}
+              return <div key={`${key}/${slot.end}`} className="role-planner-slot" data-state={match ? "scheduled" : suggested ? "suggested" : first ? "staged" : "available"}
                 data-target={bookable && (picked?.tournament === slot.tournament.id || !!moving)}>
                 <time dateTime={slot.day} className="role-planner-slot-date">{date}</time>
                 <div title={slot.extra ? `${slot.start}–${slot.end}` : undefined}>
                   <strong>{time}</strong>{slot.extra && <small className="role-planner-extra-label">Horario extra</small>}
                 </div>
                 <span className="role-planner-slot-round">{matchRound ? `J${matchRound.number}` : "—"}</span>
-                {shown ? <div className="role-planner-encounter">
+                {match && (closed || match.played) ? <PlannerScoreForm
+                  match={match} home={displayName(names, match.home_team_id)} away={displayName(names, match.away_team_id)}
+                  label={slotLabel} busy={busy} onSave={score => save(slot.tournament.id, {
+                    planner_score: { home_team_id: match.home_team_id, away_team_id: match.away_team_id, round_id: match.round_id, score },
+                  }, "Marcador guardado.")} />
+                : shown ? <div className="role-planner-encounter">
                   {slotSides.map(side => {
                     const name = side === "home" ? homeName : awayName;
                     const className = `role-planner-assigned-team role-planner-${side}`;
@@ -454,7 +467,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                   })}
                   <span className="role-planner-vs" onDragOver={busy ? undefined : allowDrop}
                     onDrop={busy ? undefined : event => drop(event, slot, first?.side === "home" ? "away" : "home")}>VS</span>
-                </div> : <span className="role-planner-slot-unavailable">{slot.occupied ? "Ocupado en la sede" : "Sin jornada"}</span>}
+                </div> : <span className="role-planner-slot-unavailable">{closed ? "Sin partido" : slot.occupied ? "Ocupado en la sede" : "Sin jornada"}</span>}
               </div>;
             })}
           </div>)}
@@ -468,6 +481,36 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       initialRoundDate={!rounds.length || (week && !rounds.some(item => days.some(day => during(day, item)))) ? monday : undefined}
       onClose={() => setAddingRound(false)} onSave={addRound} />}
   </div>;
+}
+
+function PlannerScoreForm({ match, home, away, label, busy, onSave }: {
+  match: Cross; home: string; away: string; label: string; busy: boolean;
+  onSave: (score: { home_goals: number; away_goals: number }) => Promise<boolean>;
+}) {
+  const saved = match.home_goals != null && match.away_goals != null;
+  const [editing, setEditing] = useState(false);
+  const inputsVisible = !saved || editing;
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (await onSave({ home_goals: Number(form.get("home_goals")), away_goals: Number(form.get("away_goals")) })) {
+      setEditing(false);
+    }
+  }
+  return <form className="role-planner-encounter role-planner-score" aria-label={`Marcador · ${home} vs. ${away} · ${label}`} onSubmit={submit}>
+    <Label className="role-planner-assigned-team role-planner-home"><span>{home}</span>{inputsVisible
+      ? <Input aria-label={`Goles de ${home} (local)`} name="home_goals" type="number" inputMode="numeric" min={0} max={999} required disabled={busy} defaultValue={match.home_goals ?? ""} />
+      : <strong>{match.home_goals}</strong>}</Label>
+    <span className="role-planner-vs">VS</span>
+    <Label className="role-planner-assigned-team role-planner-away"><span>{away}</span>{inputsVisible
+      ? <Input aria-label={`Goles de ${away} (visitante)`} name="away_goals" type="number" inputMode="numeric" min={0} max={999} required disabled={busy} defaultValue={match.away_goals ?? ""} />
+      : <strong>{match.away_goals}</strong>}</Label>
+    <div className="role-planner-score-actions">
+      {match.played && <span>Jugado</span>}
+      {inputsVisible ? <Button key="save" type="submit" className="primary" disabled={busy}>Guardar marcador</Button>
+        : <Button key="edit" type="button" disabled={busy} onClick={() => setEditing(true)}>Editar marcador</Button>}
+    </div>
+  </form>;
 }
 
 function ExtraSlotForm({ days, optionsForDay, canAdd, onSave, onClose }: {
@@ -539,9 +582,10 @@ function PlannerMatrix({ matrix, round }: { matrix: Matrix; round: Round }) {
           const match = cells.get(`${home}/${away}`);
           const state = match ? match.played ? "played" : "pending" : undefined;
           const time = match?.starts_at?.slice(0, 5);
+          const score = match?.played && match.home_goals != null && match.away_goals != null ? `${match.home_goals}–${match.away_goals}` : null;
           const description = match ? `${match.played ? "Jugado" : "Pendiente"} · ${time ?? "Sin horario"}` : undefined;
           return <td key={home} data-match-state={state} title={description}>
-            {home === away ? "—" : time ?? "·"}
+            {home === away ? "—" : score ?? time ?? "·"}
           </td>;
         })}</tr>)}</tbody>
       </table>

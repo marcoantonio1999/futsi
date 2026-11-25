@@ -5,6 +5,7 @@ from django.db import IntegrityError, transaction
 from django.http import Http404
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import permissions, serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -88,6 +89,13 @@ class PlannerSlotInput(serializers.Serializer):
 class PlannerMatchInput(PlannerSlotInput):
     home_team_id = serializers.IntegerField(min_value=1)
     away_team_id = serializers.IntegerField(min_value=1)
+
+
+class PlannerScoreInput(serializers.Serializer):
+    round_id = serializers.IntegerField(min_value=1)
+    home_team_id = serializers.IntegerField(min_value=1)
+    away_team_id = serializers.IntegerField(min_value=1)
+    score = ScoreInput()
 
 
 class PlannerSplitInput(serializers.Serializer):
@@ -279,6 +287,8 @@ class GameRoleMatrixView(GameRoleView):
             return self.split_planner_match(request, tournament_id)
         if "add_extra_slot" in request.data:
             return self.add_extra_slot(request, tournament_id)
+        if "planner_score" in request.data:
+            return self.save_planner_score(request, tournament_id)
         tournament = self.tournament(request, tournament_id, lock=True)
         team_fields = {"new_team", "new_team_name", "add_team_id"}.intersection(request.data)
         if team_fields:
@@ -339,10 +349,33 @@ class GameRoleMatrixView(GameRoleView):
         day = schedule["scheduled_on"]
         if not round_row or not round_row.starts_on <= day <= round_row.starts_on + timedelta(days=6):
             raise ValidationError("Selecciona una jornada que incluya la fecha del partido.")
+        self.require_open_planner_round(round_row)
         if day.isoweekday() > 5:
             raise ValidationError("Selecciona un día de lunes a viernes.")
         if schedule["ends_at"] <= schedule["starts_at"]:
             raise ValidationError("La hora de fin debe ser posterior a la de inicio.")
+
+    def planner_round_closed(self, round_row):
+        return round_row.starts_on + timedelta(days=6) < timezone.localdate()
+
+    def require_open_planner_round(self, round_row):
+        if self.planner_round_closed(round_row):
+            raise ValidationError("La jornada terminó. Solo se puede actualizar el marcador.")
+
+    def save_planner_score(self, request, tournament_id):
+        serializer = PlannerScoreInput(data=request.data["planner_score"])
+        serializer.is_valid(raise_exception=True)
+        tournament = self.lock_game_calendar(request, tournament_id)
+        lookup = serializer.validated_data.copy()
+        score = lookup.pop("score")
+        match = get_object_or_404(tournament_crosses(tournament).select_related("round"), **lookup)
+        if not match.played and (not match.scheduled_on or not self.planner_round_closed(match.round)):
+            raise ValidationError("Puedes capturar el marcador cuando termine la jornada.")
+        match.home_goals = score["home_goals"]
+        match.away_goals = score["away_goals"]
+        match.played = True
+        match.save(update_fields=["home_goals", "away_goals", "played", "updated_at"])
+        return self.matrix(tournament)
 
     def validate_planner_slot(self, round_row, schedule, weekly, participants):
         self.validate_planner_date(round_row, schedule)
@@ -471,6 +504,7 @@ class GameRoleMatrixView(GameRoleView):
             home_team_id=data["home_team_id"], away_team_id=data["away_team_id"],
         ).first()
         if match:
+            self.require_open_planner_round(match.round)
             if match.played or match.home_goals is not None or match.away_goals is not None:
                 raise ValidationError("El partido ya tiene resultado y no se puede eliminar desde el calendario.")
             if match.round_id != data["round_id"] or any(getattr(match, field) != value for field, value in schedule.items()):

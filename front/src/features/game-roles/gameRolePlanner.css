@@ -87,6 +87,8 @@
 .role-planner-slot-date { text-transform: capitalize; }
 .role-planner-extra-label { display: block; color: #46594e; font-size: 11px; }
 .role-planner-extra { flex: none; margin-bottom: 8px; }
+.role-planner-board[data-closed=true] { grid-template-columns: minmax(0, 1fr); }
+.role-planner-closed { display: inline-block; color: #574622; background: #f6efdc; padding: 4px 8px; border-radius: 6px; }
 .role-planner-extra-fields {
   display: flex;
   flex-wrap: wrap;
@@ -172,6 +174,26 @@
   border-style: dashed !important;
 }
 .role-planner-assigned-team small { display: block; color: #4d5f54; }
+.role-planner-score .role-planner-assigned-team {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin: 0;
+  font-weight: 650;
+}
+.enrollment-page .role-planner-score input[data-slot=input] {
+  width: min(100%, 70px);
+  min-height: 44px;
+  padding-inline: 4px;
+  text-align: center;
+}
+.role-planner-score-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
 .enrollment-page .role-planner-slot [draggable=true] { cursor: grab; }
 .role-planner-slot-unavailable { padding: 4px 8px; font-size: 12px; color: #4d5f54; }
 .role-planner-matrix { min-width: 0; padding: 10px; }
