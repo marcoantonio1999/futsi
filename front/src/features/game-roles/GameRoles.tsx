@@ -13,17 +13,17 @@ import { roleReminders } from "./roleReminders";
 import { roleSlots, roleTimeLabel, showsKickoffOnly, type RoleSchedule, type WeeklyBlock, type RoleSlot as Slot } from "./roleSchedule";
 import "./gameRoles.css";
 
-type Team = { id: number; name: string; is_active: boolean };
+export type Team = { id: number; name: string; is_active: boolean };
 type TeamSelectionInput = { add_team_id: number } | { new_team_name: string } | {
   new_team: { name: string; representative_name: string; representative_phone: string };
 };
-type Round = { id: number; number: number; starts_on: string; rest_team_id?: number };
-type Cross = {
+export type Round = { id: number; number: number; starts_on: string; rest_team_id?: number };
+export type Cross = {
   home_team_id: number; away_team_id: number; round_id: number;
   scheduled_on: string | null; starts_at: string | null; ends_at: string | null; played: boolean;
   home_goals?: number | null; away_goals?: number | null;
 };
-type Matrix = {
+export type Matrix = {
   teams: Team[]; matrix_team_ids?: number[]; rounds: Round[]; crosses: Cross[]; starts_on: string | null;
   schedule_enabled?: boolean; weekly_schedule?: WeeklyBlock[]; team_notes?: GameRoleNote[]; standings?: StandingRow[];
 };
@@ -47,7 +47,7 @@ function roundColorStyle(number: number): CSSProperties {
   return { "--game-roles-round-color": color } as CSSProperties;
 }
 
-function addDays(value: string, days: number) {
+export function addDays(value: string, days: number) {
   const date = new Date(value + "T00:00:00Z");
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().split("T")[0];

@@ -1,6 +1,6 @@
-export const enrollmentSections = ['validate', 'history', 'permits', 'send', 'tools', 'withdraw', 'withdraw-history', 'sanction-new', 'commission', 'blacklist', 'players', 'game-roles', 'game-roles-schedule', 'tournament-overview', 'tournament-create', 'tournament-teams', 'tournament-team-create'] as const;
+export const enrollmentSections = ['validate', 'history', 'permits', 'send', 'tools', 'withdraw', 'withdraw-history', 'sanction-new', 'commission', 'blacklist', 'players', 'game-roles', 'game-roles-schedule', 'game-roles-planner', 'tournament-overview', 'tournament-create', 'tournament-teams', 'tournament-team-create'] as const;
 export type EnrollmentSection = typeof enrollmentSections[number];
-export const isGameRolesSection = (section: EnrollmentSection) => section === 'game-roles' || section === 'game-roles-schedule';
+export const isGameRolesSection = (section: EnrollmentSection) => section === 'game-roles' || section === 'game-roles-schedule' || section === 'game-roles-planner';
 export type EnrollmentScreen = {
   section: EnrollmentSection; roster: number | null; alignment: boolean; detail: number | null;
   values: Record<string, string | number>; scroll: { x: number; y: number; regions: [number, number][] };
