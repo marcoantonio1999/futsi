@@ -26,7 +26,7 @@
   align-items: start;
 }
 .role-planner-workspace { display: grid; gap: 10px; min-width: 0; }
-.role-planner-teams { padding: 10px; position: sticky; top: 0; max-height: min(55dvh, 570px); overflow: auto; }
+.role-planner-teams { min-width: 0; padding: 10px; }
 .role-planner-teams h2, .role-planner-schedule h2, .role-planner-matrix h2 { margin: 0; }
 .role-planner-teams p { font-size: 12px; color: #4c6255; }
 .role-planner-team-list { display: grid; gap: 4px; }
@@ -166,6 +166,10 @@
   .role-planner-schedule > header { flex: none; }
 }
 @media (min-width: 1024px) {
+  .enrollment-page .game-role-planner .role-planner-team-list > button[data-slot=button] {
+    min-height: 32px !important;
+    padding-block: 4px !important;
+  }
   .enrollment-page .role-planner-slot :is(button.role-planner-drop, button.role-planner-clear, button.role-planner-confirmed-match)[data-slot=button] {
     min-height: 32px !important;
   }
@@ -173,7 +177,7 @@
 }
 @media (max-width: 700px) {
   .role-planner-board { grid-template-columns: minmax(0, 1fr); }
-  .role-planner-teams { position: static; max-height: 33dvh; }
+  .role-planner-team-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .role-planner-list-heading { grid-template-columns: minmax(0, 1fr); }
   .role-planner-list-heading > span { display: none; }
   .role-planner-slot { grid-template-columns: minmax(0, 1fr) auto auto; }
