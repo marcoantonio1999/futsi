@@ -495,7 +495,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
           <Button type="button" aria-label="Semana siguiente" disabled={busy} onClick={() => navigateWeek(7)}><ArrowRight aria-hidden="true" /></Button>
         </header>
         {closedWeek && <strong className="role-planner-closed">Jornada cerrada</strong>}
-        <div className="role-planner-schedule-scroll">
+        <div>
           {calendar.some(slots => slots.length) ? <div className="role-planner-list-heading" aria-hidden="true">
             <span>Fecha</span><span>Hora</span><span>Jornada</span>
             <div className="role-planner-encounter"><span>Local</span><span></span><span>Visitante</span></div>
