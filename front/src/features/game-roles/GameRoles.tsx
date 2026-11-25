@@ -35,7 +35,7 @@ function overlaps(slot: Slot, cross: Cross) {
 type Editor = { kind: "round"; round?: Round } | { kind: "rest"; round: Round } | CrossEditor;
 
 const roundColors = [
-  "#1246a0", "#6d297a", "#00645b", "#9a3e10", "#8b2445",
+  "#1246a0", "#6d297a", "#805b00", "#9a3e10", "#8b2445",
   "#485e18", "#184e6c", "#79540e", "#832e75", "#385485",
   "#884724", "#326045", "#932821", "#3b356b", "#6d4c60",
   "#2c514b", "#3f5561", "#563723", "#5d5925", "#4a3f57",
