@@ -14,6 +14,8 @@ type BoardSlot = RoleSlot & { tournament: Tournament; round?: Round; match?: Cro
 type PickedTeam = { id: number; tournament: number; name: string };
 type SlotSide = "home" | "away";
 type StagedTeam = PickedTeam & { side: SlotSide };
+type Relocation = { kind: "team" | "match"; key: string };
+const dragSources = { team: "application/x-bpower-staged-team", match: "application/x-bpower-scheduled-match" };
 const slotSides = ["home", "away"] as const;
 const sideLabels = { home: "Local", away: "Visitante" };
 const francoSite = 27;
@@ -33,6 +35,10 @@ function mondayOf(day: string, fromRound = false) {
 const keyOf = (id: number, day: string, start: string) => `${id}/${day}/${start}`;
 const slotKey = (slot: BoardSlot) => keyOf(slot.tournament.id, slot.day, slot.start);
 const displayName = (matrix: Matrix | undefined, id: number) => matrix?.teams.find(team => team.id === id)?.name ?? "Equipo";
+const matchSource = ({ home_team_id, away_team_id, round_id, scheduled_on, starts_at, ends_at }: Cross) => ({
+  home_team_id, away_team_id, round_id,
+  schedule: { scheduled_on, starts_at: starts_at?.slice(0, 5), ends_at: ends_at?.slice(0, 5) },
+});
 
 function calendarSlots(tournament: Tournament, matrix: Matrix, occupied: Cross[], days: string[], preferred?: Round) {
   return days.map(day => {
@@ -62,6 +68,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   const [removingMatch, setRemovingMatch] = useState<{ tournament: Tournament; match: Cross } | null>(null);
   const [week, setWeek] = useState("");
   const [picked, setPicked] = useState<PickedTeam | null>(null);
+  const [moving, setMoving] = useState<Relocation | null>(null);
   const [staged, setStaged] = useState<Record<string, StagedTeam>>({});
   const [suggestions, setSuggestions] = useState<PlannerMatch[]>([]);
   const [busy, setBusy] = useState(false);
@@ -106,7 +113,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   const activeTeams = matrix?.teams.filter(team => team.is_active) ?? [];
 
   function resetDraft() {
-    setPicked(null); setStaged({}); setSuggestions([]); setError(""); setMessage("");
+    setPicked(null); setMoving(null); setStaged({}); setSuggestions([]); setError(""); setMessage("");
   }
 
   async function addRound(method: string, payload: object, number?: number) {
@@ -123,12 +130,12 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
     return result;
   }
 
-  async function save(id: number, matches: PlannerMatch[]) {
+  async function save(id: number, payload: object, success: string) {
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await apiRequest<Matrix>(matrixPath(id), token, { method: "PATCH", body: JSON.stringify({ planner_matches: matches }) });
+      const result = await apiRequest<Matrix>(matrixPath(id), token, { method: "PATCH", body: JSON.stringify(payload) });
       setData(current => ({ ...current, [id]: result }));
-      setMessage(matches.length === 1 ? "Partido programado." : `${matches.length} partidos programados.`);
+      setMessage(success);
       return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo guardar la programación.");
@@ -139,20 +146,16 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   }
 
   async function removeMatch({ tournament: league, match }: NonNullable<typeof removingMatch>) {
-    const { home_team_id, away_team_id, round_id, scheduled_on, starts_at, ends_at } = match;
     const result = await apiRequest<Matrix>(matrixPath(league.id), token, {
       method: "PATCH",
-      body: JSON.stringify({ remove_planner_match: {
-        home_team_id, away_team_id, round_id,
-        schedule: { scheduled_on, starts_at: starts_at?.slice(0, 5), ends_at: ends_at?.slice(0, 5) },
-      } }),
+      body: JSON.stringify({ remove_planner_match: matchSource(match) }),
     });
     setData(current => ({ ...current, [league.id]: result }));
     setError("");
     setMessage("Partido eliminado.");
   }
 
-  async function place(slot: BoardSlot, team: PickedTeam | null, side: SlotSide) {
+  async function place(slot: BoardSlot, team: PickedTeam | null, side: SlotSide, sourceKey?: string) {
     if (busy || !team || !slot.round || slot.occupied || suggestedBySlot.has(slotKey(slot))) return;
     setError(""); setMessage("");
     if (team.tournament !== slot.tournament.id) { setError("Elige un horario del torneo de este equipo."); return; }
@@ -160,22 +163,60 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
     const first = staged[key];
     const slotMatrix = data[slot.tournament.id];
     if (slot.round.rest_team_id === team.id) { setError("Este equipo tiene descanso en la jornada."); return; }
-    if (!first || first.side === side) {
-      setStaged(current => ({ ...current, [key]: { ...team, side } }));
+    if (sourceKey && sourceKey !== key && first?.side === side) {
+      setError("Elige el lado vacío de ese horario.");
+      return;
+    }
+    if (!first || first.side === side || sourceKey === key) {
+      setStaged(current => ({ ...withoutStaged(current, sourceKey), [key]: { ...team, side } }));
       setPicked(null);
+      setMoving(null);
       return;
     }
     if (first.id === team.id) { setError("Selecciona un rival distinto para este horario."); return; }
     const [home, away] = side === "home" ? [team.id, first.id] : [first.id, team.id];
     const pair = plannerPair(slotMatrix, slot.round, home, away);
     if (!pair) { setError("Los cruces entre estos equipos ya están registrados. Elige otro rival."); return; }
-    if (!(await save(slot.tournament.id, [makePlannerMatch(slot.round, slot, pair)]))) return;
-    setStaged(current => Object.fromEntries(Object.entries(current).filter(([otherKey]) => otherKey !== key)));
+    if (!(await save(slot.tournament.id, { planner_matches: [makePlannerMatch(slot.round, slot, pair)] }, "Partido programado."))) return;
+    setStaged(current => withoutStaged(current, key, sourceKey));
     setPicked(null);
+    setMoving(null);
+  }
+
+  async function relocate(source: Relocation, slot: BoardSlot, side: SlotSide) {
+    if (source.kind === "team") {
+      await place(slot, staged[source.key] ?? null, side, source.key);
+      return;
+    }
+    if (busy || !slot.round || slot.occupied || suggestedBySlot.has(slotKey(slot))) return;
+    if (staged[slotKey(slot)]) { setError("Elige un horario con ambos espacios vacíos para mover el partido."); return; }
+    const match = calendar.flat().find(item => item.match && slotKey(item) === source.key)?.match;
+    if (!match || match.played) return;
+    const destination = { round_id: slot.round.id, schedule: { scheduled_on: slot.day, starts_at: slot.start, ends_at: slot.end } };
+    if (await save(slot.tournament.id, { move_planner_match: { source: matchSource(match), destination } }, "Partido movido.")) {
+      setMoving(null);
+      setPicked(null);
+    }
+  }
+
+  function startMove(source: Relocation) {
+    setMoving(source); setPicked(null); setError("");
+    setMessage(source.kind === "match" ? "Elige un horario libre para mover el partido." : "Elige un espacio para mover el equipo.");
+  }
+
+  function startDrag(event: DragEvent, source: Relocation) {
+    event.dataTransfer.setData(dragSources[source.kind], source.key);
+    event.dataTransfer.effectAllowed = "move";
   }
 
   function drop(event: DragEvent, slot: BoardSlot, side: SlotSide) {
     event.preventDefault();
+    const teamSource = event.dataTransfer.getData(dragSources.team);
+    const matchSourceKey = event.dataTransfer.getData(dragSources.match);
+    if (teamSource || matchSourceKey) {
+      void relocate(teamSource ? { kind: "team", key: teamSource } : { kind: "match", key: matchSourceKey }, slot, side);
+      return;
+    }
     const transferredId = Number(event.dataTransfer.getData("text/plain"));
     const team = activeTeams.find(item => item.id === transferredId);
     if (team) void place(slot, { id: team.id, name: team.name, tournament: tournament.id }, side);
@@ -183,7 +224,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
 
   function allowDrop(event: DragEvent) {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
+    event.dataTransfer.dropEffect = event.dataTransfer.types.some(type => type === dragSources.team || type === dragSources.match) ? "move" : "copy";
   }
 
   function propose() {
@@ -221,12 +262,16 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
     {loading && <p role="status">Cargando programación…</p>}
     {failed && <p role="alert" className="error">Algunos torneos no se pudieron cargar. <Button type="button" disabled={busy} onClick={() => { resetDraft(); setRevision(value => value + 1); }}>Actualizar programación</Button></p>}
     {error && <p className="error role-planner-notice" role="alert">{error} <Button type="button" disabled={busy} onClick={() => { resetDraft(); setRevision(value => value + 1); }}>Actualizar programación</Button></p>}
-    {message && <p className="role-planner-notice" role="status">{message}</p>}
+    {(message || moving) && <div className="role-planner-relocation">
+      {message && <p className="role-planner-notice" role="status">{message}</p>}
+      {moving && <Button type="button" disabled={busy} onClick={() => { setMoving(null); setMessage(""); }}>Cancelar movimiento</Button>}
+    </div>}
     {!!suggestions.length && <div className="role-planner-review">
       <strong>{suggestions.length} {suggestions.length === 1 ? "partido sugerido" : "partidos sugeridos"}</strong>
       <Button type="button" disabled={busy} onClick={() => setSuggestions([])}>Descartar</Button>
       <Button type="button" className="primary" disabled={busy} onClick={async () => {
-        if (await save(tournament.id, suggestions)) setSuggestions([]);
+        const notice = suggestions.length === 1 ? "Partido programado." : `${suggestions.length} partidos programados.`;
+        if (await save(tournament.id, { planner_matches: suggestions }, notice)) setSuggestions([]);
       }}>Confirmar sugerencia</Button>
     </div>}
     {!loading && active.length > 0 && (matrix || failed) && <div className="role-planner-board">
@@ -239,7 +284,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
             const item = { id: team.id, name: team.name, tournament: tournament.id };
             return <Button key={team.id} type="button" className={selected ? "primary" : ""} aria-pressed={selected}
               disabled={busy} draggable={!busy} onDragStart={event => { event.dataTransfer.setData("text/plain", String(team.id)); event.dataTransfer.effectAllowed = "copy"; }}
-              onClick={() => setPicked(selected ? null : item)}>
+              onClick={() => { if (moving) setMessage(""); setMoving(null); setPicked(selected ? null : item); }}>
               <GripVertical aria-hidden="true" /><span>{team.name}</span><small title="Partidos jugados">{counts.get(team.id) ?? 0} PJ</small>
             </Button>;
           })}</div>
@@ -278,12 +323,13 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
               const homeName = shown && displayName(names, shown.home_team_id);
               const awayName = shown && displayName(names, shown.away_team_id);
               return <div key={`${key}/${slot.end}`} className="role-planner-slot" data-state={slot.match ? "scheduled" : suggested ? "suggested" : first ? "staged" : "available"}
-                data-target={bookable && picked?.tournament === slot.tournament.id}>
+                data-target={bookable && (picked?.tournament === slot.tournament.id || !!moving)}>
                 <time dateTime={slot.day} className="role-planner-slot-date">{date}</time>
                 <strong>{time}</strong>
                 <span className="role-planner-slot-round">{matchRound ? `J${matchRound.number}` : "—"}</span>
                 {shown ? <Button type="button" className="role-planner-encounter role-planner-confirmed-match" disabled={!removable || busy}
-                  title={removable ? "Eliminar partido programado" : undefined}
+                  draggable={!!removable && !busy} onDragStart={event => startDrag(event, { kind: "match", key })}
+                  title={removable ? "Arrastra para mover el partido o toca para ver opciones" : undefined}
                   onClick={() => { if (removable) setRemovingMatch({ tournament: slot.tournament, match: removable }); }}
                   aria-label={`${homeName} vs. ${awayName} · ${slotLabel}${suggested ? " · Sugerido" : ""}`}>
                   <span>{homeName}{suggested && <small>Sugerido</small>}</span><span className="role-planner-vs">VS</span><span>{awayName}</span>
@@ -292,15 +338,21 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
                     const placed = first?.side === side ? first : undefined;
                     return <div key={side} className={`role-planner-drop-zone role-planner-${side}`}>
                       <Button type="button" className="role-planner-drop" disabled={busy}
+                        draggable={!!placed && !busy} onDragStart={event => startDrag(event, { kind: "team", key })}
                         aria-label={`${sideLabels[side]} · ${slotLabel} · ${placed?.name ?? "Disponible"}`}
                         title={sideLabels[side]} onDragOver={allowDrop} onDrop={event => drop(event, slot, side)}
                         onClick={() => {
-                          if (picked) void place(slot, picked, side);
+                          if (moving) void relocate(moving, slot, side);
+                          else if (picked) void place(slot, picked, side);
+                          else if (placed) startMove({ kind: "team", key });
                           else setMessage("Selecciona un equipo de la lista para colocarlo en este horario.");
                         }}>{placed?.name}</Button>
                       {placed && <Button type="button" className="role-planner-clear" disabled={busy}
                         aria-label={`Quitar a ${placed.name} de este horario`}
-                        onClick={() => setStaged(current => Object.fromEntries(Object.entries(current).filter(([item]) => item !== key)))}>
+                        onClick={() => {
+                          setStaged(current => withoutStaged(current, key));
+                          if (moving?.key === key) { setMoving(null); setMessage(""); }
+                        }}>
                         <X aria-hidden="true" />
                       </Button>}
                     </div>;
@@ -320,13 +372,23 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
       schedule={matrix.weekly_schedule ?? []} selected={round}
       initialRoundDate={!rounds.length || (week && !rounds.some(item => days.some(day => during(day, item)))) ? monday : undefined}
       onClose={() => setAddingRound(false)} onSave={addRound} />}
-    {removingMatch && <TournamentDialog title="Eliminar partido" description={removingMatch.tournament.name}
+    {removingMatch && <TournamentDialog title="Partido programado" description={removingMatch.tournament.name}
       submitLabel="Confirmar eliminación" danger onClose={() => setRemovingMatch(null)} onSubmit={() => removeMatch(removingMatch)}>
       <p><strong>{displayName(data[removingMatch.tournament.id], removingMatch.match.home_team_id)} vs. {displayName(data[removingMatch.tournament.id], removingMatch.match.away_team_id)}</strong></p>
       {removingMatch.match.scheduled_on && <p>{dayLabel.format(utc(removingMatch.match.scheduled_on))} · {roleTimeLabel(removingMatch.tournament.name, removingMatch.match.starts_at, removingMatch.match.ends_at)}</p>}
-      <p>El horario quedará libre y el partido se quitará de la matriz.</p>
+      {removingMatch.match.scheduled_on && removingMatch.match.starts_at && <Button type="button" className="primary" onClick={() => {
+        const { scheduled_on, starts_at } = removingMatch.match;
+        if (!scheduled_on || !starts_at) return;
+        const key = keyOf(removingMatch.tournament.id, scheduled_on, starts_at.slice(0, 5));
+        setRemovingMatch(null);
+        startMove({ kind: "match", key });
+      }}>Mover partido</Button>}
     </TournamentDialog>}
   </div>;
+}
+
+function withoutStaged(current: Record<string, StagedTeam>, ...keys: (string | undefined)[]) {
+  return Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key)));
 }
 
 function PlannerMatrix({ matrix, round }: { matrix: Matrix; round: Round }) {

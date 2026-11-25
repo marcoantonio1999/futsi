@@ -135,6 +135,7 @@
   border-style: dashed !important;
 }
 .role-planner-confirmed-match small { display: block; color: #4d5f54; }
+.enrollment-page .role-planner-slot button[draggable=true] { cursor: grab; }
 .role-planner-slot-unavailable { padding: 4px 8px; font-size: 12px; color: #4d5f54; }
 .role-planner-matrix { min-width: 0; padding: 10px; }
 .role-planner-matrix-scroll { overflow-x: auto; margin-top: 6px; }
@@ -159,6 +160,7 @@
   color: white;
 }
 .role-planner-notice { margin: 0; }
+.role-planner-relocation { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 @media (min-width: 701px) {
   .role-planner-schedule { display: flex; flex-direction: column; max-height: 55dvh; }
   .role-planner-schedule > header { flex: none; }
