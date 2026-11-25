@@ -92,7 +92,15 @@
 .role-planner-slot-date { text-transform: capitalize; }
 .role-planner-extra-label { display: block; color: #46594e; font-size: 11px; }
 .role-planner-extra { margin-top: 8px; }
-.enrollment-page .role-planner-extra .role-planner-add-slot { width: 100%; }
+.enrollment-page .game-role-planner .role-planner-extra button.role-planner-add-slot[data-slot=button] {
+  width: 100%;
+  background: #f0f1f2 !important;
+  border-color: #d9dde0 !important;
+  color: #30373d !important;
+}
+.enrollment-page .game-role-planner .role-planner-extra button.role-planner-add-slot[data-slot=button]:not(:disabled):hover {
+  background: #e7e9eb !important;
+}
 .role-planner-board[data-closed=true] { grid-template-columns: minmax(0, 1fr); }
 .role-planner-closed { display: inline-block; color: #574622; background: #f6efdc; padding: 4px 8px; border-radius: 6px; }
 .role-planner-extra-fields {

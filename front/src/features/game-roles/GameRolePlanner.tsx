@@ -496,7 +496,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
           {!closedWeek && <div className="role-planner-extra">
             {slotOccupancy && openDays.length ? <ExtraSlotForm days={openDays} optionsForDay={availableExtraSlots}
               canAdd={canAddSlot} onSave={addExtraSlot} onClose={() => setSlotOccupancy(null)} />
-              : <Button type="button" className="primary role-planner-add-slot" onClick={openExtraSlot}
+              : <Button type="button" className="role-planner-add-slot" onClick={openExtraSlot}
                 disabled={!matrix || loading || busy || !openDays.length}>
                 <Plus aria-hidden="true" />Agregar horario
               </Button>}
