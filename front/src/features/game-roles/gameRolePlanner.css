@@ -20,13 +20,14 @@
 .role-planner-review strong { margin-inline-end: auto; }
 .role-planner-board {
   display: grid;
-  grid-template-columns: minmax(155px, 190px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(155px, 190px);
+  grid-template-areas: "workspace teams";
   gap: 10px;
   min-width: 0;
   align-items: start;
 }
-.role-planner-workspace { display: grid; gap: 10px; min-width: 0; }
-.role-planner-teams { min-width: 0; padding: 10px; }
+.role-planner-workspace { grid-area: workspace; display: grid; gap: 10px; min-width: 0; }
+.role-planner-teams { grid-area: teams; min-width: 0; padding: 10px; }
 .role-planner-teams h2, .role-planner-schedule h2, .role-planner-matrix h2 { margin: 0; }
 .role-planner-teams p { font-size: 12px; color: #4c6255; }
 .role-planner-team-list { display: grid; gap: 4px; }
@@ -100,7 +101,7 @@
 .enrollment-page .game-role-planner .role-planner-extra button.role-planner-add-slot[data-slot=button]:not(:disabled):hover {
   background: #e7e9eb !important;
 }
-.role-planner-board[data-closed=true] { grid-template-columns: minmax(0, 1fr); }
+.role-planner-board[data-closed=true] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "workspace"; }
 .role-planner-closed { display: inline-block; color: #574622; background: #f6efdc; padding: 4px 8px; border-radius: 6px; }
 .role-planner-extra-fields {
   display: flex;
@@ -248,7 +249,7 @@
   .enrollment-page .role-planner-score input[data-slot=input] { min-height: 32px !important; }
 }
 @media (max-width: 700px) {
-  .role-planner-board { grid-template-columns: minmax(0, 1fr); }
+  .role-planner-board { grid-template-columns: minmax(0, 1fr); grid-template-areas: "teams" "workspace"; }
   .role-planner-team-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .role-planner-list-heading { grid-template-columns: minmax(0, 1fr); }
   .role-planner-list-heading > span { display: none; }
