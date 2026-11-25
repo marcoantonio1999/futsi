@@ -83,20 +83,26 @@ export function GameRoleShare({ path, token, reminderKey, upcomingOnly = false, 
 export function PublicGameRole({ token }: { token: string }) {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [status, setStatus] = useState("Cargando rol de juego…");
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+  const lastReport = useRef({ token, revision: "" });
   useEffect(() => {
     document.title = "Rol de juego | Futsi";
     const controller = new AbortController();
-    let pending = false;
-    let revision = "";
+    if (lastReport.current.token !== token) {
+      lastReport.current = { token, revision: "" };
+      setSchedule(null);
+    }
+    setLoading(true);
+    setStatus(reload ? "Actualizando rol…" : "Cargando rol de juego…");
     async function refresh() {
-      if (pending) return;
-      pending = true;
       try {
-        const response = await fetch(`${API_URL}/public/game-roles/${encodeURIComponent(token)}/?revision=${encodeURIComponent(revision)}`, {
+        const response = await fetch(`${API_URL}/public/game-roles/${encodeURIComponent(token)}/?revision=${encodeURIComponent(lastReport.current.revision)}`, {
           signal: controller.signal, cache: "no-store", credentials: "omit",
         });
+        if (controller.signal.aborted) return;
         if (response.status === 404) {
-          revision = "";
+          lastReport.current.revision = "";
           setSchedule(null);
           setStatus("Este rol de juego no está disponible.");
           return;
@@ -104,26 +110,25 @@ export function PublicGameRole({ token }: { token: string }) {
         if (response.status === 204) { setStatus(""); return; }
         if (!response.ok) throw new Error();
         const result: Schedule & { revision?: string } = await response.json();
-        revision = result.revision ?? "";
-        if (!controller.signal.aborted) { setSchedule(result); setStatus(""); }
+        if (!controller.signal.aborted) {
+          lastReport.current.revision = result.revision ?? "";
+          setSchedule(result);
+          setStatus("");
+        }
       } catch {
-        if (!controller.signal.aborted) setStatus("No se pudo consultar el rol. Se volverá a intentar.");
+        if (!controller.signal.aborted) setStatus("No se pudo consultar el rol. Usa «Recargar rol» para reintentar.");
       } finally {
-        pending = false;
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
     void refresh();
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 30000);
-    const onVisible = () => { if (!document.hidden) void refresh(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [token]);
+    return () => controller.abort();
+  }, [token, reload]);
   return <main className="game-role-public">
-    {schedule && <ScheduleSheet schedule={schedule} live />}
+    <div className="game-role-public-toolbar">
+      <Button type="button" disabled={loading} onClick={() => setReload(value => value + 1)}>Recargar rol</Button>
+    </div>
+    {schedule && <ScheduleSheet schedule={schedule} />}
     {status && <p role="status">{status}</p>}
   </main>;
 }

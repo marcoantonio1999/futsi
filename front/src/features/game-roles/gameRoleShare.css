@@ -1,5 +1,17 @@
 .game-role-public { min-height: 100dvh; background: #edf3ef; padding: clamp(10px, 3vw, 36px); color: #173629; }
 .game-role-public > * { max-width: 1120px; margin-inline: auto; }
+.game-role-public-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.game-role-public-toolbar button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #c8d6cd;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font-weight: 600;
+}
+.game-role-public-toolbar button:disabled { opacity: .6; }
+@media print { .game-role-public-toolbar { display: none; } }
 .game-role-sheet {
   container-type: inline-size;
   position: relative;
@@ -36,33 +48,6 @@
   height: 67px;
   object-fit: contain;
   mix-blend-mode: multiply;
-}
-.game-role-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: 4px;
-  color: #b42318;
-  font-size: 11px;
-  font-weight: 750;
-  text-transform: uppercase;
-}
-.game-role-live::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  background: currentColor;
-  border-radius: 50%;
-}
-@media screen and (prefers-reduced-motion: no-preference) {
-  .game-role-live::before { animation: game-role-live-pulse 1.6s ease-in-out infinite; }
-}
-@keyframes game-role-live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .25; }
-}
-@media print {
-  .game-role-live { display: none; }
 }
 .game-role-sheet h1 { font-size: clamp(20px, 4vw, 30px); margin: 0; line-height: 1.2; color: inherit; }
 .game-role-sheet header p { margin: 4px 0 0; color: #53675c; }

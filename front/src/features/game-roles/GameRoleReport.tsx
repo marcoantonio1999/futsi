@@ -111,13 +111,12 @@ const facebookBlue = "#0866ff";
 const facebookMark = "M14.4 23v-9.4h3.1l.5-3.6h-3.6V7.7c0-1 .3-1.8 1.8-1.8h1.9V2.7c-.3 0-1.5-.2-2.8-.2-2.8 0-4.8 1.7-4.8 4.9V10H7.3v3.6h3.2V23Z";
 
 
-export function ScheduleSheet({ schedule, live = false }: { schedule: Schedule; live?: boolean }) {
+export function ScheduleSheet({ schedule }: { schedule: Schedule }) {
   return <article className="game-role-sheet">
     <div className="game-role-report-watermark" style={{ backgroundImage: `url(${bpowerLogo})` }} aria-hidden="true" />
     <header>
       <img src={bpowerLogo} alt="BPower" />
       <div>
-        {live && <span className="game-role-live">En vivo</span>}
         <h1>{schedule.tournament}</h1><p>Jornada {schedule.number} · {schedule.site}</p>
       </div>
     </header>
