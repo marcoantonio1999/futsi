@@ -1,10 +1,10 @@
 import { useEffect, useState, type DragEvent } from "react";
-import { ArrowLeft, ArrowRight, GripVertical, Shuffle, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, GripVertical, Plus, Shuffle, X } from "lucide-react";
 import { apiRequest } from "../../api";
 import { Button, Card, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
-import { addDays, type Cross, type Matrix, type Round } from "./GameRoles";
+import { addDays, MatrixEditor, type Cross, type Matrix, type Round } from "./GameRoles";
 import { makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch } from "./plannerSchedule";
 import { roleSlots, roleTimeLabel, type RoleSlot } from "./roleSchedule";
 import "./gameRolePlanner.css";
@@ -60,7 +60,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   const [failed, setFailed] = useState(false);
   const [revision, setRevision] = useState(0);
   const [tournamentId, setTournamentId] = useEnrollmentViewState("gameRoles.tournament", "");
-  const [roundId, setRoundId] = useState(0);
+  const [addingRound, setAddingRound] = useState(false);
   const [week, setWeek] = useState("");
   const [picked, setPicked] = useState<PickedTeam | null>(null);
   const [staged, setStaged] = useState<Record<string, PickedTeam>>({});
@@ -84,6 +84,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
 
   const active = tournaments.filter(tournament => tournament.is_active);
   const tournament = active.find(row => String(row.id) === tournamentId) ?? active.find(row => data[row.id]?.rounds.length) ?? active[0];
+  const [roundId, setRoundId] = useEnrollmentViewState(`gameRoles.round.${tournament?.id ?? 0}`, 0);
   const matrix = tournament && data[tournament.id];
   const today = mexicoDate.format(new Date());
   const rounds = matrix?.rounds ?? [];
@@ -96,6 +97,20 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
 
   function resetDraft() {
     setPicked(null); setStaged({}); setSuggestions([]); setError(""); setMessage("");
+  }
+
+  async function addRound(method: string, payload: object, number?: number) {
+    const result = await apiRequest<Matrix>(matrixPath(tournament.id), token, { method, body: JSON.stringify(payload) });
+    const created = result.rounds.find(item => item.number === number);
+    setData(current => ({ ...current, [tournament.id]: result }));
+    setAddingRound(false);
+    resetDraft();
+    if (created) {
+      setRoundId(created.id);
+      setWeek("");
+      setMessage(`Jornada ${created.number} lista para programar.`);
+    }
+    return result;
   }
 
   async function save(id: number, matches: PlannerMatch[]) {
@@ -162,7 +177,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   return <div className="game-role-planner">
     <Card as="section" className="role-planner-controls" aria-label="Controles de programación">
       <Label>Torneo<NativeSelect aria-label="Torneo" value={tournament?.id ?? ""} disabled={loading || busy}
-        onChange={event => { setTournamentId(event.target.value); setRoundId(0); setWeek(""); resetDraft(); }}>
+        onChange={event => { setTournamentId(event.target.value); setWeek(""); resetDraft(); }}>
         {!active.length && <option value="">Sin torneos activos</option>}
         {active.map(row => <option key={row.id} value={row.id}>{row.name} · {sites.find(site => site.id === row.site)?.name}</option>)}
       </NativeSelect></Label>
@@ -171,8 +186,15 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
         {!round && <option value="">Sin jornadas</option>}
         {rounds.map(row => <option key={row.id} value={row.id}>Jornada {row.number}</option>)}
       </NativeSelect></Label>
+      <Button type="button" className="primary" onClick={() => setAddingRound(true)} disabled={!matrix || loading || busy}>
+        <Plus aria-hidden="true" />Agregar jornada
+      </Button>
       <Button type="button" className="primary" onClick={propose} disabled={!round || loading || busy}><Shuffle aria-hidden="true" />Sugerir jornada</Button>
-      <Button type="button" onClick={() => { if (tournament) setTournamentId(String(tournament.id)); onOpenMatrix(); }}>Abrir matriz</Button>
+      <Button type="button" onClick={() => {
+        if (tournament) setTournamentId(String(tournament.id));
+        if (round) setRoundId(round.id);
+        onOpenMatrix();
+      }}>Abrir matriz</Button>
     </Card>
     {loading && <p role="status">Cargando calendario…</p>}
     {failed && <p role="alert" className="error">Algunos torneos no se pudieron cargar. <Button type="button" disabled={busy} onClick={() => { resetDraft(); setRevision(value => value + 1); }}>Actualizar calendario</Button></p>}
@@ -205,6 +227,7 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
           </details>;
         })}
       </Card>
+      <div className="role-planner-workspace">
       <Card as="section" className="role-planner-calendar" aria-label="Calendario de lunes a viernes">
         <header>
           <Button type="button" aria-label="Semana anterior" disabled={busy} onClick={() => { setWeek(addDays(monday, -7)); resetDraft(); }}><ArrowLeft aria-hidden="true" /></Button>
@@ -244,9 +267,13 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
           </section>)}
         </div>
       </Card>
+      {matrix && round && <PlannerMatrix matrix={matrix} round={round} />}
+      </div>
     </div>}
-    {matrix && round && <PlannerMatrix matrix={matrix} round={round} />}
-    {!loading && tournament && !round && <p>Agrega una jornada desde la matriz para programar partidos de {tournament.name}.</p>}
+    {addingRound && matrix && <MatrixEditor editor={{ kind: "round" }} matrix={matrix} tournamentName={tournament.name}
+      schedule={matrix.weekly_schedule ?? []} selected={round}
+      initialRoundDate={!rounds.length || (week && !rounds.some(item => days.some(day => during(day, item)))) ? monday : undefined}
+      onClose={() => setAddingRound(false)} onSave={addRound} />}
   </div>;
 }
 
@@ -258,9 +285,10 @@ function PlannerMatrix({ matrix, round }: { matrix: Matrix; round: Round }) {
   return <Card as="section" className="role-planner-matrix" aria-label={`Matriz · Jornada ${round.number}`}>
     <h2>Matriz · Jornada {round.number}</h2>
     <div className="role-planner-matrix-scroll" tabIndex={0} aria-label="Cruces de la jornada">
-      <table>
-        <thead><tr><th>Visitante / Local</th>{teams.map(id => <th key={id} scope="col">{displayName(matrix, id)}</th>)}</tr></thead>
-        <tbody>{teams.map(away => <tr key={away}><th scope="row">{displayName(matrix, away)}</th>{teams.map(home => {
+      <table style={{ minWidth: 116 + teams.length * 35 }}>
+        <colgroup><col className="role-planner-matrix-team" />{teams.map(id => <col key={id} />)}</colgroup>
+        <thead><tr><th scope="col">Visitante / Local</th>{teams.map(id => <th key={id} scope="col" title={displayName(matrix, id)}>{displayName(matrix, id)}</th>)}</tr></thead>
+        <tbody>{teams.map(away => <tr key={away}><th scope="row" title={displayName(matrix, away)}>{displayName(matrix, away)}</th>{teams.map(home => {
           const match = cells.get(`${home}/${away}`);
           return <td key={home} data-scheduled={!!match?.scheduled_on}>{home === away ? "—" : match?.starts_at?.slice(0, 5) ?? "·"}</td>;
         })}</tr>)}</tbody>

@@ -517,8 +517,9 @@ function TeamSelection({ teams, canCreate, quick, onClose, onSubmit }: {
   </Dialog>;
 }
 
-function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onClose, onSave }: {
+export function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, initialRoundDate, onClose, onSave }: {
   editor: Editor; matrix: Matrix; tournamentName: string; schedule: RoleSchedule; selected: Round | undefined; onClose: () => void;
+  initialRoundDate?: string;
   onSave: (method: string, data: object, roundNumber?: number) => Promise<Matrix>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -600,7 +601,7 @@ function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onCl
           </NativeSelect>
         </Label> : <>
         <Label>Número de jornada<Input type="number" name="number" min={1} max={999} required defaultValue={round?.number ?? Math.min(999, (last?.number ?? 0) + 1)} /></Label>
-        <Label>Inicio de la semana<Input type="date" name="starts_on" required defaultValue={round?.starts_on ?? (last ? addDays(last.starts_on, 7) : matrix.starts_on ?? "")} /></Label>
+        <Label>Inicio de la semana<Input type="date" name="starts_on" required defaultValue={round?.starts_on ?? initialRoundDate ?? (last ? addDays(last.starts_on, 7) : matrix.starts_on ?? "")} /></Label>
         <p>La jornada abarca siete días desde la fecha de inicio.</p>
       </>}
       {error && <p className="error" role="alert">{error}</p>}
