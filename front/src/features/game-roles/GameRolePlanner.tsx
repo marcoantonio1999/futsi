@@ -422,7 +422,9 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                     return movable ? <Button key={side} type="button" className={className} disabled={busy} draggable={!busy}
                       title={`Mover a ${name}`} aria-label={`Mover a ${name} · ${sideLabels[side]} · ${slotLabel}`}
                       aria-pressed={moving?.kind === "match" && moving.key === key && moving.side === side}
-                      onDragStart={event => startDrag(event, source)} onClick={() => startMove(source)}>{name}</Button>
+                      onDragStart={event => startDrag(event, source)} onClick={() => startMove(source)}>
+                      <GripVertical className="role-planner-drag-grip" aria-hidden="true" /><span>{name}</span>
+                    </Button>
                       : <span key={side} className={className}>{name}{suggested && side === "home" && <small>Sugerido</small>}</span>;
                   })}
                   <span className="role-planner-vs">VS</span>
@@ -439,7 +441,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                           else if (picked) void place(slot, picked, side);
                           else if (placed) startMove({ kind: "team", key });
                           else setMessage("Selecciona un equipo de la lista para colocarlo en este horario.");
-                        }}>{placed?.name}</Button>
+                        }}>{placed && <><GripVertical className="role-planner-drag-grip" aria-hidden="true" /><span>{placed.name}</span></>}</Button>
                       {placed && <Button type="button" className="role-planner-clear" disabled={busy}
                         aria-label={`Quitar a ${placed.name} de este horario`}
                         onClick={() => {

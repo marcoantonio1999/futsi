@@ -147,6 +147,24 @@
   border-radius: 7px;
   background: #ffffffbc !important;
 }
+.enrollment-page .role-planner-slot button.role-planner-assigned-team[data-slot=button],
+.enrollment-page .role-planner-slot button.role-planner-drop[draggable=true][data-slot=button] {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  text-align: start;
+}
+.enrollment-page .role-planner-slot .role-planner-drag-grip {
+  width: 14px;
+  height: 16px;
+  flex: 0 0 14px;
+  color: var(--day-accent);
+}
+.enrollment-page .role-planner-slot .role-planner-assigned-team[draggable=true]:hover {
+  background: #fff !important;
+  box-shadow: inset 0 0 0 1px var(--day-accent);
+}
 .enrollment-page .role-planner-slot .role-planner-assigned-team[aria-pressed=true] {
   box-shadow: inset 0 0 0 2px var(--day-accent);
 }
