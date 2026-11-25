@@ -23,7 +23,6 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("/three/")) return "vendor-three";
-          if (id.includes("/recharts/") || id.includes("/d3-")) return "vendor-charts";
           // Match React itself, not scoped packages such as @base-ui/react.
           if (/\/node_modules\/(?:react|react-dom|scheduler)\//.test(id)) return "vendor-react";
           if (id.includes("/leaflet/")) return "vendor-map";

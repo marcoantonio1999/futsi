@@ -1,8 +1,35 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import "leaflet/dist/leaflet.css";
 import "./styles.css";
-import App from "./App";
+import { isEnrollmentAdminHash } from "./features/enrollments/enrollmentHistory";
+
+const App = React.lazy(() => import("./App"));
+const EnrollmentApplication = React.lazy(() => import("./features/enrollments/EnrollmentApplication"));
+const PublicEnrollment = React.lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerEnrollment })));
+const PublicWithdrawal = React.lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerWithdrawal })));
+const PublicPermit = React.lazy(() => import("./features/enrollments/EnrollmentPermits").then(module => ({ default: module.PublicEnrollmentPermit })));
+const PublicGameRole = React.lazy(() => import("./features/game-roles/GameRoleShare").then(module => ({ default: module.PublicGameRole })));
+
+function Application() {
+  const [hash, setHash] = React.useState(window.location.hash);
+  React.useEffect(() => {
+    const update = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
+  const brand = import.meta.env.VITE_APP_BRAND;
+  let screen = <App />;
+  if (brand !== "soccerwa") {
+    if (hash.startsWith("#/inscripcion/")) screen = <PublicEnrollment key={hash} invitation={hash.slice("#/inscripcion/".length)} />;
+    else if (hash.startsWith("#/baja/")) screen = <PublicWithdrawal key={hash} invitation={hash.slice("#/baja/".length)} />;
+    else if (hash.startsWith("#/permiso/")) screen = <PublicPermit key={hash} invitation={hash.slice("#/permiso/".length)} />;
+    else if (hash.startsWith("#/rol-de-juego/")) screen = <PublicGameRole key={hash} token={hash.slice("#/rol-de-juego/".length)} />;
+    else if (brand === "inscripciones" || isEnrollmentAdminHash(hash)) screen = <EnrollmentApplication />;
+  }
+  return <React.Suspense fallback={<main className="p-8" role="status">Cargando…</main>}>
+    {screen}
+  </React.Suspense>;
+}
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { error?: Error }> {
   state: { error?: Error } = {};
@@ -35,7 +62,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 
 createRoot(document.getElementById("root")!).render(
   <AppErrorBoundary>
-    <App />
+    <Application />
   </AppErrorBoundary>,
 );
 

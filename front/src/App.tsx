@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import "leaflet/dist/leaflet.css";
 import { canUseSoccerWa, isSoccerWa } from "./appBrand";
 import { LogOut, RefreshCw } from "lucide-react";
 import { roleLabels } from "./appState";
@@ -6,7 +7,6 @@ import { AppSkeleton } from "./components/loading/AppSkeleton";
 import { ThemeToggle } from "./components/layout/ThemeToggle";
 import { useFutsiData } from "./hooks/useFutsiData";
 import { useThemeMode } from "./hooks/useThemeMode";
-import { isEnrollmentAdminHash } from './features/enrollments/enrollmentHistory';
 import type { AttendanceRecord, AttendanceSession, FaceRecognitionResponse } from "./types";
 
 const FutsiLanding = lazy(() => import("./components/landing/FutsiLanding").then((module) => ({ default: module.FutsiLanding })));
@@ -15,13 +15,7 @@ const GuardianPortal = lazy(() => import("./components/views/guardian").then((mo
 const AccountingPortal = lazy(() => import("./components/views/accounting").then((module) => ({ default: module.AccountingPortal })));
 const AdultLeagueDashboardPanel = lazy(() => import("./components/views/adults").then((module) => ({ default: module.AdultLeagueDashboardPanel })));
 const AdminShell = lazy(() => import("./components/layout/AdminShell").then((module) => ({ default: module.AdminShell })));
-const PublicEnrollmentPermit = lazy(() => import('./features/enrollments/EnrollmentPermits').then(module => ({default:module.PublicEnrollmentPermit})));
-const PublicGameRole = lazy(() => import('./features/game-roles/GameRoleShare').then(module => ({default:module.PublicGameRole})));
-const PublicPlayerEnrollment = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerEnrollment })));
-const PublicPlayerWithdrawal = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.PublicPlayerWithdrawal })));
 const EnrollmentDashboard = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentDashboard })));
-const EnrollmentLogin = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentLogin })));
-const EnrollmentAccessDenied = lazy(() => import("./features/enrollments/PlayerEnrollment").then(module => ({ default: module.EnrollmentAccessDenied })));
 const ExamPortal = lazy(() => import('./features/exams/ExamPortal'));
 const PublicEmploymentForm = lazy(() => import('./features/exams/EmploymentForms').then(module => ({default:module.PublicEmploymentForm})));
 const PublicExam = lazy(() => import('./features/exams/ExamPortal').then(module => ({ default: module.PublicExam })));
@@ -33,18 +27,10 @@ export default function App() {
   if (!isSoccerWa && employmentRoute) return <Suspense fallback={<main>Cargando formulario…</main>}><PublicEmploymentForm key={hash} examToken={hash.startsWith('#/postulacion/')?hash.slice('#/postulacion/'.length):''}/></Suspense>;
   if (!isSoccerWa && hash.startsWith('#/examen/')) return <Suspense fallback={<main>Cargando evaluación…</main>}><PublicExam key={hash} invitation={hash.slice('#/examen/'.length)} /></Suspense>;
   if (!isSoccerWa && (hash === '#/examenes' || hash.startsWith('#/examenes/'))) return <Suspense fallback={<main>Cargando Exámenes…</main>}><ExamPortal /></Suspense>;
-  if (!isSoccerWa && hash.startsWith("#/permiso/")) return <Suspense fallback={<main>Cargando permiso…</main>}><PublicEnrollmentPermit key={hash} invitation={hash.slice("#/permiso/".length)} /></Suspense>;
-  if (!isSoccerWa && hash.startsWith("#/rol-de-juego/")) return <Suspense fallback={<main>Cargando rol…</main>}><PublicGameRole key={hash} token={hash.slice("#/rol-de-juego/".length)} /></Suspense>;
-  if (!isSoccerWa && hash.startsWith("#/baja/")) {
-    return <Suspense fallback={<main>Cargando baja…</main>}><PublicPlayerWithdrawal invitation={hash.slice("#/baja/".length)} /></Suspense>;
-  }
-  if (!isSoccerWa && hash.startsWith("#/inscripcion/")) {
-    return <Suspense fallback={<main className="min-h-screen bg-white p-8">Cargando registro…</main>}><PublicPlayerEnrollment invitation={hash.slice("#/inscripcion/".length)} /></Suspense>;
-  }
-  return <FutsiApplication enrollmentAdmin={import.meta.env.VITE_APP_BRAND === "inscripciones" || isEnrollmentAdminHash(hash)} />;
+  return <FutsiApplication />;
 }
 
-function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
+function FutsiApplication() {
   const { theme, toggleTheme } = useThemeMode();
   const {
     token,
@@ -88,7 +74,6 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   }
 
   if (!token || !currentUser) {
-    if (!isSoccerWa && enrollmentAdmin) return <Suspense fallback={<main className="bg-white p-8">Cargando acceso…</main>}><EnrollmentLogin onLogin={handleLogin} /></Suspense>;
     return (
       <>
         <Suspense fallback={<LandingFallback />}>
@@ -104,12 +89,8 @@ function FutsiApplication({ enrollmentAdmin }: { enrollmentAdmin: boolean }) {
   const enrollmentOnly = currentUser.section_permissions?.includes("player_enrollments_only") ?? false;
   const enrollmentAdminRole = ["admin", "owner", "dev"].includes(currentUser.role);
   const canManageRoles = enrollmentAdminRole || (currentUser.section_permissions?.includes("game_roles_manage") ?? false);
-  if (!isSoccerWa && (enrollmentOnly || (enrollmentAdmin && enrollmentAdminRole))) {
+  if (!isSoccerWa && enrollmentOnly) {
     return <Suspense fallback={<AppSkeleton />}><EnrollmentDashboard userId={currentUser.id} token={token} onLogout={logout} canManageRoles={canManageRoles} /></Suspense>;
-  }
-
-  if (!isSoccerWa && enrollmentAdmin) {
-    return <Suspense fallback={<AppSkeleton />}><EnrollmentAccessDenied onLogout={logout} /></Suspense>;
   }
 
   if (isSoccerWa && !canUseSoccerWa(currentUser)) {
