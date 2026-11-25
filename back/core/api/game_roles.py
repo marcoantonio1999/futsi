@@ -243,11 +243,16 @@ class GameRoleMatrixView(GameRoleView):
         if "weekly_schedule" in request.data:
             return self.update_weekly_schedule(request, tournament_id)
         tournament = self.tournament(request, tournament_id, lock=True)
-        if "new_team" in request.data or "add_team_id" in request.data:
+        team_fields = {"new_team", "new_team_name", "add_team_id"}.intersection(request.data)
+        if team_fields:
+            if len(team_fields) > 1:
+                raise ValidationError("Elige crear un equipo o agregar uno existente.")
             if "new_team" in request.data:
-                if "add_team_id" in request.data:
-                    raise ValidationError("Elige crear un equipo o agregar uno existente.")
                 team_id = self.create_matrix_team(tournament, request.data["new_team"]).pk
+            elif "new_team_name" in request.data:
+                team_id = self.create_matrix_team(
+                    tournament, {"name": request.data["new_team_name"]}, require_representative=False,
+                ).pk
             else:
                 team_id = serializers.IntegerField(min_value=1).run_validation(request.data["add_team_id"])
                 if not tournament.teams.filter(pk=team_id, is_active=True).exists():
@@ -318,7 +323,7 @@ class GameRoleMatrixView(GameRoleView):
         tournament.save(update_fields=["game_role_schedule", "updated_at"])
         return self.matrix(tournament)
 
-    def create_matrix_team(self, tournament, data):
+    def create_matrix_team(self, tournament, data, *, require_representative=True):
         if not tournament.is_active or not tournament.site.is_active:
             raise ValidationError("Selecciona un torneo activo.")
         if not isinstance(data, dict):
@@ -329,7 +334,7 @@ class GameRoleMatrixView(GameRoleView):
             "tournament": tournament.pk,
         })
         serializer.is_valid(raise_exception=True)
-        if not serializer.validated_data.get("representative_name"):
+        if require_representative and not serializer.validated_data.get("representative_name"):
             raise ValidationError({"representative_name": "Ingresa el nombre del delegado."})
         try:
             with transaction.atomic():

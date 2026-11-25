@@ -55,6 +55,25 @@
 .game-role-next footer { margin-top: 10px; }
 .game-role-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .game-role-panel-header h2 { margin: 0; }
+.game-role-matrix-heading { display: flex; align-items: center; gap: 8px; }
+.enrollment-page.enrollment-game-roles-layout .game-roles-matrix button.game-role-quick-team[data-slot="button"] {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  padding: 0 !important;
+  border: 1px dashed var(--primary) !important;
+  background: var(--card) !important;
+  color: var(--primary) !important;
+}
+.enrollment-page.enrollment-game-roles-layout .game-roles-matrix button.game-role-quick-team[data-slot="button"]:hover {
+  background: var(--secondary) !important;
+}
+@media screen and (min-width: 1024px) {
+  .enrollment-page.enrollment-game-roles-layout .game-roles-matrix button.game-role-quick-team[data-slot="button"] {
+    width: 34px;
+    height: 34px;
+  }
+}
 .game-role-note-list, .game-role-history-list { padding: 0; list-style: none; }
 .game-role-notes-grid {
   display: grid;

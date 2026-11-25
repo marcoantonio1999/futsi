@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { BarChart3, CalendarDays, ChevronLeft, Clock, Pencil } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, Clock, Pencil, Plus } from "lucide-react";
 import { apiRequest } from "../../api";
 import { Button, Card, Dialog, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, StandingRow, Tournament } from "../../types";
@@ -14,7 +14,7 @@ import { roleSlots, roleTimeLabel, showsKickoffOnly, type RoleSchedule, type Wee
 import "./gameRoles.css";
 
 type Team = { id: number; name: string; is_active: boolean };
-type TeamSelectionInput = { add_team_id: number } | {
+type TeamSelectionInput = { add_team_id: number } | { new_team_name: string } | {
   new_team: { name: string; representative_name: string; representative_phone: string };
 };
 type Round = { id: number; number: number; starts_on: string; rest_team_id?: number };
@@ -110,7 +110,7 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
   const [gridSize, setGridSize] = useState({ rows: 6, columns: 4 });
   const gridViewport = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [addingTeam, setAddingTeam] = useState(false);
+  const [addingTeam, setAddingTeam] = useState<"select" | "quick" | null>(null);
   const [share, setShare] = useState<{ roundId: number; upcomingOnly?: boolean } | null>(null);
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [reminderMessage, setReminderMessage] = useState("");
@@ -225,7 +225,8 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
     setMatrix(result);
     if (roundNumber !== undefined) setSelectedId(result.rounds.find(round => round.number === roundNumber)?.id ?? 0);
     setEditor(null);
-    setAddingTeam(false);
+    setAddingTeam(null);
+    return result;
   }
 
   async function saveNote(payload: object) {
@@ -286,8 +287,14 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
         : <div className="game-roles-workspace">
     <Card as="section" className="game-roles-matrix" aria-labelledby="game-roles-matrix-title">
       <div className="game-role-panel-header">
-        <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
-        <Button type="button" className="primary" disabled={!matrix.matrix_team_ids || (!tournament.is_active && !availableTeams.length)} onClick={() => setAddingTeam(true)}>Agregar equipo</Button>
+        <div className="game-role-matrix-heading">
+          <h2 id="game-roles-matrix-title">Matriz de equipos</h2>
+          {tournament.is_active && matrix.matrix_team_ids && <Button type="button" className="game-role-quick-team"
+            aria-label="Crear equipo por nombre" title="Crear equipo por nombre" onClick={() => setAddingTeam("quick")}>
+            <Plus aria-hidden="true" />
+          </Button>}
+        </div>
+        <Button type="button" className="primary" disabled={!matrix.matrix_team_ids || (!tournament.is_active && !availableTeams.length)} onClick={() => setAddingTeam("select")}>Agregar equipo</Button>
       </div>
       <div className="game-role-matrix-controls">
         {selected && <>
@@ -343,10 +350,15 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
     </Card>
     <GameRoleHistory matrix={matrix} tournamentName={tournamentName} onEdit={openCross} />
     </div>}
-    {addingTeam && <TeamSelection teams={availableTeams} canCreate={tournament.is_active} onClose={() => setAddingTeam(false)}
+    {addingTeam && <TeamSelection teams={availableTeams} canCreate={tournament.is_active} quick={addingTeam === "quick"} onClose={() => setAddingTeam(null)}
       onSubmit={async data => {
-        await save("PATCH", data);
-        if ("new_team" in data) onTeamCreated();
+        const result = await save("PATCH", data);
+        if ("new_team_name" in data) {
+          const lastIndex = (result.matrix_team_ids?.length ?? 1) - 1;
+          setRowPage(Math.floor(lastIndex / gridSize.rows));
+          setColumnPage(Math.floor(lastIndex / gridSize.columns));
+        }
+        if (!("add_team_id" in data)) onTeamCreated();
       }} />}
     {editor && <MatrixEditor editor={editor} matrix={matrix} tournamentName={tournamentName} schedule={schedule} selected={selected} onClose={() => setEditor(null)} onSave={save} />}
     {share && <GameRoleShare path={`${path}rounds/${share.roundId}/share/`} token={token}
@@ -454,12 +466,12 @@ function GameRoleHistory({ matrix, tournamentName, onEdit }: { matrix: Matrix; t
   </Card>;
 }
 
-function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
-  teams: Team[]; canCreate: boolean; onClose: () => void; onSubmit: (data: TeamSelectionInput) => Promise<void>;
+function TeamSelection({ teams, canCreate, quick, onClose, onSubmit }: {
+  teams: Team[]; canCreate: boolean; quick: boolean; onClose: () => void; onSubmit: (data: TeamSelectionInput) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [selection, setSelection] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(quick);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => { dialog.current?.showModal(); }, []);
@@ -470,21 +482,26 @@ function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
       if (busy || (!creating && !selection)) return;
       const form = new FormData(event.currentTarget);
       const value = (field: string) => String(form.get(field) ?? "").trim();
-      const data: TeamSelectionInput = creating ? {
-        new_team: { name: value("name"), representative_name: value("representative_name"), representative_phone: value("representative_phone") },
+      const name = value("name");
+      if (creating && !name) {
+        setError("Ingresa el nombre del equipo.");
+        return;
+      }
+      const data: TeamSelectionInput = quick ? { new_team_name: name } : creating ? {
+        new_team: { name, representative_name: value("representative_name"), representative_phone: value("representative_phone") },
       } : { add_team_id: Number(selection) };
       setBusy(true); setError("");
       try { await onSubmit(data); }
       catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar."); }
       finally { setBusy(false); }
     }}>
-      <h2 id="game-role-team-title">Agregar equipo</h2>
+      <h2 id="game-role-team-title">{quick ? "Crear equipo" : "Agregar equipo"}</h2>
       {!creating && teams.length > 0 && <Label>Equipo<NativeSelect aria-label="Equipo" required disabled={busy} value={selection} onChange={event => { setSelection(event.target.value); setError(""); }}>
         <option value="">Selecciona un equipo</option>
         {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
       </NativeSelect></Label>}
-      {creating && <>
-        <Label>Nombre del equipo<Input name="name" maxLength={140} required readOnly={busy} /></Label>
+      {creating && <Label>Nombre del equipo<Input name="name" maxLength={140} required readOnly={busy} autoFocus={quick} /></Label>}
+      {creating && !quick && <>
         <Label>Delegado<Input name="representative_name" maxLength={160} required readOnly={busy} /></Label>
         <Label>Teléfono del delegado (opcional)<Input name="representative_phone" type="tel" maxLength={30} readOnly={busy} /></Label>
       </>}
@@ -492,7 +509,7 @@ function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
       <footer><Button type="button" disabled={busy} onClick={onClose}>Cancelar</Button>
         {canCreate && !creating && <Button type="button" className={teams.length ? undefined : "primary"}
           onClick={() => { setCreating(true); setError(""); }}>Crear equipo nuevo</Button>}
-        {creating && teams.length > 0 && <Button type="button" disabled={busy}
+        {creating && !quick && teams.length > 0 && <Button type="button" disabled={busy}
           onClick={() => { setCreating(false); setError(""); }}>Elegir equipo existente</Button>}
         {creating || teams.length > 0 ? <Button type="submit" className="primary"
           disabled={busy || (!creating && !selection)}>{creating ? "Crear y agregar" : "Agregar equipo"}</Button> : null}</footer>
@@ -502,7 +519,7 @@ function TeamSelection({ teams, canCreate, onClose, onSubmit }: {
 
 function MatrixEditor({ editor, matrix, tournamentName, schedule, selected, onClose, onSave }: {
   editor: Editor; matrix: Matrix; tournamentName: string; schedule: RoleSchedule; selected: Round | undefined; onClose: () => void;
-  onSave: (method: string, data: object, roundNumber?: number) => Promise<void>;
+  onSave: (method: string, data: object, roundNumber?: number) => Promise<Matrix>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const saving = useRef(false);
