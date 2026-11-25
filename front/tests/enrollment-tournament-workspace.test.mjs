@@ -29,7 +29,7 @@ function render(section, setupOnly = true, deletableTournamentIds = [], fixtureD
 test("Inscripciones embeds the actual shared Futsi workspace, not separate forms", () => {
   const source = readFileSync(new URL("../src/features/enrollments/PlayerEnrollment.tsx", import.meta.url), "utf8");
   assert.match(source, /<TournamentsPanel/);
-  assert.doesNotMatch(source, /<TournamentCreatePage|<CreateTeamDialog/);
+  assert.doesNotMatch(source, /<TournamentCreatePage|<CreateTeamPage/);
 });
 test("Create subsection renders Futsi's existing tournament page", () => {
   const html = render("create");

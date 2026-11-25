@@ -6,7 +6,7 @@ import { GameRoles } from '../game-roles/GameRoles';
 import { Button, Card, Dialog, Input, Label, NativeSelect } from '../../components/ui/enrollment-ui';
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, LogOut, Trophy, UsersRound, ClipboardList, Send, ListChecks, CirclePlus, UserPlus, Eye, Printer, Menu, X } from "lucide-react";
-import { API_URL, apiRequest } from "../../api";
+import { API_URL, ApiError, apiRequest } from "../../api";
 import "./enrollments.css";
 import "./enrollmentAdmin.css";
 import "./rosterIdentity.css";
@@ -32,6 +32,7 @@ import { PlayersDirectory } from "./PlayersDirectory";
 import type { AppData, User, Team, Tournament, Site, StudentDeletionConfirmation, StudentDeletionResult } from "../../types";
 import { emptyData } from "../../appState";
 import { TournamentsPanel, type TournamentSection } from "../tournaments";
+import { CreateTeamDialog } from "../tournaments/TournamentManagementDialogs";
 import { CameraCapture } from "./CameraCapture";
 import { autoCropIdentity } from "./autoCropIdentity";
 import { compressEnrollmentPhoto } from "./compressEnrollmentPhoto";
@@ -666,10 +667,11 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
   }
   const rosterTeam = catalog.teams.find(row => row.id === navigation.screen.roster) as Team | undefined;
   const [printRoster, setPrintRoster] = useState(false);
+  const [creatingTeam, setCreatingTeam] = useState(false);
   // Old alignment links now open the unified roster, without a second tool.
   const alignmentSheet = false;
   useEnrollmentScrollReady(!catalogBusy);
-  useEffect(() => { setMobileMenuOpen(false); if (!navigation.screen.roster) setPrintRoster(false); setError(''); setMessage(''); }, [navigation.screen.section, navigation.screen.roster]);
+  useEffect(() => { setMobileMenuOpen(false); setCreatingTeam(false); if (!navigation.screen.roster) setPrintRoster(false); setError(''); setMessage(''); }, [navigation.screen.section, navigation.screen.roster]);
   const [rosterRevision, setRosterRevision] = useState(0);
   const [pendingValidationCount, setPendingValidationCount] = useState<number | null>(null);
   const invitationSaving = useRef(false);
@@ -755,6 +757,21 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
     await loadCatalog().catch(() => undefined);
     return created;
   }
+  async function saveEnrollmentTeam(payload: unknown) {
+    try {
+      const created = await saveCatalog("team", payload) as Team;
+      setInviteTournament(String(created.tournament));
+      setInviteTeam(String(created.id));
+      setLink("");
+      return created;
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 409) {
+        void loadCatalog().catch(() => undefined);
+        throw new Error(reason.message.slice(0, -(` (${reason.path})`.length)));
+      }
+      throw reason;
+    }
+  }
   useEffect(() => { document.title = "Inscripciones BPower"; void loadCatalog().catch(() => undefined); }, [token]);
   async function invite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -836,11 +853,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
           selectedTournamentId={inviteTournament ? Number(inviteTournament) : undefined}
           onSelectTournament={id => chooseTournament(String(id))}
           onCreateTournament={payload => saveCatalog("tournament", payload)}
-          onCreateTeam={async payload => {
-            const created = await saveCatalog("team", payload) as Team;
-            setInviteTournament(String(created.tournament)); setInviteTeam(String(created.id)); setLink("");
-            return created;
-          }}
+          onCreateTeam={saveEnrollmentTeam}
           onRenameTeam={renameTeam} onDeleteTeam={deleteTeam} onUpdateTournament={updateTournament} onRegisterStudent={unsupportedAction}
           onViewTeamRoster={item => openRoster(item)}
           onUpdateRegistration={unsupportedAction} onCreateMatch={unsupportedAction} onUpdateMatch={unsupportedAction} />
@@ -855,9 +868,17 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true }: 
           <Label>Equipo del torneo<NativeSelect required value={inviteTeam} disabled={catalogBusy || busy || !inviteTournament}
             onChange={event => { setInviteTeam(event.target.value); setLink(""); }}><option value="">Selecciona un equipo</option>
             {availableTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></Label>
+          {enrollmentSection === "send" && <Button type="button" disabled={catalogBusy || busy || !selectedTournament?.is_active}
+            onClick={() => setCreatingTeam(true)}>Crear equipo</Button>}
           <Button disabled={busy || catalogBusy || !inviteTeam} className="primary">Crear enlace</Button>
           <Button ref={localButtonRef} type="button" disabled={busy || catalogBusy || !inviteTeam} onClick={() => void createInvitation(true)}><UserPlus size={18} aria-hidden="true" />{enrollmentSection === "withdraw" ? "Baja local" : "Registro local"}</Button>
         </form>
+        {creatingTeam && enrollmentSection === "send" && selectedTournament &&
+          <CreateTeamDialog tournament={selectedTournament} adult onClose={() => setCreatingTeam(false)}
+            onSave={async payload => {
+              await saveEnrollmentTeam(payload);
+              setMessage("Equipo creado. Ya puedes registrar jugadores.");
+            }} />}
         {!catalogBusy && !catalog.tournaments.length && <p>Primero crea un torneo en la subsección «Crear torneo» del menú izquierdo.</p>}
         {!catalogBusy && inviteTournament && !availableTeams.length && <p>Este torneo todavía no tiene equipos.</p>}
         {link && <div className="share-link"><Input readOnly value={link} aria-label={enrollmentSection === "withdraw" ? "Enlace de baja" : "Enlace de inscripción"} /><div>

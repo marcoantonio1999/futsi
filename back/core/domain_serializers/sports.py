@@ -51,6 +51,18 @@ class TeamSerializer(serializers.ModelSerializer):
         }
 
 
+class EnrollmentTeamCreateSerializer(TeamSerializer):
+    class Meta(TeamSerializer.Meta):
+        # These callers check duplicate names while holding the tournament lock.
+        validators = []
+
+
+def find_enrollment_team_by_name(tournament, name):
+    normalized_name = " ".join(name.split()).casefold()
+    teams = tournament.teams.only("id", "name", "is_active").order_by("-is_active", "id")
+    return next((team for team in teams if " ".join(team.name.split()).casefold() == normalized_name), None)
+
+
 class StudentTournamentRegistrationSerializer(serializers.ModelSerializer):
     tournament = serializers.PrimaryKeyRelatedField(
         queryset=Tournament.objects.select_related("site").only(

@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api.enrollments import EnrollmentStaffPermission, enrollment_sites
-from core.domain_serializers.sports import TeamSerializer
+from core.domain_serializers.sports import EnrollmentTeamCreateSerializer, find_enrollment_team_by_name
 from core.models import GameRoleRound, GameRoleTeamNote, Site, Team, Tournament
 from core.services.game_role_schedule import FRANCO_SITE_ID, tournament_schedule
 from core.services.standings import build_standings
@@ -329,13 +329,15 @@ class GameRoleMatrixView(GameRoleView):
         if not isinstance(data, dict):
             raise ValidationError("Ingresa los datos del equipo.")
         allowed = {"name", "representative_name", "representative_phone"}
-        serializer = TeamSerializer(data={
+        serializer = EnrollmentTeamCreateSerializer(data={
             **{key: value for key, value in data.items() if key in allowed},
             "tournament": tournament.pk,
         })
         serializer.is_valid(raise_exception=True)
         if require_representative and not serializer.validated_data.get("representative_name"):
             raise ValidationError({"representative_name": "Ingresa el nombre del delegado."})
+        if find_enrollment_team_by_name(tournament, serializer.validated_data["name"]):
+            raise ValidationError({"name": "Ya existe un equipo con ese nombre en este torneo."})
         try:
             with transaction.atomic():
                 return serializer.save(tournament=tournament, is_active=True)

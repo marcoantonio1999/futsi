@@ -24,7 +24,9 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
 from core.models import Team, Tournament, Site
-from core.domain_serializers.sports import TeamSerializer, TournamentSerializer
+from core.domain_serializers.sports import (
+    EnrollmentTeamCreateSerializer, TeamSerializer, TournamentSerializer, find_enrollment_team_by_name,
+)
 
 from core.enrollment_terms import TERMS_VERSION, TERMS
 from core.enrollment_access import enrollment_site_ids
@@ -760,7 +762,7 @@ class EnrollmentCatalogView(APIView):
         if kind not in allowed:
             raise ValidationError('Elige crear un equipo o un torneo.')
         data = {key: value for key,value in request.data.items() if key in allowed[kind]}
-        serializer = (TournamentSerializer if kind == 'tournament' else TeamSerializer)(data=data)
+        serializer = (TournamentSerializer if kind == 'tournament' else EnrollmentTeamCreateSerializer)(data=data)
         serializer.is_valid(raise_exception=True)
         site = serializer.validated_data['site'] if kind == 'tournament' else serializer.validated_data['tournament'].site
         if not enrollment_sites(request.user).filter(pk=site.pk).exists():
@@ -775,6 +777,12 @@ class EnrollmentCatalogView(APIView):
                     site__in=enrollment_sites(request.user))
                 if not tournament.is_active or not tournament.site.is_active:
                     raise ValidationError('Selecciona un torneo activo.')
+                existing = find_enrollment_team_by_name(tournament, serializer.validated_data['name'])
+                if existing:
+                    next_step = ('Selecciónalo en «Equipo del torneo» para registrar jugadores.'
+                                 if existing.is_active else 'El equipo está inactivo. Debe reactivarse para registrar jugadores.')
+                    return Response({'detail': f'El equipo «{existing.name}» ya está registrado en este torneo. {next_step}'},
+                                    status=409)
                 serializer.save(tournament=tournament)
         else:
             serializer.save()
