@@ -343,10 +343,6 @@ class GameRoleMatrixView(GameRoleView):
                 continue
             if existing and (existing.played or existing.scheduled_on or existing.round_id != round_row.pk):
                 raise ValidationError("El cruce ya está registrado. Cámbialo desde la matriz.")
-            if rows.filter(round=round_row).exclude(**pair).filter(
-                Q(home_team_id__in=participants) | Q(away_team_id__in=participants)
-            ).exists():
-                raise ValidationError("Uno de los equipos ya tiene un cruce en esta jornada.")
             if self.calendar_conflicts(tournament, schedule).exists():
                 raise ValidationError("El horario ya está ocupado. Actualiza la programación.")
             tournament.game_role_crosses.update_or_create(**pair, defaults={"round": round_row, **schedule})

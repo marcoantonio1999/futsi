@@ -23,18 +23,15 @@ export function playedCounts(crosses: Cross[]) {
 
 export function plannerPair(matrix: Matrix, round: Round, first: number, second: number) {
   if (first === second || round.rest_team_id === first || round.rest_team_id === second) return null;
-  const inRound = matrix.crosses.filter(cross => cross.round_id === round.id
-    && [cross.home_team_id, cross.away_team_id].some(id => id === first || id === second));
-  if (inRound.length) {
-    const [cross] = inRound;
-    if (inRound.length !== 1 || cross.played || cross.scheduled_on
-      || ![first, second].includes(cross.home_team_id) || ![first, second].includes(cross.away_team_id)) return null;
-    return [cross.home_team_id, cross.away_team_id] as const;
-  }
-  const exists = (home: number, away: number) => matrix.crosses.some(
+  const find = (home: number, away: number) => matrix.crosses.find(
     cross => cross.home_team_id === home && cross.away_team_id === away);
-  if (!exists(first, second)) return [first, second] as const;
-  return exists(second, first) ? null : [second, first] as const;
+  const direct = find(first, second);
+  const reverse = find(second, first);
+  const awaitingSchedule = (cross?: Cross) => cross && cross.round_id === round.id && !cross.played && !cross.scheduled_on;
+  if (awaitingSchedule(direct)) return [first, second] as const;
+  if (awaitingSchedule(reverse)) return [second, first] as const;
+  if (!direct) return [first, second] as const;
+  return reverse ? null : [second, first] as const;
 }
 
 export function makePlannerMatch(round: Round, slot: RoleSlot, pair: readonly [number, number]): PlannerMatch {
@@ -44,16 +41,23 @@ export function makePlannerMatch(round: Round, slot: RoleSlot, pair: readonly [n
 
 export function suggestPlannerMatches(matrix: Matrix, round: Round, slots: RoleSlot[], reserved: ReadonlySet<number>) {
   const counts = playedCounts(matrix.crosses);
+  const assignments = new Map<number, Cross[]>();
+  for (const cross of matrix.crosses.filter(item => item.round_id === round.id)) {
+    for (const id of [cross.home_team_id, cross.away_team_id]) assignments.set(id, [...(assignments.get(id) ?? []), cross]);
+  }
   const noteApplies = (id: number, slot: RoleSlot) => (matrix.team_notes ?? []).some(note => {
     if (note.team_id !== id) return false;
     if (note.kind === "permit") return note.round_id === round.id;
     return note.kind === "unavailable" && note.weekday === (new Date(slot.day + "T00:00:00Z").getUTCDay() + 6) % 7
       && (!note.starts_at || !note.ends_at || (note.starts_at.slice(0, 5) < slot.end && note.ends_at.slice(0, 5) > slot.start));
   });
-  const eligible = matrix.teams.filter(team => team.is_active && !reserved.has(team.id) && team.id !== round.rest_team_id);
+  const eligible = matrix.teams.filter(team => team.is_active && !reserved.has(team.id) && team.id !== round.rest_team_id
+    && !assignments.get(team.id)?.some(cross => cross.played || cross.scheduled_on));
   const pairs = eligible.flatMap((first, index) => eligible.slice(index + 1).flatMap(second => {
     const pair = plannerPair(matrix, round, first.id, second.id);
     if (!pair) return [];
+    if ([...(assignments.get(first.id) ?? []), ...(assignments.get(second.id) ?? [])]
+      .some(cross => cross.home_team_id !== pair[0] || cross.away_team_id !== pair[1])) return [];
     const a = counts.get(first.id) ?? 0;
     const b = counts.get(second.id) ?? 0;
     return [{ pair, played: a + b, fewest: Math.min(a, b) }];

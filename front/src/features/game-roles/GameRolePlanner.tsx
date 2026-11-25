@@ -151,21 +151,15 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
     const key = slotKey(slot);
     const first = staged[key];
     const slotMatrix = data[slot.tournament.id];
-    if (Object.entries(staged).some(([otherKey, other]) => otherKey !== key && other.id === team.id)
-      || suggestions.some(match => match.home_team_id === team.id || match.away_team_id === team.id)
-      || slot.round.rest_team_id === team.id
-      || slotMatrix.crosses.some(match => match.round_id === slot.round?.id && (match.played || match.scheduled_on)
-        && [match.home_team_id, match.away_team_id].includes(team.id))) {
-      setError("El equipo ya tiene un horario, un partido o descanso en esta jornada.");
-      return;
-    }
+    if (slot.round.rest_team_id === team.id) { setError("Este equipo tiene descanso en la jornada."); return; }
+    if (first?.id === team.id) { setError("Selecciona un rival distinto para este horario."); return; }
     if (!first) {
       setStaged(current => ({ ...current, [key]: team }));
       setPicked(null);
       return;
     }
     const pair = plannerPair(slotMatrix, slot.round, first.id, team.id);
-    if (!pair) { setError("Elige otro rival. Este cruce ya está registrado o los equipos tienen otro cruce en la jornada."); return; }
+    if (!pair) { setError("Los cruces entre estos equipos ya están registrados. Elige otro rival."); return; }
     if (!(await save(slot.tournament.id, [makePlannerMatch(slot.round, slot, pair)]))) return;
     setStaged(current => Object.fromEntries(Object.entries(current).filter(([otherKey]) => otherKey !== key)));
     setPicked(null);
