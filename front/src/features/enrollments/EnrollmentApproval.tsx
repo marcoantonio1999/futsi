@@ -319,9 +319,11 @@ export function EnrollmentApproval({
         </>
       ) : (
         <Card>
-          <Label>
+          <Label className="enrollment-approval-search">
             Buscar inscripción
             <Input
+              type="search"
+              placeholder="Busca por nombre del jugador"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);

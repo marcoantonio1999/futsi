@@ -125,3 +125,6 @@
 @media(max-width:640px){.enrollment-approval > [data-slot="card"]{padding:16px}}
 .enrollment-preview-open{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
 .enrollment-preview-open:focus-visible{outline:3px solid #7baa8d;outline-offset:2px}
+.enrollment-page .enrollment-approval-search {
+  max-inline-size: 22rem;
+}
