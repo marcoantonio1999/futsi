@@ -257,6 +257,29 @@ class GameRoleMatrixView(GameRoleView):
 
     def get(self, request, tournament_id):
         tournament = self.tournament(request, tournament_id)
+        if "planner_week" in request.query_params:
+            week = serializers.DateField().run_validation(request.query_params["planner_week"])
+            if week > date.max - timedelta(days=4):
+                raise ValidationError("Selecciona una semana válida.")
+            friday = week + timedelta(days=4)
+            first_day, last_day = week.isoformat(), friday.isoformat()
+            occupied = GameRoleCross.objects.filter(
+                tournament__site_id=tournament.site_id, scheduled_on__range=(week, friday),
+            ).exclude(tournament=tournament).values("scheduled_on", "starts_at", "ends_at")
+            others = list(Tournament.objects.filter(site_id=tournament.site_id, is_active=True)
+                          .exclude(pk=tournament.pk).only("id", "name", "site_id", "game_role_schedule").order_by("name", "id"))
+            extras = {}
+            for league_id, blocks in GameRoleRound.objects.filter(
+                tournament_id__in=[other.id for other in others],
+                starts_on__range=(max(date.min + timedelta(days=6), week) - timedelta(days=6), friday),
+            ).values_list("tournament_id", "extra_schedule"):
+                extras.setdefault(league_id, []).extend(
+                    block for block in blocks if first_day <= block["scheduled_on"] <= last_day
+                )
+            return Response({"occupied": list(occupied), "schedules": [
+                {"name": other.name, "weekly_schedule": tournament_schedule(other), "extra_schedule": extras.get(other.id, [])}
+                for other in others
+            ]})
         if "week_occupancy" in request.query_params:
             week = serializers.DateField().run_validation(request.query_params["week_occupancy"])
             occupied = GameRoleCross.objects.filter(
