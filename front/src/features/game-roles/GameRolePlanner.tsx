@@ -537,7 +537,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                   match={canCaptureScore ? match : undefined} home={homeName} away={awayName} label={slotLabel} busy={busy}
                   onSave={match && (score => save(slot.tournament.id, {
                     planner_score: { cross_id: match.id, home_team_id: match.home_team_id, away_team_id: match.away_team_id, round_id: match.round_id, score },
-                  }, "Marcador guardado."))}>
+                  }, score ? "Marcador guardado." : "Marcador borrado. Partido pendiente."))}>
                   {slotSides.map(side => {
                     const name = side === "home" ? homeName : awayName;
                     const className = name ? "role-planner-assigned-team" : "role-planner-drop";
@@ -616,16 +616,18 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
 
 function PlannerEncounter({ match, home, away, label, busy, onSave, children }: {
   match?: Cross; home?: string; away?: string; label: string; busy: boolean; children: ReactNode;
-  onSave?: (score: { home_goals: number; away_goals: number }) => Promise<boolean>;
+  onSave?: (score: { home_goals: number; away_goals: number } | null) => Promise<boolean>;
 }) {
   const [homeGoals, setHomeGoals] = useState(String(match?.home_goals ?? ""));
   const [awayGoals, setAwayGoals] = useState(String(match?.away_goals ?? ""));
   const saving = useRef(false);
-  async function saveScore() {
-    if (!match || !onSave || busy || saving.current) return;
-    if (!/^\d{1,3}$/.test(homeGoals) || !/^\d{1,3}$/.test(awayGoals)) return;
-    const score = { home_goals: Number(homeGoals), away_goals: Number(awayGoals) };
-    if (match.played && score.home_goals === match.home_goals && score.away_goals === match.away_goals) return;
+  async function saveScore(encounter: HTMLDivElement) {
+    if (!match || !onSave || busy || saving.current || encounter.querySelector("input:invalid")) return;
+    const empty = homeGoals === "" && awayGoals === "";
+    if (!empty && (!/^\d{1,3}$/.test(homeGoals) || !/^\d{1,3}$/.test(awayGoals))) return;
+    const score = empty ? null : { home_goals: Number(homeGoals), away_goals: Number(awayGoals) };
+    if (score ? match.played && score.home_goals === match.home_goals && score.away_goals === match.away_goals
+      : !match.played && match.home_goals == null && match.away_goals == null) return;
     saving.current = true;
     try { await onSave(score); }
     finally { saving.current = false; }
@@ -636,13 +638,13 @@ function PlannerEncounter({ match, home, away, label, busy, onSave, children }: 
     onBlur={event => {
       if (event.target instanceof HTMLInputElement &&
           !(event.relatedTarget instanceof HTMLInputElement && event.currentTarget.contains(event.relatedTarget))) {
-        void saveScore();
+        void saveScore(event.currentTarget);
       }
     }}
     onKeyDown={event => {
       if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
         event.preventDefault();
-        void saveScore();
+        void saveScore(event.currentTarget);
       }
     }}>
     <Input className="role-planner-goals-home" aria-label={`Goles de ${home} (local)`} placeholder="–"

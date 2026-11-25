@@ -98,7 +98,7 @@ class PlannerScoreInput(serializers.Serializer):
     round_id = serializers.IntegerField(min_value=1)
     home_team_id = serializers.IntegerField(min_value=1)
     away_team_id = serializers.IntegerField(min_value=1)
-    score = ScoreInput()
+    score = ScoreInput(allow_null=True)
 
 
 class PlannerSplitInput(serializers.Serializer):
@@ -401,11 +401,11 @@ class GameRoleMatrixView(GameRoleView):
         match = self.single_cross(rows)
         if not match:
             raise Http404
-        if not match.played and (not match.scheduled_on or match.round.starts_on > timezone.localdate()):
+        if score is not None and not match.played and (not match.scheduled_on or match.round.starts_on > timezone.localdate()):
             raise ValidationError("Puedes capturar el marcador de un partido programado desde que inicia la jornada.")
-        match.home_goals = score["home_goals"]
-        match.away_goals = score["away_goals"]
-        match.played = True
+        match.home_goals = score["home_goals"] if score is not None else None
+        match.away_goals = score["away_goals"] if score is not None else None
+        match.played = score is not None
         match.save(update_fields=["home_goals", "away_goals", "played", "updated_at"])
         return self.matrix(tournament)
 
