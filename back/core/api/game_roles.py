@@ -369,8 +369,8 @@ class GameRoleMatrixView(GameRoleView):
         lookup = serializer.validated_data.copy()
         score = lookup.pop("score")
         match = get_object_or_404(tournament_crosses(tournament).select_related("round"), **lookup)
-        if not match.played and (not match.scheduled_on or not self.planner_round_closed(match.round)):
-            raise ValidationError("Puedes capturar el marcador cuando termine la jornada.")
+        if not match.played and (not match.scheduled_on or match.round.starts_on > timezone.localdate()):
+            raise ValidationError("Puedes capturar el marcador de un partido programado desde que inicia la jornada.")
         match.home_goals = score["home_goals"]
         match.away_goals = score["away_goals"]
         match.played = True

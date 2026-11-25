@@ -78,6 +78,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   const [week, setWeek] = useState("");
   const [picked, setPicked] = useState<PickedTeam | null>(null);
   const [moving, setMoving] = useState<Relocation | null>(null);
+  const [scoreSlot, setScoreSlot] = useState<string | null>(null);
   const draftKey = userId ? `bpower.gameRoles.pendingTeams.${userId}` : null;
   const [staged, setStaged] = useState<Record<string, StagedTeam>>(() => {
     try { return draftKey ? JSON.parse(sessionStorage.getItem(draftKey) ?? "{}") ?? {} : {}; }
@@ -131,6 +132,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
 
   function resetDraft() {
     setPicked(null); setMoving(null); setSuggestions([]); setError(""); setMessage(""); setSlotOccupancy(null);
+    setScoreSlot(null);
   }
 
   function canAddSlot(slot: RoleSlot) {
@@ -414,6 +416,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
               const names = data[slot.tournament.id];
               const bookable = !!slot.round && !closed && !slot.occupied && !suggested;
               const movable = !closed && slot.preset && match && !match.played && match.home_goals == null && match.away_goals == null;
+              const canCaptureScore = !!match && !!matchRound && matchRound.starts_on <= today;
+              const capturing = canCaptureScore && scoreSlot === key;
               const date = dayLabel.format(utc(slot.day));
               const time = roleTimeLabel(slot.tournament.name, slot.start, slot.end);
               const slotLabel = `${date} · ${time}`;
@@ -426,11 +430,16 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                   <strong>{time}</strong>{slot.extra && <small className="role-planner-extra-label">Horario extra</small>}
                 </div>
                 <span className="role-planner-slot-round">{matchRound ? `J${matchRound.number}` : "—"}</span>
-                {match && (closed || match.played) ? <PlannerScoreForm
+                {match && (closed || match.played || capturing) ? <PlannerScoreForm
                   match={match} home={displayName(names, match.home_team_id)} away={displayName(names, match.away_team_id)}
-                  label={slotLabel} busy={busy} onSave={score => save(slot.tournament.id, {
-                    planner_score: { home_team_id: match.home_team_id, away_team_id: match.away_team_id, round_id: match.round_id, score },
-                  }, "Marcador guardado.")} />
+                  label={slotLabel} busy={busy} onCancel={capturing && !closed && !match.played ? () => setScoreSlot(null) : undefined}
+                  onSave={async score => {
+                    const saved = await save(slot.tournament.id, {
+                      planner_score: { home_team_id: match.home_team_id, away_team_id: match.away_team_id, round_id: match.round_id, score },
+                    }, "Marcador guardado.");
+                    if (saved) setScoreSlot(null);
+                    return saved;
+                  }} />
                 : shown ? <div className="role-planner-encounter">
                   {slotSides.map(side => {
                     const name = side === "home" ? homeName : awayName;
@@ -445,6 +454,10 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
                       : <span key={side} className={className}>{name}{suggested && side === "home" && <small>Sugerido</small>}</span>;
                   })}
                   <span className="role-planner-vs">VS</span>
+                  {canCaptureScore && <div className="role-planner-score-actions">
+                    <Button type="button" disabled={busy} onClick={() => setScoreSlot(key)}
+                      aria-label={`Capturar marcador · ${homeName} vs. ${awayName}`}>Capturar marcador</Button>
+                  </div>}
                 </div> : bookable ? <div className="role-planner-encounter">
                   {slotSides.map(side => {
                     const placed = first?.side === side ? first : undefined;
@@ -487,8 +500,9 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   </div>;
 }
 
-function PlannerScoreForm({ match, home, away, label, busy, onSave }: {
+function PlannerScoreForm({ match, home, away, label, busy, onCancel, onSave }: {
   match: Cross; home: string; away: string; label: string; busy: boolean;
+  onCancel?: () => void;
   onSave: (score: { home_goals: number; away_goals: number }) => Promise<boolean>;
 }) {
   const saved = match.home_goals != null && match.away_goals != null;
@@ -511,6 +525,7 @@ function PlannerScoreForm({ match, home, away, label, busy, onSave }: {
       : <strong>{match.away_goals}</strong>}</Label>
     <div className="role-planner-score-actions">
       {match.played && <span>Jugado</span>}
+      {onCancel && <Button type="button" disabled={busy} onClick={onCancel}>Cancelar</Button>}
       {inputsVisible ? <Button key="save" type="submit" className="primary" disabled={busy}>Guardar marcador</Button>
         : <Button key="edit" type="button" disabled={busy} onClick={() => setEditing(true)}>Editar marcador</Button>}
     </div>
