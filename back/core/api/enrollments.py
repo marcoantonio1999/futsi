@@ -746,12 +746,20 @@ class EnrollmentCatalogView(APIView):
         sites = enrollment_sites(request.user)
         tournaments = Tournament.objects.filter(site__in=sites).order_by('name', 'id')
         teams = Team.objects.filter(is_active=True, tournament__is_active=True, tournament__site__in=sites).order_by('name', 'id')
-        from django.db.models import Count
-        counts = dict(roster_enrollments(PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)))
-                      .order_by().values('team_record_id').annotate(total=Count('pk')).values_list('team_record_id', 'total'))
+        count_mode = request.query_params.get('player_counts')
+        if count_mode != 'omit':
+            from django.db.models import Count
+            enrollments = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user))
+            if count_mode == 'only':
+                enrollments = enrollments.filter(team_record__in=teams.order_by())
+            counts = dict(roster_enrollments(enrollments).order_by().values('team_record_id')
+                          .annotate(total=Count('pk')).values_list('team_record_id', 'total'))
+            if count_mode == 'only':
+                return Response({'counts': counts})
         team_rows = list(teams.values('id','name','tournament','is_active'))
-        for team in team_rows:
-            team['validated_player_count'] = counts.get(team['id'], 0)
+        if count_mode != 'omit':
+            for team in team_rows:
+                team['validated_player_count'] = counts.get(team['id'], 0)
         return Response({'sites': list(sites.values('id','name')), 'deletable_tournament_ids': [],
                          'tournaments': TournamentSerializer(tournaments, many=True).data,
                          'teams': team_rows})

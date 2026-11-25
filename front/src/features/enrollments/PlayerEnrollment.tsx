@@ -667,6 +667,30 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
     navigation.navigate({ section, roster: null, detail: null, alignment: false });
   }
   const rosterTeam = catalog.teams.find(row => row.id === navigation.screen.roster) as Team | undefined;
+  const showingRosterDirectory = enrollmentSection === "history" && !tournamentSection && !navigation.screen.roster;
+  const [rosterCounts, setRosterCounts] = useState<Record<number, number> | null>(null);
+  const [rosterCountsError, setRosterCountsError] = useState(false);
+  const [rosterCountsRetry, setRosterCountsRetry] = useState(0);
+  useEffect(() => {
+    setRosterCounts(null);
+    setRosterCountsError(false);
+    if (!showingRosterDirectory || catalogBusy || !catalog.teams.length) return;
+    const controller = new AbortController();
+    void apiRequest<{ counts?: Record<number, number>; teams?: EnrollmentCatalog["teams"] }>(
+      "/player-enrollments/catalog/?player_counts=only", token, { signal: controller.signal },
+    ).then(result => {
+      if (controller.signal.aborted) return;
+      const counts = result.counts ?? result.teams?.reduce<Record<number, number>>((counts, team) => {
+        if (team.validated_player_count !== undefined) counts[team.id] = team.validated_player_count;
+        return counts;
+      }, {});
+      if (counts) setRosterCounts(counts);
+      else setRosterCountsError(true);
+    }).catch(() => {
+      if (!controller.signal.aborted) setRosterCountsError(true);
+    });
+    return () => controller.abort();
+  }, [showingRosterDirectory, catalogBusy, catalog.teams, token, rosterCountsRetry]);
   const [printRoster, setPrintRoster] = useState(false);
   const [creatingTeam, setCreatingTeam] = useState(false);
   // Old alignment links now open the unified roster, without a second tool.
@@ -737,7 +761,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
   async function loadCatalog() {
     setCatalogBusy(true); setCatalogError("");
     try {
-      const result = await apiRequest<EnrollmentCatalog>("/player-enrollments/catalog/", token);
+      const result = await apiRequest<EnrollmentCatalog>("/player-enrollments/catalog/?player_counts=omit", token);
       setCatalog(result); return result;
     } catch (err) {
       setCatalogError(err instanceof Error ? err.message : "No pudimos cargar los torneos y equipos.");
@@ -902,6 +926,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
           </div>
         </Card>
         <p className="enrollment-sabana-count" role="status">{catalogBusy ? "Cargando equipos…" : `${filteredTeams.length} equipos`}</p>
+        {rosterCountsError && <p role="alert">No se pudieron cargar los conteos. <Button type="button" onClick={() => setRosterCountsRetry(value => value + 1)}>Reintentar</Button></p>}
         <div className="tournament-directory-scroll" tabIndex={0} role="region" aria-label="Equipos y sábanas">
           <table className="tournament-directory-table enrollment-sabana-table">
             <thead><tr><th scope="col">Equipo</th><th scope="col">Torneo</th><th scope="col">Sede</th><th scope="col">Estado</th><th scope="col">Jugadores</th><th scope="col">Detalle</th><th scope="col">Imprimir / PDF</th></tr></thead>
@@ -910,7 +935,7 @@ function EnrollmentDashboardContent({ token, onLogout, canManageRoles = true, us
               return <tr key={item.id}><th scope="row">{item.name}</th><td>{tournamentRow?.name || "Sin torneo"}</td>
                 <td>{catalog.sites.find(site => site.id === tournamentRow?.site)?.name || "—"}</td>
                 <td>{item.is_active ? "Activo" : "Inactivo"}</td>
-                <td className="enrollment-sabana-players" title="Jugadores validados en la sábana / límite del torneo">{item.validated_player_count ?? '—'}/{tournamentRow?.max_players_per_team ?? '—'}</td>
+                <td className="enrollment-sabana-players" title="Jugadores validados en la sábana / límite del torneo">{rosterCounts ? (rosterCounts[item.id] ?? 0) : '—'}/{tournamentRow?.max_players_per_team ?? '—'}</td>
                 <td><Button type="button" className="enrollment-sabana-action" aria-label={`Ver sábana de ${item.name}`} onClick={() => openRoster(item)}><Eye size={16} aria-hidden="true" />Ver sábana</Button></td>
                 <td><Button type="button" className="enrollment-sabana-action" aria-label={`Imprimir o guardar PDF de ${item.name}`} onClick={() => openRoster(item, true)}><Printer size={16} aria-hidden="true" />Imprimir / PDF</Button></td>
               </tr>;
