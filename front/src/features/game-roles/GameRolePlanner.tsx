@@ -18,6 +18,8 @@ const weekLabel = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "sho
 const mexicoDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
 const matrixPath = (id: number) => `/player-enrollments/game-roles/${id}/`;
 const during = (day: string, round: Round) => round.starts_on <= day && day <= addDays(round.starts_on, 6);
+const roundForDay = (day: string, rounds: Round[], preferred?: Round) =>
+  preferred && during(day, preferred) ? preferred : rounds.find(item => during(day, item));
 const utc = (day: string) => new Date(day + "T00:00:00Z");
 function mondayOf(day: string, fromRound = false) {
   const weekday = utc(day).getUTCDay();
@@ -30,8 +32,7 @@ const displayName = (matrix: Matrix | undefined, id: number) => matrix?.teams.fi
 
 function calendarSlots(tournament: Tournament, matrix: Matrix, occupied: Cross[], days: string[], preferred?: Round) {
   return days.map(day => {
-    const round = preferred && during(day, preferred) ? preferred
-      : matrix.rounds.find(item => during(day, item));
+    const round = roundForDay(day, matrix.rounds, preferred);
     const existing = matrix.crosses.filter(match => match.scheduled_on === day && match.starts_at && match.ends_at);
     const slots: BoardSlot[] = roleSlots(matrix.weekly_schedule ?? [], day).map(slot => {
       const match = existing.find(item => item.starts_at?.slice(0, 5) === slot.start && item.ends_at?.slice(0, 5) === slot.end);
@@ -85,6 +86,13 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
   const round = rounds.find(row => row.id === roundId) ?? rounds.find(row => addDays(row.starts_on, 6) >= today) ?? rounds.at(-1);
   const monday = week || (round ? mondayOf(round.starts_on, true) : mondayOf(today));
   const days = Array.from({ length: 5 }, (_, index) => addDays(monday, index));
+  const weekRoundNumbers = [...new Set(days.flatMap(day => {
+    const visibleRound = roundForDay(day, rounds, round);
+    return visibleRound ? [visibleRound.number] : [];
+  }))];
+  const weekRoundLabel = weekRoundNumbers.length
+    ? `${weekRoundNumbers.length === 1 ? "Jornada" : "Jornadas"} ${weekRoundNumbers.join(", ")}`
+    : "Sin jornada";
   const occupied = tournament?.site === francoSite
     ? active.filter(row => row.site === tournament.site).flatMap(row => data[row.id]?.crosses ?? [])
     : matrix?.crosses ?? [];
@@ -231,7 +239,12 @@ export function GameRolePlanner({ token, tournaments, sites, onOpenMatrix }: {
       <Card as="section" className="role-planner-calendar" aria-label="Calendario de lunes a viernes">
         <header>
           <Button type="button" aria-label="Semana anterior" disabled={busy} onClick={() => { setWeek(addDays(monday, -7)); resetDraft(); }}><ArrowLeft aria-hidden="true" /></Button>
-          <h2>{weekLabel.formatRange(utc(days[0]), utc(days[4]))}</h2>
+          <h2>
+            <span>{weekLabel.formatRange(utc(days[0]), utc(days[4]))}</span>
+            <span className="role-planner-week-round" style={weekRoundNumbers.length === 1 ? roundColorStyle(weekRoundNumbers[0]) : undefined}>
+              {weekRoundLabel}
+            </span>
+          </h2>
           <Button type="button" aria-label="Semana siguiente" disabled={busy} onClick={() => { setWeek(addDays(monday, 7)); resetDraft(); }}><ArrowRight aria-hidden="true" /></Button>
         </header>
         <div className="role-planner-days">

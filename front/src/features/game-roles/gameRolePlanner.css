@@ -43,7 +43,15 @@
 .role-planner-team-list small { flex: none; white-space: nowrap; }
 .role-planner-calendar { min-width: 0; padding: 10px; }
 .role-planner-calendar > header { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 8px; }
-.role-planner-calendar h2 { text-align: center; }
+.role-planner-calendar h2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; min-width: 0; text-align: center; }
+.role-planner-week-round {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--game-roles-round-color, #4d5f54) 10%, white);
+  color: var(--game-roles-round-color, #4d5f54);
+  font-size: 12px;
+  white-space: nowrap;
+}
 .role-planner-days { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .role-planner-days > section { min-width: 0; display: grid; align-content: start; gap: 5px; }
 .role-planner-days h3 { margin: 0; padding: 7px 5px; color: #1f5339; background: #edf5f0; border-radius: 6px; font-size: 12px; text-transform: capitalize; }
