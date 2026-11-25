@@ -70,16 +70,19 @@ export function GameRoles({ token, tournaments, sites, loading, showSchedule, on
 }) {
   const [tournamentId, setTournamentId] = useEnrollmentViewState("gameRoles.tournament", "");
   const tournament = tournaments.find(row => String(row.id) === tournamentId);
-  return <>
-    <Card as="section" className="operator-controls game-roles-intro">
-      <Label><span id="game-roles-tournament-label">Torneo</span><NativeSelect aria-labelledby="game-roles-tournament-label"
+  const choosingTournament = !tournament && !showSchedule;
+  const selector = <Card as="section" className={`operator-controls game-roles-intro${choosingTournament ? " game-roles-intro-centered" : ""}`}>
+      {choosingTournament && <h2>Selecciona un torneo</h2>}
+      <Label><span id="game-roles-tournament-label" className={choosingTournament ? "sr-only" : undefined}>Torneo</span><NativeSelect aria-labelledby="game-roles-tournament-label"
         value={tournament?.id ?? ""} disabled={loading} onChange={event => setTournamentId(event.target.value)}>
-        <option value="">{loading ? "Cargando torneos…" : "Selecciona un torneo"}</option>
+        <option value="">{loading ? "Cargando torneos…" : !tournaments.length ? "Sin torneos disponibles" : "Selecciona un torneo"}</option>
         {tournaments.map(row => <option key={row.id} value={row.id}>
           {row.name} · {sites.find(site => site.id === row.site)?.name}{row.is_active ? "" : " · Inactivo"}
         </option>)}
       </NativeSelect></Label>
-    </Card>
+    </Card>;
+  return <>
+    {choosingTournament ? <div className="game-role-tournament-step">{selector}</div> : selector}
     {tournament && <TournamentMatrix key={tournament.id} token={token} tournament={tournament} showSchedule={showSchedule}
       onOpenSchedule={onOpenSchedule} onOpenMatrix={onOpenMatrix} onTeamCreated={onTeamCreated} />}
   </>;
