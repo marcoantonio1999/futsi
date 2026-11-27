@@ -172,6 +172,11 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     const placed = staged[slotKey(slot)];
     return placed && !slot.occupied ? [placed.id] : [];
   }));
+  const suggestedTeams = new Set(suggestions.flatMap(draft =>
+    slotSides.flatMap(side => {
+      const id = draft[teamField[side]];
+      return id == null ? [] : [id];
+    })));
 
   function resetDraft() {
     setPicked(null); setMoving(null); setSuggestions([]); setError(""); setMessage(""); setAddingSlot(false);
@@ -480,9 +485,11 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
           <p>Arrastra un equipo a un espacio vacío o selecciónalo y toca el espacio.</p>
           <div className="role-planner-team-list">{activeTeams.map(team => {
             const selected = picked?.id === team.id;
+            const assignment = weekAssigned.has(team.id) ? "Ya tiene horario esta semana"
+              : suggestedTeams.has(team.id) ? "Incluido en la sugerencia" : undefined;
             const item = { id: team.id, name: team.name, tournament: tournament.id };
             return <Button key={team.id} type="button" className={selected ? "primary" : ""} aria-pressed={selected}
-              data-assigned={weekAssigned.has(team.id)} title={weekAssigned.has(team.id) ? "Ya tiene horario esta semana" : undefined}
+              data-assigned={Boolean(assignment)} title={assignment}
               disabled={busy} draggable={!busy} onDragStart={event => { event.dataTransfer.setData("text/plain", String(team.id)); event.dataTransfer.effectAllowed = "copy"; }}
               onClick={() => { if (moving) setMessage(""); setMoving(null); setPicked(selected ? null : item); }}>
               <GripVertical aria-hidden="true" /><span>{team.name}</span><small title="Partidos jugados">{counts.get(team.id) ?? 0} PJ</small>
