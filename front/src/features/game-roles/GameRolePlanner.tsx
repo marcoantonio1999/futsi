@@ -604,7 +604,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
           </div>}
         </div>
       </Card>
-      {matrix && round && <PlannerMatrix matrix={matrix} round={round} />}
+      {matrix && <PlannerMatrix matrix={matrix} tournamentName={tournament.name} />}
       </div>
     </div>}
     {addingRound && matrix && <MatrixEditor editor={{ kind: "round" }} matrix={matrix} tournamentName={tournament.name}
@@ -709,24 +709,29 @@ function withoutStaged(current: Record<string, StagedTeam>, ...keys: (string | u
   return Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key)));
 }
 
-function PlannerMatrix({ matrix, round }: { matrix: Matrix; round: Round }) {
+function PlannerMatrix({ matrix, tournamentName }: { matrix: Matrix; tournamentName: string }) {
   const teams = [...new Set([...(matrix.matrix_team_ids ?? []), ...matrix.crosses.flatMap(cross => [cross.home_team_id, cross.away_team_id])])];
-  const cells = gameRoleMatrixCells(matrix, teams, round.id);
+  const cells = gameRoleMatrixCells(matrix, teams);
+  const rounds = new Map(matrix.rounds.map(round => [round.id, round.number]));
   if (!teams.length) return null;
-  return <Card as="section" className="role-planner-matrix" aria-label={`Matriz · Jornada ${round.number}`} style={roundColorStyle(round.number)}>
-    <h2>Matriz · Jornada {round.number}</h2>
-    <div className="role-planner-matrix-scroll" tabIndex={0} aria-label="Cruces de la jornada">
+  return <Card as="section" className="role-planner-matrix" aria-label="Matriz de equipos">
+    <h2>Matriz de equipos</h2>
+    <div className="role-planner-matrix-scroll" tabIndex={0} aria-label="Cruces del torneo">
       <table style={{ minWidth: 116 + teams.length * 35 }}>
         <colgroup><col className="role-planner-matrix-team" />{teams.map(id => <col key={id} />)}</colgroup>
         <thead><tr><th scope="col">Equipos</th>{teams.map(id => <th key={id} scope="col" title={displayName(matrix, id)}>{displayName(matrix, id)}</th>)}</tr></thead>
         <tbody>{teams.map(away => <tr key={away}><th scope="row" title={displayName(matrix, away)}>{displayName(matrix, away)}</th>{teams.map(home => {
           const entries = cells.get(`${home}/${away}`);
-          return <td key={home} data-match-state={entries ? entries[0].cross.played ? "played" : "pending" : undefined}>{entries ? entries.map(({ cross, meeting }) => {
-            const time = cross.starts_at?.slice(0, 5);
+          return <td key={home}>{entries ? entries.map(({ cross, meeting }) => {
+            const roundNumber = rounds.get(cross.round_id);
             const score = cross.played && cross.home_goals != null && cross.away_goals != null ? `${cross.home_goals}–${cross.away_goals}` : null;
-            const description = `Encuentro ${meeting} · ${displayName(matrix, cross.home_team_id)} vs. ${displayName(matrix, cross.away_team_id)} · ${cross.played ? "Jugado" : "Pendiente"}`;
+            const details = cross.played ? score ?? "✓" : roleTimeLabel(tournamentName, cross.starts_at);
+            const description = `Jornada ${roundNumber ?? "—"} · Encuentro ${meeting} · ${displayName(matrix, cross.home_team_id)} vs. ${displayName(matrix, cross.away_team_id)} · ${cross.played ? "Jugado" : "Pendiente"}`;
             return <span key={cross.id ?? meeting} className="game-role-meeting" data-repeat={meeting >= 3}
-              data-match-state={cross.played ? "played" : "pending"} title={description}>{score ?? time ?? "·"}</span>;
+              style={roundNumber === undefined ? undefined : roundColorStyle(roundNumber)}
+              data-match-state={cross.played ? "played" : "pending"} title={description}>
+              {roundNumber !== undefined && <span>J{roundNumber} </span>}{details}
+            </span>;
           }) : home === away ? "—" : "·"}</td>;
         })}</tr>)}</tbody>
       </table>

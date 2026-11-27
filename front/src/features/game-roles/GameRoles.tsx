@@ -345,7 +345,6 @@ function TournamentMatrix({ token, tournament, showSchedule, onOpenSchedule, onO
                   return <Button key={current?.id ?? meeting ?? "empty"} type="button" className="game-roles-cell game-role-meeting" disabled={!selected || (!current && (!home.is_active || !away.is_active))}
                     style={round ? roundColorStyle(round.number) : undefined}
                     data-assigned={Boolean(round)}
-                    data-highlighted={Boolean(selected && round?.id === selected.id)}
                     data-played={Boolean(current?.played)}
                     data-repeat={meeting !== undefined && meeting >= 3}
                     aria-label={`${local.name} local, ${visitor.name} visitante, ${round ? "jornada " + round.number + ", " : ""}${status}${meeting ? `, encuentro ${meeting}` : ""}`}

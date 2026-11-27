@@ -29,7 +29,7 @@ export function plannerPair(round: Round, first: number, second: number) {
   return [first, second] as const;
 }
 
-export function gameRoleMatrixCells(matrix: Matrix, teamIds: number[], roundId?: number) {
+export function gameRoleMatrixCells(matrix: Matrix, teamIds: number[]) {
   const order = new Map(teamIds.map((id, index) => [id, index]));
   const rounds = new Map(matrix.rounds.map(round => [round.id, round]));
   const day = (cross: Cross) => cross.scheduled_on ?? rounds.get(cross.round_id)?.starts_on ?? "";
@@ -48,7 +48,6 @@ export function gameRoleMatrixCells(matrix: Matrix, teamIds: number[], roundId?:
     const lower = `${earlier}/${later}`;
     const meeting = (counts.get(lower) ?? 0) + 1;
     counts.set(lower, meeting);
-    if (roundId !== undefined && cross.round_id !== roundId) continue;
     const cell = meeting % 2 ? lower : `${later}/${earlier}`;
     const entries = cells.get(cell) ?? [];
     entries.push({ cross, meeting });
