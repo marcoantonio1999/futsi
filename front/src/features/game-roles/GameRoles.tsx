@@ -10,7 +10,7 @@ import { GameRoleStatistics } from "./GameRoleStatistics";
 import { GameRoleShare } from "./GameRoleShare";
 import { RolePageButtons } from "./RolePageButtons";
 import { roleReminders } from "./roleReminders";
-import { gameRoleMatrixCells } from "./plannerSchedule";
+import { confirmRepeatedRolePairs, gameRoleMatrixCells } from "./plannerSchedule";
 import { datedRoleSlots, roleTimeLabel, showsKickoffOnly, type ExtraScheduleBlock, type RoleSchedule, type WeeklyBlock, type RoleSlot as Slot } from "./roleSchedule";
 import "./gameRoles.css";
 
@@ -584,6 +584,9 @@ export function MatrixEditor({ editor, matrix, tournamentName, schedule, selecte
         const homeGoals = form.get("home_goals");
         const awayGoals = form.get("away_goals");
         if (played && Boolean(homeGoals) !== Boolean(awayGoals)) throw new Error("Captura los goles de ambos equipos.");
+        if (!editor.current && roundId && !confirmRepeatedRolePairs(matrix, [{
+          home_team_id: editor.home.id, away_team_id: editor.away.id,
+        }])) return;
         await onSave("PUT", {
           cross_id: editor.current ? editor.current.id : null,
           home_team_id: editor.home.id, away_team_id: editor.away.id, round_id: roundId ? Number(roundId) : null,

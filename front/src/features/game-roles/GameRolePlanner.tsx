@@ -5,7 +5,7 @@ import { Button, Card, Input, Label, NativeSelect } from "../../components/ui/en
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
 import { addDays, MatrixEditor, roundColorStyle, type Cross, type Matrix, type Round } from "./GameRoles";
-import { gameRoleMatrixCells, makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch, type ScheduledRange } from "./plannerSchedule";
+import { confirmRepeatedRolePairs, gameRoleMatrixCells, makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch, type ScheduledRange } from "./plannerSchedule";
 import { datedRoleSlots, roleTimeLabel, type ExtraScheduleBlock, type RoleSchedule, type RoleSlot } from "./roleSchedule";
 import "./gameRolePlanner.css";
 
@@ -283,7 +283,9 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     const [home, away] = side === "home" ? [team.id, first.id] : [first.id, team.id];
     const pair = plannerPair(slot.round, home, away);
     if (!pair) { setError("Selecciona equipos distintos que tengan actividad en esta jornada."); return; }
-    if (!(await save(slot.tournament.id, { planner_matches: [makePlannerMatch(slot.round, slot, pair)] }, "Partido programado."))) return;
+    const match = makePlannerMatch(slot.round, slot, pair);
+    if (!matrix || !confirmRepeatedRolePairs(matrix, [match])) return;
+    if (!(await save(slot.tournament.id, { planner_matches: [match] }, "Partido programado."))) return;
     setStaged(current => withoutStaged(current, key, sourceKey));
     setPicked(null);
     setMoving(null);
@@ -311,6 +313,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     const selectedMatrix = data[slot.tournament.id];
     const pair = rival ? plannerPair(slot.round, side === "home" ? movedId : rival.id, side === "away" ? movedId : rival.id) : null;
     if (rival && !pair) { setError("Selecciona equipos distintos que tengan actividad en esta jornada."); return; }
+    if (pair && !confirmRepeatedRolePairs(selectedMatrix, [{ home_team_id: pair[0], away_team_id: pair[1] }], match)) return;
     const destination = { round_id: slot.round.id, schedule: { scheduled_on: slot.day, starts_at: slot.start, ends_at: slot.end } };
     if (await save(slot.tournament.id, { split_planner_match: {
       source: matchSource(match), destination, team_id: movedId, opponent_id: rival?.id ?? null,
@@ -464,6 +467,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       <strong>{completeSuggestions.length} {completeSuggestions.length === 1 ? "partido sugerido" : "partidos sugeridos"}</strong>
       <Button type="button" disabled={busy} onClick={() => { setSuggestions([]); setMoving(null); setMessage(""); }}>Descartar</Button>
       <Button type="button" className="primary" disabled={busy || !completeSuggestions.length} onClick={async () => {
+        if (!matrix || !confirmRepeatedRolePairs(matrix, completeSuggestions)) return;
         const notice = completeSuggestions.length === 1 ? "Partido programado." : `${completeSuggestions.length} partidos programados.`;
         if (await save(tournament.id, { planner_matches: completeSuggestions }, notice)) {
           const singles = suggestions.flatMap(draft => {

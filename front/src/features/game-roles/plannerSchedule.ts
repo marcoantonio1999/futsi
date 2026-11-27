@@ -29,6 +29,24 @@ export function plannerPair(round: Round, first: number, second: number) {
   return [first, second] as const;
 }
 
+type RolePair = Pick<Cross, "home_team_id" | "away_team_id">;
+
+export function confirmRepeatedRolePairs(matrix: Matrix, matches: readonly RolePair[], removed?: Cross) {
+  const key = ({ home_team_id: home, away_team_id: away }: RolePair) => `${Math.min(home, away)}/${Math.max(home, away)}`;
+  const seen = new Set(matrix.crosses.filter(cross => cross !== removed).map(key));
+  const repeated = new Map<string, RolePair>();
+  for (const match of matches) {
+    const pair = key(match);
+    if (seen.has(pair)) repeated.set(pair, match);
+    seen.add(pair);
+  }
+  if (!repeated.size) return true;
+  const names = new Map(matrix.teams.map(team => [team.id, team.name]));
+  const fixtures = [...repeated.values()].map(({ home_team_id: home, away_team_id: away }) => `${names.get(home)} vs. ${names.get(away)}`);
+  if (fixtures.length === 1) return window.confirm(`Ya hay un cruce de ${fixtures[0]} en la matriz. ¿Quieres programarlo de todos modos?`);
+  return window.confirm(`Cruces repetidos\n\n${fixtures.join("\n")}\n\n¿Quieres programarlos de todos modos?`);
+}
+
 export function gameRoleMatrixCells(matrix: Matrix, teamIds: number[]) {
   const order = new Map(teamIds.map((id, index) => [id, index]));
   const rounds = new Map(matrix.rounds.map(round => [round.id, round]));
