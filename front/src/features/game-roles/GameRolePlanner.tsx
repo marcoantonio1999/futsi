@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, GripVertical, Plus, Shuffle, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, GripVertical, Plus, Share2, Shuffle, X } from "lucide-react";
 import { apiRequest } from "../../api";
 import { Button, Card, Input, Label, NativeSelect } from "../../components/ui/enrollment-ui";
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
+import { GameRoleShare } from "./GameRoleShare";
 import { addDays, MatrixEditor, roundColorStyle, type Cross, type Matrix, type Round } from "./GameRoles";
 import { confirmRepeatedRolePairs, gameRoleMatrixCells, makePlannerMatch, plannerOverlap, plannerPair, playedCounts, rolePairKey, suggestPlannerMatches, type PlannerMatch, type ScheduledRange } from "./plannerSchedule";
 import { datedRoleSlots, roleTimeLabel, type ExtraScheduleBlock, type RoleSchedule, type RoleSlot } from "./roleSchedule";
@@ -90,6 +91,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   const [revision, setRevision] = useState(0);
   const [tournamentId, setTournamentId] = useEnrollmentViewState("gameRoles.tournament", "");
   const [addingRound, setAddingRound] = useState(false);
+  const [sharedRound, setSharedRound] = useState<{ tournamentId: number; roundId: number } | null>(null);
   const [addingSlot, setAddingSlot] = useState(false);
   const [availability, setAvailability] = useState<{ key: string; value: PlannerWeek | null } | null>(null);
   const [week, setWeek] = useState("");
@@ -462,6 +464,10 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
         <Plus aria-hidden="true" />Agregar jornada
       </Button>
       <Button type="button" className="primary" onClick={propose} disabled={!suggestionRound || !weekAvailability || loading || busy}><Shuffle aria-hidden="true" />Sugerir jornada</Button>
+      <Button type="button" className="primary" disabled={!round || loading || busy}
+        onClick={() => { if (tournament && round) setSharedRound({ tournamentId: tournament.id, roundId: round.id }); }}>
+        <Share2 aria-hidden="true" />Compartir jornada
+      </Button>
       <Button type="button" onClick={() => {
         if (tournament) setTournamentId(String(tournament.id));
         if (round) setRoundId(round.id);
@@ -638,6 +644,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       schedule={matrix.weekly_schedule ?? []} selected={round}
       initialRoundDate={!rounds.length || (week && !rounds.some(item => days.some(day => during(day, item)))) ? monday : undefined}
       onClose={() => setAddingRound(false)} onSave={addRound} />}
+    {sharedRound && <GameRoleShare path={`${matrixPath(sharedRound.tournamentId)}rounds/${sharedRound.roundId}/share/`} token={token}
+      reminderKey={`${sharedRound.tournamentId}/${sharedRound.roundId}`} onClose={() => setSharedRound(null)} />}
   </div>;
 }
 
