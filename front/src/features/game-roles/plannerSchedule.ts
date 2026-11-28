@@ -81,6 +81,11 @@ export function makePlannerMatch(round: Round, slot: RoleSlot, pair: readonly [n
 
 export function suggestPlannerMatches(matrix: Matrix, round: Round, slots: PlannerSuggestionSlot[], reserved: ReadonlySet<number>) {
   const counts = playedCounts(matrix.crosses);
+  const previousRound = matrix.rounds.reduce<Round | undefined>((latest, candidate) =>
+    candidate.number < round.number && (!latest || candidate.number > latest.number) ? candidate : latest, undefined);
+  const previousParticipants = new Set(matrix.crosses.flatMap(cross =>
+    previousRound && cross.round_id === previousRound.id && (cross.played || cross.scheduled_on)
+      ? [cross.home_team_id, cross.away_team_id] : []));
   const assignments = new Map<number, Cross[]>();
   for (const cross of matrix.crosses.filter(item => item.round_id === round.id)) {
     for (const id of [cross.home_team_id, cross.away_team_id]) assignments.set(id, [...(assignments.get(id) ?? []), cross]);
@@ -94,12 +99,16 @@ export function suggestPlannerMatches(matrix: Matrix, round: Round, slots: Plann
   const activeTeams = matrix.teams.filter(team => team.is_active);
   const eligible = activeTeams.filter(team => !reserved.has(team.id) && team.id !== round.rest_team_id
     && !assignments.get(team.id)?.some(cross => cross.played || cross.scheduled_on));
+  const restedTeams = new Set(eligible.filter(({ id }) => id === previousRound?.rest_team_id
+    || (previousParticipants.size > 0 && !previousParticipants.has(id))).map(({ id }) => id));
   function pairing(home: number, away: number, autoIds: number[], keepSide = false) {
     const pair = plannerPair(round, home, away);
     if (!pair || (keepSide && pair[0] !== home)) return [];
     if (autoIds.some(id => assignments.get(id)?.some(cross => cross.home_team_id !== pair[0] || cross.away_team_id !== pair[1]))) return [];
-    const games = autoIds.map(id => counts.get(id) ?? 0);
-    return [{ pair, autoIds, played: games.reduce((total, count) => total + count, 0), fewest: Math.min(...games) }];
+    // One round of rest offsets one game for ranking; a larger gap still takes priority.
+    const rested = autoIds.filter(id => restedTeams.has(id)).length;
+    const scores = autoIds.map(id => (counts.get(id) ?? 0) - Number(restedTeams.has(id)));
+    return [{ pair, autoIds, rested, score: scores.reduce((total, count) => total + count, 0), fewest: Math.min(...scores) }];
   }
   const pairs = eligible.flatMap((first, index) => eligible.slice(index + 1).flatMap(second =>
     pairing(first.id, second.id, [first.id, second.id])));
@@ -113,27 +122,32 @@ export function suggestPlannerMatches(matrix: Matrix, round: Round, slots: Plann
     return { slot, options: options.filter(({ autoIds }) => !autoIds.some(id => noteApplies(id, slot))) };
   }).sort((a, b) => Number(!!b.slot.placed) - Number(!!a.slot.placed) || a.options.length - b.options.length);
   let bestPlan: PlannerMatch[] = [];
-  let bestPlayed = Infinity;
+  let bestScore = Infinity;
+  let bestRested = 0;
   let bestFilled = 0;
   // Try a few tie orders to avoid leaving a slot empty because of an equivalent pairing.
   for (let attempt = 0; attempt < 6; attempt++) {
     const used = new Set<number>();
-    let played = 0;
+    let score = 0;
+    let rested = 0;
     let filled = 0;
     const plan: PlannerMatch[] = [];
     for (const { slot, options } of candidates) {
       const best = options.filter(item => !item.autoIds.some(id => used.has(id)))
         .map(item => ({ ...item, tie: Math.random() }))
-        .sort((a, b) => a.played - b.played || a.fewest - b.fewest || a.tie - b.tie)[0];
+        .sort((a, b) => a.score - b.score || b.rested - a.rested || a.fewest - b.fewest || a.tie - b.tie)[0];
       if (!best) continue;
       best.autoIds.forEach(id => used.add(id));
       if (slot.placed) filled++;
-      played += best.played;
+      score += best.score;
+      rested += best.rested;
       plan.push(makePlannerMatch(round, slot, best.pair));
     }
-    if (filled > bestFilled || (filled === bestFilled && (plan.length > bestPlan.length || (plan.length === bestPlan.length && played < bestPlayed)))) {
+    const ranksHigher = filled - bestFilled || plan.length - bestPlan.length || bestScore - score || rested - bestRested;
+    if (ranksHigher > 0) {
       bestPlan = plan;
-      bestPlayed = played;
+      bestScore = score;
+      bestRested = rested;
       bestFilled = filled;
     }
   }
