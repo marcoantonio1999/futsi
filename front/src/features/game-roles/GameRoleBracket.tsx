@@ -17,15 +17,26 @@ const headings = ["Cuartos", "Semis", "Final", "Semis", "Cuartos"];
 const columnX = (column: number) => column * (100 - cardWidth) / 4;
 const pending: [string, string] = ["Por definir", "Por definir"];
 
+export function quarterfinalSeeds(hasByes: boolean) {
+  return hasByes ? [[4, 5], [1, null], [3, 6], [2, null]] as const
+    : [[1, 8], [4, 5], [2, 7], [3, 6]] as const;
+}
+
+function rankSlots(pair: readonly [number, number | null]): [string, string] {
+  const label = (position: number) => `${position}${[1, 3].includes(position) ? ".er" : ".º"} lugar`;
+  return [label(pair[0]), pair[1] === null ? "Pase directo" : label(pair[1])];
+}
+
 function layout(hasByes: boolean) {
+  const [q1, q2, q3, q4] = quarterfinalSeeds(hasByes);
   const nodes: Node[] = [
-    { id: "q1", column: 0, center: 52, slots: hasByes ? ["4.º lugar", "5.º lugar"] : ["1.er lugar", "8.º lugar"], next: "s1" },
-    { id: "q2", column: 0, center: 120, slots: hasByes ? ["1.er lugar", "Pase directo"] : ["4.º lugar", "5.º lugar"], next: "s1" },
+    { id: "q1", column: 0, center: 52, slots: rankSlots(q1), next: "s1" },
+    { id: "q2", column: 0, center: 120, slots: rankSlots(q2), next: "s1" },
     { id: "s1", column: 1, center: 86, slots: pending, next: "final" },
     { id: "final", column: 2, center: 86, slots: pending },
     { id: "s2", column: 3, center: 86, slots: pending, next: "final" },
-    { id: "q3", column: 4, center: 52, slots: hasByes ? ["3.er lugar", "6.º lugar"] : ["2.º lugar", "7.º lugar"], next: "s2" },
-    { id: "q4", column: 4, center: 120, slots: hasByes ? ["2.º lugar", "Pase directo"] : ["3.er lugar", "6.º lugar"], next: "s2" },
+    { id: "q3", column: 4, center: 52, slots: rankSlots(q3), next: "s2" },
+    { id: "q4", column: 4, center: 120, slots: rankSlots(q4), next: "s2" },
   ];
   const lines = nodes.flatMap(node => {
     const next = nodes.find(match => match.id === node.next);

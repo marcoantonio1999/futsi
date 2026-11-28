@@ -1,6 +1,6 @@
 import { roleTimeLabel } from "./roleSchedule";
 import bpowerLogo from "../enrollments/assets/bpower-roster-watermark.png";
-import { GameRoleBracket, bracketImageHeight, drawGameRoleBracket } from "./GameRoleBracket";
+import { GameRoleBracket, bracketImageHeight, drawGameRoleBracket, quarterfinalSeeds } from "./GameRoleBracket";
 import type { StandingRow } from "../../types";
 
 export type Match = {
@@ -25,7 +25,7 @@ type Block = {
   empty?: string;
   qualified?: number;
   standings?: boolean;
-  bracket?: { hasByes: boolean };
+  bracket?: { hasByes: boolean; note?: string };
 };
 
 const dayLabel = new Intl.DateTimeFormat("es-MX", {
@@ -36,24 +36,37 @@ export const dayName = (day: string) => dayLabel.format(new Date(day + "T00:00:0
 export const scheduleRestTeams = (schedule: Schedule) =>
   schedule.rest_teams ?? (schedule.rest_team ? [schedule.rest_team] : []);
 
+function quarterfinalProjection(standings: StandingRow[], hasByes: boolean): Row[] {
+  const teams = new Map(standings.map(row => [row.position, row.team_name]));
+  const label = (position: number) => `${position}.º ${teams.get(position) ?? "por definir"}`;
+  return quarterfinalSeeds(hasByes).map(([first, second]) => [
+    second === null ? `${label(first)} · Pase directo tentativo` : `${label(first)} vs. ${label(second)}`,
+  ]);
+}
+
 function reportColumns(schedule: Schedule): [Block[], Block[]] {
   const name = schedule.tournament.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
   const league = /^(premier|nocturno|espanola|uefa|eurocopa)(?:\s|$)/.exec(name)?.[1];
   const franco = schedule.site.trim().toLowerCase() === "colegio franco" && Boolean(league);
   const euro = league === "eurocopa";
+  const qualifyingPlaces = euro ? 6 : 8;
+  const qualification = `Califican del 1.º al ${qualifyingPlaces}.º.`;
   const competition = franco ? [
     ["Clasificación por tabla de posiciones general."],
     [schedule.expected_weeks
-      ? `Torneo regular de ${schedule.expected_weeks} ${schedule.expected_weeks === 1 ? "jornada" : "jornadas"}. Califican del 1ero al 8to.`
-      : "Califican del 1ero al 8to."],
+      ? `Torneo regular de ${schedule.expected_weeks} ${schedule.expected_weeks === 1 ? "jornada" : "jornadas"}. ${qualification}`
+      : qualification],
     ...(euro ? [] : [[`Fecha límite para registrar: Jornada ${league === "uefa" ? 15 : 9} del torneo.`]]),
     ["Equipos con adeudos quedan automáticamente descalificados."],
   ] : [];
   const standings = schedule.standings ?? [];
+  const showProjection = franco && standings.some(row => row.played > 0);
   return [
     [
       { title: "Sistema de Competencia", rows: competition, empty: "Reglas por confirmar." },
-      { title: "LIGUILLA", rows: [], bracket: franco ? { hasByes: euro } : undefined, empty: "Formato por confirmar." },
+      { title: "LIGUILLA", rows: showProjection ? quarterfinalProjection(standings, euro) : [],
+        bracket: franco ? { hasByes: euro, note: showProjection ? "Cruces tentativos con la tabla actual. Pueden cambiar." : undefined } : undefined,
+        empty: "Formato por confirmar." },
       { title: schedule.results_round ? `Resultados · Jornada ${schedule.results_round}` : "Resultados",
         columns: ["Local", "Marcador", "Visitante"], widths: [2, 1, 2],
         rows: (schedule.results ?? schedule.matches.filter(match => match.played)).map(match => [
@@ -70,7 +83,7 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
         widths: [1, 5, 1, 1, 1, 1, 1, 1, 1, 1.2],
         rows: standings.map(row => [row.position, row.team_name, row.played, row.won, row.lost, row.drawn,
           row.goals_for, row.goals_against, row.goal_difference, row.points]),
-        qualified: franco && standings.some(row => row.played > 0) ? 8 : 0, empty: "Aún no hay equipos." },
+        qualified: showProjection ? qualifyingPlaces : 0, empty: "Aún no hay equipos." },
       { title: "Tabla de Goleo", columns: ["P", "Equipo", "GF"], widths: [1, 5, 1],
         rows: (schedule.scoring ?? []).slice(0, 5).map((row, i) => [i + 1, row.team, row.goals]),
         empty: "Todavía no hay marcadores registrados." },
@@ -96,7 +109,13 @@ function reportRows(block: Block) {
 function ReportBlock({ block }: { block: Block }) {
   return <section className="game-role-report-block" data-standings={block.standings}>
     <h2>{block.title}</h2>
-    {block.bracket ? <GameRoleBracket hasByes={block.bracket.hasByes} /> : block.columns ? <table>
+    {block.bracket ? <>
+      <GameRoleBracket hasByes={block.bracket.hasByes} />
+      {block.bracket.note && <div className="game-role-bracket-projection">
+        <p><strong>{block.bracket.note}</strong></p>
+        <ul>{block.rows.map(([line]) => <li key={line}>{line}</li>)}</ul>
+      </div>}
+    </> : block.columns ? <table>
       {block.widths && <colgroup>{block.widths.map((width, index, widths) =>
         <col key={index} style={{ width: `${width / widths.reduce((sum, value) => sum + value, 0) * 100}%` }} />)}
       </colgroup>}
@@ -165,21 +184,21 @@ export async function renderScheduleImage(schedule: Schedule) {
     return [...lines, line];
   }
   const prepared = columns.map(blocks => blocks.map(block => {
-    if (block.bracket) return { block, rows: [], height: 49 + inset + bracketImageHeight };
     const units = block.widths ?? [1];
     const sizes = units.map(unit => contentWidth * unit / units.reduce((a, b) => a + b));
     const rows = [
       ...(block.columns ? [{ values: block.columns, sizes, fill: block.standings ? "#246343" : "#f0f4f2", heading: true, cutoff: false, zone: null, isLabel: false }] : []),
+      ...(block.bracket?.note ? [{ values: [block.bracket.note], sizes, fill: "#edf7ef", heading: false, cutoff: false, zone: null, isLabel: true }] : []),
       ...reportRows(block).map(row => ({
         ...row, sizes: row.isLabel ? [contentWidth] : sizes, heading: false,
         fill: row.zone ? zoneColors[row.zone][row.isLabel ? "label" : "row"] : null,
       })),
-      ...(!block.rows.length ? [{ values: [block.empty ?? "—"], sizes: [contentWidth], fill: null, heading: false, cutoff: false, zone: null, isLabel: false }] : []),
+      ...(!block.rows.length && !block.bracket ? [{ values: [block.empty ?? "—"], sizes: [contentWidth], fill: null, heading: false, cutoff: false, zone: null, isLabel: false }] : []),
     ].map(row => {
       const cells = row.values.map((value, i) => wrap(String(value), row.sizes[i] - 12));
       return { ...row, cells, height: Math.max(...cells.map(cell => cell.length)) * 27 + 12 };
     });
-    return { block, rows, height: 49 + inset + rows.reduce((sum, row) => sum + row.height, 0) };
+    return { block, rows, height: 49 + inset + (block.bracket ? bracketImageHeight : 0) + rows.reduce((sum, row) => sum + row.height, 0) };
   }));
   const bodyHeight = Math.max(...prepared.map(blocks => blocks.reduce((sum, block) => sum + block.height + gap, 0)));
   const showSocial = schedule.site.trim().toLowerCase() === "colegio franco";

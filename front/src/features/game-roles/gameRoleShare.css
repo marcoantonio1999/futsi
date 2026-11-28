@@ -120,6 +120,14 @@
 .game-role-bracket-match[data-final="true"] { border-color: #246343; background: #e8f3ec; }
 .game-role-bracket-match span { display: grid; place-content: center; padding: 1px; }
 .game-role-bracket-match span + span { border-top: 1px solid #dce5df; }
+.game-role-bracket-projection {
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: #edf7ef;
+  overflow-wrap: anywhere;
+}
+.game-role-bracket-projection ul { margin: 4px 0 0; padding-inline-start: 16px; }
+.game-role-bracket-projection li + li { margin-top: 4px; }
 .game-role-sheet .game-role-report-social { display: flex; align-items: center; justify-content: flex-start; gap: 7px; margin: 0; padding: 0 14px 14px; font-size: 12px; }
 .game-role-report-facebook { flex: none; }
 .game-role-sheet .game-role-report-social a { padding: 0; border: 0; background: transparent; color: #246343; text-decoration: underline; }
