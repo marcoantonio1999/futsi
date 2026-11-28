@@ -5,7 +5,7 @@ import { Button, Card, Input, Label, NativeSelect } from "../../components/ui/en
 import type { Site, Tournament } from "../../types";
 import { useEnrollmentViewState } from "../enrollments/EnrollmentNavigation";
 import { addDays, MatrixEditor, roundColorStyle, type Cross, type Matrix, type Round } from "./GameRoles";
-import { confirmRepeatedRolePairs, gameRoleMatrixCells, makePlannerMatch, plannerOverlap, plannerPair, playedCounts, suggestPlannerMatches, type PlannerMatch, type ScheduledRange } from "./plannerSchedule";
+import { confirmRepeatedRolePairs, gameRoleMatrixCells, makePlannerMatch, plannerOverlap, plannerPair, playedCounts, rolePairKey, suggestPlannerMatches, type PlannerMatch, type ScheduledRange } from "./plannerSchedule";
 import { datedRoleSlots, roleTimeLabel, type ExtraScheduleBlock, type RoleSchedule, type RoleSlot } from "./roleSchedule";
 import "./gameRolePlanner.css";
 
@@ -101,6 +101,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
     catch { return {}; }
   });
   const [suggestions, setSuggestions] = useState<PlannerDraft[]>([]);
+  const confirmedSuggestionRepeats = useRef(new WeakSet<PlannerDraft>());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -350,6 +351,7 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
   }
 
   function updateSuggestions(changed: PlannerDraft[], keys: string[]) {
+    if (!matrix) return;
     const remaining = suggestions.filter(draft => !keys.includes(draftKeyOf(draft)));
     for (const draft of changed) {
       const round = rounds.find(row => row.id === draft.round_id);
@@ -362,6 +364,19 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
         setError("Un equipo no puede jugar contra sí mismo.");
         return;
       }
+    }
+    const playedPairs = new Set(matrix.crosses.filter(cross => cross.played).map(rolePairKey));
+    const repeated = changed.filter(completeDraft).filter(draft => {
+      const previous = suggestedBySlot.get(draftKeyOf(draft));
+      return playedPairs.has(rolePairKey(draft)) && (!previous || !completeDraft(previous)
+        || rolePairKey(previous) !== rolePairKey(draft));
+    });
+    if (repeated.length && !confirmRepeatedRolePairs(matrix, repeated)) return;
+    for (const draft of repeated) confirmedSuggestionRepeats.current.add(draft);
+    for (const draft of changed.filter(completeDraft)) {
+      const previous = suggestedBySlot.get(draftKeyOf(draft));
+      if (previous && completeDraft(previous) && rolePairKey(previous) === rolePairKey(draft)
+        && confirmedSuggestionRepeats.current.has(previous)) confirmedSuggestionRepeats.current.add(draft);
     }
     setSuggestions([...remaining, ...changed]);
     setMoving(null); setPicked(null); setError(""); setMessage("");
@@ -467,7 +482,8 @@ export function GameRolePlanner({ token, userId, tournaments, sites, onOpenMatri
       <strong>{completeSuggestions.length} {completeSuggestions.length === 1 ? "partido sugerido" : "partidos sugeridos"}</strong>
       <Button type="button" disabled={busy} onClick={() => { setSuggestions([]); setMoving(null); setMessage(""); }}>Descartar</Button>
       <Button type="button" className="primary" disabled={busy || !completeSuggestions.length} onClick={async () => {
-        if (!matrix || !confirmRepeatedRolePairs(matrix, completeSuggestions)) return;
+        const unconfirmed = completeSuggestions.filter(draft => !confirmedSuggestionRepeats.current.has(draft));
+        if (!matrix || !confirmRepeatedRolePairs(matrix, unconfirmed)) return;
         const notice = completeSuggestions.length === 1 ? "Partido programado." : `${completeSuggestions.length} partidos programados.`;
         if (await save(tournament.id, { planner_matches: completeSuggestions }, notice)) {
           const singles = suggestions.flatMap(draft => {
