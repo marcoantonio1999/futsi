@@ -37,7 +37,7 @@ const labels: Record<string, string> = {
   player_signature: "Firma del jugador",
   ine_front: "INE frente",
   ine_back: "INE reverso",
-  identity_document: "Pasaporte / cartilla",
+  identity_document: "Documento de identidad",
 };
 export function EnrollmentApproval({
   token,

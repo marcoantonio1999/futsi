@@ -122,7 +122,7 @@ El enlace puede compartirse por WhatsApp o copiarse. El formulario público cons
 
 La migración conserva inscripciones y documentos existentes, vinculando nombres anteriores solamente cuando hay una coincidencia única entre torneo y equipo. Los enlaces antiguos sin asignación inequívoca requieren uno nuevo; no se inventa un equipo ni se mezclan homónimos. La columna histórica de categoría permanece sin solicitarse ni exponerse, para no destruir datos anteriores.
 
-Adultos: INE frente y reverso, o pasaporte, o cartilla. Menores: credencial del menor, CURP, INE del tutor frente y reverso, nombre y firma del tutor. La fecha de nacimiento determina los requisitos tanto en la pantalla como en el servidor.
+Adultos: INE frente y reverso, pasaporte, cartilla o licencia de conducir. Menores: credencial del menor, CURP, INE del tutor frente y reverso, nombre y firma del tutor. La fecha de nacimiento determina los requisitos tanto en la pantalla como en el servidor.
 
 El historial muestra una cédula de dos columnas con fotos y nombres, agrupada por equipo y torneo. Permite buscar, paginar, elegir fecha y jornada de impresión y abrir la hoja firmada del jugador. La impresión incluye únicamente los registros de la página mostrada; no oculta esta limitación. El botón Imprimir / guardar PDF usa la impresión del navegador.
 

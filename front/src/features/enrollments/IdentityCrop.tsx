@@ -75,7 +75,7 @@ export function IdentityCrop({file, onApply, onCancel}: {file: File; onApply: (f
   return <Dialog ref={dialog} className="identity-crop-dialog" aria-label="Recortar INE" onCancel={event => {event.preventDefault(); onCancel();}}>
     <header><h2>Recortar INE</h2><Button type="button" onClick={onCancel} aria-label="Cerrar recorte">✕</Button></header>
     <p>Ajusta los bordes para que la credencial completa quede dentro del recuadro.</p>
-    {url && <div className="identity-crop-image"><img src={url} alt="Escaneo del INE" />
+    {url && <div className="identity-crop-image"><img src={url} alt="Escaneo del documento" />
       <div className="identity-crop-selection" style={{left:box.left+"%", top:box.top+"%", width:(box.right-box.left)+"%", height:(box.bottom-box.top)+"%"}} /></div>}
     <div className="identity-crop-controls">{controls.map(({key,label}) => <label key={key}>{label}
       <input type="range" min={0} max={100} value={box[key]} onChange={event => {

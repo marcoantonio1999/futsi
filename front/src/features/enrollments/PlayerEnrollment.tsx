@@ -48,7 +48,7 @@ const GameRolePlanner = lazy(() => import("../game-roles/GameRolePlanner").then(
 
 const labels: Record<string, string> = {
   player_photo: "Foto del jugador", ine_front: "INE frente", ine_back: "INE reverso",
-  identity_document: "Pasaporte / cartilla", minor_credential: "Documento del menor", curp: "CURP",
+  identity_document: "Documento de identidad", minor_credential: "Documento del menor", curp: "CURP",
   guardian_ine_front: "INE del tutor frente", guardian_ine_back: "INE del tutor reverso",
   player_signature: "Firma del jugador", guardian_signature: "Firma del tutor",
 };
@@ -187,7 +187,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, staffToke
   const paperFlow = !minor && !minorMode;
   async function readIdentity() {
     if (minorMode ? !files.minor_credential : !files.ine_front || !files.player_photo) {
-      setError(minorMode ? "Adjunta el documento del menor para procesar los datos." : "Adjunta el frente del INE y la selfie para procesar los datos.");
+      setError(minorMode ? "Adjunta el documento del menor para procesar los datos." : "Adjunta la identificación y la selfie para procesar los datos.");
       return;
     }
     setError(""); setReadBusy(true);
@@ -214,7 +214,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, staffToke
         if (!result.birth_date) setError("No se encontró la fecha de nacimiento. Agrégala para continuar.");
         return;
       }
-      if (!minorMode && !["ine", "passport", "military_card", "curp"].includes(result.detected_type)) {
+      if (!minorMode && !["ine", "passport", "military_card", "driver_license", "curp"].includes(result.detected_type)) {
         setIdentity("unknown"); setChooseIdentity(true);
         setError("No se pudo identificar el documento. Vuelve a tomar la foto o selecciona el tipo para continuar.");
         return;
@@ -222,7 +222,7 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, staffToke
       if (!minorMode) { setIdentity(result.detected_type); setChooseIdentity(false); }
       if (result.birth_date && under18(result.birth_date)) {
         setMinorMode(true);
-        setError("El INE indica que el jugador es menor. Completa los documentos del menor.");
+        setError("La fecha leída indica que el jugador es menor. Completa los documentos del menor.");
         return;
       }
       navigate(2);
@@ -388,7 +388,8 @@ export function PublicPlayerEnrollment({ invitation, embedded = false, staffToke
               <div className="enrollment-wizard-identity-fields">
               {minorMode && <EnrollmentField name="birth_date" error={fieldErrors.birth_date}><EnrollmentDatePicker label="Fecha de nacimiento" name="birth_date" required birthday forceNative={embedded} value={birthDate} max={maxDate} invalid={!!fieldErrors.birth_date} describedBy={fieldErrors.birth_date ? 'enrollment-error-birth_date' : undefined} onChange={value => { setBirthDate(value); if (!birthDateError(value, maxDate)) clearIssue('birth_date'); }} /></EnrollmentField>}
               {!minorMode && chooseIdentity && <Label>Tipo de documento<NativeSelect value={identity} onChange={event => setIdentity(event.target.value)}>
-                <option value="unknown">Selecciona el tipo</option><option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option><option value="curp">CURP</option>
+                <option value="unknown">Selecciona el tipo</option><option value="ine">INE</option><option value="passport">Pasaporte</option><option value="military_card">Cartilla</option>
+                <option value="driver_license">Licencia de conducir</option><option value="curp">CURP</option>
               </NativeSelect></Label>}
               </div>
               {<div className="enrollment-wizard-uploads">{documentKinds.map(item =>
