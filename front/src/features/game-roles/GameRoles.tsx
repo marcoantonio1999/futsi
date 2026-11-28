@@ -409,7 +409,10 @@ function NextGameRole({ matrix, tournamentName, onShare }: { matrix: Matrix; tou
   const nextRoundId = pending.find(cross => cross.scheduled_on! >= today)?.round_id ?? pending.at(-1)?.round_id;
   const round = rounds.find(row => row.id === roundId) ?? rounds.find(row => row.id === nextRoundId) ?? rounds.at(-1);
   const matches = pending.filter(cross => cross.round_id === round?.id);
-  const restTeam = round?.rest_team_id ? teamNames.get(round.rest_team_id) : undefined;
+  const participants = new Set(matrix.crosses.flatMap(cross =>
+    cross.round_id === round?.id && (cross.played || cross.scheduled_on) ? [cross.home_team_id, cross.away_team_id] : []));
+  const restTeams = matrix.teams.filter(team => team.id === round?.rest_team_id
+    || (participants.size > 0 && team.is_active && !participants.has(team.id)));
 
   return <Card as="section" className="game-role-history game-role-next" aria-labelledby="game-role-next-title">
       <div className="game-role-panel-header">
@@ -429,8 +432,8 @@ function NextGameRole({ matrix, tournamentName, onShare }: { matrix: Matrix; tou
           {!matches.length && <tr><td colSpan={4}>{round ? "Aún no hay próximos partidos en esta jornada." : "Agrega una jornada para programar partidos."}</td></tr>}
         </tbody>
       </table>
-      {restTeam && <p><strong>Descanso</strong> · {restTeam}</p>}
-      {round && <footer><Button type="button" className="primary" disabled={!matches.length && !restTeam} onClick={() => onShare(round.id)}>Compartir rol de juego</Button></footer>}
+      {restTeams.length > 0 && <p><strong>Descanso</strong> · {restTeams.map(team => team.name).join(", ")}</p>}
+      {round && <footer><Button type="button" className="primary" disabled={!matches.length && !restTeams.length} onClick={() => onShare(round.id)}>Compartir rol de juego</Button></footer>}
   </Card>;
 }
 

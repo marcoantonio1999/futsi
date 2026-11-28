@@ -11,6 +11,7 @@ export type Schedule = {
   tournament: string; site: string; number: number; starts_on: string; matches: Match[];
   expected_weeks?: number | null;
   rest_team?: string | null;
+  rest_teams?: string[];
   results_round?: number | null; results?: Match[];
   standings?: StandingRow[]; scoring?: { team: string; goals: number }[];
 };
@@ -31,6 +32,9 @@ const dayLabel = new Intl.DateTimeFormat("es-MX", {
   weekday: "long", day: "numeric", month: "short", timeZone: "UTC",
 });
 export const dayName = (day: string) => dayLabel.format(new Date(day + "T00:00:00Z"));
+
+export const scheduleRestTeams = (schedule: Schedule) =>
+  schedule.rest_teams ?? (schedule.rest_team ? [schedule.rest_team] : []);
 
 function reportColumns(schedule: Schedule): [Block[], Block[]] {
   const name = schedule.tournament.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
@@ -59,7 +63,7 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
         rows: schedule.matches.filter(match => !match.played && match.scheduled_on).map(match =>
           [dayName(match.scheduled_on!), roleTimeLabel(schedule.tournament, match.starts_at, match.ends_at), match.home_team__name, match.away_team__name]),
         empty: "Todavía no hay próximos partidos para esta jornada." },
-      { title: "DESCANSO", rows: schedule.rest_team ? [[schedule.rest_team]] : [], empty: "—" },
+      { title: "DESCANSO", rows: scheduleRestTeams(schedule).map(team => [team]), empty: "—" },
     ],
     [
       { title: "Tabla de Posiciones", standings: true, columns: ["P", "Equipo", "JJ", "JG", "JP", "JE", "GF", "GC", "DG", "PTS"],

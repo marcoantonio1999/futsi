@@ -188,20 +188,31 @@ def round_schedule(round_row):
     results_round = played.order_by("-round__number").values_list("round__number", flat=True).first()
     results = played.filter(round__number=results_round).order_by("scheduled_on", "starts_at", "pk")
     team_ids = set(tournament.game_role_team_order or [])
-    for home_id, away_id in crosses.order_by().values_list("home_team_id", "away_team_id"):
+    participants = set()
+    for home_id, away_id, round_id, scheduled_on, was_played in crosses.order_by().values_list(
+        "home_team_id", "away_team_id", "round_id", "scheduled_on", "played",
+    ):
         team_ids.update((home_id, away_id))
+        if round_id == round_row.pk and (scheduled_on is not None or was_played):
+            participants.update((home_id, away_id))
     scored = crosses.filter(played=True, home_goals__isnull=False, away_goals__isnull=False).order_by().values_list(
         "home_team_id", "away_team_id", "home_goals", "away_goals",
     )
-    teams = tournament.teams.filter(pk__in=team_ids).values_list("pk", "name", "tournament_id")
-    standings = build_standings(teams, scored)
+    teams = list(tournament.teams.order_by("name", "pk").values_list("pk", "name", "is_active"))
+    standings = build_standings(((pk, name, tournament.pk) for pk, name, _ in teams if pk in team_ids), scored)
+    rest_team_name = rest_team.name if rest_team and rest_team.tournament_id == tournament.pk else None
+    rest_teams = [
+        name for pk, name, is_active in teams
+        if (rest_team_name and pk == rest_team.pk) or (participants and is_active and pk not in participants)
+    ]
     return {
         "tournament": tournament.name,
         "site": tournament.site.name,
         "number": round_row.number,
         "starts_on": round_row.starts_on,
         "expected_weeks": tournament.expected_weeks,
-        "rest_team": rest_team.name if rest_team and rest_team.tournament_id == tournament.pk else None,
+        "rest_team": rest_team_name,
+        "rest_teams": rest_teams,
         "matches": list(matches.values(*match_fields[:-2])),
         "results_round": results_round,
         "results": list(results.values(*match_fields)),
@@ -238,6 +249,7 @@ class PublicGameRoleView(APIView):
         tournament = round_row.tournament
         timestamps = {"total": Count("pk"), "latest": Max("updated_at")}
         revision = sha256(repr((
+            "round-rest-teams-v1",
             round_row.number, round_row.starts_on, round_row.rest_team and round_row.rest_team.name,
             tournament.name, tournament.site.name, tournament.expected_weeks, tournament.game_role_team_order,
             tournament.teams.aggregate(**timestamps),
