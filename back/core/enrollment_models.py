@@ -22,7 +22,13 @@ class PlayerEnrollmentInvitation(models.Model):
         db_table = "player_enrollment_invitations"
 
 
+class PlayerEnrollmentQuerySet(models.QuerySet):
+    def not_discarded(self):
+        return self.filter(discarded_at__isnull=True)
+
+
 class PlayerEnrollment(models.Model):
+    objects = PlayerEnrollmentQuerySet.as_manager()
     invitation = models.OneToOneField(PlayerEnrollmentInvitation, on_delete=models.PROTECT)
     name = models.CharField(max_length=160)
     identity_key = models.CharField(max_length=64, blank=True, default='', db_index=True)
@@ -43,6 +49,7 @@ class PlayerEnrollment(models.Model):
     terms_text = models.JSONField(default=list)
     signed_at = models.DateTimeField(auto_now_add=True)
     withdrawn_at = models.DateTimeField(null=True, blank=True)
+    discarded_at = models.DateTimeField(null=True, blank=True)
     is_delegate = models.BooleanField(default=False)
     validated_at = models.DateTimeField(null=True, blank=True, db_index=True)
     validated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="validated_player_enrollments")

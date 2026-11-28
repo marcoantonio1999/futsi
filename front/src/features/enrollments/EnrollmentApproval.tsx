@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../../api";
-import { Button, Card, Dialog, Input, Label } from "../../components/ui/enrollment-ui";
+import { Button, Card, Input, Label } from "../../components/ui/enrollment-ui";
 import { fetchEnrollmentDocument } from "./fetchEnrollmentDocument";
 import { autoCropIdentity } from "./autoCropIdentity";
 import { DocumentZoom } from "./DocumentZoom";
@@ -80,7 +80,8 @@ export function EnrollmentApproval({
         onPendingCount(r.pending_validation_count);
         setRows(r.results);
         setCount(r.count);
-        if (!r.results.length && r.count > 0 && page > 1) setPage((p) => p - 1);
+        const lastPage = Math.max(1, Math.ceil(r.count / 25));
+        if (page > lastPage) setPage(lastPage);
       })
       .catch((e) => {
         if (!c.signal.aborted) setError(e.message);
@@ -208,6 +209,24 @@ export function EnrollmentApproval({
       setSaving(false);
     }
   }
+  async function discard(row: RecordRow) {
+    if (saving || !window.confirm(`¿Descartar la inscripción de ${row.name} (folio ${row.id})? Se quitará de pendientes y se liberará su cupo.`)) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await apiRequest<void>(`/player-enrollments/${row.id}/discard/`, token, { method: "POST" });
+      setSelected(null);
+      setRows(current => current.filter(item => item.id !== row.id));
+      setRevision(current => current + 1);
+      setMessage("Inscripción descartada.");
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo descartar la inscripción.");
+    } finally {
+      setSaving(false);
+    }
+  }
   if (selected && showSheet) return <EnrollmentRegistrationSheet enrollmentId={selected.id} token={token} backLabel="Volver a validación" onBack={() => setShowSheet(false)} />;
   return (
     <section className="enrollment-approval no-print">
@@ -229,7 +248,10 @@ export function EnrollmentApproval({
           >
             Volver a pendientes
           </Button>
-          <Button type="button" onClick={() => setShowSheet(true)}>Ver hoja para imprimir</Button>
+          <div className="enrollment-approval-actions">
+            <Button type="button" disabled={saving} onClick={() => setShowSheet(true)}>Ver hoja para imprimir</Button>
+            <Button type="button" className="destructive" disabled={saving} onClick={() => void discard(selected)}>Descartar</Button>
+          </div>
           <Card className="enrollment-approval-sheet">
             <h3>Hoja de inscripción · Folio {selected.id}</h3>
             <dl>
@@ -346,7 +368,10 @@ export function EnrollmentApproval({
                       {new Date(row.signed_at).toLocaleString("es-MX")}
                     </small>
                   </div>
-                  <Button onClick={() => open(row)}>Revisar inscripción</Button>
+                  <div className="enrollment-approval-actions">
+                    <Button type="button" disabled={saving} onClick={() => open(row)}>Revisar inscripción</Button>
+                    <Button type="button" className="destructive" disabled={saving} onClick={() => void discard(row)}>Descartar</Button>
+                  </div>
                 </article>
               ))}
           </div>

@@ -22,6 +22,11 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.enrollment-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .enrollment-approval-list strong {
   font-weight: 700;
 }

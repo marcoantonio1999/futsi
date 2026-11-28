@@ -10,7 +10,7 @@ def team_occupancy(team_id, exclude_kind=None, exclude_id=None):
     rows = {
         "player": Player.objects.filter(team_id=team_id, is_active=True),
         "student": StudentTournamentRegistration.objects.filter(team_id=team_id, status="registered"),
-        "enrollment": PlayerEnrollment.objects.filter(team_record_id=team_id, withdrawn_at__isnull=True),
+        "enrollment": PlayerEnrollment.objects.not_discarded().filter(team_record_id=team_id, withdrawn_at__isnull=True),
     }
     return sum(query.exclude(pk=exclude_id).count() if kind == exclude_kind and exclude_id else query.count()
                for kind, query in rows.items())

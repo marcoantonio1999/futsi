@@ -23,7 +23,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 from core.enrollment_models import PlayerEnrollmentInvitation, PlayerEnrollment, PlayerEnrollmentDocument
-from core.models import Team, Tournament, Site
+from core.models import AuditLog, Team, Tournament, Site
 from core.domain_serializers.sports import (
     EnrollmentTeamCreateSerializer, TeamSerializer, TournamentSerializer, find_enrollment_team_by_name,
 )
@@ -397,7 +397,7 @@ class PublicEnrollmentView(APIView):
         if not invitation.team_record_id:
             return Response({"detail": "Este enlace necesita un equipo y torneo registrados. Pide un enlace nuevo."}, status=410)
         assert_capacity(invitation.team_record)
-        first = not PlayerEnrollment.objects.filter(team_record=invitation.team_record).exists()
+        first = not PlayerEnrollment.objects.not_discarded().filter(team_record=invitation.team_record).exists()
         return Response({"direct_upload": enrollment_r2.enabled(), "team": invitation.team, "team_id": invitation.team_record_id, "tournament": invitation.tournament, "tournament_id": invitation.team_record.tournament_id, "max_players_per_team": invitation.team_record.tournament.max_players_per_team, "is_delegate": first, "delegate_name": '', "delegate_phone": '', "terms_version": TERMS_VERSION, "terms": TERMS})
 
     def post(self, request, token):
@@ -493,7 +493,7 @@ class PublicEnrollmentView(APIView):
             with capacity_guard(invitation.team_record, "enrollment") as team:
                 fields['identity_key'] = assert_not_blacklisted(fields['name'], fields['birth_date'], locked=True)
                 assert_no_pending_sanction(fields['name'], fields['birth_date'])
-                first = not PlayerEnrollment.objects.filter(team_record=team).exists()
+                first = not PlayerEnrollment.objects.not_discarded().filter(team_record=team).exists()
                 # Team-creation contact fields are provisional, not an enrollment.
                 # The locked first completed enrollment establishes the delegate.
                 fields['is_delegate'] = first
@@ -514,7 +514,7 @@ def roster_enrollments(rows):
     from core.enrollment_models import PlayerBlacklistEntry
     from django.db.models import Q
     exclusions = PlayerBlacklistEntry.objects.filter(is_active=True)
-    return rows.filter(validated_at__isnull=False, withdrawn_at__isnull=True,
+    return rows.not_discarded().filter(validated_at__isnull=False, withdrawn_at__isnull=True,
                        team_record__is_active=True, team_record__tournament__is_active=True).exclude(
         Q(identity_key__in=exclusions.values('identity_key')) |
         Q(pk__in=exclusions.filter(source_sanction__enrollment_id__isnull=False).values('source_sanction__enrollment_id')))
@@ -527,7 +527,7 @@ class EnrollmentAdminView(APIView):
             page = max(1, min(int(request.query_params.get("page", 1)), 100000))
         except (ValueError, TypeError):
             raise ValidationError("Página inválida.")
-        rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).select_related('team_record__tournament').prefetch_related("documents")
+        rows = PlayerEnrollment.objects.not_discarded().filter(invitation__in=invitations_for(request.user)).select_related('team_record__tournament').prefetch_related("documents")
         pending_count = rows.filter(validated_at__isnull=True, withdrawn_at__isnull=True, team_record__is_active=True, team_record__tournament__is_active=True).count()
         if request.query_params.get('validation_count_only') == 'true':
             response = Response({'pending_validation_count': pending_count})
@@ -610,7 +610,7 @@ class EnrollmentAdminView(APIView):
         purpose = serializer.validated_data['purpose']
         if purpose == 'enroll':
             assert_capacity(team)
-        elif not PlayerEnrollment.objects.filter(team_record=team, withdrawn_at__isnull=True).exists():
+        elif not PlayerEnrollment.objects.not_discarded().filter(team_record=team, withdrawn_at__isnull=True).exists():
             raise ValidationError('Este equipo no tiene integrantes inscritos para dar de baja.')
         validity = timedelta(days=7) if purpose == 'withdraw' else timedelta(days=30)
         row = PlayerEnrollmentInvitation.objects.create(created_by=request.user, expires_at=timezone.now() + validity, team_record=team, team=team.name, tournament=tournament.name, purpose=purpose)
@@ -634,7 +634,7 @@ class PublicWithdrawalView(APIView):
         invitation = self.invitation(token)
         from django.db.models import Exists, OuterRef
         photos = PlayerEnrollmentDocument.objects.filter(enrollment_id=OuterRef('pk'), kind='player_photo')
-        rows = list(PlayerEnrollment.objects.filter(team_record=invitation.team_record, withdrawn_at__isnull=True).annotate(has_photo=Exists(photos)).order_by('signed_at', 'id'))
+        rows = list(PlayerEnrollment.objects.not_discarded().filter(team_record=invitation.team_record, withdrawn_at__isnull=True).annotate(has_photo=Exists(photos)).order_by('signed_at', 'id'))
         sanctions = enrollment_sanctions(rows)
         response = Response({'direct_upload': enrollment_r2.enabled(), 'team': invitation.team, 'tournament': invitation.tournament,
             'players': [{'id': row.pk, 'name': row.name, 'is_delegate': row.is_delegate, 'has_photo': row.has_photo,
@@ -662,7 +662,7 @@ class PublicWithdrawalView(APIView):
         invitation = self.invitation(token)
         ids = serializer.validated_data['enrollment_ids']
         def selected_rows(team, locked=False):
-            rows = PlayerEnrollment.objects.filter(pk__in=ids, team_record=team, withdrawn_at__isnull=True).order_by('pk')
+            rows = PlayerEnrollment.objects.not_discarded().filter(pk__in=ids, team_record=team, withdrawn_at__isnull=True).order_by('pk')
             if locked:
                 rows = rows.select_for_update()
             rows = list(rows)
@@ -728,7 +728,7 @@ class PublicWithdrawalPhotoView(PublicWithdrawalView):
     def get(self, request, token, pk):
         invitation = self.invitation(token)
         doc = get_object_or_404(PlayerEnrollmentDocument, enrollment_id=pk,
-            enrollment__team_record=invitation.team_record, enrollment__withdrawn_at__isnull=True,
+            enrollment__team_record=invitation.team_record, enrollment__withdrawn_at__isnull=True, enrollment__discarded_at__isnull=True,
             kind='player_photo', content_type__in=['image/png', 'image/jpeg'])
         if doc.storage_path.startswith(enrollment_r2.PREFIX):
             return private_r2_redirect(doc.storage_path, request)
@@ -899,7 +899,8 @@ class EnrollmentTeamDeletionView(APIView):
 class EnrollmentDocumentView(APIView):
     permission_classes = [EnrollmentStaffPermission]
     def get(self, request, pk):
-        doc = get_object_or_404(PlayerEnrollmentDocument, pk=pk, enrollment__invitation__in=invitations_for(request.user))
+        doc = get_object_or_404(PlayerEnrollmentDocument, pk=pk, enrollment__discarded_at__isnull=True,
+                                enrollment__invitation__in=invitations_for(request.user))
         # Older open tabs still expect bytes; new clients explicitly request a
         # direct URL so their images do not pass through Render.
         if doc.storage_path.startswith(enrollment_r2.PREFIX) and request.query_params.get('delivery') == 'direct':
@@ -931,7 +932,7 @@ class EnrollmentValidationView(APIView):
         if not serializer.validated_data['confirmed']:
             raise ValidationError('Confirma que revisaste los datos y documentos de la inscripción.')
         with transaction.atomic():
-            row = get_object_or_404(PlayerEnrollment.objects.select_for_update(of=('self',)).select_related('team_record__tournament'),
+            row = get_object_or_404(PlayerEnrollment.objects.not_discarded().select_for_update(of=('self',)).select_related('team_record__tournament'),
                                    pk=pk, invitation__in=invitations_for(request.user))
             if row.withdrawn_at or not row.team_record_id or not row.team_record.is_active or not row.team_record.tournament.is_active:
                 raise ValidationError('La inscripción debe pertenecer a un equipo y torneo activos y no estar dada de baja.')
@@ -961,3 +962,44 @@ class EnrollmentValidationView(APIView):
                 row.validated_by = request.user
                 row.save(update_fields=['validated_at', 'validated_by'])
         return Response({'id': row.pk, 'validated_at': row.validated_at, 'validated_by_id': row.validated_by_id})
+
+
+class EnrollmentDiscardView(APIView):
+    permission_classes = [EnrollmentStaffPermission]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user))
+        target = get_object_or_404(rows.select_related('team_record').only(
+            'team_record', 'team_record__tournament_id'), pk=pk)
+        if not target.team_record_id:
+            raise ValidationError('La inscripción ya no pertenece a un equipo.')
+        # Serialize changes to capacity and the delegate with admissions, withdrawals and delegate edits.
+        tournament = get_object_or_404(Tournament.objects.select_for_update(), pk=target.team_record.tournament_id)
+        team = get_object_or_404(Team.objects.select_for_update(), pk=target.team_record_id, tournament=tournament)
+        row = get_object_or_404(rows.select_for_update(of=('self',)), pk=pk, team_record=team)
+        if row.discarded_at:
+            return Response(status=204)
+        if row.validated_at or row.withdrawn_at or not team.is_active or not tournament.is_active:
+            raise ValidationError('Solo se pueden descartar inscripciones pendientes de validar de equipos activos.')
+        was_delegate = row.is_delegate
+        row.discarded_at = timezone.now()
+        row.is_delegate = False
+        row.save(update_fields=['discarded_at', 'is_delegate'])
+        if was_delegate:
+            replacement = PlayerEnrollment.objects.not_discarded().filter(
+                team_record=team, withdrawn_at__isnull=True).order_by('signed_at', 'pk').first()
+            if replacement:
+                replacement.is_delegate = True
+                replacement.save(update_fields=['is_delegate'])
+                team.representative_name = replacement.name
+                team.representative_phone = replacement.phone
+                team.representative_email = ''
+                team.save(update_fields=['representative_name', 'representative_phone', 'representative_email'])
+            elif team.representative_name == row.name and team.representative_phone == row.phone:
+                team.representative_name = ''
+                team.representative_phone = ''
+                team.save(update_fields=['representative_name', 'representative_phone'])
+        AuditLog.objects.create(actor=request.user, action='enrollment_discarded', table_name='player_enrollments',
+                                record_id=str(row.pk), metadata={'team_id': team.pk, 'tournament_id': tournament.pk})
+        return Response(status=204)

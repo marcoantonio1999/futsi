@@ -32,7 +32,7 @@ class EnrollmentPlayersView(APIView):
         if source not in ('enrollments', 'legacy'):
             raise ValidationError('Origen inválido.')
         # Only scalar directory fields, never documents, signatures or binaries.
-        rows = PlayerEnrollment.objects.filter(invitation__in=invitations_for(request.user)).order_by('signed_at', 'id').values(
+        rows = PlayerEnrollment.objects.not_discarded().filter(invitation__in=invitations_for(request.user)).order_by('signed_at', 'id').values(
             'id', 'name', 'birth_date', 'team', 'tournament', 'team_record_id',
             'withdrawn_at', 'signed_at', 'is_delegate', 'team_record__name',
             'team_record__is_active', 'team_record__tournament_id', 'team_record__tournament__name',

@@ -88,7 +88,7 @@ class PlayerSanctionView(APIView):
         if request.query_params.get('team_id'):
             pk = serializers.IntegerField(min_value=1).run_validation(request.query_params['team_id'])
             team = get_object_or_404(allowed_teams(request.user), pk=pk)
-            members = [{'id':row.pk, 'type':'enrollment', 'name':row.name, 'is_delegate':row.is_delegate} for row in PlayerEnrollment.objects.filter(team_record=team, withdrawn_at__isnull=True).only('id','name','is_delegate')]
+            members = [{'id':row.pk, 'type':'enrollment', 'name':row.name, 'is_delegate':row.is_delegate} for row in PlayerEnrollment.objects.not_discarded().filter(team_record=team, withdrawn_at__isnull=True).only('id','name','is_delegate')]
             members += [{'id':row.pk, 'type':'player', 'name':row.full_name, 'is_delegate':False} for row in Player.objects.filter(team=team,is_active=True).only('id','full_name')]
         response = Response({'catalog':CATALOG, 'members':sorted(members,key=lambda row:row['name'].casefold())})
         response['Cache-Control'] = 'no-store'
@@ -104,7 +104,7 @@ class PlayerSanctionView(APIView):
             Tournament.objects.select_for_update().get(pk=team.tournament_id)
             team = get_object_or_404(allowed_teams(request.user).select_for_update(),pk=team.pk)
             if member_type == 'enrollment':
-                member = get_object_or_404(PlayerEnrollment.objects.select_for_update(),pk=member_id,team_record=team,withdrawn_at__isnull=True)
+                member = get_object_or_404(PlayerEnrollment.objects.not_discarded().select_for_update(),pk=member_id,team_record=team,withdrawn_at__isnull=True)
                 lock_identity(member.identity_key or identity_key(member.name, member.birth_date))
                 member_fields = {'enrollment':member,'player':None,'player_name':member.name}
             else:

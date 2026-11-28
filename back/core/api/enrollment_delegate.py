@@ -28,7 +28,7 @@ class EnrollmentDelegateView(APIView):
             if not team.is_active or not tournament.is_active:
                 raise ValidationError('El equipo o torneo ya no está disponible.')
             row = get_object_or_404(
-                PlayerEnrollment.objects.select_for_update(),
+                PlayerEnrollment.objects.not_discarded().select_for_update(),
                 pk=serializer.validated_data['enrollment_id'], team_record=team,
                 withdrawn_at__isnull=True, invitation__in=invitations_for(request.user),
             )
