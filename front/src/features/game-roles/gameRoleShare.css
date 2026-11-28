@@ -109,7 +109,7 @@
 .game-role-bracket-match {
   position: absolute;
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   border: 1px solid #b8cdbf;
   border-radius: 5px;
   background: #fff;
@@ -118,16 +118,16 @@
   font-weight: 600;
 }
 .game-role-bracket-match[data-final="true"] { border-color: #246343; background: #e8f3ec; }
-.game-role-bracket-match span { display: grid; place-content: center; padding: 1px; }
-.game-role-bracket-match span + span { border-top: 1px solid #dce5df; }
-.game-role-bracket-projection {
+.game-role-bracket-slot { display: grid; align-items: center; min-width: 0; padding: 1px 3px; line-height: 1.1; overflow: hidden; }
+.game-role-bracket-slot + .game-role-bracket-slot { border-top: 1px solid #dce5df; }
+.game-role-bracket-slot span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; }
+.game-role-report-block .game-role-bracket-projection {
+  margin-bottom: 6px;
   padding: 7px 9px;
   border-radius: 6px;
   background: #edf7ef;
   overflow-wrap: anywhere;
 }
-.game-role-bracket-projection ul { margin: 4px 0 0; padding-inline-start: 16px; }
-.game-role-bracket-projection li + li { margin-top: 4px; }
 .game-role-sheet .game-role-report-social { display: flex; align-items: center; justify-content: flex-start; gap: 7px; margin: 0; padding: 0 14px 14px; font-size: 12px; }
 .game-role-report-facebook { flex: none; }
 .game-role-sheet .game-role-report-social a { padding: 0; border: 0; background: transparent; color: #246343; text-decoration: underline; }

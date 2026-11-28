@@ -1,6 +1,6 @@
 import { roleTimeLabel } from "./roleSchedule";
 import bpowerLogo from "../enrollments/assets/bpower-roster-watermark.png";
-import { GameRoleBracket, bracketImageHeight, drawGameRoleBracket, quarterfinalSeeds } from "./GameRoleBracket";
+import { GameRoleBracket, bracketImageHeight, drawGameRoleBracket, type GameRoleBracketOptions } from "./GameRoleBracket";
 import type { StandingRow } from "../../types";
 
 export type Match = {
@@ -25,7 +25,7 @@ type Block = {
   empty?: string;
   qualified?: number;
   standings?: boolean;
-  bracket?: { hasByes: boolean; note?: string };
+  bracket?: GameRoleBracketOptions & { note?: string };
 };
 
 const dayLabel = new Intl.DateTimeFormat("es-MX", {
@@ -35,14 +35,6 @@ export const dayName = (day: string) => dayLabel.format(new Date(day + "T00:00:0
 
 export const scheduleRestTeams = (schedule: Schedule) =>
   schedule.rest_teams ?? (schedule.rest_team ? [schedule.rest_team] : []);
-
-function quarterfinalProjection(standings: StandingRow[], hasByes: boolean): Row[] {
-  const teams = new Map(standings.map(row => [row.position, row.team_name]));
-  const label = (position: number) => `${position}.º ${teams.get(position) ?? "por definir"}`;
-  return quarterfinalSeeds(hasByes).map(([first, second]) => [
-    second === null ? `${label(first)} · Pase directo tentativo` : `${label(first)} vs. ${label(second)}`,
-  ]);
-}
 
 function reportColumns(schedule: Schedule): [Block[], Block[]] {
   const name = schedule.tournament.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
@@ -64,8 +56,12 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
   return [
     [
       { title: "Sistema de Competencia", rows: competition, empty: "Reglas por confirmar." },
-      { title: "LIGUILLA", rows: showProjection ? quarterfinalProjection(standings, euro) : [],
-        bracket: franco ? { hasByes: euro, note: showProjection ? "Cruces tentativos con la tabla actual. Pueden cambiar." : undefined } : undefined,
+      { title: "LIGUILLA", rows: [],
+        bracket: franco ? {
+          hasByes: euro,
+          teamsByPosition: showProjection ? new Map(standings.map(row => [row.position, row.team_name])) : undefined,
+          note: showProjection ? "Cruces tentativos con la tabla actual. Pueden cambiar." : undefined,
+        } : undefined,
         empty: "Formato por confirmar." },
       { title: schedule.results_round ? `Resultados · Jornada ${schedule.results_round}` : "Resultados",
         columns: ["Local", "Marcador", "Visitante"], widths: [2, 1, 2],
@@ -110,11 +106,8 @@ function ReportBlock({ block }: { block: Block }) {
   return <section className="game-role-report-block" data-standings={block.standings}>
     <h2>{block.title}</h2>
     {block.bracket ? <>
-      <GameRoleBracket hasByes={block.bracket.hasByes} />
-      {block.bracket.note && <div className="game-role-bracket-projection">
-        <p><strong>{block.bracket.note}</strong></p>
-        <ul>{block.rows.map(([line]) => <li key={line}>{line}</li>)}</ul>
-      </div>}
+      {block.bracket.note && <p className="game-role-bracket-projection"><strong>{block.bracket.note}</strong></p>}
+      <GameRoleBracket {...block.bracket} />
     </> : block.columns ? <table>
       {block.widths && <colgroup>{block.widths.map((width, index, widths) =>
         <col key={index} style={{ width: `${width / widths.reduce((sum, value) => sum + value, 0) * 100}%` }} />)}
@@ -198,7 +191,7 @@ export async function renderScheduleImage(schedule: Schedule) {
       const cells = row.values.map((value, i) => wrap(String(value), row.sizes[i] - 12));
       return { ...row, cells, height: Math.max(...cells.map(cell => cell.length)) * 27 + 12 };
     });
-    return { block, rows, height: 49 + inset + (block.bracket ? bracketImageHeight : 0) + rows.reduce((sum, row) => sum + row.height, 0) };
+    return { block, rows, height: 49 + inset + (block.bracket ? bracketImageHeight(block.bracket) : 0) + rows.reduce((sum, row) => sum + row.height, 0) };
   }));
   const bodyHeight = Math.max(...prepared.map(blocks => blocks.reduce((sum, block) => sum + block.height + gap, 0)));
   const showSocial = schedule.site.trim().toLowerCase() === "colegio franco";
@@ -239,10 +232,6 @@ export async function renderScheduleImage(schedule: Schedule) {
       ctx.fillStyle = "#174734";
       ctx.fillText(block.title, x + inset, y + 12, contentWidth);
       y += 49;
-      if (block.bracket) {
-        drawGameRoleBracket(ctx, block.bracket.hasByes, x + inset, y, contentWidth);
-        y += bracketImageHeight;
-      }
       for (const row of rows) {
         if (row.fill) {
           ctx.fillStyle = row.fill;
@@ -264,6 +253,10 @@ export async function renderScheduleImage(schedule: Schedule) {
         y += row.height;
         ctx.fillStyle = row.cutoff ? "#ae892e" : "#dce5df";
         ctx.fillRect(x + inset, y - 1, contentWidth, row.cutoff ? 2 : 1);
+      }
+      if (block.bracket) {
+        drawGameRoleBracket(ctx, block.bracket, x + inset, y, contentWidth);
+        y += bracketImageHeight(block.bracket);
       }
       y += inset + gap;
     }
