@@ -53,6 +53,9 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
   ] : [];
   const standings = schedule.standings ?? [];
   const showProjection = franco && standings.some(row => row.played > 0);
+  const defense = standings.filter(row => row.played > 0)
+    .sort((a, b) => a.goals_against - b.goals_against || a.team_name.localeCompare(b.team_name, "es-MX"))
+    .slice(0, 5);
   return [
     [
       { title: "Sistema de Competencia", rows: competition, empty: "Reglas por confirmar." },
@@ -82,6 +85,9 @@ function reportColumns(schedule: Schedule): [Block[], Block[]] {
         qualified: showProjection ? qualifyingPlaces : 0, empty: "Aún no hay equipos." },
       { title: "Tabla de Goleo", columns: ["P", "Equipo", "GF"], widths: [1, 5, 1],
         rows: (schedule.scoring ?? []).slice(0, 5).map((row, i) => [i + 1, row.team, row.goals]),
+        empty: "Todavía no hay marcadores registrados." },
+      { title: "Tabla de Defensa", columns: ["P", "Equipo", "GC"], widths: [1, 5, 1],
+        rows: defense.map((row, i) => [i + 1, row.team_name, row.goals_against]),
         empty: "Todavía no hay marcadores registrados." },
     ],
   ];
